@@ -38,7 +38,6 @@ const OPENROUTER_CACHE_SUPPORT: CacheSupport = CacheSupport {
     // routes to an OpenAI model, whose cache writes are free and unreported, so
     // turn 1 legitimately shows zero for both counters — measured, not assumed.
     reports_writes: false,
-    explicit_breakpoints: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
     hit_ratio_floor: 0.80,

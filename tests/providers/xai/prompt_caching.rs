@@ -32,7 +32,6 @@ const XAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "xai",
     accounting: CacheAccounting::Subset,
     reports_writes: false,
-    explicit_breakpoints: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
     hit_ratio_floor: 0.80,

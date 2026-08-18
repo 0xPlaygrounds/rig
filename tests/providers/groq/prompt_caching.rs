@@ -1,27 +1,28 @@
 //! Groq prompt-caching cassette suite.
 //!
-//! **No meaningful prefix caching was observed**, and this suite records that as
-//! a measured fact rather than an assumption.
+//! **Groq's prompt cache is real but intermittent** — the same signature as
+//! Mistral, and it took the strengthened `assert_no_meaningful_prefix_cache` to
+//! notice.
 //!
-//! Measured on `openai/gpt-oss-20b`: a 1,795-token prompt re-sent
-//! byte-identically reads zero cached tokens on every turn, blocking and
-//! streaming alike. Groq reuses `openai::Usage`, so rig would surface
-//! `prompt_tokens_details.cached_tokens` if Groq populated it.
+//! An earlier revision of this suite concluded Groq did not cache at all. It
+//! was reading only the first two turns of one probe; the streaming probe's
+//! *first* turn reads 1,792 of 1,795 prompt tokens — 99.8% — against a prefix an
+//! earlier scenario had warmed, and then turns 2 and 3 read zero. Repeated
+//! recordings put the hit on different turns, with `assert_prefix_stable`
+//! proving on every run that rig's own bytes never moved. Routing without cache
+//! affinity is the plausible cause; either way it is not something rig controls.
 //!
-//! **Caveat, stated because it bounds the claim:** this account's Groq tier
-//! allows 8,000 tokens per minute, and three turns of the default ~4,600-token
-//! probe exceed that before turn 2 can be sent. The probe is therefore capped at
-//! ~1,800 tokens per turn. That clears the 1,024-token floor a prompt cache
-//! would plausibly need, so the result is meaningful — but it does not rule out
-//! a cache whose real minimum sits above 1,800 tokens. Re-run on a higher tier
-//! to settle that.
+//! So these cells assert the narrower thing that is true and deterministic:
+//! when Groq reports a cache read, rig surfaces it at full magnitude, on the
+//! blocking and streaming paths alike. That is a claim about rig's usage mapping
+//! rather than about Groq's hit rate. Groq reuses `openai::Usage`, so the value
+//! arrives in `prompt_tokens_details.cached_tokens`.
 //!
-//! The cells assert the absence through `assert_no_meaningful_prefix_cache`,
-//! which is self-invalidating: the day Groq caches this prefix, the assertion
-//! fails and says to replace it with the full `assert_cache_conformance` suite.
-//!
-//! Groq reuses `openai::Usage`, so rig would surface
-//! `prompt_tokens_details.cached_tokens` if Groq populated it.
+//! **Rate-limit caveat:** this account's Groq tier allows 8,000 tokens per
+//! minute, and three turns of the default ~4,600-token probe exceed that before
+//! turn 2 can be sent. The probe is capped at ~1,800 tokens per turn, which
+//! clears the 1,024-token floor a prompt cache would plausibly need. Recording
+//! these fixtures needs roughly a minute between attempts.
 //!
 //! # Recording
 //!
@@ -33,8 +34,8 @@
 use rig::client::CompletionClient as _;
 
 use crate::cache_conformance::{
-    CacheAccounting, CacheProbe, CacheSupport, assert_no_meaningful_prefix_cache,
-    assert_prefix_stable, run_cache_probe, run_cache_probe_streaming,
+    CacheAccounting, CacheProbe, CacheSupport, assert_cache_read_is_surfaced, assert_prefix_stable,
+    run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::support::with_groq_prompt_caching_cassette;
@@ -51,7 +52,6 @@ const GROQ_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "groq",
     accounting: CacheAccounting::Subset,
     reports_writes: false,
-    explicit_breakpoints: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
     hit_ratio_floor: 0.80,
@@ -71,13 +71,13 @@ fn probe() -> CacheProbe {
 }
 
 #[tokio::test]
-async fn blocking_probe_observes_no_meaningful_prefix_cache() {
+async fn blocking_probe_surfaces_the_cache_read_groq_reports() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_groq_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion_model(CACHE_MODEL);
         let observation = run_cache_probe(&model, &probe()).await;
-        assert_no_meaningful_prefix_cache(&observation, &GROQ_CACHE_SUPPORT, "blocking probe");
+        assert_cache_read_is_surfaced(&observation, &GROQ_CACHE_SUPPORT, "blocking probe");
     })
     .await;
 
@@ -85,13 +85,13 @@ async fn blocking_probe_observes_no_meaningful_prefix_cache() {
 }
 
 #[tokio::test]
-async fn streaming_probe_observes_no_meaningful_prefix_cache() {
+async fn streaming_probe_surfaces_the_cache_read_groq_reports() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_groq_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion_model(CACHE_MODEL);
         let observation = run_cache_probe_streaming(&model, &probe()).await;
-        assert_no_meaningful_prefix_cache(&observation, &GROQ_CACHE_SUPPORT, "streaming probe");
+        assert_cache_read_is_surfaced(&observation, &GROQ_CACHE_SUPPORT, "streaming probe");
     })
     .await;
 

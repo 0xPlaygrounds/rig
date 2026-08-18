@@ -1,25 +1,32 @@
 //! Cohere prompt-caching cassette suite.
 //!
-//! **This provider does not do meaningful prefix caching**, and this suite is
-//! what records that as a measured fact rather than an assumption.
+//! **Cohere's prompt cache is real, and it warms across turns.** Measured on
+//! `command-a-03-2025`, one three-turn probe over a 6,058-token prompt:
 //!
-//! Measured, and the single most instructive result in the whole matrix: Cohere
-//! reports a **constant 112 cached tokens** against a 6,058-token prompt, on
-//! every turn, whether or not the prefix repeats. That is a 1.8% hit ratio.
+//! | turn | prompt | cached | ratio |
+//! |---|---:|---:|---:|
+//! | 1 (cold) | 6,058 | 112 | 1.8% |
+//! | 2 (byte-identical repeat) | 6,058 | 992 | 16.4% |
+//! | 3 (prefix grown) | 6,085 | 6,016 | **98.9%** |
 //!
-//! It is non-zero — so the `cached_input_tokens > 0` assertion that this harness
-//! exists to replace would pass, and would have reported Cohere as "caching
-//! works" while 98% of every prompt was re-billed on every turn. The 112 tokens
-//! do not grow with the prefix and do not change between an identical repeat and
-//! a grown one, so they are not prefix caching.
+//! An earlier revision of this suite got this wrong, and the way it got it wrong
+//! is worth recording. It asserted only over turns 1 and 2, saw 112 and
+//! concluded Cohere reported "a constant 112 cached tokens … not prefix
+//! caching". Turn 3 was never examined, so the mistake would have passed
+//! forever. `assert_no_meaningful_prefix_cache` now folds over *every* turn
+//! precisely so a late-warming cache cannot hide from it.
 //!
-//! The cells assert the *absence* through `assert_no_meaningful_prefix_cache`,
-//! which is self-invalidating: the day this provider ships real prefix caching,
-//! the assertion fails and tells whoever is looking to replace it with the full
-//! `assert_cache_conformance` suite and drop the coverage opt-out.
+//! The cells therefore assert what is actually true: the cache read never goes
+//! backwards as the conversation grows, and the final turn clears the
+//! provider's floor. A prefix move breaks both.
+//!
+//! Note that turn 2's 16.4% is exactly the reading a bare
+//! `cached_input_tokens > 0` assertion reports as "caching works" — 83% of the
+//! prompt re-billed, and no test that only checks for non-zero could tell.
 //!
 //! Cohere documents `cached_tokens` as a subset of `tokens.input_tokens` and
-//! excludes it from `billed_units` (`crates/rig-core/src/providers/cohere/completion.rs`).
+//! excludes it from `billed_units`
+//! (`crates/rig-core/src/providers/cohere/completion.rs`).
 //!
 //! This suite is also the end-to-end regression cell for the `Document::data`
 //! `HashMap` bug: document metadata used to serialize in a random key order on
@@ -37,8 +44,8 @@ use rig::client::CompletionClient as _;
 use rig::providers::cohere;
 
 use crate::cache_conformance::{
-    CacheAccounting, CacheProbe, CacheSupport, assert_no_meaningful_prefix_cache,
-    assert_prefix_stable, run_cache_probe, run_cache_probe_streaming,
+    CacheAccounting, CacheProbe, CacheSupport, assert_cache_warms_over_turns, assert_prefix_stable,
+    run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_cohere_prompt_caching_cassette;
@@ -49,7 +56,6 @@ const COHERE_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "cohere",
     accounting: CacheAccounting::Subset,
     reports_writes: false,
-    explicit_breakpoints: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
     hit_ratio_floor: 0.80,
@@ -60,13 +66,13 @@ fn probe() -> CacheProbe {
 }
 
 #[tokio::test]
-async fn blocking_probe_observes_no_meaningful_prefix_cache() {
+async fn blocking_probe_warms_to_a_full_cache_hit_over_three_turns() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_cohere_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
         let model = client.completion_model(CACHE_MODEL);
         let observation = run_cache_probe(&model, &probe()).await;
-        assert_no_meaningful_prefix_cache(&observation, &COHERE_CACHE_SUPPORT, "blocking probe");
+        assert_cache_warms_over_turns(&observation, &COHERE_CACHE_SUPPORT, "blocking probe");
     })
     .await;
 
@@ -74,13 +80,13 @@ async fn blocking_probe_observes_no_meaningful_prefix_cache() {
 }
 
 #[tokio::test]
-async fn streaming_probe_observes_no_meaningful_prefix_cache() {
+async fn streaming_probe_warms_to_a_full_cache_hit_over_three_turns() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_cohere_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
         let model = client.completion_model(CACHE_MODEL);
         let observation = run_cache_probe_streaming(&model, &probe()).await;
-        assert_no_meaningful_prefix_cache(&observation, &COHERE_CACHE_SUPPORT, "streaming probe");
+        assert_cache_warms_over_turns(&observation, &COHERE_CACHE_SUPPORT, "streaming probe");
     })
     .await;
 

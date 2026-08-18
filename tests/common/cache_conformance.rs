@@ -106,16 +106,19 @@ pub(crate) struct CacheSupport {
     pub(crate) accounting: CacheAccounting,
     /// Whether the provider reports cache *writes* at all.
     ///
-    /// Anthropic and OpenRouter populate `cache_creation_input_tokens`; OpenAI,
-    /// Gemini, Cohere, DeepSeek and Mistral never do — rig hardcodes it to 0 on
-    /// those paths (`providers::internal::completion_usage`). A descriptor that
-    /// claims writes when the mapping cannot produce them would make
-    /// [`assert_warms`] unsatisfiable, so this flag is asserted against the
-    /// observation rather than merely consulted.
+    /// Anthropic and OpenRouter populate `cache_creation_input_tokens`; every
+    /// other provider here never does — rig hardcodes it to 0 on those paths
+    /// (`providers::internal::completion_usage`), and Gemini's and Cohere's
+    /// mappings never set it either.
+    ///
+    /// Note what each branch of [`assert_warms`] is worth. For a
+    /// `reports_writes: true` provider it is a real check that turn 1 created or
+    /// read an entry. For the others the paired `== 0` assertion is close to a
+    /// tautology, since the field is a hardcoded constant on those paths — it
+    /// guards only against a descriptor claiming writes the mapping cannot
+    /// produce. The load-bearing part of `assert_warms` for those providers is
+    /// the `min_cacheable_tokens` padding check that follows it.
     pub(crate) reports_writes: bool,
-    /// Whether the provider needs explicit `cache_control` breakpoints
-    /// (Anthropic) or caches long prefixes automatically (everyone else).
-    pub(crate) explicit_breakpoints: bool,
     /// Documented minimum cacheable prompt size. Pad above this or the provider
     /// silently declines to cache and the fixture pins a miss.
     pub(crate) min_cacheable_tokens: usize,
@@ -234,11 +237,6 @@ impl CacheProbe {
              requested phrase.\n{}",
             cache_padding(repetitions)
         );
-        self
-    }
-
-    pub(crate) fn without_tools(mut self) -> Self {
-        self.tools = Vec::new();
         self
     }
 
@@ -785,26 +783,6 @@ pub(crate) fn assert_cache_key_stable(provider: &str, scenario: &str, support: &
     }
 }
 
-/// A provider whose API has no prompt cache must report *zero* cached tokens.
-///
-/// Recorded rather than assumed, so the day the provider ships a cache this
-/// fails and we find out instead of continuing to opt it out.
-pub(crate) fn assert_reports_no_cache(usage: &Usage, provider: &str, context: &str) {
-    assert_eq!(
-        usage.cached_input_tokens, 0,
-        "[{provider}] {context}: this provider is recorded as having no prompt cache, but reported \
-         {} cached tokens. If it gained one, remove its coverage opt-out and give it a real cache \
-         suite.",
-        usage.cached_input_tokens
-    );
-    assert_eq!(
-        usage.cache_creation_input_tokens, 0,
-        "[{provider}] {context}: this provider is recorded as having no prompt cache, but reported \
-         {} cache-creation tokens.",
-        usage.cache_creation_input_tokens
-    );
-}
-
 // ---------------------------------------------------------------------------
 // The agent-loop probe
 // ---------------------------------------------------------------------------
@@ -957,25 +935,29 @@ pub(crate) fn assert_agent_growth_still_hits(
 
 /// Pin a provider that does **not** do meaningful prefix caching.
 ///
-/// Deliberately not `assert_eq!(cached, 0)`. Cohere reports a *constant* 112
-/// cached tokens against a 6,058-token prompt, on every turn, whether or not the
-/// prefix repeats — non-zero, and therefore enough to satisfy the
-/// `cached_input_tokens > 0` assertion this whole harness exists to replace,
-/// while 98% of the prompt is re-billed every turn. Stating the property as a
-/// ratio covers both that case and a flat zero with one rule.
+/// Deliberately not `assert_eq!(cached, 0)`. A provider can report a small
+/// non-zero count that has nothing to do with the prefix under test — enough to
+/// satisfy the `cached_input_tokens > 0` assertion this whole harness exists to
+/// replace, while nearly all of the prompt is re-billed every turn. Stating the
+/// property as a ratio covers that case and a flat zero with one rule.
+///
+/// Checks **every** turn, not just the byte-identical repeat. An earlier version
+/// looked only at turns 1 and 2 and therefore could not see a cache that warms
+/// late — which is exactly what Cohere does (1.8% -> 16.4% -> 98.9% across the
+/// three turns). It reported Cohere as having no prefix cache and would have
+/// gone on passing forever. Folding over all turns is what makes the
+/// self-invalidating claim below actually true.
 ///
 /// This is the self-invalidating half of the coverage story: a provider recorded
 /// here is opted out of the full conformance suite, and this assertion is what
 /// makes that opt-out testable. The day the provider ships real prefix caching,
-/// this fails and says so rather than leaving the opt-out to rot.
+/// on any turn, this fails and says so rather than leaving the opt-out to rot.
 pub(crate) fn assert_no_meaningful_prefix_cache(
     observation: &CacheObservation,
     support: &CacheSupport,
     context: &str,
 ) {
     let warm = observation.turn(0, support);
-    let hit = observation.turn(1, support);
-
     let denominator = support.prompt_tokens(warm);
     assert!(
         denominator > 0,
@@ -993,24 +975,85 @@ pub(crate) fn assert_no_meaningful_prefix_cache(
         observation.report(support)
     );
 
-    let ratio = hit.cached_input_tokens as f64 / denominator as f64;
-    assert!(
-        ratio < support.hit_ratio_floor,
-        "[{}] {context}: this provider is recorded as doing no meaningful prefix caching, but \
-         turn 2 read {} of turn 1's {denominator} billed prompt tokens — a {:.1}% hit ratio. That \
-         is good news: it now caches. Replace this cell with the full \
-         `assert_cache_conformance` suite and drop the provider's coverage opt-out.\n{}",
-        support.provider,
-        hit.cached_input_tokens,
-        ratio * 100.0,
-        observation.report(support)
-    );
+    for (index, usage) in observation.turns.iter().enumerate() {
+        let turn_denominator = support.prompt_tokens(usage);
+        let ratio = if turn_denominator == 0 {
+            0.0
+        } else {
+            usage.cached_input_tokens as f64 / turn_denominator as f64
+        };
+        assert!(
+            ratio < support.hit_ratio_floor,
+            "[{}] {context}: this provider is recorded as doing no meaningful prefix caching, but \
+             turn {} read {} of its {turn_denominator} billed prompt tokens — a {:.1}% hit ratio. \
+             That is good news: it does cache. Replace this cell with the full \
+             `assert_cache_conformance` suite (or `assert_cache_warms_over_turns` if it warms \
+             late) and drop the provider's coverage opt-out.\n{}",
+            support.provider,
+            index + 1,
+            usage.cached_input_tokens,
+            ratio * 100.0,
+            observation.report(support)
+        );
+    }
+}
 
-    eprintln!(
-        "[{}] {context}: no meaningful prefix cache observed ({:.1}% of turn 1's {denominator} \
-         prompt tokens read from cache on an identical turn 2).\n{}",
+/// Pin a provider whose cache is real but **warms across turns**.
+///
+/// Cohere is the case this exists for, and finding it corrected a wrong
+/// conclusion in an earlier revision of this branch. Its recorded probe reads
+/// 112 of 6,058 prompt tokens on turn 1 (1.8%), 992 on a byte-identical turn 2
+/// (16.4%), and 6,016 of 6,085 on the grown turn 3 (98.9%). So Cohere caches
+/// properly — it just takes a couple of turns to get there, which the strict
+/// three-turn conformance (turn 2 must already clear the floor) would fail.
+///
+/// The two things that are true and worth pinning: the cache read never goes
+/// *backwards* as the conversation grows, and by the final turn it clears the
+/// provider's floor. Both are what a user actually cares about, and a prefix
+/// move would break both.
+///
+/// Note that turn 2 alone reading 16.4% is precisely the case a bare
+/// `cached_input_tokens > 0` assertion reports as "caching works".
+pub(crate) fn assert_cache_warms_over_turns(
+    observation: &CacheObservation,
+    support: &CacheSupport,
+    context: &str,
+) {
+    let ratios: Vec<f64> = observation
+        .turns
+        .iter()
+        .map(|usage| {
+            let denominator = support.prompt_tokens(usage);
+            if denominator == 0 {
+                0.0
+            } else {
+                usage.cached_input_tokens as f64 / denominator as f64
+            }
+        })
+        .collect();
+
+    for window in ratios.windows(2) {
+        let (earlier, later) = (window[0], window[1]);
+        assert!(
+            later + 1e-9 >= earlier,
+            "[{}] {context}: the cache read went backwards as the conversation grew \
+             ({:.1}% -> {:.1}%). The prefix only ever appends, so a warming cache cannot cool \
+             down — something rewrote an earlier turn.\n{}",
+            support.provider,
+            earlier * 100.0,
+            later * 100.0,
+            observation.report(support)
+        );
+    }
+
+    let final_ratio = *ratios.last().unwrap_or(&0.0);
+    assert!(
+        final_ratio >= support.hit_ratio_floor,
+        "[{}] {context}: this provider's cache is recorded as warming over turns to at least \
+         {:.0}%, but the final turn only reached {:.1}%.\n{}",
         support.provider,
-        ratio * 100.0,
+        support.hit_ratio_floor * 100.0,
+        final_ratio * 100.0,
         observation.report(support)
     );
 }
@@ -1053,10 +1096,10 @@ pub(crate) fn assert_cache_read_is_surfaced(
 
     assert!(
         best >= support.hit_ratio_floor,
-        "[{}] {context}: no turn surfaced a cache read of at least {:.0}% of its billed prompt. \\
-         This provider's cache is intermittent, so a single cold turn is expected — but the \\
-         recorded fixture is supposed to contain a turn that *did* hit, which is what proves rig \\
-         maps the provider's cached-token field at all. Re-record until one does.\\n{}",
+        "[{}] {context}: no turn surfaced a cache read of at least {:.0}% of its billed prompt. \
+         This provider's cache is intermittent, so a single cold turn is expected — but the \
+         recorded fixture is supposed to contain a turn that *did* hit, which is what proves rig \
+         maps the provider's cached-token field at all. Re-record until one does.\n{}",
         support.provider,
         support.hit_ratio_floor * 100.0,
         observation.report(support)

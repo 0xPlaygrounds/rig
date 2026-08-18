@@ -1569,7 +1569,6 @@ const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "anthropic",
     accounting: CacheAccounting::Alongside,
     reports_writes: true,
-    explicit_breakpoints: true,
     // Anthropic's documented minimum is 1,024 tokens for Sonnet- and Opus-class
     // models (2,048 for Haiku-class). This suite runs on Sonnet.
     min_cacheable_tokens: 1024,

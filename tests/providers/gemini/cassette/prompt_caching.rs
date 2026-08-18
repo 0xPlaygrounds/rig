@@ -72,7 +72,6 @@ const GEMINI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "gemini",
     accounting: CacheAccounting::Subset,
     reports_writes: false,
-    explicit_breakpoints: false,
     min_cacheable_tokens: 1024,
     // `cachedContent` names an *explicitly* created cache resource, which is a
     // different feature from the implicit prefix caching under test here. Rig
