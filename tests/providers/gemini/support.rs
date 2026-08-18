@@ -330,3 +330,20 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
+
+/// Cassette wrapper for the gemini prompt-caching matrix
+/// (`tests/cassettes/gemini/prompt_caching/`).
+///
+/// Delegates to [`with_gemini_cassette`] — the behavior is identical, and deliberately
+/// shared so the two cannot drift apart when the base wrapper gains policy. What
+/// the separate name buys is a per-suite entry in the cassette-safety registry,
+/// so the cache fixtures are auditable as one concern's evidence.
+pub(super) async fn with_gemini_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(gemini::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_gemini_cassette(spec, test_body).await;
+}

@@ -244,14 +244,28 @@ impl CacheProbe {
     }
 }
 
-/// A probe's two fixed tools, padded so the tool block itself is worth caching.
+/// Padding repetitions used inside a tool description.
+///
+/// Deliberately far smaller than [`CACHE_PADDING_REPETITIONS`]. The bulk of the
+/// cacheable prefix lives in the preamble, which every provider in the matrix
+/// renders ahead of the conversation; tool descriptions carry only enough
+/// padding to make the tools block non-trivial. OpenAI-compatible APIs bound how
+/// long a function description may be, and blowing that limit would fail the
+/// request outright rather than tell us anything about caching.
+const TOOL_PADDING_REPETITIONS: usize = 3;
+
+/// A probe's two fixed tools.
+///
+/// Two rather than one, in a fixed order: a re-ordered tool set is itself one of
+/// the prefix moves this harness exists to catch, and a single-element list
+/// cannot be observably re-ordered.
 pub(crate) fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
             name: "lookup_cache_policy".to_string(),
             description: format!(
                 "Return {label} internal prompt cache policy notes. {}",
-                cache_padding(CACHE_PADDING_REPETITIONS / 2)
+                cache_padding(TOOL_PADDING_REPETITIONS)
             ),
             parameters: serde_json::json!({
                 "type": "object",
@@ -265,7 +279,7 @@ pub(crate) fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
             name: "lookup_cache_fixture".to_string(),
             description: format!(
                 "Return {label} prompt cache fixture notes. {}",
-                cache_padding(CACHE_PADDING_REPETITIONS / 2)
+                cache_padding(TOOL_PADDING_REPETITIONS)
             ),
             parameters: serde_json::json!({
                 "type": "object",
@@ -372,6 +386,90 @@ where
         .unwrap_or_else(|error| panic!("cache probe {label} should succeed: {error}"))
 }
 
+/// The streamed twin of [`run_cache_probe`].
+///
+/// Worth recording separately rather than assumed to match the blocking path:
+/// cache counters arrive on a *different* frame on every streaming wire (an
+/// Anthropic `message_start`, an OpenAI terminal usage chunk), and the streaming
+/// accumulator has to carry them forward to the final response. Cache usage
+/// being dropped or overwritten specifically on the streaming path is a real bug
+/// class — see the carry-forward logic in
+/// `crates/rig-core/src/providers/anthropic/streaming.rs` — and only a streamed
+/// probe can see it.
+pub(crate) async fn run_cache_probe_streaming<M>(model: &M, probe: &CacheProbe) -> CacheObservation
+where
+    M: CompletionModel,
+{
+    let opening = Message::User {
+        content: vec![UserContent::text(probe.prompt)],
+    };
+
+    let (first_usage, _, _) =
+        stream_turn(model, probe, vec![opening.clone()], "turn 1 (warm)").await;
+    let (second_usage, text, message_id) =
+        stream_turn(model, probe, vec![opening.clone()], "turn 2 (hit)").await;
+
+    let assistant = Message::Assistant {
+        id: message_id,
+        content: vec![rig::message::AssistantContent::text(&text)],
+    };
+    let follow_up = Message::User {
+        content: vec![UserContent::text(probe.follow_up)],
+    };
+    let (third_usage, _, _) = stream_turn(
+        model,
+        probe,
+        vec![opening, assistant, follow_up],
+        "turn 3 (hit after append)",
+    )
+    .await;
+
+    CacheObservation {
+        turns: vec![first_usage, second_usage, third_usage],
+    }
+}
+
+/// Drive one streamed turn, returning its final usage, accumulated text, and
+/// message id.
+async fn stream_turn<M>(
+    model: &M,
+    probe: &CacheProbe,
+    chat_history: Vec<Message>,
+    label: &str,
+) -> (Usage, String, Option<String>)
+where
+    M: CompletionModel,
+{
+    use futures::StreamExt;
+    use rig::streaming::StreamedAssistantContent;
+
+    let mut stream = model
+        .stream(probe.request(chat_history))
+        .await
+        .unwrap_or_else(|error| panic!("streamed cache probe {label} should start: {error}"));
+
+    let mut text = String::new();
+    let mut usage = None;
+
+    while let Some(item) = stream.next().await {
+        match item
+            .unwrap_or_else(|error| panic!("streamed cache probe {label} should succeed: {error}"))
+        {
+            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
+            StreamedAssistantContent::Final(response) => usage = Some(response.usage),
+            _ => {}
+        }
+    }
+
+    let usage = usage.unwrap_or_else(|| {
+        panic!(
+            "streamed cache probe {label} produced no final usage — the accumulator dropped it, \
+             which is exactly the streaming-path bug class this probe exists to catch"
+        )
+    });
+    (usage, text, stream.message_id.clone())
+}
+
 /// Turn 1 must create a cache entry, or read one that was already warm.
 ///
 /// Deliberately *not* tightened to "must be a write". Provider caches are
@@ -386,11 +484,7 @@ where
 /// zero for both counters on turn 1: their first turn is the miss that populates
 /// the cache and they say nothing about it. For those, turn 1 is only required
 /// not to *claim* a write it cannot produce.
-pub(crate) fn assert_warms(
-    observation: &CacheObservation,
-    support: &CacheSupport,
-    context: &str,
-) {
+pub(crate) fn assert_warms(observation: &CacheObservation, support: &CacheSupport, context: &str) {
     let turn = observation.turn(0, support);
 
     if support.reports_writes {
@@ -403,7 +497,8 @@ pub(crate) fn assert_warms(
         );
     } else {
         assert_eq!(
-            turn.cache_creation_input_tokens, 0,
+            turn.cache_creation_input_tokens,
+            0,
             "[{}] {context}: descriptor says this provider cannot report cache writes, but turn 1 \
              reported {} — the descriptor or the usage mapping is wrong.\n{}",
             support.provider,
@@ -475,29 +570,48 @@ pub(crate) fn assert_hit_ratio(
     );
 }
 
-/// Turn 3 grew the prefix and must still read at least as much as turn 2.
+/// Turn 3 grew the prefix and must still be *mostly served from cache*.
 ///
 /// This is the agent-loop regression that costs real money and that nothing in
 /// the tree caught before this harness. A driver that rewrites, reorders, or
 /// re-normalizes an earlier turn between iterations busts the cache from that
-/// point on — the numbers stay non-zero, so a `> 0` assertion never notices.
+/// point on, and because the counters stay non-zero a `> 0` assertion never
+/// notices.
+///
+/// Stated as a **ratio** rather than "turn 3 read at least as many tokens as
+/// turn 2". Providers cache in coarse blocks, so the absolute count wobbles by a
+/// few tokens as the prefix grows and the block boundaries re-align — Gemini was
+/// measured going 3,765 -> 3,760 across an append that added 21 tokens. A
+/// monotonic assertion fails on that noise while still passing a genuine partial
+/// move; the ratio is both robust to the noise and the thing that actually
+/// determines the bill.
 pub(crate) fn assert_growth_still_hits(
     observation: &CacheObservation,
     support: &CacheSupport,
     context: &str,
 ) {
-    let hit = observation.turn(1, support);
     let grown = observation.turn(2, support);
-
+    let denominator = support.prompt_tokens(grown);
     assert!(
-        grown.cached_input_tokens >= hit.cached_input_tokens,
-        "[{}] {context}: turn 3 appended an assistant turn and a user turn, so the cacheable \
-         prefix strictly grew — yet it read {} cached tokens against turn 2's {}. Something \
+        denominator > 0,
+        "[{}] {context}: turn 3 billed zero prompt tokens, so its hit ratio is undefined.\n{}",
+        support.provider,
+        observation.report(support)
+    );
+
+    let ratio = grown.cached_input_tokens as f64 / denominator as f64;
+    assert!(
+        ratio >= support.hit_ratio_floor,
+        "[{}] {context}: turn 3 appended an assistant turn and a user turn, so every byte turn 2 \
+         already sent is still there and should still be cached — yet turn 3 read {} of its {} \
+         billed prompt tokens, a {:.1}% hit ratio against this provider's {:.0}% floor. Something \
          rewrote an earlier turn on the way back in, which busts the cache for the rest of the \
          conversation.\n{}",
         support.provider,
         grown.cached_input_tokens,
-        hit.cached_input_tokens,
+        denominator,
+        ratio * 100.0,
+        support.hit_ratio_floor * 100.0,
         observation.report(support)
     );
 }
@@ -594,9 +708,7 @@ fn recorded_request_paths(provider: &str, scenario: &str) -> Vec<String> {
             in_request = true;
         } else if line == "then:" {
             in_request = false;
-        } else if in_request
-            && let Some(value) = line.trim_start().strip_prefix("path: ")
-        {
+        } else if in_request && let Some(value) = line.trim_start().strip_prefix("path: ") {
             paths.push(value.trim().to_string());
         }
     }
@@ -658,5 +770,155 @@ pub(crate) fn assert_reports_no_cache(usage: &Usage, provider: &str, context: &s
         "[{provider}] {context}: this provider is recorded as having no prompt cache, but reported \
          {} cache-creation tokens.",
         usage.cache_creation_input_tokens
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The agent-loop probe
+// ---------------------------------------------------------------------------
+
+/// The tool a cache probe's agent run calls.
+///
+/// Deterministic by construction: the answer depends only on the argument, so
+/// the tool result text — which becomes part of the next turn's cached prefix —
+/// is byte-stable across recordings.
+pub(crate) struct CacheProbeLookupTool;
+
+#[derive(Debug, thiserror::Error)]
+#[error("cache probe lookup failed")]
+pub(crate) struct CacheProbeLookupError;
+
+#[derive(serde::Deserialize)]
+pub(crate) struct CacheProbeLookupArgs {
+    pub(crate) topic: String,
+}
+
+impl rig::tool::Tool for CacheProbeLookupTool {
+    const NAME: &'static str = "lookup_cache_policy";
+    type Error = CacheProbeLookupError;
+    type Args = CacheProbeLookupArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Look up one prompt-cache policy note by topic. Must be called for every policy question."
+            .to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "Policy topic to look up."}
+            },
+            "required": ["topic"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        Ok(format!(
+            "Policy note for {}: prefix caching is a byte-exact prefix match.",
+            args.topic
+        ))
+    }
+}
+
+/// The prompt driving the agent probe.
+///
+/// Asks for two lookups so the run is guaranteed to make a tool round-trip, and
+/// therefore at least two completion calls — the minimum for a growth assertion
+/// to say anything. Models that batch tool calls answer both lookups in one
+/// parallel turn, which is fine: the second model call's prefix still contains
+/// the first turn's assistant message and both tool results.
+pub(crate) const AGENT_CACHE_PROMPT: &str = "\
+Look up the cache policy for the topic 'prefix', then, in a separate tool call, \
+look up the cache policy for the topic 'breakpoint'. Call the tool once per \
+topic, one after the other. Then reply with exactly these three words: cache \
+probe ready";
+
+/// Turn an agent run's per-call usage into a [`CacheObservation`].
+pub(crate) fn observation_from_completion_calls(
+    calls: &[rig::agent::CompletionCall],
+) -> CacheObservation {
+    CacheObservation {
+        turns: calls.iter().map(|call| call.usage).collect(),
+    }
+}
+
+/// Across a real agent loop, every turn must stay mostly served from cache.
+///
+/// Each iteration appends an assistant turn and a tool result, so the cacheable
+/// prefix only ever grows. A driver that rewrites, reorders, drops, or
+/// re-normalizes an earlier turn between iterations busts the cache from that
+/// point on, and because the counters stay non-zero a `> 0` assertion never
+/// notices. This is the regression that costs real money in production loops.
+///
+/// Like [`assert_growth_still_hits`], the invariant is a ratio rather than a
+/// monotonic token count: block re-alignment makes the absolute number drift
+/// down slightly as the prefix grows, and failing on that noise would say
+/// nothing about caching.
+pub(crate) fn assert_agent_growth_still_hits(
+    observation: &CacheObservation,
+    support: &CacheSupport,
+    context: &str,
+) {
+    // Two is the true minimum: one tool round-trip is two model calls, and the
+    // second one's prefix already contains the first turn's assistant message
+    // and the tool results, so the append-and-still-hit property is observable.
+    // Asking for three would only be satisfiable on models that refuse to batch
+    // tool calls — gpt-4o-mini answers the probe's two lookups in a single
+    // parallel turn — and would fail for a reason that has nothing to do with
+    // caching.
+    assert!(
+        observation.turns.len() >= 2,
+        "[{}] {context}: an agent cache probe needs at least two completion calls for a growth \
+         assertion to mean anything, got {}. The model answered without ever calling the \
+         tool.\n{}",
+        support.provider,
+        observation.turns.len(),
+        observation.report(support)
+    );
+
+    let mut ever_hit = false;
+    for (index, usage) in observation.turns.iter().enumerate() {
+        let denominator = support.prompt_tokens(usage);
+        let ratio = if denominator == 0 {
+            0.0
+        } else {
+            usage.cached_input_tokens as f64 / denominator as f64
+        };
+
+        if ever_hit {
+            assert!(
+                ratio >= support.hit_ratio_floor,
+                "[{}] {context}: turn {} read {} of its {} billed prompt tokens — a {:.1}% hit \
+                 ratio against this provider's {:.0}% floor — after an earlier turn had already \
+                 hit. The loop only ever appends, so the cacheable prefix cannot shrink; \
+                 something rewrote an earlier turn between iterations.\n{}",
+                support.provider,
+                index + 1,
+                usage.cached_input_tokens,
+                denominator,
+                ratio * 100.0,
+                support.hit_ratio_floor * 100.0,
+                observation.report(support)
+            );
+        }
+        if ratio >= support.hit_ratio_floor {
+            ever_hit = true;
+        }
+    }
+
+    assert!(
+        ever_hit,
+        "[{}] {context}: no turn of the agent run cleared the {:.0}% hit-ratio floor. Either the \
+         loop moves the prefix on every iteration or the provider declined to cache this \
+         conversation.\n{}",
+        support.provider,
+        support.hit_ratio_floor * 100.0,
+        observation.report(support)
     );
 }

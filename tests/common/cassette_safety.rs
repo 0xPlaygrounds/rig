@@ -22,6 +22,8 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/openai/cassette",
         wrapper_names: &[
             "with_openai_cassette",
+            "with_openai_prompt_caching_cassette",
+            "with_openai_completions_prompt_caching_cassette",
             "with_openai_turn_metadata_cassette",
             "with_openai_cassette_bogus_key",
             "with_openai_completions_cassette",
@@ -109,6 +111,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &[
+            "with_gemini_prompt_caching_cassette",
             "with_gemini_cassette",
             "with_gemini_turn_metadata_cassette",
             "with_gemini_cassette_bogus_key",
