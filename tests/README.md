@@ -249,6 +249,42 @@ compares key-sorted canonical JSON, so map reordering is invisible to it (Layer 
 check exists for that), and a cassette cannot notice the provider changing its behavior after
 record time (Layer 3 exists for that).
 
+### Gemini: two caching features, and they behave differently
+
+Gemini is the one provider in the matrix with **two** caching features, and the
+suite covers both because they are not interchangeable.
+
+**Implicit caching** is automatic and best-effort. Measured on
+`gemini-2.5-flash` over an 18,497-token corpus: five consecutive turns reusing
+that corpus read **zero** cached tokens (~92k tokens billed at full price), and
+only a sixth request read 99.6%. It keys on a prefix the provider has already
+seen, so a fresh conversation starts cold and there is no way to pre-warm it.
+
+**Explicit caching** (`cachedContents`) uploads once and hands back a handle.
+Same corpus, same day: **100.0% on turn one**, and 100.0% again from an
+unrelated conversation. It bills storage per token-hour, so it pays when one
+large fixed payload is reused enough to beat that — and it pays immediately
+rather than after a warm-up.
+
+Practical consequences for anyone touching these fixtures:
+
+- **Run every implicit-cache scenario twice and keep the second recording.** A
+  cold first pass records a turn-3 miss and fails, which is the intended
+  outcome — a recorded miss is worse than a failed recording session.
+- **Disable thinking** (`generationConfig.thinkingConfig.thinkingBudget: 0`) on
+  every cell that is not specifically about thinking. Gemini 2.5 spends its
+  output budget on thoughts first, so a small `max_tokens` yields a response
+  with no message at all.
+- **Explicit-cache cells create billed server-side resources.** Delete what you
+  create, including on the failure path.
+- **Cache handles are account-scoped and server-generated.** They ride in
+  request bodies, request *paths* and responses, and the generated-token
+  scrubber cannot reach them (it stops a token at `/`), so
+  `scrub_resource_names` handles them. Never assert a literal handle.
+- `below_minimum_does_not_cache` is the cell that gives every other cell's
+  padding its meaning. If it ever starts caching, the documented 1,024-token
+  minimum is wrong and every probe's padding needs revisiting.
+
 ## Cassette Safety
 
 Record mode scrubs and safety-checks cassette contents before writing fixtures.

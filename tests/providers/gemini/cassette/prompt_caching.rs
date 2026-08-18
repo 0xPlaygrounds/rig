@@ -461,3 +461,176 @@ fn cache_tokens_details_are_populated_and_agree_with_the_aggregate() {
         "no recorded turn reported cached tokens, so this check proved nothing"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Threshold edges and prefix mutations
+// ---------------------------------------------------------------------------
+
+/// Build a bare Gemini request: no tools, no preamble, thinking off.
+fn mutation_request(
+    system: Option<&str>,
+    tools: Vec<rig::completion::ToolDefinition>,
+    history: Vec<rig::message::Message>,
+    temperature: f64,
+) -> rig::completion::CompletionRequest {
+    rig::completion::CompletionRequest {
+        preamble: system.map(str::to_owned),
+        chat_history: history,
+        documents: vec![],
+        tools,
+        temperature: Some(temperature),
+        max_tokens: Some(16),
+        tool_choice: None,
+        additional_params: Some(serde_json::json!({
+            "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+        })),
+        model: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
+fn user(text: &str) -> rig::message::Message {
+    rig::message::Message::User {
+        content: vec![rig::message::UserContent::text(text)],
+    }
+}
+
+/// A prompt under the model's documented minimum must not cache.
+///
+/// The cell that gives every other cell's padding its meaning. If Gemini cached
+/// a 300-token prefix, the 1,024-token floor in `GEMINI_CACHE_SUPPORT` would be
+/// superstition and the padding in every other probe would be proving nothing.
+#[tokio::test]
+async fn a_prefix_below_the_minimum_does_not_cache() {
+    with_gemini_prompt_caching_cassette(
+        "prompt_caching/below_minimum_does_not_cache",
+        |client| async move {
+            let model = client.completion_model(CACHE_MODEL);
+            let small = crate::cache_conformance::cache_padding(8);
+            let request = || {
+                mutation_request(
+                    Some(&format!("You are a terse assistant. {small}")),
+                    vec![],
+                    vec![user("Reply with exactly: small")],
+                    0.0,
+                )
+            };
+
+            let first = rig::completion::CompletionModel::completion(&model, request())
+                .await
+                .expect("first small request should succeed");
+            let second = rig::completion::CompletionModel::completion(&model, request())
+                .await
+                .expect("second small request should succeed");
+
+            assert!(
+                first.usage.input_tokens < GEMINI_CACHE_SUPPORT.min_cacheable_tokens as u64,
+                "this probe is supposed to sit *below* the {}-token minimum, but billed {} — \
+                 re-tune the padding or the cell proves nothing",
+                GEMINI_CACHE_SUPPORT.min_cacheable_tokens,
+                first.usage.input_tokens
+            );
+            assert_eq!(
+                second.usage.cached_input_tokens, 0,
+                "a prefix below the documented minimum must not cache; if Gemini started caching \
+                 it, the minimum in GEMINI_CACHE_SUPPORT is wrong and every other cell's padding \
+                 needs revisiting. usage: {:?}",
+                second.usage
+            );
+        },
+    )
+    .await;
+}
+
+/// `generationConfig` is not part of the cached prefix.
+///
+/// Asserted as a **hit**: temperature changes between turns constantly in real
+/// applications, and if that busted the cache it would be a finding worth a
+/// warning in rig's docs. It does not.
+#[tokio::test]
+async fn changing_temperature_still_hits() {
+    with_gemini_prompt_caching_cassette(
+        "prompt_caching/temperature_change_still_hits",
+        |client| async move {
+            let model = client.completion_model(CACHE_MODEL);
+            let preamble = probe().preamble;
+            let history = vec![user("Reply with exactly: temp")];
+
+            let warm = rig::completion::CompletionModel::completion(
+                &model,
+                mutation_request(Some(&preamble), vec![], history.clone(), 0.0),
+            )
+            .await
+            .expect("warming request should succeed");
+
+            let hotter = rig::completion::CompletionModel::completion(
+                &model,
+                mutation_request(Some(&preamble), vec![], history, 0.7),
+            )
+            .await
+            .expect("second request should succeed");
+
+            let ratio = hotter.usage.cached_input_tokens as f64 / hotter.usage.input_tokens as f64;
+            assert!(
+                ratio >= GEMINI_CACHE_SUPPORT.hit_ratio_floor,
+                "changing only `temperature` should not move the cached prefix, but the second \
+                 turn read {} of {} prompt tokens ({:.1}%). If this ever fails, rig should warn \
+                 users that per-request sampling changes cost them their cache.\nwarm: {:?}\nhot: \
+                 {:?}",
+                hotter.usage.cached_input_tokens,
+                hotter.usage.input_tokens,
+                ratio * 100.0,
+                warm.usage,
+                hotter.usage
+            );
+        },
+    )
+    .await;
+}
+
+/// Changing one word of the system instruction must cost the cache.
+///
+/// The complement of every hit assertion in this file: those prove caching
+/// happens, this proves it is keyed on what it claims to be keyed on. A cache
+/// that "hit" here would be serving a prefix the caller did not send.
+#[tokio::test]
+async fn changing_the_system_instruction_misses() {
+    with_gemini_prompt_caching_cassette(
+        "prompt_caching/changed_system_instruction_miss",
+        |client| async move {
+            let model = client.completion_model(CACHE_MODEL);
+            let base = probe().preamble;
+            let history = vec![user("Reply with exactly: sysinstr")];
+
+            let _warm = rig::completion::CompletionModel::completion(
+                &model,
+                mutation_request(Some(&base), vec![], history.clone(), 0.0),
+            )
+            .await
+            .expect("warming request should succeed");
+
+            // One word, at the very front of the prefix.
+            let mutated = base.replacen("deterministic", "nondeterministic", 1);
+            assert_ne!(
+                mutated, base,
+                "the mutation should actually change the text"
+            );
+
+            let after = rig::completion::CompletionModel::completion(
+                &model,
+                mutation_request(Some(&mutated), vec![], history, 0.0),
+            )
+            .await
+            .expect("mutated request should succeed");
+
+            assert_eq!(
+                after.usage.cached_input_tokens, 0,
+                "a changed system instruction is a different prefix and must not hit the previous \
+                 entry. usage: {:?}",
+                after.usage
+            );
+        },
+    )
+    .await;
+}
