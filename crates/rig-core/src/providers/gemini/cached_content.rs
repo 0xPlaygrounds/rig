@@ -45,13 +45,14 @@
 //! ```
 //!
 //! rig checks that before the request leaves the process — see
-//! [`super::completion::GenerateContentRequest::with_cached_content`] — so the
+//! [`super::completion::gemini_api_types::GenerateContentRequest::with_cached_content`] — so the
 //! failure names the conflict instead of surfacing a provider 400.
 //!
 //! # Example
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! use rig_core::client::{CompletionClient, ProviderClient};
 //! use rig_core::providers::gemini;
 //! use rig_core::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
 //! use std::time::Duration;
