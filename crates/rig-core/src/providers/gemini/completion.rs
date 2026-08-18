@@ -1834,7 +1834,18 @@ pub mod gemini_api_types {
         pub max_items: Option<i32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub min_items: Option<i32>,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        /// A tool's argument properties.
+        ///
+        /// Serialized in sorted key order: `HashMap` iteration order is
+        /// randomized per instance, and this field sits in the `tools` block,
+        /// which Gemini renders at the very *front* of the cacheable prefix. An
+        /// unsorted map therefore gave every request carrying a multi-property
+        /// tool a different prefix, so Gemini's context cache could never hit —
+        /// see `crate::json_utils::serialize_map_sorted`.
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "crate::json_utils::serialize_optional_map_sorted"
+        )]
         pub properties: Option<HashMap<String, Schema>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub required: Option<Vec<String>>,

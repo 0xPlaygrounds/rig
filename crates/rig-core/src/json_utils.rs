@@ -1,9 +1,64 @@
-use serde::Deserialize;
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Serialize, Serializer};
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
+
+/// Serialize a `HashMap` in sorted key order.
+///
+/// `HashMap` seeds its iteration order per instance, so a map serialized into a
+/// request body emits its keys in a *different order on every request*. Provider
+/// prompt caches are prefix matches over the exact request bytes, so a map
+/// anywhere in the cacheable prefix — a tool's JSON Schema `properties`, a
+/// document's metadata — makes every request a guaranteed cache miss, silently
+/// and permanently.
+///
+/// This is invisible to almost every test one would think to write: cassette
+/// replay compares key-sorted canonical JSON, and a `serde_json::Value`
+/// round-trip normalizes key order too, so recorded evidence looks identical
+/// while the live wire never repeats itself. It is caught by
+/// `provider_request_serialization_is_deterministic` in
+/// `tests/cassette_cache_prefix.rs`, which serializes the same request several
+/// times and compares the raw bytes.
+///
+/// Sorting rather than preserving insertion order matches the deliberate choice
+/// already made when rendering [`crate::completion::Document`] metadata into a
+/// prompt, and needs no ordered-map dependency in a public field type. JSON
+/// object key order carries no meaning to any provider API, so sorting costs
+/// nothing.
+pub fn serialize_map_sorted<S, V>(
+    map: &HashMap<String, V>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    V: Serialize,
+{
+    let mut entries: Vec<_> = map.iter().collect();
+    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    serializer.collect_map(entries)
+}
+
+/// [`serialize_map_sorted`] for an optional map.
+///
+/// Pairs with `#[serde(skip_serializing_if = "Option::is_none")]`: serde still
+/// routes `Some` through this function, and the `None` arm only runs for a field
+/// that is serialized unconditionally.
+pub fn serialize_optional_map_sorted<S, V>(
+    map: &Option<HashMap<String, V>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    V: Serialize,
+{
+    match map {
+        Some(map) => serialize_map_sorted(map, serializer),
+        None => serializer.serialize_none(),
+    }
+}
 
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     match (a, b) {
@@ -213,6 +268,72 @@ where
 mod tests {
     use super::*;
     use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize)]
+    struct SortedMapHolder {
+        #[serde(serialize_with = "serialize_map_sorted")]
+        map: HashMap<String, u32>,
+    }
+
+    #[derive(Serialize)]
+    struct OptionalSortedMapHolder {
+        #[serde(
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "serialize_optional_map_sorted"
+        )]
+        map: Option<HashMap<String, u32>>,
+    }
+
+    /// The property this exists to guarantee: identical content serializes to
+    /// identical bytes, no matter how the map was built.
+    ///
+    /// Two maps with the same entries inserted in *opposite* orders must produce
+    /// the same JSON. Without sorting they generally do not, and every request
+    /// carrying such a map gets a different wire prefix — which makes it a
+    /// permanent prompt-cache miss.
+    #[test]
+    fn sorted_map_serialization_is_insertion_order_independent() {
+        let forward = SortedMapHolder {
+            map: [("alpha", 1), ("beta", 2), ("gamma", 3), ("delta", 4)]
+                .into_iter()
+                .map(|(key, value)| (key.to_owned(), value))
+                .collect(),
+        };
+        let reverse = SortedMapHolder {
+            map: [("delta", 4), ("gamma", 3), ("beta", 2), ("alpha", 1)]
+                .into_iter()
+                .map(|(key, value)| (key.to_owned(), value))
+                .collect(),
+        };
+
+        let forward = serde_json::to_string(&forward).expect("serialize");
+        let reverse = serde_json::to_string(&reverse).expect("serialize");
+
+        assert_eq!(forward, reverse);
+        assert_eq!(
+            forward, r#"{"map":{"alpha":1,"beta":2,"delta":4,"gamma":3}}"#,
+            "keys must come out in sorted order"
+        );
+    }
+
+    #[test]
+    fn optional_sorted_map_serializes_some_sorted_and_skips_none() {
+        let some = OptionalSortedMapHolder {
+            map: Some(
+                [("zulu", 1), ("alpha", 2)]
+                    .into_iter()
+                    .map(|(key, value)| (key.to_owned(), value))
+                    .collect(),
+            ),
+        };
+        assert_eq!(
+            serde_json::to_string(&some).expect("serialize"),
+            r#"{"map":{"alpha":2,"zulu":1}}"#
+        );
+
+        let none = OptionalSortedMapHolder { map: None };
+        assert_eq!(serde_json::to_string(&none).expect("serialize"), "{}");
+    }
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
     struct Dummy {

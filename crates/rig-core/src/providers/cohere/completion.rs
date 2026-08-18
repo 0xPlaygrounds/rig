@@ -229,6 +229,17 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Document {
     pub id: String,
+    /// Document metadata plus its `text`.
+    ///
+    /// Serialized in sorted key order: `HashMap` iteration order is randomized
+    /// per instance, and documents sit inside the `messages` block that Cohere's
+    /// prompt cache keys on. An unsorted map therefore gave every request
+    /// carrying a document a different prefix, so the cache could never hit —
+    /// see [`crate::json_utils::serialize_map_sorted`]. Rig already sorts the
+    /// same metadata deliberately when rendering a document into prompt text
+    /// (`crate::completion::Document`'s `Display`); this makes the native
+    /// document block agree with it.
+    #[serde(serialize_with = "crate::json_utils::serialize_map_sorted")]
     pub data: HashMap<String, serde_json::Value>,
 }
 

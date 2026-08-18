@@ -96,7 +96,8 @@ pub(crate) fn canonical_prefix_blocks(path: &str, body: &Value) -> Option<Vec<Pr
         // legitimate tool-choice change as a prefix move.
         add(
             "toolConfig.tools",
-            body.get("toolConfig").and_then(|config| config.get("tools")),
+            body.get("toolConfig")
+                .and_then(|config| config.get("tools")),
         );
         add("system", body.get("system"));
         add("messages", body.get("messages"));
