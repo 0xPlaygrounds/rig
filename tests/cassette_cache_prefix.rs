@@ -954,13 +954,39 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
         "same as ollama: the local llama.cpp-compatible wire reports no cached-token field, so \
          rig has no cache mapping for it",
     ),
+    (
+        "llamacpp",
+        "same as ollama and llamafile: the local llama.cpp wire reports no cached-token field",
+    ),
+    (
+        "voyageai",
+        "embeddings and reranking only — not a completion provider, so it has no prompt to cache",
+    ),
+    (
+        "azure",
+        "no AZURE_* credentials in this environment. Azure fronts OpenAI, whose cache rig already \
+         has recorded evidence for on the direct OpenAI suites",
+    ),
+    ("huggingface", "no HUGGINGFACE_API_KEY in this environment"),
+    ("hyperbolic", "no HYPERBOLIC_API_KEY in this environment"),
+    ("minimax", "no MINIMAX_API_KEY in this environment"),
+    ("mira", "no MIRA_API_KEY in this environment"),
+    ("moonshot", "no MOONSHOT_API_KEY in this environment"),
+    ("together", "no TOGETHER_API_KEY in this environment"),
+    ("xiaomimimo", "no XIAOMIMIMO_API_KEY in this environment"),
+    ("zai", "no ZAI_API_KEY in this environment"),
 ];
 
-/// Every provider with cassettes must have a cache suite, or say why not.
+/// Every provider suite must have a cache suite, or say why not.
+///
+/// Walks `tests/providers`, **not** `tests/cassettes`. Walking the cassette root
+/// would let a provider with no recorded fixtures at all escape entirely — which
+/// is the loudest possible form of "nobody has ever checked whether its prompt
+/// cache works", and exactly the silent gap this check exists to remove. Eleven
+/// provider suites have no cassettes; each is now an explicit, reason-carrying
+/// entry rather than an absence.
 #[test]
-fn every_cassette_provider_has_a_cache_suite() {
-    let root = cassette_root();
-
+fn every_provider_suite_has_a_cache_suite() {
     for (provider, reason) in NO_CACHE_SUITE {
         assert!(
             !reason.trim().is_empty(),
@@ -969,24 +995,33 @@ fn every_cassette_provider_has_a_cache_suite() {
         );
     }
 
+    let providers_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/providers");
+    assert!(
+        providers_root.is_dir(),
+        "provider test root moved or vanished: {}",
+        providers_root.display()
+    );
+    let cassette_root = cassette_root();
+
     let mut providers: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(&root).expect("cassette root should be readable") {
-        let entry = entry.expect("cassette root entry should be readable");
+    for entry in std::fs::read_dir(&providers_root).expect("provider root should be readable") {
+        let entry = entry.expect("provider root entry should be readable");
         if entry.path().is_dir() {
             providers.push(entry.file_name().to_string_lossy().into_owned());
         }
     }
     providers.sort();
     assert!(
-        !providers.is_empty(),
-        "no provider cassette directories found"
+        providers.len() >= 25,
+        "only {} provider suites found; the layout has drifted and this check would be vacuous",
+        providers.len()
     );
 
     let mut missing = Vec::new();
     let mut used_exemptions = Vec::new();
 
     for provider in &providers {
-        let has_suite = root.join(provider).join("prompt_caching").is_dir();
+        let has_suite = cassette_root.join(provider).join("prompt_caching").is_dir();
         let exempt = NO_CACHE_SUITE
             .iter()
             .find(|(name, _)| name == provider)
@@ -1003,8 +1038,9 @@ fn every_cassette_provider_has_a_cache_suite() {
             (false, Some(name)) => used_exemptions.push(name),
             (true, None) => {}
             (false, None) => missing.push(format!(
-                "  {provider}: has recorded cassettes but no tests/cassettes/{provider}/prompt_caching/ \
-                 scenarios, so nothing has ever observed whether its prompt cache works"
+                "  {provider}: has a provider test suite but no \
+                 tests/cassettes/{provider}/prompt_caching/ scenarios, so nothing has ever \
+                 observed whether its prompt cache works"
             )),
         }
     }
@@ -1016,7 +1052,7 @@ fn every_cassette_provider_has_a_cache_suite() {
         .collect::<Vec<_>>();
     assert!(
         stale.is_empty(),
-        "stale NO_CACHE_SUITE entries (the provider directory moved or was deleted; delete the \
+        "stale NO_CACHE_SUITE entries (the provider suite moved or was deleted; delete the \
          entry): {stale:?}"
     );
 
