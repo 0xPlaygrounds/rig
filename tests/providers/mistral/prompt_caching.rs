@@ -22,6 +22,20 @@
 //! (`crates/rig-core/src/providers/mistral/client.rs`, `Usage::cached_tokens`);
 //! it is a subset of `prompt_tokens`, so the denominator is `input_tokens`.
 //!
+//! # No agent-loop cell, and why
+//!
+//! Most providers in the matrix have an `agent_loop` cell driving a real
+//! multi-turn agent run with a tool round-trip — the only cell that can catch
+//! rig's *driver* disturbing the prefix between iterations. This provider has
+//! none, deliberately: its model returns an empty response ("Response contained no message or tool call") when driven through the agent surface with the probe's small output budget. A run that
+//! makes one model call records one request, which leaves `assert_prefix_stable`
+//! no pair to compare and the cell proving nothing. A cell that cannot fail is
+//! worse than an acknowledged gap.
+//!
+//! The loop-level guarantee is still covered for this provider by the
+//! corpus-wide scan in `tests/cassette_cache_prefix.rs`, which compares every
+//! recorded multi-turn conversation in its existing suites.
+//!
 //! # Recording
 //!
 //! ```text

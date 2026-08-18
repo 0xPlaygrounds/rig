@@ -43,11 +43,13 @@
 //! ```
 
 use rig::client::CompletionClient as _;
+use rig::prelude::*;
 use rig::providers::cohere;
 
 use crate::cache_conformance::{
-    CacheAccounting, CacheProbe, CacheSupport, assert_cache_warms_over_turns, assert_prefix_stable,
-    run_cache_probe, run_cache_probe_streaming,
+    AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
+    assert_cache_warms_over_turns, assert_prefix_stable, run_cache_probe,
+    run_cache_probe_streaming,
 };
 
 use super::super::support::with_cohere_prompt_caching_cassette;
@@ -89,6 +91,47 @@ async fn streaming_probe_warms_to_a_full_cache_hit_over_three_turns() {
         let model = client.completion_model(CACHE_MODEL);
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_warms_over_turns(&observation, &COHERE_CACHE_SUPPORT, "streaming probe");
+    })
+    .await;
+
+    assert_prefix_stable("cohere", SCENARIO);
+}
+
+/// A real agent loop with a tool round-trip, asserted on **prefix stability
+/// alone**.
+///
+/// This provider's cache is intermittent or absent (see the module docs), so a
+/// cache-growth assertion here would be a coin flip or trivially unsatisfiable.
+/// What the cell still buys — and what nothing else in the suite covers — is the
+/// loop-level guarantee: across a real multi-turn agent run with a tool
+/// round-trip, every outbound request must *extend* its predecessor rather than
+/// rewrite it. A driver that re-advertises tools in a different order, rebuilds
+/// the system prompt on turn N, or re-normalizes an earlier assistant turn would
+/// bust caching on every provider that does cache, and `assert_prefix_stable`
+/// catches that here without depending on this provider's hit rate at all.
+#[tokio::test]
+async fn agent_loop_does_not_move_its_own_prefix() {
+    const SCENARIO: &str = "prompt_caching/agent_loop";
+
+    with_cohere_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
+        let response = client
+            .agent(CACHE_MODEL)
+            .preamble(&probe().preamble)
+            .tool(CacheProbeLookupTool)
+            .temperature(0.0)
+            .build()
+            .prompt(AGENT_CACHE_PROMPT)
+            .max_turns(6)
+            .extended_details()
+            .await
+            .expect("cohere agent cache probe should complete");
+
+        assert!(
+            response.completion_calls().len() >= 2,
+            "[cohere] agent loop: the run made {} completion calls; a tool round-trip is at \
+             least two, so the model never called the tool and the prefix never grew",
+            response.completion_calls().len()
+        );
     })
     .await;
 
