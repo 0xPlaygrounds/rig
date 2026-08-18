@@ -370,18 +370,22 @@ pub struct FileData {
     pub filename: Option<String>,
 }
 
+/// A content part inside a tool-result message.
+///
+/// OpenAI's chat completions wire format accepts an array of typed content
+/// parts for tool messages. Text parts serialize as `{"type":"text","text":…}`
+/// and image parts as `{"type":"image_url","image_url":{"url":…}}`, which is
+/// how a tool can hand an image back to a vision-capable model.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ToolResultContent {
-    #[serde(default)]
-    r#type: ToolResultContentType,
-    pub text: String,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolResultContentType {
-    #[default]
-    Text,
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ToolResultContent {
+    Text {
+        text: String,
+    },
+    #[serde(rename = "image_url")]
+    Image {
+        image_url: ImageUrl,
+    },
 }
 
 impl FromStr for ToolResultContent {
@@ -394,10 +398,7 @@ impl FromStr for ToolResultContent {
 
 impl From<String> for ToolResultContent {
     fn from(s: String) -> Self {
-        ToolResultContent {
-            r#type: ToolResultContentType::default(),
-            text: s,
-        }
+        ToolResultContent::Text { text: s }
     }
 }
 
@@ -417,25 +418,74 @@ impl ToolResultContentValue {
         }
     }
 
-    pub fn as_text(&self) -> String {
+    /// Normalize a tool result for the wire.
+    ///
+    /// Text-only results flatten to a plain string when the provider wants
+    /// string content. A result carrying an image must stay an array of content
+    /// parts, because flattening it to a string would discard the image the
+    /// model is meant to see.
+    pub fn normalize_for_wire(&self, tool_result_array_content: bool) -> Self {
         match self {
-            ToolResultContentValue::Array(arr) => arr
-                .iter()
-                .map(|c| c.text.clone())
-                .collect::<Vec<_>>()
-                .join("\n"),
-            ToolResultContentValue::String(s) => s.clone(),
+            ToolResultContentValue::Array(arr) => {
+                let has_image = arr
+                    .iter()
+                    .any(|c| matches!(c, ToolResultContent::Image { .. }));
+                if tool_result_array_content || has_image {
+                    self.clone()
+                } else {
+                    let text = arr
+                        .iter()
+                        .filter_map(|c| match c {
+                            ToolResultContent::Text { text } => Some(text.clone()),
+                            ToolResultContent::Image { .. } => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    ToolResultContentValue::String(text)
+                }
+            }
+            ToolResultContentValue::String(_) => self.clone(),
         }
     }
 
-    pub fn to_array(&self) -> Self {
+    /// Convert into Rig's canonical tool-result content blocks, preserving
+    /// image parts so a round-tripped history keeps what the model saw.
+    pub fn into_message_content(self) -> Vec<message::ToolResultContent> {
         match self {
-            ToolResultContentValue::Array(_) => self.clone(),
-            ToolResultContentValue::String(s) => {
-                ToolResultContentValue::Array(vec![ToolResultContent::from(s.clone())])
+            ToolResultContentValue::Array(arr) => arr
+                .into_iter()
+                .map(message::ToolResultContent::from)
+                .collect(),
+            ToolResultContentValue::String(s) => vec![message::ToolResultContent::text(s)],
+        }
+    }
+}
+
+impl From<ToolResultContent> for message::ToolResultContent {
+    fn from(value: ToolResultContent) -> Self {
+        match value {
+            ToolResultContent::Text { text } => message::ToolResultContent::text(text),
+            ToolResultContent::Image { image_url } => {
+                // A data URI round-trips back to base64 + media type; anything
+                // else is kept as a URL reference.
+                if let Some((mime, b64)) = parse_data_uri(&image_url.url) {
+                    message::ToolResultContent::image_base64(
+                        b64,
+                        message::ImageMediaType::from_mime_type(mime),
+                        None,
+                    )
+                } else {
+                    message::ToolResultContent::image_url(image_url.url, None, None)
+                }
             }
         }
     }
+}
+
+/// Returns `(mime_type, base64)` for a base64 data URI, or `None` for plain
+/// URLs and non-base64 data URIs.
+fn parse_data_uri(url: &str) -> Option<(&str, &str)> {
+    url.strip_prefix("data:")?.split_once(";base64,")
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -607,17 +657,43 @@ impl TryFrom<message::ToolResult> for Message {
             .content
             .into_iter()
             .map(|content| match content {
-                message::ToolResultContent::Text(message::Text { text, .. }) => Ok(ToolResultContent::from(text)),
-                message::ToolResultContent::Json { value } => Ok(ToolResultContent::from(value.to_string())),
-                message::ToolResultContent::Image(_) => Err(message::MessageError::ConversionError(
-                    "OpenAI Chat Completions does not support images in tool results. Tool results must be text."
-                        .into(),
-                )),
+                message::ToolResultContent::Text(message::Text { text, .. }) => {
+                    Ok(ToolResultContent::from(text))
+                }
+                message::ToolResultContent::Json { value } => {
+                    Ok(ToolResultContent::from(value.to_string()))
+                }
+                message::ToolResultContent::Image(message::Image {
+                    data,
+                    media_type,
+                    detail,
+                    ..
+                }) => {
+                    let url = match data {
+                        DocumentSourceKind::Url(url) => url,
+                        DocumentSourceKind::Base64(data) => format!(
+                            "data:{};base64,{}",
+                            media_type.map(|i| i.to_mime_type()).ok_or(
+                                message::MessageError::ConversionError(
+                                    "OpenAI Image URI must have media type".into()
+                                )
+                            )?,
+                            data
+                        ),
+                        _ => return Err(message::MessageError::ConversionError(
+                            "Unsupported image source for OpenAI tool result; use a URL or base64"
+                                .into(),
+                        )),
+                    };
+                    Ok(ToolResultContent::Image {
+                        image_url: ImageUrl { url, detail },
+                    })
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
 
         let content = match parts.as_slice() {
-            [part] => ToolResultContentValue::String(part.text.clone()),
+            [ToolResultContent::Text { text }] => ToolResultContentValue::String(text.clone()),
             _ => ToolResultContentValue::Array(parts),
         };
 
@@ -1006,11 +1082,12 @@ impl TryFrom<Message> for message::Message {
                 content,
             } => message::Message::User {
                 // OpenAI chat tool messages carry no tool name; this
-                // conversion is lossy for name-keyed wires.
+                // conversion is lossy for name-keyed wires. Image parts are
+                // preserved so a round-tripped history keeps what the model saw.
                 content: vec![message::UserContent::tool_result_from_wire(
                     tool_call_id,
                     "",
-                    vec![message::ToolResultContent::text(content.as_text())],
+                    content.into_message_content(),
                 )],
             },
 
@@ -2022,13 +2099,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         for msg in &mut full_history {
             if let Message::ToolResult { content, .. } = msg {
-                let normalized = if tool_result_array_content {
-                    content.to_array()
-                } else {
-                    ToolResultContentValue::String(content.as_text())
-                };
-
-                *content = normalized;
+                *content = content.normalize_for_wire(tool_result_array_content);
             }
         }
 
@@ -2498,6 +2569,35 @@ mod tests {
         }
     }
 
+    fn request_with_image_tool_result() -> CoreCompletionRequest {
+        let tool_result = message::ToolResult {
+            call: message::ToolCallId::new_or_mint("call-id"),
+            provider: message::ProviderCallId::new("call-id"),
+            name: "view_file".to_string(),
+            content: vec![message::ToolResultContent::image_base64(
+                "iVBORw0KGgo=",
+                Some(message::ImageMediaType::PNG),
+                None,
+            )],
+        };
+
+        CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec![message::Message::User {
+                content: vec![message::UserContent::ToolResult(tool_result)],
+            }],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
         let content = vec![
@@ -2731,6 +2831,68 @@ mod tests {
                     ToolResultContent::from("second".to_string()),
                 ]),
             }
+        );
+    }
+
+    #[test]
+    fn tool_result_image_converts_to_image_url_part() {
+        let result = message::ToolResult {
+            call: message::ToolCallId::new_or_mint("call-id"),
+            name: "view_file".to_string(),
+            provider: message::ProviderCallId::new("call-id"),
+            content: vec![message::ToolResultContent::image_base64(
+                "iVBORw0KGgo=",
+                Some(message::ImageMediaType::PNG),
+                None,
+            )],
+        };
+
+        let converted = Message::try_from(result).expect("tool result should convert");
+
+        assert_eq!(
+            converted,
+            Message::ToolResult {
+                tool_call_id: "call-id".to_string(),
+                content: ToolResultContentValue::Array(vec![ToolResultContent::Image {
+                    image_url: ImageUrl {
+                        url: "data:image/png;base64,iVBORw0KGgo=".to_string(),
+                        detail: None,
+                    },
+                }]),
+            }
+        );
+    }
+
+    #[test]
+    fn tool_result_image_stays_an_array_when_flattening_is_enabled() {
+        let request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: request_with_image_tool_result(),
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request conversion should succeed");
+
+        let wire = serde_json::to_value(&request.messages).expect("messages should serialize");
+
+        assert_eq!(
+            wire,
+            serde_json::json!([
+                {
+                    "role": "tool",
+                    "tool_call_id": "call-id",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,iVBORw0KGgo="
+                            }
+                        }
+                    ]
+                }
+            ])
         );
     }
 
