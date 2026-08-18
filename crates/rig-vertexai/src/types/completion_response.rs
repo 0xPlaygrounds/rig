@@ -586,8 +586,12 @@ mod vertex_usage_mapping_tests {
     /// mapping hardcoded `reasoning_tokens: 0` — so the thinking spend, which on
     /// the sibling Gemini surface is routinely the largest component of the
     /// bill, was discarded on every Vertex response.
+    ///
+    /// Drives the real conversion. An earlier version of this test built a
+    /// `UsageMetadata` and then re-implemented the mapping inline in its own
+    /// body, so reverting the production fix left it green — it guarded nothing.
     #[test]
-    fn thinking_tokens_are_not_discarded() {
+    fn thinking_tokens_survive_the_real_conversion() {
         let usage_metadata = vertexai::model::generate_content_response::UsageMetadata::new()
             .set_prompt_token_count(14)
             .set_candidates_token_count(34)
@@ -595,21 +599,23 @@ mod vertex_usage_mapping_tests {
             .set_total_token_count(270)
             .set_cached_content_token_count(9);
 
-        let usage = Usage {
-            input_tokens: usage_metadata.prompt_token_count as u64,
-            output_tokens: usage_metadata.candidates_token_count as u64,
-            total_tokens: usage_metadata.total_token_count as u64,
-            cached_input_tokens: usage_metadata.cached_content_token_count as u64,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: usage_metadata.thoughts_token_count as u64,
-        };
+        let response = vertexai::model::GenerateContentResponse::new()
+            .set_usage_metadata(usage_metadata)
+            .set_candidates(vec![
+                vertexai::model::Candidate::new().set_content(
+                    vertexai::model::Content::new()
+                        .set_role("model")
+                        .set_parts(vec![vertexai::model::Part::new().set_text("hi")]),
+                ),
+            ]);
 
-        assert_eq!(usage.reasoning_tokens, 222);
-        assert_eq!(usage.cached_input_tokens, 9);
-        assert_eq!(
-            usage.input_tokens + usage.output_tokens + usage.reasoning_tokens,
-            usage.total_tokens
-        );
+        let converted = CompletionResponse::try_from(VertexGenerateContentOutput(response))
+            .expect("a response with content should convert");
+
+        assert_eq!(converted.usage.reasoning_tokens, 222);
+        assert_eq!(converted.usage.cached_input_tokens, 9);
+        assert_eq!(converted.usage.input_tokens, 14);
+        assert_eq!(converted.usage.output_tokens, 34);
+        assert_eq!(converted.usage.total_tokens, 270);
     }
 }

@@ -2371,6 +2371,25 @@ impl gemini_api_types::GenerateContentRequest {
             ));
         }
 
+        // `additional_params` is `#[serde(flatten)]` and serde emits flattened
+        // fields *after* the named ones, so a `cachedContent` in there
+        // overwrites this one on the wire. Silently sending a different handle
+        // than the caller asked for — and skipping the conflict checks below,
+        // which only inspect the typed fields — is worse than refusing.
+        if let Some(serde_json::Value::Object(extra)) = self.additional_params.as_ref()
+            && let Some(smuggled) = extra.get("cachedContent")
+        {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "a Gemini request set cached content `{name}` and also carries \
+                     `cachedContent` in additional_params ({smuggled}). The flattened value \
+                     overwrites the typed one on the wire, so this would silently send the \
+                     wrong handle — set it one way or the other."
+                )
+                .into(),
+            ));
+        }
+
         let mut conflicts = Vec::new();
         if self.system_instruction.is_some() {
             conflicts.push("a system instruction (preamble)");
@@ -4194,8 +4213,45 @@ mod cached_content_request_tests {
     /// `additional_params` is `#[serde(flatten)]`, so a caller can smuggle
     /// `cachedContent` onto the wire that way. The typed field must win rather
     /// than the two colliding into a duplicate key.
+    /// `additional_params` is flattened *after* the named fields, so a
+    /// `cachedContent` smuggled through it silently overwrote the typed one and
+    /// bypassed the conflict validation entirely. An earlier version of this
+    /// test asserted the opposite invariant while passing an unrelated key
+    /// (`topK`), so it never exercised the collision and stayed green over a
+    /// real wire bug.
     #[test]
-    fn the_typed_field_survives_additional_params_flattening() {
+    fn a_cached_content_smuggled_through_additional_params_is_refused() {
+        let mut request = super::create_request_body(CompletionRequest {
+            preamble: None,
+            chat_history: vec![Message::User {
+                content: vec![UserContent::text("hi")],
+            }],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "cachedContent": "cachedContents/smuggled"
+            })),
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect("request should build");
+
+        let error = request
+            .with_cached_content("cachedContents/typed")
+            .expect_err("setting the handle both ways is ambiguous and must be refused");
+        let message = error.to_string();
+        assert!(message.contains("additional_params"), "{message}");
+        assert!(message.contains("cachedContents/smuggled"), "{message}");
+    }
+
+    /// Unrelated `additional_params` keys must still flatten alongside the
+    /// typed field.
+    #[test]
+    fn unrelated_additional_params_coexist_with_the_typed_field() {
         let mut request = super::create_request_body(CompletionRequest {
             preamble: None,
             chat_history: vec![Message::User {

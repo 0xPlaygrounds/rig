@@ -89,7 +89,6 @@ use super::client::Client;
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
 use crate::http_client::{self, HttpClientExt};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use serde_json::Value;
 
 /// The `cachedContents` collection path.
 const CACHED_CONTENTS_PATH: &str = "/v1beta/cachedContents";
@@ -108,8 +107,8 @@ pub enum CachedContentError {
     /// is recreated, not reported. Gemini answers an expired handle with 403 or
     /// 404 depending on how long ago it lapsed, which is why matching on a
     /// status code is not something callers should have to do.
-    #[error("gemini cached content `{name}` is expired or was deleted")]
-    Expired { name: String },
+    #[error("gemini cached content `{name}` is expired or was deleted: {message}")]
+    Expired { name: String, message: String },
 
     /// The API rejected the request.
     #[error("gemini cached content request failed with status {status}: {message}")]
@@ -159,32 +158,33 @@ impl CacheExpiry {
 }
 
 /// A cached content to create.
-#[derive(Clone, Debug, Default, Serialize)]
+///
+/// Every field is private and reachable only through the builder. That is what
+/// makes [`CacheExpiry`]'s guarantee real: with public `ttl` and `expire_time`,
+/// `NewCachedContent { ttl: Some(..), expire_time: Some(..), ..Default::default() }`
+/// compiles and the API rejects it — exactly the state the enum exists to make
+/// unrepresentable. Keeping them private also avoids freezing untyped JSON into
+/// the public API for `tools`/`tool_config`.
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewCachedContent {
     /// Fully qualified model name (`models/gemini-2.5-flash`). A request that
     /// uses the cache must name the same model.
-    pub model: String,
+    model: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub contents: Vec<Content>,
+    contents: Vec<Content>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_instruction: Option<Content>,
+    system_instruction: Option<Content>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Serialized `Tool` values, matching how
-    /// [`super::completion::gemini_api_types::GenerateContentRequest`] carries
-    /// them — `Tool` is not `Clone`, and a builder that cannot be cloned is
-    /// awkward for the "one cache, many callers" shape this exists to serve.
-    pub tools: Option<Vec<Value>>,
+    tools: Option<Vec<Tool>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Serialized `ToolConfig`, carried as a value for the same reason as
-    /// [`Self::tools`].
-    pub tool_config: Option<Value>,
+    tool_config: Option<ToolConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
+    display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ttl: Option<String>,
+    ttl: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub expire_time: Option<String>,
+    expire_time: Option<String>,
 }
 
 impl NewCachedContent {
@@ -227,20 +227,15 @@ impl NewCachedContent {
     ///
     /// Every request using the handle inherits these; a request may not send its
     /// own (Gemini rejects that, and so does rig).
-    pub fn tools(mut self, tools: Vec<Tool>) -> Result<Self, CachedContentError> {
-        self.tools = Some(
-            tools
-                .into_iter()
-                .map(serde_json::to_value)
-                .collect::<Result<Vec<_>, _>>()?,
-        );
-        Ok(self)
+    pub fn tools(mut self, tools: Vec<Tool>) -> Self {
+        self.tools = Some(tools);
+        self
     }
 
     /// Attach the tool choice this cache owns.
-    pub fn tool_config(mut self, tool_config: ToolConfig) -> Result<Self, CachedContentError> {
-        self.tool_config = Some(serde_json::to_value(tool_config)?);
-        Ok(self)
+    pub fn tool_config(mut self, tool_config: ToolConfig) -> Self {
+        self.tool_config = Some(tool_config);
+        self
     }
 
     pub fn display_name(mut self, name: impl Into<String>) -> Self {
@@ -363,11 +358,20 @@ where
         let mut page_token: Option<String> = None;
 
         loop {
-            let mut path = format!("{CACHED_CONTENTS_PATH}?pageSize={MAX_PAGE_SIZE}");
+            // Percent-encoded through the same helper `list_models_path` uses
+            // (`internal::model_listing::with_query_pairs`), which has a test
+            // pinning `pageToken=weird+token%26x%3D1`. Concatenating the cursor
+            // raw would let a `+`, `&`, `=` or `/` in it truncate the cursor or
+            // inject a query parameter, silently dropping pages.
+            let page_size = MAX_PAGE_SIZE.to_string();
+            let mut pairs: Vec<(&str, &str)> = vec![("pageSize", page_size.as_str())];
             if let Some(token) = &page_token {
-                path.push_str("&pageToken=");
-                path.push_str(token);
+                pairs.push(("pageToken", token.as_str()));
             }
+            let path = crate::providers::internal::model_listing::with_query_pairs(
+                CACHED_CONTENTS_PATH,
+                &pairs,
+            );
             let http = self.client.get(&path)?.body(Vec::new())?;
             let page: ListCachedContentsResponse = self.send_json(http, None).await?;
             all.extend(page.cached_contents);
@@ -471,8 +475,13 @@ where
                 if matches!(status.as_u16(), 403 | 404)
                     && let Some(name) = name
                 {
+                    // Carry the provider's own message. A 403 also covers a
+                    // disabled key, a project without the API enabled, and quota
+                    // denial — collapsing those into "expired" without the
+                    // message would throw away the only text that says which.
                     return Err(CachedContentError::Expired {
                         name: name.to_owned(),
+                        message,
                     });
                 }
                 return Err(CachedContentError::Api {

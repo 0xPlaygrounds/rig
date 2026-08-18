@@ -665,7 +665,7 @@ async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
                 .await
                 .expect_err("a deleted handle should not resolve");
             assert!(
-                matches!(&error, CachedContentError::Expired { name } if *name == cache.name),
+                matches!(&error, CachedContentError::Expired { name, .. } if *name == cache.name),
                 "a handle that is gone should report Expired, not a bare status: {error:?}"
             );
 

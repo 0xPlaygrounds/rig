@@ -2255,7 +2255,12 @@ impl CassetteScrubber {
                 // A bare `cachedContents` path segment with no id (the
                 // collection endpoint itself) must survive untouched, or the
                 // recorded request path stops matching on replay.
-                if !id.is_empty() && !is_redacted_placeholder(id) {
+                // `token_end` accepts the character at offset 0 unconditionally,
+                // so a non-token char right after the collection prefix comes
+                // back as the "id" — `cachedContents/"` would swallow the
+                // closing quote and emit invalid JSON into a fixture. Require
+                // the id to be entirely token characters.
+                if !id.is_empty() && id.chars().all(is_token_char) && !is_redacted_placeholder(id) {
                     output.push_str(collection);
                     output.push_str(&self.placeholder(id, "cached-"));
                     index = id_end;
@@ -3880,6 +3885,35 @@ mod cached_content_scrub_tests {
         assert_eq!(
             scrub("/v1beta/cachedContents?pageSize=1000"),
             "/v1beta/cachedContents?pageSize=1000"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cached_content_scrub_edge_tests {
+    use super::*;
+
+    fn scrub(text: &str) -> String {
+        CassetteScrubber::new(CassettePolicy::default()).scrub_text(text)
+    }
+
+    /// `token_end` accepts offset 0 unconditionally, so a non-token character
+    /// straight after the collection prefix used to come back as the "id" —
+    /// swallowing a closing quote and writing invalid JSON into a fixture.
+    #[test]
+    fn a_handle_with_no_id_does_not_eat_the_next_character() {
+        assert_eq!(
+            scrub(r#"{"cachedContent":"cachedContents/"}"#),
+            r#"{"cachedContent":"cachedContents/"}"#
+        );
+    }
+
+    /// The same shape in prose — a provider error quoting the handle template.
+    #[test]
+    fn a_handle_placeholder_in_prose_is_left_alone() {
+        assert_eq!(
+            scrub("expected cachedContents/<id>"),
+            "expected cachedContents/<id>"
         );
     }
 }
