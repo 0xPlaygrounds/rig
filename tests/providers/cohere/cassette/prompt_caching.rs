@@ -48,8 +48,8 @@ use rig::providers::cohere;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_cache_warms_over_turns, assert_prefix_stable, run_cache_probe,
-    run_cache_probe_streaming,
+    assert_breakpoints_match_support, assert_cache_warms_over_turns, assert_prefix_stable,
+    run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_cohere_prompt_caching_cassette;
@@ -59,6 +59,7 @@ const CACHE_MODEL: &str = cohere::COMMAND_A_03_2025;
 const COHERE_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "cohere",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
@@ -81,6 +82,7 @@ async fn blocking_probe_warms_to_a_full_cache_hit_over_three_turns() {
     .await;
 
     assert_prefix_stable("cohere", SCENARIO);
+    assert_breakpoints_match_support("cohere", SCENARIO, &COHERE_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -95,6 +97,7 @@ async fn streaming_probe_warms_to_a_full_cache_hit_over_three_turns() {
     .await;
 
     assert_prefix_stable("cohere", SCENARIO);
+    assert_breakpoints_match_support("cohere", SCENARIO, &COHERE_CACHE_SUPPORT);
 }
 
 /// A real agent loop with a tool round-trip, asserted on **prefix stability
@@ -136,4 +139,5 @@ async fn agent_loop_does_not_move_its_own_prefix() {
     .await;
 
     assert_prefix_stable("cohere", SCENARIO);
+    assert_breakpoints_match_support("cohere", SCENARIO, &COHERE_CACHE_SUPPORT);
 }

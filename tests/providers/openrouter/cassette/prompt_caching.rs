@@ -40,6 +40,7 @@ const OPENROUTER_CACHE_SUPPORT: CacheSupport = CacheSupport {
     // upstreams that bill them separately such as Anthropic. This scenario
     // routes to an OpenAI model, whose cache writes are free and unreported, so
     // turn 1 legitimately shows zero for both counters — measured, not assumed.
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,

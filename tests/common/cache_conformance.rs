@@ -119,6 +119,14 @@ pub(crate) struct CacheSupport {
     /// produce. The load-bearing part of `assert_warms` for those providers is
     /// the `min_cacheable_tokens` padding check that follows it.
     pub(crate) reports_writes: bool,
+    /// Whether the provider needs explicit `cache_control` breakpoints
+    /// (Anthropic) or caches long prefixes automatically (everyone else).
+    ///
+    /// Checked on the wire by [`assert_breakpoints_match_support`], in both
+    /// directions: a provider that needs markers must actually receive them on
+    /// every turn and within its budget, and a provider that does not must never
+    /// be sent them.
+    pub(crate) explicit_breakpoints: bool,
     /// Documented minimum cacheable prompt size. Pad above this or the provider
     /// silently declines to cache and the fixture pins a miss.
     pub(crate) min_cacheable_tokens: usize,
@@ -312,6 +320,17 @@ pub(crate) fn cache_probe_tools(label: &str) -> Vec<ToolDefinition> {
 }
 
 /// What the three turns reported.
+///
+/// Deliberately holds usage only, not the outbound request bodies. The bodies
+/// are needed — [`assert_prefix_stable`], [`assert_cache_key_stable`] and
+/// [`assert_breakpoints_match_support`] all read them — but they are read back
+/// from the fixture the cassette wrapper wrote rather than carried here, because
+/// the cassette harness exposes no in-process copy in *either* mode: on replay
+/// the incoming bytes are dropped after matching, and in record mode httpmock
+/// owns them until the fixture is exported. Reading the fixture gets the bytes
+/// that actually went over the wire, works identically in both modes, and needs
+/// no change to the cassette core; the cost is that those three assertions run
+/// after the wrapper closure returns rather than inside it.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct CacheObservation {
     pub(crate) turns: Vec<Usage>,
@@ -1168,4 +1187,88 @@ pub(crate) fn report_and_assert_live(
     );
 
     assert_cache_conformance(observation, support, scenario);
+}
+
+/// Anthropic's documented ceiling on `cache_control` breakpoints per request.
+///
+/// Exceeding it is a request error, not a silent degradation, but a marker
+/// *budget* that creeps upward as a conversation grows is the kind of thing that
+/// only shows up on turn N of a long run — so it is asserted per turn rather
+/// than assumed.
+const MAX_CACHE_BREAKPOINTS: usize = 4;
+
+/// Check `cache_control` breakpoint placement on the recorded wire.
+///
+/// Covers the breakpoint-placement bug class directly, which no usage counter
+/// can: markers dropped when a knob combination is set, markers past the
+/// provider's limit, or markers sent to a provider that does not understand
+/// them. Reads the fixture the cassette wrapper wrote, for the same reason
+/// [`assert_prefix_stable`] does — it asserts on the bytes that actually went
+/// over the wire rather than on a re-serialized approximation.
+///
+/// Asserted in both directions so the descriptor itself is testable:
+///
+/// * `explicit_breakpoints: true` — every turn must carry at least one marker
+///   (a turn with none is caching silently switched off) and no more than
+///   [`MAX_CACHE_BREAKPOINTS`].
+/// * `explicit_breakpoints: false` — no turn may carry a marker. Rig sending
+///   `cache_control` to a provider whose API does not define it either errors
+///   the request or, worse, is accepted and ignored while looking like caching
+///   is configured.
+pub(crate) fn assert_breakpoints_match_support(
+    provider: &str,
+    scenario: &str,
+    support: &CacheSupport,
+) {
+    let interactions = crate::cassettes::recorded_interaction_bodies(provider, scenario);
+    assert!(
+        !interactions.is_empty(),
+        "[{provider}] {scenario}: no recorded interactions to check breakpoints against"
+    );
+
+    for (index, (request, _)) in interactions.iter().enumerate() {
+        let body: serde_json::Value = serde_json::from_str(request).unwrap_or_else(|error| {
+            panic!("[{provider}] {scenario}: recorded request {index} should be JSON: {error}")
+        });
+        let markers = count_cache_control(&body);
+
+        if support.explicit_breakpoints {
+            assert!(
+                markers > 0,
+                "[{provider}] {scenario}: turn {} carries no `cache_control` marker, but this \
+                 provider only caches where rig places one. Caching is silently off for this \
+                 turn — the usage counters cannot tell you that, because a warm org cache can \
+                 still report a read.",
+                index + 1
+            );
+            assert!(
+                markers <= MAX_CACHE_BREAKPOINTS,
+                "[{provider}] {scenario}: turn {} carries {markers} `cache_control` markers, past \
+                 the documented limit of {MAX_CACHE_BREAKPOINTS}. The provider rejects the \
+                 request outright.",
+                index + 1
+            );
+        } else {
+            assert_eq!(
+                markers,
+                0,
+                "[{provider}] {scenario}: turn {} carries {markers} `cache_control` marker(s), but \
+                 this provider's API does not define the field. It is either an error or, worse, \
+                 accepted and ignored while looking like caching is configured.",
+                index + 1
+            );
+        }
+    }
+}
+
+/// Every `cache_control` key anywhere in a request body.
+fn count_cache_control(value: &serde_json::Value) -> usize {
+    match value {
+        serde_json::Value::Object(map) => {
+            let here = usize::from(map.contains_key("cache_control"));
+            here + map.values().map(count_cache_control).sum::<usize>()
+        }
+        serde_json::Value::Array(items) => items.iter().map(count_cache_control).sum(),
+        _ => 0,
+    }
 }

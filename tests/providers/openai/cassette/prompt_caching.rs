@@ -46,9 +46,10 @@ use serde_json::json;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheObservation, CacheProbe, CacheProbeLookupTool,
-    CacheSupport, assert_agent_growth_still_hits, assert_cache_conformance,
-    assert_cache_key_stable, assert_prefix_stable, assert_warms, observation_from_completion_calls,
-    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
+    CacheSupport, assert_agent_growth_still_hits, assert_breakpoints_match_support,
+    assert_cache_conformance, assert_cache_key_stable, assert_prefix_stable, assert_warms,
+    observation_from_completion_calls, report_and_assert_live, run_cache_probe,
+    run_cache_probe_streaming,
 };
 
 use super::super::support::{
@@ -66,6 +67,7 @@ const CACHE_MODEL: &str = openai::GPT_4O_MINI;
 const OPENAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "openai",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
@@ -114,6 +116,7 @@ async fn responses_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     .await;
 
     assert_prefix_stable("openai", SCENARIO);
+    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
     assert_cache_key_stable("openai", SCENARIO, &OPENAI_RESPONSES_KEYED_SUPPORT);
 }
 
@@ -173,6 +176,7 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
     // The point of the cell: rig's own bytes are stable across all three turns,
     // so the turn-2 miss above cannot be blamed on a moved prefix.
     assert_prefix_stable("openai", SCENARIO);
+    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -194,6 +198,7 @@ async fn chat_completions_blocking_probe_hits_and_keeps_hitting_as_the_prefix_gr
     .await;
 
     assert_prefix_stable("openai", SCENARIO);
+    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -215,6 +220,7 @@ async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     .await;
 
     assert_prefix_stable("openai", SCENARIO);
+    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -236,6 +242,7 @@ async fn chat_completions_streaming_probe_survives_the_streaming_accumulator() {
     .await;
 
     assert_prefix_stable("openai", SCENARIO);
+    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
 /// A real agent loop with a tool round-trip, on the chat-completions wire.
@@ -279,6 +286,7 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
     // The loop-level prefix guard: every one of the agent's own outbound
     // requests must extend its predecessor rather than rewrite it.
     assert_prefix_stable("openai", SCENARIO);
+    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
 /// The Responses twin of [`chat_completions_agent_loop_keeps_hitting_across_tool_turns`].
@@ -315,6 +323,7 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
     .await;
 
     assert_prefix_stable("openai", SCENARIO);
+    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
 }
 
 /// Live economics: run the same probe against the real API.

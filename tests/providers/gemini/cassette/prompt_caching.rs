@@ -56,9 +56,9 @@ use rig::providers::gemini;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_agent_growth_still_hits, assert_cache_conformance, assert_prefix_stable,
-    observation_from_completion_calls, report_and_assert_live, run_cache_probe,
-    run_cache_probe_streaming,
+    assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
+    assert_prefix_stable, observation_from_completion_calls, report_and_assert_live,
+    run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_gemini_prompt_caching_cassette;
@@ -71,6 +71,7 @@ const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 const GEMINI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "gemini",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     // `cachedContent` names an *explicitly* created cache resource, which is a
@@ -112,6 +113,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     .await;
 
     assert_prefix_stable("gemini", SCENARIO);
+    assert_breakpoints_match_support("gemini", SCENARIO, &GEMINI_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -126,6 +128,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     .await;
 
     assert_prefix_stable("gemini", SCENARIO);
+    assert_breakpoints_match_support("gemini", SCENARIO, &GEMINI_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -151,6 +154,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     .await;
 
     assert_prefix_stable("gemini", SCENARIO);
+    assert_breakpoints_match_support("gemini", SCENARIO, &GEMINI_CACHE_SUPPORT);
 }
 
 /// Live economics: run the same probe against the real API.

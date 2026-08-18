@@ -72,6 +72,7 @@ const CACHE_MODEL: &str = "openai/gpt-oss-20b";
 const GROQ_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "groq",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,

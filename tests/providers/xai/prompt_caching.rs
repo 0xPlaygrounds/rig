@@ -46,6 +46,7 @@ const CACHE_MODEL: &str = xai::GROK_3_MINI;
 const XAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "xai",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,

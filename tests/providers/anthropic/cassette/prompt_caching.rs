@@ -1555,8 +1555,9 @@ fn cache_padding(repetitions: usize) -> String {
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_agent_growth_still_hits, assert_cache_conformance, assert_prefix_stable,
-    observation_from_completion_calls, run_cache_probe, run_cache_probe_streaming,
+    assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
+    assert_prefix_stable, observation_from_completion_calls, run_cache_probe,
+    run_cache_probe_streaming,
 };
 
 /// See [`CacheAccounting::Alongside`]: `anthropic_usage_totals` computes
@@ -1568,6 +1569,7 @@ use crate::cache_conformance::{
 const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "anthropic",
     accounting: CacheAccounting::Alongside,
+    explicit_breakpoints: true,
     reports_writes: true,
     // Anthropic's documented minimum is 1,024 tokens for Sonnet- and Opus-class
     // models (2,048 for Haiku-class). This suite runs on Sonnet.
@@ -1601,6 +1603,7 @@ async fn conformance_blocking_probe_serves_most_of_the_prefix_from_cache() {
     .await;
 
     assert_prefix_stable("anthropic", SCENARIO);
+    assert_breakpoints_match_support("anthropic", SCENARIO, &ANTHROPIC_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -1624,6 +1627,7 @@ async fn conformance_streaming_probe_serves_most_of_the_prefix_from_cache() {
     .await;
 
     assert_prefix_stable("anthropic", SCENARIO);
+    assert_breakpoints_match_support("anthropic", SCENARIO, &ANTHROPIC_CACHE_SUPPORT);
 }
 
 /// A real agent loop with a tool round-trip.
@@ -1667,4 +1671,5 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
     .await;
 
     assert_prefix_stable("anthropic", SCENARIO);
+    assert_breakpoints_match_support("anthropic", SCENARIO, &ANTHROPIC_CACHE_SUPPORT);
 }

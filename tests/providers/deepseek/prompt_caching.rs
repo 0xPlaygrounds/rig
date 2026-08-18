@@ -48,6 +48,7 @@ const CACHE_MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 const DEEPSEEK_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "deepseek",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 64,
     cache_key_field: None,

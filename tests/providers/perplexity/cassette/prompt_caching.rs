@@ -52,6 +52,7 @@ const CACHE_MODEL: &str = perplexity::SONAR;
 const PERPLEXITY_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "perplexity",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,

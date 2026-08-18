@@ -23,9 +23,9 @@ use rig::providers::venice;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_agent_growth_still_hits, assert_cache_conformance, assert_cache_key_stable,
-    assert_prefix_stable, observation_from_completion_calls, report_and_assert_live,
-    run_cache_probe, run_cache_probe_streaming,
+    assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
+    assert_cache_key_stable, assert_prefix_stable, observation_from_completion_calls,
+    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_venice_prompt_caching_cassette;
@@ -41,6 +41,7 @@ const VENICE_KEYED_SUPPORT: CacheSupport = CacheSupport {
 const VENICE_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "venice",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
@@ -63,6 +64,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     .await;
 
     assert_prefix_stable("venice", SCENARIO);
+    assert_breakpoints_match_support("venice", SCENARIO, &VENICE_CACHE_SUPPORT);
 }
 
 #[tokio::test]
@@ -77,6 +79,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     .await;
 
     assert_prefix_stable("venice", SCENARIO);
+    assert_breakpoints_match_support("venice", SCENARIO, &VENICE_CACHE_SUPPORT);
 }
 
 /// Venice's `prompt_cache_key` must reach the wire and stay identical across turns.
@@ -102,6 +105,7 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
     .await;
 
     assert_prefix_stable("venice", SCENARIO);
+    assert_breakpoints_match_support("venice", SCENARIO, &VENICE_CACHE_SUPPORT);
     assert_cache_key_stable("venice", SCENARIO, &VENICE_KEYED_SUPPORT);
 }
 
@@ -154,4 +158,5 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     .await;
 
     assert_prefix_stable("venice", SCENARIO);
+    assert_breakpoints_match_support("venice", SCENARIO, &VENICE_CACHE_SUPPORT);
 }

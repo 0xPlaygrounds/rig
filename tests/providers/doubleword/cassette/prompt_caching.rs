@@ -39,6 +39,7 @@ const CACHE_MODEL: &str = doubleword::QWEN3_5_9B;
 const DOUBLEWORD_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "doubleword",
     accounting: CacheAccounting::Subset,
+    explicit_breakpoints: false,
     reports_writes: false,
     min_cacheable_tokens: 1024,
     cache_key_field: None,
