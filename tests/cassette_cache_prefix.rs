@@ -13,20 +13,41 @@
 //!
 //! Ported from `inspirations/pydantic-ai` (`tests/cassette_utils.py`
 //! `check_cache_prefix_stability`), which guards the same invariant across a
-//! 1313-cassette corpus. The invariant is imported; the plumbing is rig's.
+//! 1313-cassette corpus. The invariant is imported; the plumbing is rig's. The
+//! rule itself lives in `tests/common/cache_prefix.rs` so that the per-scenario
+//! conformance harness (`tests/common/cache_conformance.rs`) applies the
+//! identical flattening rather than a second copy that could drift.
 //!
 //! A test whose behavior is *deliberately* prefix-moving — compaction, history
 //! rewriting, dynamic tool disclosure — records that fact in
 //! `MOVES_CACHE_PREFIX`, with a reason. An entry with an empty reason is
 //! rejected, and an entry that stops matching a real cassette is reported as
 //! stale.
+//!
+//! # Two checks, two different blind spots
+//!
+//! 1. [`recorded_conversations_do_not_move_their_cache_prefix`] compares
+//!    consecutive recorded requests. It can only see what was recorded.
+//! 2. [`every_provider_is_covered_by_the_prefix_check`] asserts the first check
+//!    actually *looked* at each provider. It previously failed open: any
+//!    endpoint the table did not model was skipped silently, and the only global
+//!    guard was `compared_pairs > 0` across the entire corpus — so a provider
+//!    could have 100% of its traffic skipped while the suite stayed green. It
+//!    did: Bedrock's `/model/<id>/converse` and Ollama's `/api/chat` were 100%
+//!    unmodeled, which is 72 recorded requests that no prefix check ever saw.
 
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::Value;
+
+#[path = "common/cache_prefix.rs"]
+mod cache_prefix;
+
+use cache_prefix::{EndpointKind, PrefixBlock, Violation};
 
 /// Scenarios whose requests legitimately move the cache prefix.
 ///
@@ -60,6 +81,27 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     ),
 ];
 
+/// Providers exempt from the per-provider coverage census.
+///
+/// `(provider directory, reason)`. Same contract as `MOVES_CACHE_PREFIX`: an
+/// empty reason is rejected and a stale entry is reported. This list exists so
+/// that a provider whose cache-bearing endpoint genuinely cannot be modeled is
+/// recorded as a *decision* rather than disappearing into a silent skip.
+///
+/// It is deliberately empty. Every provider directory in the corpus now has a
+/// modeled conversational endpoint; if that stops being true, the census failure
+/// message says which provider drifted and adding an entry here is the explicit,
+/// reasoned way to accept it.
+const COVERAGE_EXEMPT_PROVIDERS: &[(&str, &str)] = &[];
+
+/// A provider whose conversational requests are at least this fraction
+/// unmodeled has effectively opted out of the prefix check without saying so.
+///
+/// The threshold is 95% rather than 100% so a provider that records one
+/// experimental endpoint alongside a well-covered suite does not fail, while a
+/// provider whose real chat traffic is invisible does.
+const MAX_UNMODELED_FRACTION: f64 = 0.95;
+
 #[derive(Deserialize)]
 struct RecordedInteraction {
     when: RecordedRequest,
@@ -71,179 +113,6 @@ struct RecordedRequest {
     path: String,
     #[serde(default)]
     body: Option<String>,
-}
-
-/// One cache-ordered block of a request, tagged with the field it came from so a
-/// violation report says *where* the prefix moved.
-type PrefixBlock = (&'static str, String);
-
-/// Flatten a provider request body into cache-ordered blocks.
-///
-/// Returns `None` for endpoints this check does not model — an unmodeled shape
-/// is skipped loudly at the call site rather than silently treated as compliant.
-fn canonical_prefix_blocks(path: &str, body: &Value) -> Option<Vec<PrefixBlock>> {
-    let mut blocks: Vec<PrefixBlock> = Vec::new();
-
-    // A field may hold a list of blocks or a single one: Anthropic's `system` can
-    // be a plain string, and Gemini's `systemInstruction` is one Content *object*.
-    // Iterating that object would silently reduce it to its keys and blind the
-    // check to content changes — pydantic-ai hit exactly this and documented it.
-    let mut add = |level: &'static str, value: Option<&Value>| {
-        let Some(value) = value else { return };
-        if value.is_null() {
-            return;
-        }
-        match value.as_array() {
-            Some(items) => {
-                for item in items {
-                    blocks.push((level, item.to_string()));
-                }
-            }
-            None => blocks.push((level, value.to_string())),
-        }
-    };
-
-    if path.ends_with("/v1/messages") {
-        // Anthropic Messages. `tools` renders before `system`, which renders
-        // before `messages`.
-        add("tools", body.get("tools"));
-        add("system", body.get("system"));
-        add("messages", body.get("messages"));
-    } else if path.contains(":generateContent") || path.contains(":streamGenerateContent") {
-        add("tools", body.get("tools"));
-        add("systemInstruction", body.get("systemInstruction"));
-        add("contents", body.get("contents"));
-    } else if path.contains("/interactions") {
-        add("tools", body.get("tools"));
-        add("system_instruction", body.get("system_instruction"));
-        add("input", body.get("input"));
-    } else if path.ends_with("/chat/completions") {
-        add("tools", body.get("tools"));
-        add("messages", body.get("messages"));
-    } else if path.ends_with("/responses") {
-        add("tools", body.get("tools"));
-        add("instructions", body.get("instructions"));
-        add("input", body.get("input"));
-    } else {
-        return None;
-    }
-
-    Some(blocks)
-}
-
-/// The message-carrying level for each supported endpoint — the blocks that
-/// identify *which conversation* a request belongs to.
-const CONVERSATION_LEVELS: &[&str] = &["messages", "contents", "input"];
-
-/// Whether `later` continues the conversation `earlier` started, rather than
-/// being an unrelated request that happens to share the cassette and endpoint.
-///
-/// Many cassettes record several *independent* single-turn requests — a batch
-/// extractor run over different texts, a document test asking about page 2 and
-/// then page 1. Those share no prefix by design and comparing them is
-/// meaningless: a different opening turn is a different cache entry, so there is
-/// nothing for the provider to reuse and nothing for this check to protect.
-///
-/// Identity is the **first message-level block**. Tools and system prompts are
-/// deliberately excluded from the identity test: a turn that changes its tool set
-/// while continuing the same conversation is exactly the prefix move this check
-/// exists to catch, so it must not be able to disguise itself as a new
-/// conversation.
-fn continues_the_same_conversation(earlier: &[PrefixBlock], later: &[PrefixBlock]) -> bool {
-    // On OpenAI-compatible wires the system prompt is itself a `messages` entry,
-    // and it is identical across unrelated runs that share a preamble (a batch
-    // extractor over different texts). Keying identity on it would merge those
-    // into one conversation, so identity is the first message that is *not* a
-    // system/developer instruction — the conversation's opening turn.
-    let first_message = |blocks: &[PrefixBlock]| {
-        blocks
-            .iter()
-            .filter(|(level, _)| CONVERSATION_LEVELS.contains(level))
-            .find(|(_, block)| {
-                serde_json::from_str::<Value>(block)
-                    .ok()
-                    .and_then(|value| {
-                        value
-                            .get("role")
-                            .and_then(Value::as_str)
-                            .map(|role| !matches!(role, "system" | "developer"))
-                    })
-                    // A block with no `role` (Gemini `contents` entries carry one;
-                    // Responses `input` items may not) still identifies the turn.
-                    .unwrap_or(true)
-            })
-            .map(|(_, block)| block.clone())
-    };
-
-    let message_count = |blocks: &[PrefixBlock]| {
-        blocks
-            .iter()
-            .filter(|(level, _)| CONVERSATION_LEVELS.contains(level))
-            .count()
-    };
-
-    match (first_message(earlier), first_message(later)) {
-        (Some(earlier_first), Some(later_first)) => {
-            // A continuation *grew*: the assistant turn and its tool result were
-            // appended. An independent repeat — the same opening turn re-sent with
-            // a different tool schema, as a batch extractor does — keeps the same
-            // message count and shares no cache prefix worth protecting.
-            earlier_first == later_first && message_count(later) > message_count(earlier)
-        }
-        // No message-level blocks at all: nothing to correlate on, so do not
-        // invent a comparison.
-        _ => false,
-    }
-}
-
-struct Violation {
-    scenario: String,
-    pair: usize,
-    level: &'static str,
-    block_index: usize,
-    earlier: String,
-    later: String,
-}
-
-/// The earlier request's blocks must be a prefix of the later request's.
-fn compare(
-    scenario: &str,
-    pair: usize,
-    earlier: &[PrefixBlock],
-    later: &[PrefixBlock],
-) -> Option<Violation> {
-    for (index, (earlier_level, earlier_block)) in earlier.iter().enumerate() {
-        let Some((later_level, later_block)) = later.get(index) else {
-            return Some(Violation {
-                scenario: scenario.to_owned(),
-                pair,
-                level: earlier_level,
-                block_index: index,
-                earlier: truncate(earlier_block),
-                later: "<dropped: the later request is shorter>".to_owned(),
-            });
-        };
-        if earlier_level != later_level || earlier_block != later_block {
-            return Some(Violation {
-                scenario: scenario.to_owned(),
-                pair,
-                level: earlier_level,
-                block_index: index,
-                earlier: truncate(earlier_block),
-                later: truncate(later_block),
-            });
-        }
-    }
-    None
-}
-
-fn truncate(block: &str) -> String {
-    const LIMIT: usize = 220;
-    if block.chars().count() <= LIMIT {
-        return block.to_owned();
-    }
-    let head: String = block.chars().take(LIMIT).collect();
-    format!("{head}…")
 }
 
 fn cassette_files(dir: &Path, found: &mut Vec<PathBuf>) {
@@ -276,14 +145,42 @@ fn recorded_requests(contents: &str) -> Vec<(String, Value)> {
         .collect()
 }
 
-#[test]
-fn recorded_conversations_do_not_move_their_cache_prefix() {
+fn cassette_root() -> PathBuf {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/cassettes");
     assert!(
         root.is_dir(),
         "cassette root moved or vanished: {}",
         root.display()
     );
+    root
+}
+
+fn all_cassettes(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    cassette_files(root, &mut files);
+    files.sort();
+    assert!(
+        !files.is_empty(),
+        "no cassettes found under {}",
+        root.display()
+    );
+    files
+}
+
+fn scenario_name(root: &Path, file: &Path) -> String {
+    file.strip_prefix(root)
+        .expect("cassette should live under the cassette root")
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn provider_of(scenario: &str) -> &str {
+    scenario.split('/').next().unwrap_or(scenario)
+}
+
+#[test]
+fn recorded_conversations_do_not_move_their_cache_prefix() {
+    let root = cassette_root();
 
     for (path, reason) in MOVES_CACHE_PREFIX {
         assert!(
@@ -293,25 +190,14 @@ fn recorded_conversations_do_not_move_their_cache_prefix() {
         );
     }
 
-    let mut files = Vec::new();
-    cassette_files(&root, &mut files);
-    files.sort();
-    assert!(
-        !files.is_empty(),
-        "no cassettes found under {}",
-        root.display()
-    );
+    let files = all_cassettes(&root);
 
     let mut violations: Vec<Violation> = Vec::new();
     let mut exempted = Vec::new();
     let mut compared_pairs = 0usize;
 
     for file in &files {
-        let scenario = file
-            .strip_prefix(&root)
-            .expect("cassette should live under the cassette root")
-            .to_string_lossy()
-            .replace('\\', "/");
+        let scenario = scenario_name(&root, file);
 
         if let Some((exempt, _)) = MOVES_CACHE_PREFIX
             .iter()
@@ -329,16 +215,18 @@ fn recorded_conversations_do_not_move_their_cache_prefix() {
         // are not comparable.
         let mut previous: Option<(String, Vec<PrefixBlock>)> = None;
         for (index, (path, body)) in requests.iter().enumerate() {
-            let Some(blocks) = canonical_prefix_blocks(path, body) else {
+            let Some(blocks) = cache_prefix::canonical_prefix_blocks(path, body) else {
                 previous = None;
                 continue;
             };
             if let Some((previous_path, previous_blocks)) = previous.take()
                 && previous_path == *path
-                && continues_the_same_conversation(&previous_blocks, &blocks)
+                && cache_prefix::continues_the_same_conversation(&previous_blocks, &blocks)
             {
                 compared_pairs += 1;
-                if let Some(violation) = compare(&scenario, index, &previous_blocks, &blocks) {
+                if let Some(violation) =
+                    cache_prefix::compare(&scenario, index, &previous_blocks, &blocks)
+                {
                     violations.push(violation);
                 }
             }
@@ -372,17 +260,149 @@ fn recorded_conversations_do_not_move_their_cache_prefix() {
          MOVES_CACHE_PREFIX with a reason.\n\n{}",
         violations
             .iter()
-            .map(|violation| format!(
-                "{} [{}] request pair {}, block {}:\n  earlier: {}\n  later:   {}",
-                violation.scenario,
-                violation.level,
-                violation.pair,
-                violation.block_index,
-                violation.earlier,
-                violation.later
-            ))
+            .map(Violation::to_string)
             .collect::<Vec<_>>()
             .join("\n\n")
+    );
+}
+
+/// Per-provider census of what the prefix check actually looked at.
+///
+/// The check this guards used to fail open. `canonical_prefix_blocks` returns
+/// `None` for any endpoint it does not model, the pair was skipped silently, and
+/// the only global guard was `compared_pairs > 0` **across the entire corpus** —
+/// so one well-covered provider kept the suite green while every other
+/// provider's traffic went unexamined.
+///
+/// A request is now classified three ways rather than two (see
+/// `cache_prefix::classify_endpoint`): modeled, non-conversational (embeddings,
+/// image generation, audio, model listings — nothing with a prompt prefix to
+/// protect), or *unmodeled*, which means a conversational endpoint the table
+/// does not know about. Only the third is a finding, and it is a finding rather
+/// than a skip.
+#[derive(Default)]
+struct Census {
+    modeled: usize,
+    non_conversational: usize,
+    unmodeled: usize,
+    unmodeled_paths: BTreeMap<String, usize>,
+}
+
+impl Census {
+    fn conversational(&self) -> usize {
+        self.modeled + self.unmodeled
+    }
+
+    fn unmodeled_fraction(&self) -> f64 {
+        if self.conversational() == 0 {
+            // No conversational traffic at all is itself a coverage failure:
+            // every provider directory in this corpus records chat traffic.
+            return 1.0;
+        }
+        self.unmodeled as f64 / self.conversational() as f64
+    }
+}
+
+#[test]
+fn every_provider_is_covered_by_the_prefix_check() {
+    let root = cassette_root();
+
+    for (provider, reason) in COVERAGE_EXEMPT_PROVIDERS {
+        assert!(
+            !reason.trim().is_empty(),
+            "COVERAGE_EXEMPT_PROVIDERS entry `{provider}` needs a reason explaining why its \
+             cache-bearing endpoint cannot be modeled"
+        );
+    }
+    for (fragment, reason) in cache_prefix::NON_CONVERSATIONAL_ENDPOINTS {
+        assert!(
+            !reason.trim().is_empty(),
+            "NON_CONVERSATIONAL_ENDPOINTS entry `{fragment}` needs a reason explaining why it \
+             carries no cacheable prompt prefix"
+        );
+    }
+
+    let mut census: BTreeMap<String, Census> = BTreeMap::new();
+
+    for file in all_cassettes(&root) {
+        let scenario = scenario_name(&root, &file);
+        let provider = provider_of(&scenario).to_owned();
+        let contents = std::fs::read_to_string(&file).expect("cassette should be readable");
+        let entry = census.entry(provider).or_default();
+
+        for (path, _) in recorded_requests(&contents) {
+            match cache_prefix::classify_endpoint(&path) {
+                EndpointKind::Modeled => entry.modeled += 1,
+                EndpointKind::NotConversational => entry.non_conversational += 1,
+                EndpointKind::Unmodeled => {
+                    entry.unmodeled += 1;
+                    *entry.unmodeled_paths.entry(path).or_default() += 1;
+                }
+            }
+        }
+    }
+
+    assert!(
+        !census.is_empty(),
+        "no provider cassette directories were censused — the corpus layout has drifted"
+    );
+
+    let report = census
+        .iter()
+        .map(|(provider, stats)| {
+            format!(
+                "  {provider:<12} modeled={:<5} non-conversational={:<5} unmodeled={:<4} \
+                 ({:.1}% of conversational traffic unmodeled)",
+                stats.modeled,
+                stats.non_conversational,
+                stats.unmodeled,
+                stats.unmodeled_fraction() * 100.0,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut failures = Vec::new();
+    let mut used_exemptions = Vec::new();
+
+    for (provider, stats) in &census {
+        if let Some((exempt, _)) = COVERAGE_EXEMPT_PROVIDERS
+            .iter()
+            .find(|(exempt, _)| exempt == provider)
+        {
+            used_exemptions.push(*exempt);
+            continue;
+        }
+        if stats.unmodeled_fraction() >= MAX_UNMODELED_FRACTION {
+            failures.push(format!(
+                "  {provider}: {:.1}% of its conversational requests speak an endpoint the cache \
+                 prefix rule does not model, so this provider is effectively exempt from the \
+                 check without saying so. Unmodeled endpoints: {:?}",
+                stats.unmodeled_fraction() * 100.0,
+                stats.unmodeled_paths.keys().collect::<Vec<_>>(),
+            ));
+        }
+    }
+
+    let stale = COVERAGE_EXEMPT_PROVIDERS
+        .iter()
+        .map(|(provider, _)| *provider)
+        .filter(|provider| !used_exemptions.contains(provider))
+        .collect::<Vec<_>>();
+    assert!(
+        stale.is_empty(),
+        "stale COVERAGE_EXEMPT_PROVIDERS entries (the provider directory moved or was deleted; \
+         delete the entry): {stale:?}\n\ncensus:\n{report}"
+    );
+
+    assert!(
+        failures.is_empty(),
+        "the cache prefix check does not actually cover every provider:\n{}\n\nAdd the endpoint \
+         to `canonical_prefix_blocks` in tests/common/cache_prefix.rs (preferred — it is real \
+         coverage), or, if it carries no cacheable prompt, to \
+         `NON_CONVERSATIONAL_ENDPOINTS`, or, as a last resort, add the provider to \
+         COVERAGE_EXEMPT_PROVIDERS with a reason.\n\nfull census:\n{report}",
+        failures.join("\n")
     );
 }
 
@@ -394,8 +414,9 @@ fn prefix_blocks_do_not_iterate_a_single_object_field() {
         "systemInstruction": {"parts": [{"text": "be brief"}], "role": "model"},
         "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
     });
-    let blocks = canonical_prefix_blocks("/v1beta/models/gemini-2.5-flash:generateContent", &body)
-        .expect("generateContent should be modeled");
+    let blocks =
+        cache_prefix::canonical_prefix_blocks("/v1beta/models/gemini-2.5-flash:generateContent", &body)
+            .expect("generateContent should be modeled");
 
     assert_eq!(blocks.len(), 2, "{blocks:?}");
     assert_eq!(blocks[0].0, "systemInstruction");
@@ -412,11 +433,62 @@ fn a_moved_block_is_reported_and_an_appended_turn_is_not() {
         ("messages", "\"a\"".to_owned()),
         ("messages", "\"b\"".to_owned()),
     ];
-    assert!(compare("s", 1, &turn_one, &appended).is_none());
+    assert!(cache_prefix::compare("s", 1, &turn_one, &appended).is_none());
 
     let rewritten = vec![("messages", "\"REWRITTEN\"".to_owned())];
-    let violation =
-        compare("s", 1, &turn_one, &rewritten).expect("a rewritten earlier block is a violation");
+    let violation = cache_prefix::compare("s", 1, &turn_one, &rewritten)
+        .expect("a rewritten earlier block is a violation");
     assert_eq!(violation.block_index, 0);
     assert_eq!(violation.level, "messages");
+}
+
+#[test]
+fn bedrock_converse_models_tools_system_and_messages_in_cache_order() {
+    // Bedrock's Converse body was 100% unmodeled before this check was
+    // hardened, so pin the shape rather than trusting the table by inspection.
+    // `toolChoice` must stay *out*: it is a per-turn control, and folding it in
+    // would report a legitimate tool-choice change as a prefix move.
+    let body = serde_json::json!({
+        "inferenceConfig": {"temperature": 0.0},
+        "toolConfig": {
+            "toolChoice": {"any": {}},
+            "tools": [{"toolSpec": {"name": "add"}}],
+        },
+        "system": [{"text": "be brief"}],
+        "messages": [{"role": "user", "content": [{"text": "hi"}]}],
+    });
+    let blocks =
+        cache_prefix::canonical_prefix_blocks("/model/amazon.nova-lite-v1%3A0/converse", &body)
+            .expect("Bedrock Converse should be modeled");
+
+    let levels = blocks.iter().map(|(level, _)| *level).collect::<Vec<_>>();
+    assert_eq!(
+        levels,
+        vec!["toolConfig.tools", "system", "messages"],
+        "{blocks:?}"
+    );
+    assert!(
+        !blocks.iter().any(|(_, block)| block.contains("toolChoice")),
+        "toolChoice is a per-turn control, not cached prompt content: {blocks:?}"
+    );
+}
+
+#[test]
+fn an_unknown_conversational_endpoint_is_a_finding_not_a_skip() {
+    // The whole point of the coverage census: a shape nobody has modeled must
+    // classify as a finding. If this ever returns `NotConversational`, the
+    // non-conversational fragment list has grown too broad and the census has
+    // gone back to failing open.
+    assert_eq!(
+        cache_prefix::classify_endpoint("/v3/some-future-chat-api"),
+        EndpointKind::Unmodeled
+    );
+    assert_eq!(
+        cache_prefix::classify_endpoint("/v1/embeddings"),
+        EndpointKind::NotConversational
+    );
+    assert_eq!(
+        cache_prefix::classify_endpoint("/v1/messages"),
+        EndpointKind::Modeled
+    );
 }
