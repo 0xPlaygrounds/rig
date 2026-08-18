@@ -11,6 +11,7 @@ mod models;
 mod multi_extract;
 mod multimodal_content;
 mod permission_control;
+mod prompt_caching;
 mod raw_capture_matrix;
 mod raw_stream_capture_matrix;
 mod request_hook;

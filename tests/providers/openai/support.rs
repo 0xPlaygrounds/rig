@@ -387,3 +387,37 @@ pub(super) fn assert_matches_recorded_token(
         }
     }
 }
+
+/// Cassette wrapper for the OpenAI Responses prompt-caching matrix
+/// (`tests/cassettes/openai/prompt_caching/`).
+///
+/// Delegates to [`with_openai_cassette`] — the behavior is identical, and
+/// deliberately shared so the two cannot drift apart when the base wrapper gains
+/// policy. What the separate name buys is a per-suite entry in the
+/// cassette-safety registry, so the cache fixtures are auditable as one
+/// concern's evidence.
+pub(super) async fn with_openai_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// [`with_openai_prompt_caching_cassette`] for the chat-completions wire.
+///
+/// OpenAI's two surfaces are two *different* cache paths with two different
+/// usage mappings (`prompt_tokens_details.cached_tokens` versus
+/// `input_tokens_details.cached_tokens`), so each is recorded separately rather
+/// than assumed to behave like its sibling.
+pub(super) async fn with_openai_completions_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::CompletionsClient) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_completions_cassette(spec, test_body).await;
+}

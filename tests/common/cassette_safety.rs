@@ -22,6 +22,8 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/openai/cassette",
         wrapper_names: &[
             "with_openai_cassette",
+            "with_openai_prompt_caching_cassette",
+            "with_openai_completions_prompt_caching_cassette",
             "with_openai_turn_metadata_cassette",
             "with_openai_cassette_bogus_key",
             "with_openai_completions_cassette",
@@ -85,6 +87,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "doubleword",
         source_dir: "tests/providers/doubleword/cassette",
         wrapper_names: &[
+            "with_doubleword_prompt_caching_cassette",
             "with_doubleword_cassette",
             "with_doubleword_bogus_key_cassette",
             "with_doubleword_cassette_result",
@@ -94,12 +97,16 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "cohere",
         source_dir: "tests/providers/cohere/cassette",
-        wrapper_names: &["with_cohere_cassette"],
+        wrapper_names: &[
+            "with_cohere_cassette",
+            "with_cohere_prompt_caching_cassette",
+        ],
     },
     ProviderCassetteSuite {
         provider: "venice",
         source_dir: "tests/providers/venice/cassette",
         wrapper_names: &[
+            "with_venice_prompt_caching_cassette",
             "with_venice_cassette",
             "with_venice_cassette_result",
             "with_venice_direct_cassette",
@@ -109,6 +116,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &[
+            "with_gemini_prompt_caching_cassette",
             "with_gemini_cassette",
             "with_gemini_turn_metadata_cassette",
             "with_gemini_cassette_bogus_key",
@@ -132,6 +140,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "xai",
         source_dir: "tests/providers/xai",
         wrapper_names: &[
+            "with_xai_prompt_caching_cassette",
             "with_xai_cassette",
             "with_xai_cassette_bogus_key",
             "with_xai_cassette_result",
@@ -141,6 +150,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "openrouter",
         source_dir: "tests/providers/openrouter/cassette",
         wrapper_names: &[
+            "with_openrouter_prompt_caching_cassette",
             "with_openrouter_cassette",
             "with_openrouter_cassette_result",
             "with_openrouter_cassette_bogus_key_result",
@@ -159,6 +169,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "deepseek",
         source_dir: "tests/providers/deepseek",
         wrapper_names: &[
+            "with_deepseek_prompt_caching_cassette",
             "with_deepseek_cassette",
             "with_deepseek_cassette_result",
             "with_deepseek_cassette_bogus_key_result",
@@ -173,6 +184,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "groq",
         source_dir: "tests/providers/groq",
         wrapper_names: &[
+            "with_groq_prompt_caching_cassette",
             "with_groq_cassette_result",
             "with_groq_cassette_bogus_key_result",
         ],
@@ -181,6 +193,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "mistral",
         source_dir: "tests/providers/mistral",
         wrapper_names: &[
+            "with_mistral_prompt_caching_cassette",
             "with_mistral_cassette_result",
             "with_mistral_multimodal_cassette",
             "with_mistral_cassette_bogus_key_result",
@@ -196,7 +209,10 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "perplexity",
         source_dir: "tests/providers/perplexity/cassette",
-        wrapper_names: &["with_perplexity_cassette"],
+        wrapper_names: &[
+            "with_perplexity_cassette",
+            "with_perplexity_prompt_caching_cassette",
+        ],
     },
     ProviderCassetteSuite {
         provider: "mistralrs",

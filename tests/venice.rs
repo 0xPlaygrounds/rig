@@ -9,6 +9,10 @@
 #[path = "common/support.rs"]
 mod support;
 
+#[path = "common/cache_conformance.rs"]
+mod cache_conformance;
+#[path = "common/cache_prefix.rs"]
+mod cache_prefix;
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;
 #[path = "common/cassettes.rs"]

@@ -101,3 +101,20 @@ impl Tool for IntegerSubtract {
         Ok(args.x - args.y)
     }
 }
+
+/// Cassette wrapper for the cohere prompt-caching matrix
+/// (`tests/cassettes/cohere/prompt_caching/`).
+///
+/// Delegates to [`with_cohere_cassette`] — the behavior is identical, and deliberately shared
+/// so the two cannot drift apart when the base wrapper gains policy. What the
+/// separate name buys is a per-suite entry in the cassette-safety registry, so
+/// the cache fixtures are auditable as one concern's evidence.
+pub(super) async fn with_cohere_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(cohere::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_cohere_cassette(spec, test_body).await;
+}

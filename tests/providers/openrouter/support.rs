@@ -223,3 +223,20 @@ pub(super) fn assert_matches_recorded_token(
         }
     }
 }
+
+/// Cassette wrapper for the openrouter prompt-caching matrix
+/// (`tests/cassettes/openrouter/prompt_caching/`).
+///
+/// Delegates to [`with_openrouter_cassette`] — the behavior is identical, and deliberately shared
+/// so the two cannot drift apart when the base wrapper gains policy. What the
+/// separate name buys is a per-suite entry in the cassette-safety registry, so
+/// the cache fixtures are auditable as one concern's evidence.
+pub(super) async fn with_openrouter_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openrouter_cassette(spec, test_body).await;
+}

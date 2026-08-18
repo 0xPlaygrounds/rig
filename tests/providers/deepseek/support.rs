@@ -339,3 +339,24 @@ pub(super) fn assert_matches_recorded_token(
         }
     }
 }
+
+/// Cassette wrapper for the deepseek prompt-caching matrix
+/// (`tests/cassettes/deepseek/prompt_caching/`).
+///
+/// Builds the cassette directly rather than delegating to [`with_deepseek_cassette`]: this
+/// provider's cassette-safety `source_dir` covers `support.rs` itself, and the
+/// scan requires every call to a *registered* wrapper to pass a string-literal
+/// scenario. A delegating wrapper passes its `spec` variable through, which the
+/// scan reports as an unregistered scenario. The duplication is three lines and
+/// the alternative is an unscannable suite.
+pub(super) async fn with_deepseek_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(deepseek::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = deepseek_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}

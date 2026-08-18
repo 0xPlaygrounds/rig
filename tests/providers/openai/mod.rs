@@ -27,6 +27,7 @@ mod cassette {
     mod multi_extract;
     mod openai_compatible_reasoning_content;
     mod permission_control;
+    mod prompt_caching;
     mod raw_capture_agent_matrix;
     mod raw_capture_matrix;
     mod raw_completion_parity_matrix;
