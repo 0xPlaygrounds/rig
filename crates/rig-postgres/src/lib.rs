@@ -424,8 +424,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{PgSearchFilter, SearchFilter};
+    use super::{PgSearchFilter, PgVectorDistanceFunction, PostgresVectorStore, SearchFilter};
+    use rig_core::{test_utils::MockEmbeddingModel, vector_store::request::VectorSearchRequest};
     use serde_json::json;
+    use sqlx::postgres::PgPoolOptions;
 
     /// `gte`/`lte`/`member` previously emitted `?` placeholders while
     /// `eq`/`gt`/`lt` emitted `$`; the query renumbering only rewrites `$`, so
@@ -447,5 +449,117 @@ mod tests {
         assert_eq!(cond, "(kind = $) AND (id IN ($, $))");
         assert!(!cond.contains('?'));
         assert_eq!(cond.matches('$').count(), values.len());
+    }
+
+    fn store(
+        distance_function: PgVectorDistanceFunction,
+    ) -> anyhow::Result<PostgresVectorStore<MockEmbeddingModel>> {
+        let pool = PgPoolOptions::new().connect_lazy("postgres://localhost/rig")?;
+        Ok(PostgresVectorStore::new(
+            MockEmbeddingModel,
+            pool,
+            None,
+            distance_function,
+        ))
+    }
+
+    fn where_clause(query: &str) -> anyhow::Result<&str> {
+        let start = query
+            .find("WHERE")
+            .ok_or_else(|| anyhow::anyhow!("no WHERE clause in {query}"))?;
+        let end = query
+            .find("ORDER BY id")
+            .ok_or_else(|| anyhow::anyhow!("no inner ORDER BY in {query}"))?;
+        Ok(query
+            .get(start..end)
+            .ok_or_else(|| anyhow::anyhow!("WHERE follows ORDER BY in {query}"))?
+            .trim())
+    }
+
+    #[tokio::test]
+    async fn search_without_threshold_or_filter_has_no_where_clause() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::builder().query("q").samples(3).build();
+
+        let (query, params) = store(PgVectorDistanceFunction::Cosine)?.search_query(true, &req);
+
+        anyhow::ensure!(!query.contains("WHERE"), "{query}");
+        anyhow::ensure!(params.is_empty(), "{params:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn threshold_is_a_minimum_similarity_on_the_repeated_expression() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::builder()
+            .query("q")
+            .samples(3)
+            .threshold(0.8)
+            .build();
+
+        let (query, params) = store(PgVectorDistanceFunction::Cosine)?.search_query(true, &req);
+
+        let clause = where_clause(&query)?;
+        anyhow::ensure!(clause == "WHERE (1 - (embedding <=> $1) >= $3)", "{clause}");
+        anyhow::ensure!(params == [json!(0.8)], "{params:?}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn threshold_placeholder_follows_the_filter_placeholders() -> anyhow::Result<()> {
+        let filter = PgSearchFilter::eq("kind", json!("fruit")).and(PgSearchFilter::member(
+            "id".into(),
+            vec![json!(1), json!(2)],
+        ));
+        let req = VectorSearchRequest::builder()
+            .query("q")
+            .samples(3)
+            .threshold(0.5)
+            .filter(filter)
+            .build();
+
+        let (query, params) = store(PgVectorDistanceFunction::L2)?.search_query(false, &req);
+
+        let clause = where_clause(&query)?;
+        anyhow::ensure!(
+            clause == "WHERE ((kind = $3) AND (id IN ($4, $5))) AND (-(embedding <-> $1) >= $6)",
+            "{clause}"
+        );
+        anyhow::ensure!(
+            params == [json!("fruit"), json!(1), json!(2), json!(0.5)],
+            "{params:?}"
+        );
+        anyhow::ensure!(!query.contains(", document"), "{query}");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn single_condition_filter_is_separated_from_where() -> anyhow::Result<()> {
+        let req = VectorSearchRequest::builder()
+            .query("q")
+            .samples(3)
+            .filter(PgSearchFilter::gte("price".into(), json!(5)))
+            .build();
+
+        let (query, params) = store(PgVectorDistanceFunction::Cosine)?.search_query(true, &req);
+
+        let clause = where_clause(&query)?;
+        anyhow::ensure!(clause == "WHERE (price >= $3)", "{clause}");
+        anyhow::ensure!(params == [json!(5)], "{params:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn similarity_expression_inverts_each_distance_operator() {
+        let cases = [
+            (PgVectorDistanceFunction::Cosine, "1 - (e <=> q)"),
+            (PgVectorDistanceFunction::Jaccard, "1 - (e <%> q)"),
+            (PgVectorDistanceFunction::InnerProduct, "-(e <#> q)"),
+            (PgVectorDistanceFunction::L2, "-(e <-> q)"),
+            (PgVectorDistanceFunction::L1, "-(e <+> q)"),
+            (PgVectorDistanceFunction::Hamming, "-(e <~> q)"),
+        ];
+
+        for (function, expected) in cases {
+            assert_eq!(function.similarity_expression("e", "q"), expected);
+        }
     }
 }
