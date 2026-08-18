@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Fixed
+
+- *(vector-store)* filtered and thresholded searches reach Postgres as valid SQL. `PgSearchFilter::member` rendered `is in`; a single-condition filter abutted the `WHERE` keyword (`WHEREprice >= $3`); and a threshold was rendered as `distance > $N` inside the inner select, where `distance` is only a select-list alias — and would have kept the least similar rows had it parsed. A threshold is now applied as a minimum similarity on the repeated distance operator (`1 - (embedding <=> $1) >= $N` for cosine and jaccard, the negated distance for the other operators), while returned scores remain raw distances in ascending order ([#2376](https://github.com/0xPlaygrounds/rig/issues/2376))
+
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.41.0...rig-postgres-v0.42.0) - 2026-08-16
 
 ### Other

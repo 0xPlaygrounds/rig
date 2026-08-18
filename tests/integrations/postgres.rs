@@ -7,7 +7,7 @@
 )]
 
 use rig::client::EmbeddingsClient;
-use rig::postgres::PostgresVectorStore;
+use rig::postgres::{PgSearchFilter, PostgresVectorStore};
 use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
@@ -163,6 +163,54 @@ async fn vector_search_test() {
     println!("Distance: {distance}, id: {id}");
 
     assert_eq!(id, full_query_id);
+
+    // A threshold is a minimum similarity: cutting just below the best match's
+    // similarity keeps only that match out of the whole table.
+    let all = vector_store
+        .top_n_ids(
+            VectorSearchRequest::builder()
+                .query(query)
+                .samples(3)
+                .build(),
+        )
+        .await
+        .expect("Failed to search without a threshold");
+    assert_eq!(all.len(), 3);
+    let (best_distance, best_id) = all[0].clone();
+    let (runner_up_distance, _) = all[1].clone();
+    assert!(best_distance < runner_up_distance);
+
+    let thresholded = vector_store
+        .top_n_ids(
+            VectorSearchRequest::builder()
+                .query(query)
+                .samples(3)
+                .threshold(1.0 - (best_distance + runner_up_distance) / 2.0)
+                .build(),
+        )
+        .await
+        .expect("Failed to search with a threshold");
+    assert_eq!(thresholded, vec![(best_distance, best_id)]);
+
+    let filtered = vector_store
+        .top_n::<Word>(
+            VectorSearchRequest::builder()
+                .query(query)
+                .samples(3)
+                .filter(PgSearchFilter::member(
+                    "document->>'name'".into(),
+                    vec![json!("flurbo"), json!("linglingdong")],
+                ))
+                .build(),
+        )
+        .await
+        .expect("Failed to search with a member filter");
+    let mut names: Vec<_> = filtered
+        .iter()
+        .map(|(_, _, doc)| doc.name.as_str())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, ["flurbo", "linglingdong"]);
 }
 
 async fn start_container() -> ContainerAsync<GenericImage> {
