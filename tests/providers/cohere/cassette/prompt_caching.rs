@@ -1,13 +1,15 @@
 //! Cohere prompt-caching cassette suite.
 //!
 //! **Cohere's prompt cache is real, and it warms across turns.** Measured on
-//! `command-a-03-2025`, one three-turn probe over a 6,058-token prompt:
+//! `command-a-03-2025`, the **blocking** three-turn probe over a 6,058-token prompt:
 //!
 //! | turn | prompt | cached | ratio |
 //! |---|---:|---:|---:|
 //! | 1 (cold) | 6,058 | 112 | 1.8% |
 //! | 2 (byte-identical repeat) | 6,058 | 992 | 16.4% |
 //! | 3 (prefix grown) | 6,085 | 6,016 | **98.9%** |
+//!
+//! The streaming probe warms the same way, reaching 6,048 of 6,085 (99.4%).
 //!
 //! An earlier revision of this suite got this wrong, and the way it got it wrong
 //! is worth recording. It asserted only over turns 1 and 2, saw 112 and

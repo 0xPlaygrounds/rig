@@ -12,6 +12,13 @@
 //! proving on every run that rig's own bytes never moved. Routing without cache
 //! affinity is the plausible cause; either way it is not something rig controls.
 //!
+//! For the record: the blocking fixture was re-recorded as part of this
+//! reclassification. Its previous recording read zero on all three turns and
+//! would have kept passing the "no cache" assertion, which is exactly how the
+//! wrong classification survived. Re-recording until a turn hits is what
+//! `assert_cache_read_is_surfaced` explicitly asks for — the fixture has to
+//! contain a hit for it to prove rig maps the field at all.
+//!
 //! So these cells assert the narrower thing that is true and deterministic:
 //! when Groq reports a cache read, rig surfaces it at full magnitude, on the
 //! blocking and streaming paths alike. That is a claim about rig's usage mapping

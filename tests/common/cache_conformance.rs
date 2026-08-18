@@ -957,23 +957,7 @@ pub(crate) fn assert_no_meaningful_prefix_cache(
     support: &CacheSupport,
     context: &str,
 ) {
-    let warm = observation.turn(0, support);
-    let denominator = support.prompt_tokens(warm);
-    assert!(
-        denominator > 0,
-        "[{}] {context}: turn 1 billed zero prompt tokens, so nothing can be concluded.\n{}",
-        support.provider,
-        observation.report(support)
-    );
-    assert!(
-        denominator as usize >= support.min_cacheable_tokens,
-        "[{}] {context}: turn 1 billed only {denominator} prompt tokens, below the \
-         {}-token floor this provider would need to cache anything. The probe is under-padded, \
-         so 'no caching observed' would prove nothing.\n{}",
-        support.provider,
-        support.min_cacheable_tokens,
-        observation.report(support)
-    );
+    assert_probe_is_padded_enough(observation, support, context);
 
     for (index, usage) in observation.turns.iter().enumerate() {
         let turn_denominator = support.prompt_tokens(usage);
@@ -1001,16 +985,22 @@ pub(crate) fn assert_no_meaningful_prefix_cache(
 /// Pin a provider whose cache is real but **warms across turns**.
 ///
 /// Cohere is the case this exists for, and finding it corrected a wrong
-/// conclusion in an earlier revision of this branch. Its recorded probe reads
-/// 112 of 6,058 prompt tokens on turn 1 (1.8%), 992 on a byte-identical turn 2
-/// (16.4%), and 6,016 of 6,085 on the grown turn 3 (98.9%). So Cohere caches
-/// properly — it just takes a couple of turns to get there, which the strict
-/// three-turn conformance (turn 2 must already clear the floor) would fail.
+/// conclusion in an earlier revision of this branch. Its recorded *blocking*
+/// probe reads 112 of 6,058 prompt tokens on turn 1 (1.8%), 992 on a
+/// byte-identical turn 2 (16.4%), and 6,016 of 6,085 on the grown turn 3
+/// (98.9%); the streaming probe warms the same way, to 6,048 of 6,085 (99.4%).
+/// So Cohere caches properly — it just takes a couple of turns to get there,
+/// which the strict three-turn conformance (turn 2 must already clear the floor)
+/// would fail.
 ///
-/// The two things that are true and worth pinning: the cache read never goes
-/// *backwards* as the conversation grows, and by the final turn it clears the
-/// provider's floor. Both are what a user actually cares about, and a prefix
-/// move would break both.
+/// The property pinned here is **"once warm, stays warm"**: once any turn clears
+/// the provider's floor, every later turn must too, and the final turn must.
+/// That is deliberately *not* a monotonic token count, for the same reason
+/// [`assert_agent_growth_still_hits`] is not — providers cache in coarse blocks,
+/// so a flat cached count against a growing prompt makes the ratio drift down a
+/// fraction of a percent with nothing wrong (6,016/6,058 then 6,016/6,085 is
+/// 99.31% -> 98.87%). Failing on that would be failing on arithmetic. A real
+/// prefix move collapses the ratio to near zero and trips this immediately.
 ///
 /// Note that turn 2 alone reading 16.4% is precisely the case a bare
 /// `cached_input_tokens > 0` assertion reports as "caching works".
@@ -1019,6 +1009,8 @@ pub(crate) fn assert_cache_warms_over_turns(
     support: &CacheSupport,
     context: &str,
 ) {
+    assert_probe_is_padded_enough(observation, support, context);
+
     let ratios: Vec<f64> = observation
         .turns
         .iter()
@@ -1032,18 +1024,24 @@ pub(crate) fn assert_cache_warms_over_turns(
         })
         .collect();
 
-    for window in ratios.windows(2) {
-        let (earlier, later) = (window[0], window[1]);
-        assert!(
-            later + 1e-9 >= earlier,
-            "[{}] {context}: the cache read went backwards as the conversation grew \
-             ({:.1}% -> {:.1}%). The prefix only ever appends, so a warming cache cannot cool \
-             down — something rewrote an earlier turn.\n{}",
-            support.provider,
-            earlier * 100.0,
-            later * 100.0,
-            observation.report(support)
-        );
+    let mut warm = false;
+    for (index, ratio) in ratios.iter().enumerate() {
+        if warm {
+            assert!(
+                *ratio >= support.hit_ratio_floor,
+                "[{}] {context}: turn {} fell back to a {:.1}% hit ratio after an earlier turn had \
+                 already warmed past this provider's {:.0}% floor. The prefix only ever appends, so \
+                 a warm cache cannot cool down — something rewrote an earlier turn.\n{}",
+                support.provider,
+                index + 1,
+                ratio * 100.0,
+                support.hit_ratio_floor * 100.0,
+                observation.report(support)
+            );
+        }
+        if *ratio >= support.hit_ratio_floor {
+            warm = true;
+        }
     }
 
     let final_ratio = *ratios.last().unwrap_or(&0.0);
@@ -1054,6 +1052,35 @@ pub(crate) fn assert_cache_warms_over_turns(
         support.provider,
         support.hit_ratio_floor * 100.0,
         final_ratio * 100.0,
+        observation.report(support)
+    );
+}
+
+/// Turn 1 must bill enough prompt tokens for any conclusion about caching to
+/// mean anything.
+///
+/// Shared so that an under-padded re-record reports *that* — rather than a
+/// downstream ratio failure whose real cause is a probe too small for the
+/// provider to have cached it in the first place.
+fn assert_probe_is_padded_enough(
+    observation: &CacheObservation,
+    support: &CacheSupport,
+    context: &str,
+) {
+    let denominator = support.prompt_tokens(observation.turn(0, support));
+    assert!(
+        denominator > 0,
+        "[{}] {context}: turn 1 billed zero prompt tokens, so nothing can be concluded.\n{}",
+        support.provider,
+        observation.report(support)
+    );
+    assert!(
+        denominator as usize >= support.min_cacheable_tokens,
+        "[{}] {context}: turn 1 billed only {denominator} prompt tokens, below the {}-token floor \
+         this provider would need to cache anything. The probe is under-padded, so nothing about \
+         its caching can be concluded.\n{}",
+        support.provider,
+        support.min_cacheable_tokens,
         observation.report(support)
     );
 }
