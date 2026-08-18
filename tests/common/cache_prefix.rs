@@ -53,10 +53,10 @@ pub(crate) fn canonical_prefix_blocks(path: &str, body: &Value) -> Option<Vec<Pr
         match value.as_array() {
             Some(items) => {
                 for item in items {
-                    blocks.push((level, item.to_string()));
+                    blocks.push((level, strip_cache_metadata(item).to_string()));
                 }
             }
-            None => blocks.push((level, value.to_string())),
+            None => blocks.push((level, strip_cache_metadata(value).to_string())),
         }
     };
 
@@ -111,6 +111,37 @@ pub(crate) fn canonical_prefix_blocks(path: &str, body: &Value) -> Option<Vec<Pr
     }
 
     Some(blocks)
+}
+
+/// Strip cache *metadata* so the rule compares cached *content*.
+///
+/// Anthropic's documented incremental-caching pattern moves the conversation
+/// breakpoint forward as the conversation grows: turn 2 carries
+/// `cache_control` on `messages[0]`, turn 3 carries it on `messages[2]` and
+/// `messages[0]` no longer has it. The marker is metadata telling Anthropic
+/// where to cache up to — it is not part of the content being cached, and
+/// Anthropic's prefix matching ignores it. Measured: a probe whose marker moved
+/// exactly this way still served 80%+ of turn 3 from cache.
+///
+/// Comparing the raw bytes therefore reported rig's *correct* behavior as a
+/// prefix move. Worse, it did so silently: because the marker sits on the first
+/// message, `continues_the_same_conversation` saw two different opening turns
+/// and skipped the pair as an unrelated conversation. Every multi-turn Anthropic
+/// conversation using manual prompt caching was invisible to this check.
+///
+/// Stripping the marker restores both: the pairs are compared, and they compare
+/// equal unless the actual content moved.
+fn strip_cache_metadata(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .filter(|(key, _)| key.as_str() != "cache_control")
+                .map(|(key, nested)| (key.clone(), strip_cache_metadata(nested)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(strip_cache_metadata).collect()),
+        other => other.clone(),
+    }
 }
 
 /// Endpoints that carry no conversation, and therefore no cacheable prompt

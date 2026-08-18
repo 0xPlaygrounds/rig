@@ -13,6 +13,7 @@ mod cassette {
     mod multimodal;
     mod openai_responses_compat;
     mod permission_control;
+    mod prompt_caching;
     mod provider_selection;
     mod raw_capture_matrix;
     mod raw_completion_parity_matrix;

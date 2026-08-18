@@ -1,3 +1,4 @@
+mod prompt_caching;
 mod response_identity_edge;
 mod support;
 

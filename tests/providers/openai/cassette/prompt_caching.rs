@@ -48,7 +48,7 @@ use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheObservation, CacheProbe, CacheProbeLookupTool,
     CacheSupport, assert_agent_growth_still_hits, assert_cache_conformance,
     assert_cache_key_stable, assert_prefix_stable, assert_warms, observation_from_completion_calls,
-    run_cache_probe, run_cache_probe_streaming,
+    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::{
@@ -316,4 +316,26 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
     .await;
 
     assert_prefix_stable("openai", SCENARIO);
+}
+
+/// Live economics: run the same probe against the real API.
+///
+/// A cassette pins what openai did at record time. Only a live run catches
+/// openai changing its cache semantics under us — a shorter TTL, a higher
+/// minimum, a different block granularity — which is exactly the kind of change
+/// that costs money silently. `#[ignore]`d so it never runs in the key-free
+/// gate; run it with `--ignored` and a key present.
+#[tokio::test]
+#[ignore = "requires OPENAI_API_KEY and spends real tokens"]
+async fn live_cache_economics() {
+    use rig::client::ProviderClient as _;
+
+    let client = openai::Client::from_env().expect("OPENAI_API_KEY");
+    let model = client.completion_model(CACHE_MODEL);
+    let observation = run_cache_probe(&model, &keyed_probe()).await;
+    report_and_assert_live(
+        &observation,
+        &OPENAI_RESPONSES_KEYED_SUPPORT,
+        "live_cache_economics",
+    );
 }

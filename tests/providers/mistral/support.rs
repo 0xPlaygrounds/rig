@@ -256,3 +256,24 @@ pub(super) fn recorded_response_headers(scenario: &str) -> Vec<Vec<(String, Stri
         })
         .collect()
 }
+
+/// Cassette wrapper for the mistral prompt-caching matrix
+/// (`tests/cassettes/mistral/prompt_caching/`).
+///
+/// Builds the cassette directly rather than delegating to [`with_mistral_cassette_result`]: this
+/// provider's cassette-safety `source_dir` covers `support.rs` itself, and the
+/// scan requires every call to a *registered* wrapper to pass a string-literal
+/// scenario. A delegating wrapper passes its `spec` variable through, which the
+/// scan reports as an unregistered scenario. The duplication is three lines and
+/// the alternative is an unscannable suite.
+pub(super) async fn with_mistral_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}

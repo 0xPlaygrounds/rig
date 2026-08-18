@@ -188,6 +188,12 @@ pub(crate) struct CacheProbe {
 pub(crate) const CACHE_PROBE_PROMPT: &str =
     "Do not call any tools. Reply with exactly these three words: cache probe ready";
 
+/// Stands in for a turn-2 reply that contained no text.
+///
+/// Deterministic and committed, like the padding: a placeholder that varied
+/// between runs would move turn 3's prefix and defeat the probe.
+pub(crate) const EMPTY_ASSISTANT_TURN_PLACEHOLDER: &str = "cache probe ready";
+
 /// The follow-up that grows the prefix on turn 3.
 pub(crate) const CACHE_PROBE_FOLLOW_UP: &str =
     "Do not call any tools. Reply with exactly these three words: probe still ready";
@@ -213,6 +219,21 @@ impl CacheProbe {
 
     pub(crate) fn with_additional_params(mut self, params: serde_json::Value) -> Self {
         self.additional_params = Some(params);
+        self
+    }
+
+    /// Rebuild the preamble with a different amount of padding.
+    ///
+    /// Needed where a provider's rate limit is tighter than the default probe:
+    /// Groq's free tier allows 8,000 tokens per minute, and three turns of the
+    /// default ~4,600-token prompt exceeds that before turn 2 can even be sent.
+    pub(crate) fn with_padding(mut self, repetitions: usize, label: &str) -> Self {
+        self.preamble = format!(
+            "You are a deterministic cassette test assistant for {label}. \
+             Never call tools for the cache probe prompt; answer only with the \
+             requested phrase.\n{}",
+            cache_padding(repetitions)
+        );
         self
     }
 
@@ -409,9 +430,20 @@ where
     let (second_usage, text, message_id) =
         stream_turn(model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
+    // A model can legitimately produce no *text* within the probe's small
+    // output budget — a reasoning model may spend all of it on thinking, which
+    // Venice's qwen3 route does. Replaying an empty assistant message then fails
+    // the next request outright ("Text content cannot be empty"), which would
+    // report a provider input-validation error as a caching result. Substitute a
+    // fixed, committed string so turn 3 stays valid and byte-stable.
+    let assistant_text = if text.trim().is_empty() {
+        EMPTY_ASSISTANT_TURN_PLACEHOLDER.to_owned()
+    } else {
+        text
+    };
     let assistant = Message::Assistant {
         id: message_id,
-        content: vec![rig::message::AssistantContent::text(&text)],
+        content: vec![rig::message::AssistantContent::text(&assistant_text)],
     };
     let follow_up = Message::User {
         content: vec![UserContent::text(probe.follow_up)],
@@ -921,4 +953,149 @@ pub(crate) fn assert_agent_growth_still_hits(
         support.hit_ratio_floor * 100.0,
         observation.report(support)
     );
+}
+
+/// Pin a provider that does **not** do meaningful prefix caching.
+///
+/// Deliberately not `assert_eq!(cached, 0)`. Cohere reports a *constant* 112
+/// cached tokens against a 6,058-token prompt, on every turn, whether or not the
+/// prefix repeats — non-zero, and therefore enough to satisfy the
+/// `cached_input_tokens > 0` assertion this whole harness exists to replace,
+/// while 98% of the prompt is re-billed every turn. Stating the property as a
+/// ratio covers both that case and a flat zero with one rule.
+///
+/// This is the self-invalidating half of the coverage story: a provider recorded
+/// here is opted out of the full conformance suite, and this assertion is what
+/// makes that opt-out testable. The day the provider ships real prefix caching,
+/// this fails and says so rather than leaving the opt-out to rot.
+pub(crate) fn assert_no_meaningful_prefix_cache(
+    observation: &CacheObservation,
+    support: &CacheSupport,
+    context: &str,
+) {
+    let warm = observation.turn(0, support);
+    let hit = observation.turn(1, support);
+
+    let denominator = support.prompt_tokens(warm);
+    assert!(
+        denominator > 0,
+        "[{}] {context}: turn 1 billed zero prompt tokens, so nothing can be concluded.\n{}",
+        support.provider,
+        observation.report(support)
+    );
+    assert!(
+        denominator as usize >= support.min_cacheable_tokens,
+        "[{}] {context}: turn 1 billed only {denominator} prompt tokens, below the \
+         {}-token floor this provider would need to cache anything. The probe is under-padded, \
+         so 'no caching observed' would prove nothing.\n{}",
+        support.provider,
+        support.min_cacheable_tokens,
+        observation.report(support)
+    );
+
+    let ratio = hit.cached_input_tokens as f64 / denominator as f64;
+    assert!(
+        ratio < support.hit_ratio_floor,
+        "[{}] {context}: this provider is recorded as doing no meaningful prefix caching, but \
+         turn 2 read {} of turn 1's {denominator} billed prompt tokens — a {:.1}% hit ratio. That \
+         is good news: it now caches. Replace this cell with the full \
+         `assert_cache_conformance` suite and drop the provider's coverage opt-out.\n{}",
+        support.provider,
+        hit.cached_input_tokens,
+        ratio * 100.0,
+        observation.report(support)
+    );
+
+    eprintln!(
+        "[{}] {context}: no meaningful prefix cache observed ({:.1}% of turn 1's {denominator} \
+         prompt tokens read from cache on an identical turn 2).\n{}",
+        support.provider,
+        ratio * 100.0,
+        observation.report(support)
+    );
+}
+
+/// Pin a provider whose cache fires, but not reliably turn-over-turn.
+///
+/// Mistral is the case this exists for. Across repeated live passes over an
+/// identical 1,783-token prefix it produced, in different runs: a hit on turn 2
+/// (1,760 tokens, 98.7%), a hit on turn 1 only, and no hit at all — with rig
+/// sending byte-identical requests every time. The plausible cause is routing
+/// without cache affinity, and either way it is not something rig controls.
+///
+/// So the strict [`assert_cache_conformance`] would be a coin flip, and pinning
+/// "turn 2 always hits" by re-recording until a good run landed would be
+/// cherry-picking. What *is* true, deterministic, and worth protecting is
+/// narrower: when the provider reports a cache read, rig surfaces it, at full
+/// magnitude, on both the blocking and streaming paths. That is a claim about
+/// rig's usage mapping rather than about the provider's hit rate, and it is what
+/// this asserts.
+///
+/// The provider's actual hit rate belongs to the live economics suite, which
+/// measures it against the real API instead of a frozen recording.
+pub(crate) fn assert_cache_read_is_surfaced(
+    observation: &CacheObservation,
+    support: &CacheSupport,
+    context: &str,
+) {
+    let best = observation
+        .turns
+        .iter()
+        .map(|usage| {
+            let denominator = support.prompt_tokens(usage);
+            if denominator == 0 {
+                0.0
+            } else {
+                usage.cached_input_tokens as f64 / denominator as f64
+            }
+        })
+        .fold(0.0_f64, f64::max);
+
+    assert!(
+        best >= support.hit_ratio_floor,
+        "[{}] {context}: no turn surfaced a cache read of at least {:.0}% of its billed prompt. \\
+         This provider's cache is intermittent, so a single cold turn is expected — but the \\
+         recorded fixture is supposed to contain a turn that *did* hit, which is what proves rig \\
+         maps the provider's cached-token field at all. Re-record until one does.\\n{}",
+        support.provider,
+        support.hit_ratio_floor * 100.0,
+        observation.report(support)
+    );
+}
+
+/// Print one row of the live economics table, and assert conformance.
+///
+/// A cassette pins what a provider did at record time; only a live run catches
+/// the provider changing its cache semantics under us. These cells are the
+/// standing check for that, and the row they print is what the PR's economics
+/// table is built from — so the table can be regenerated by anyone with keys
+/// rather than trusted as a one-off transcription.
+pub(crate) fn report_and_assert_live(
+    observation: &CacheObservation,
+    support: &CacheSupport,
+    scenario: &str,
+) {
+    let warm = observation.turn(0, support);
+    let hit = observation.turn(1, support);
+    let grown = observation.turn(2, support);
+    let denominator = support.prompt_tokens(warm);
+    let ratio = if denominator == 0 {
+        0.0
+    } else {
+        hit.cached_input_tokens as f64 / denominator as f64
+    };
+
+    eprintln!(
+        "LIVE-CACHE-ECONOMICS | {:<11} | {:<26} | t1 prompt {:>6} | t1 write {:>6} | \
+         t2 read {:>6} | ratio {:>6.1}% | t3 read {:>6}",
+        support.provider,
+        scenario,
+        denominator,
+        warm.cache_creation_input_tokens,
+        hit.cached_input_tokens,
+        ratio * 100.0,
+        grown.cached_input_tokens,
+    );
+
+    assert_cache_conformance(observation, support, scenario);
 }

@@ -57,7 +57,8 @@ use rig::providers::gemini;
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_agent_growth_still_hits, assert_cache_conformance, assert_prefix_stable,
-    observation_from_completion_calls, run_cache_probe, run_cache_probe_streaming,
+    observation_from_completion_calls, report_and_assert_live, run_cache_probe,
+    run_cache_probe_streaming,
 };
 
 use super::super::support::with_gemini_prompt_caching_cassette;
@@ -151,4 +152,30 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     .await;
 
     assert_prefix_stable("gemini", SCENARIO);
+}
+
+/// Live economics: run the same probe against the real API.
+///
+/// A cassette pins what gemini did at record time. Only a live run catches
+/// gemini changing its cache semantics under us — a shorter TTL, a higher
+/// minimum, a different block granularity — which is exactly the kind of change
+/// that costs money silently. `#[ignore]`d so it never runs in the key-free
+/// gate; run it with `--ignored` and a key present.
+#[tokio::test]
+#[ignore = "requires GEMINI_API_KEY and spends real tokens"]
+async fn live_cache_economics() {
+    use rig::client::ProviderClient as _;
+
+    let client = gemini::Client::from_env().expect("GEMINI_API_KEY");
+    let model = client.completion_model(CACHE_MODEL);
+
+    // Two passes, asserting on the second — the same procedure the module docs
+    // prescribe for re-recording. Gemini's implicit cache only serves a prefix
+    // once an entry for *that exact prefix* exists, so on a cold run the grown
+    // turn-3 prefix (which no earlier request ever sent) reads zero. The first
+    // pass establishes it; the second measures steady-state economics, which is
+    // what this cell is for.
+    let _warm_up = run_cache_probe(&model, &probe()).await;
+    let observation = run_cache_probe(&model, &probe()).await;
+    report_and_assert_live(&observation, &GEMINI_CACHE_SUPPORT, "live_cache_economics");
 }

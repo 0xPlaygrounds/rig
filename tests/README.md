@@ -147,6 +147,108 @@ cargo test -p rig --all-features --test gemini \
 The test filter after `--test <target>` is a substring match. Use the full module path only when
 the shorter test name is ambiguous.
 
+## Prompt Cache Testing
+
+Provider prompt caching is a **prefix match**: the cache key is derived from the exact request
+bytes up to each breakpoint, so any change to an earlier block invalidates everything after it.
+The failure that costs real money is therefore not "caching is off" — it is "caching silently
+degraded", where a reordered map, a rewritten earlier turn, or a re-advertised tool set moves the
+prefix and every request quietly misses while the counters stay non-zero.
+
+Four layers guard this. Each catches something the others structurally cannot.
+
+### Layer 0 — free, key-free, whole-corpus (`tests/cassette_cache_prefix.rs`)
+
+Three checks over cassettes that already exist, costing no provider traffic:
+
+- `recorded_conversations_do_not_move_their_cache_prefix` — for consecutive same-endpoint requests
+  in one cassette, turn N-1's canonical blocks must be a prefix of turn N's. The rule lives in
+  `tests/common/cache_prefix.rs` and is shared with the per-scenario harness so the two cannot
+  drift. It compares cached *content*: `cache_control` markers are stripped first, because
+  Anthropic's documented incremental-caching pattern moves the breakpoint forward every turn and
+  that is correct behavior, not a prefix move.
+- `every_provider_is_covered_by_the_prefix_check` — a per-provider census that makes the check
+  **fail closed**. Every recorded request is classified modeled / non-conversational / unmodeled,
+  and an unmodeled *conversational* endpoint is a finding rather than a silent skip.
+- `*_request_serialization_is_deterministic` — serializes the same `CompletionRequest` eight times
+  through each provider's real client and requires byte-identical output. This is the only check
+  that can see unstable map or tool ordering: cassette replay compares key-sorted canonical JSON,
+  and a `serde_json::Value` round-trip normalizes key order too, so a `HashMap` in a request body
+  busts every real cache while all recorded evidence looks identical.
+- `every_cassette_provider_has_a_cache_suite` — a provider with cassettes and no cache scenario
+  fails unless it is in `NO_CACHE_SUITE` with a reason.
+
+### Layer 1 — the shared harness (`tests/common/cache_conformance.rs`)
+
+One deterministic three-turn probe — warm, byte-identical repeat, then append and repeat —
+asserted against a per-provider `CacheSupport` descriptor, so adding a provider is a descriptor
+rather than another copy of the assertion logic.
+
+The assertion that carries the weight is `assert_hit_ratio`. `cached_input_tokens > 0` passes
+just as happily when 200 of 40,000 prefix tokens are cached as when 39,800 are; the ratio is
+taken against turn 1's billed prompt. **The denominator differs per provider and getting it
+backwards makes the assertion vacuous**, so it is derived in `CacheAccounting` from each
+provider's own usage mapping: Anthropic reports cache tokens *alongside* `input_tokens`, while
+OpenAI, Gemini, Cohere, DeepSeek, Mistral, OpenRouter and every `openai::Usage` reuser report
+them *inside* it.
+
+Growth is asserted as a ratio, not a monotonic token count: providers cache in coarse blocks, so
+the absolute figure drifts a few tokens as block boundaries re-align (Gemini was measured going
+3,765 -> 3,760 across a 21-token append) while a genuine prefix move collapses it to zero.
+
+### Layer 2 — per-provider cassettes (`tests/cassettes/<provider>/prompt_caching/`)
+
+Recorded live, replayed key-free. Record one scenario at a time:
+
+```bash
+RIG_PROVIDER_TEST_MODE=record \
+cargo test -p rig --all-features --test openai openai::cassette::prompt_caching \
+  -- --exact --nocapture --test-threads=1
+```
+
+### Layer 3 — live economics (`live_cache_economics`, `#[ignore]`d)
+
+A cassette pins what a provider did at record time; only a live run catches the provider changing
+its cache semantics under us. Each cell prints a `LIVE-CACHE-ECONOMICS` row, so the economics
+table can be regenerated rather than trusted as a transcription:
+
+```bash
+cargo test -p rig --all-features --test openai live_cache_economics \
+  -- --exact --ignored --nocapture --test-threads=1
+```
+
+### Rules for recording cache fixtures
+
+- **Never commit a cache cassette whose recorded turn 2 shows zero reads.** The Layer-1 assertions
+  run identically in record mode, so a bad session fails instead of committing a fixture that pins
+  a miss. That is the intended outcome — a recorded miss is worse than a failed recording.
+- **Some providers need a warm-up pass.** Gemini's implicit cache only serves a prefix once an
+  entry for *that exact prefix* exists, so on a cold run the grown turn-3 prefix reads zero. Run
+  the scenario twice and keep the second recording. Mistral's cache is intermittent for a
+  different reason (routing without cache affinity) and may need several attempts.
+- **Padding must be deterministic and committed** — no nonce, no timestamp. A nonce guarantees a
+  turn-1 miss, churns the cassette on every re-record, and breaks body matching. The org-pre-warm
+  risk it would avoid is already tolerated by `assert_warms`.
+- **Pad above the provider's documented minimum** (`min_cacheable_tokens` in the descriptor) or
+  the API silently declines to cache. Where a provider's rate limit is tighter than the default
+  probe, `CacheProbe::with_padding` shrinks it — Groq's 8,000 TPM tier needs this.
+- **All three turns must record back-to-back in one test body**, because cache TTLs are minutes.
+  The shared probe does this by construction.
+- **Never mark a cache scenario `.unordered()`.** Ordered replay is what lets two byte-identical
+  requests replay two different recorded responses, which is the only reason a miss-then-hit pair
+  is replayable at all.
+
+### What replay does and does not prove
+
+Replay is not a tautology: the harness *matches request bodies*, so a rig change that perturbs the
+outbound prefix fails as a replay miss in CI with no API key. That is what turns a recorded
+cassette into a permanent cache regression test.
+
+It has exactly two blind spots, both covered elsewhere rather than papered over: body matching
+compares key-sorted canonical JSON, so map reordering is invisible to it (Layer 0's determinism
+check exists for that), and a cassette cannot notice the provider changing its behavior after
+record time (Layer 3 exists for that).
+
 ## Cassette Safety
 
 Record mode scrubs and safety-checks cassette contents before writing fixtures.

@@ -847,3 +847,184 @@ determinism_test!(
             .completion_model(rig::providers::perplexity::SONAR)
     }
 );
+
+#[test]
+fn a_moving_cache_control_marker_is_not_a_prefix_move() {
+    // Anthropic's documented incremental-caching pattern moves the conversation
+    // breakpoint forward as the conversation grows. The marker is metadata
+    // saying where to cache up to, not content being cached, and Anthropic's
+    // prefix matching ignores it — measured: a probe whose marker moved exactly
+    // this way still served over 80% of its grown turn from cache.
+    //
+    // Comparing raw bytes reported that correct behavior as a violation, and did
+    // so *silently*: with the marker on `messages[0]`, the two turns looked like
+    // two unrelated conversations and the pair was skipped entirely. Every
+    // multi-turn Anthropic conversation using manual prompt caching was
+    // invisible to this check.
+    let turn_two = serde_json::json!({
+        "messages": [{
+            "role": "user",
+            "content": [{"type": "text", "text": "hello", "cache_control": {"type": "ephemeral"}}],
+        }],
+    });
+    let turn_three = serde_json::json!({
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            {"role": "assistant", "content": [{"type": "text", "text": "hi"}]},
+            {"role": "user", "content": [
+                {"type": "text", "text": "more", "cache_control": {"type": "ephemeral"}},
+            ]},
+        ],
+    });
+
+    let earlier = cache_prefix::canonical_prefix_blocks("/v1/messages", &turn_two)
+        .expect("messages should be modeled");
+    let later = cache_prefix::canonical_prefix_blocks("/v1/messages", &turn_three)
+        .expect("messages should be modeled");
+
+    assert!(
+        cache_prefix::continues_the_same_conversation(&earlier, &later),
+        "a moved breakpoint must not disguise a continuation as a new conversation: \
+         {earlier:?} vs {later:?}"
+    );
+    assert!(
+        cache_prefix::compare("s", 1, &earlier, &later).is_none(),
+        "moving the breakpoint is not a content change: {earlier:?} vs {later:?}"
+    );
+
+    // The stripping must not blind the check to a real content change sitting
+    // beside a marker.
+    let rewritten = cache_prefix::canonical_prefix_blocks(
+        "/v1/messages",
+        &serde_json::json!({
+            "messages": [
+                {"role": "user", "content": [{"type": "text", "text": "REWRITTEN"}]},
+                {"role": "assistant", "content": [{"type": "text", "text": "hi"}]},
+            ],
+        }),
+    )
+    .expect("messages should be modeled");
+    assert!(
+        cache_prefix::compare("s", 1, &earlier, &rewritten).is_some(),
+        "a rewritten earlier message is still a violation"
+    );
+}
+
+/// Providers with a cassette directory but deliberately no cache scenario.
+///
+/// `(provider, reason)`, same contract as everything else in this file: an empty
+/// reason is rejected, and an entry that stops matching a real provider
+/// directory is reported as stale.
+///
+/// This list is the honest half of the matrix. Rig normalizes
+/// `Usage::cached_input_tokens` for a dozen providers, and the point of the
+/// conformance suite is that "we never checked" and "it does not cache" stop
+/// being the same state. A provider that cannot be checked says why here.
+const NO_CACHE_SUITE: &[(&str, &str)] = &[
+    (
+        "bedrock",
+        "no usable credentials in this environment — the AWS_* variables are set but the session \
+         token is rejected and AWS_PROFILE names a profile that does not exist, so the scenarios \
+         cannot be recorded. Bedrock's Converse API does support prompt caching (`cachePoint` \
+         blocks) and rig normalizes its usage, so this is an unrecorded gap rather than an \
+         absence of caching",
+    ),
+    (
+        "chatgpt",
+        "OAuth-backed provider with no CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID in this \
+         environment, so its scenarios cannot be recorded",
+    ),
+    (
+        "copilot",
+        "OAuth-backed provider with no Copilot credentials in this environment, so its scenarios \
+         cannot be recorded",
+    ),
+    (
+        "mistralrs",
+        "records against a local mistral.rs server that is not running in this environment",
+    ),
+    (
+        "ollama",
+        "Ollama's /api/chat usage payload carries no cached-token field of any kind, and rig's \
+         Ollama provider therefore has no cache mapping to test — there is nothing for a cache \
+         suite to assert",
+    ),
+    (
+        "llamafile",
+        "same as ollama: the local llama.cpp-compatible wire reports no cached-token field, so \
+         rig has no cache mapping for it",
+    ),
+];
+
+/// Every provider with cassettes must have a cache suite, or say why not.
+#[test]
+fn every_cassette_provider_has_a_cache_suite() {
+    let root = cassette_root();
+
+    for (provider, reason) in NO_CACHE_SUITE {
+        assert!(
+            !reason.trim().is_empty(),
+            "NO_CACHE_SUITE entry `{provider}` needs a reason explaining why it has no cache \
+             scenario"
+        );
+    }
+
+    let mut providers: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(&root).expect("cassette root should be readable") {
+        let entry = entry.expect("cassette root entry should be readable");
+        if entry.path().is_dir() {
+            providers.push(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    providers.sort();
+    assert!(
+        !providers.is_empty(),
+        "no provider cassette directories found"
+    );
+
+    let mut missing = Vec::new();
+    let mut used_exemptions = Vec::new();
+
+    for provider in &providers {
+        let has_suite = root.join(provider).join("prompt_caching").is_dir();
+        let exempt = NO_CACHE_SUITE
+            .iter()
+            .find(|(name, _)| name == provider)
+            .map(|(name, _)| *name);
+
+        match (has_suite, exempt) {
+            (true, Some(name)) => {
+                used_exemptions.push(name);
+                missing.push(format!(
+                    "  {provider}: has a prompt_caching/ directory *and* a NO_CACHE_SUITE entry — \
+                     the suite exists now, so delete the entry"
+                ));
+            }
+            (false, Some(name)) => used_exemptions.push(name),
+            (true, None) => {}
+            (false, None) => missing.push(format!(
+                "  {provider}: has recorded cassettes but no tests/cassettes/{provider}/prompt_caching/ \
+                 scenarios, so nothing has ever observed whether its prompt cache works"
+            )),
+        }
+    }
+
+    let stale = NO_CACHE_SUITE
+        .iter()
+        .map(|(provider, _)| *provider)
+        .filter(|provider| !used_exemptions.contains(provider))
+        .collect::<Vec<_>>();
+    assert!(
+        stale.is_empty(),
+        "stale NO_CACHE_SUITE entries (the provider directory moved or was deleted; delete the \
+         entry): {stale:?}"
+    );
+
+    assert!(
+        missing.is_empty(),
+        "a provider's prompt cache is unobserved:\n{}\n\nRecord a cache suite for it \
+         (tests/common/cache_conformance.rs has the shared probe), or add it to NO_CACHE_SUITE \
+         with a reason.",
+        missing.join("\n")
+    );
+}
