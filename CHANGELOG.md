@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(gemini)* serialize tool-schema `properties` in a stable order, so Gemini prompt caching can hit ([#PRNUM](https://github.com/0xPlaygrounds/rig/pull/PRNUM)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
-- *(cohere)* serialize document metadata in a stable order, so Cohere prompt caching can hit ([#PRNUM](https://github.com/0xPlaygrounds/rig/pull/PRNUM)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* serialize tool-schema `properties` in a stable order, so Gemini prompt caching can hit ([#2374](https://github.com/0xPlaygrounds/rig/pull/2374)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cohere)* serialize document metadata in a stable order, so Cohere prompt caching can hit ([#2374](https://github.com/0xPlaygrounds/rig/pull/2374)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/v0.41.0...v0.42.0) - 2026-08-17
 
 ### Added
