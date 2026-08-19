@@ -1,10 +1,13 @@
 //! This module provides functionality for working with audio transcription models.
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
+use crate::completion::{ResponseIdentity, Usage};
 use crate::json_utils;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use serde::{Deserialize, Serialize};
 use std::io;
+use std::sync::Arc;
 use std::{fs, path::Path};
 
 crate::provider_response::provider_error_enum!(
@@ -21,36 +24,133 @@ crate::provider_response::provider_error_enum!(
     }
 );
 
-/// General transcription response struct that contains the transcription text
-/// and the raw response.
-pub struct TranscriptionResponse<T> {
+/// The normalized transcription response: the transcript plus the metadata
+/// every provider can report, attributed to the provider that produced it.
+///
+/// This type is concrete — it carries no provider type parameter — so the
+/// provider does not leak into [`TranscriptionRequestBuilder`] or into any
+/// caller holding a [`TranscriptionModel`]. The provider's own payload stays
+/// reachable two ways: a model's inherent `raw_transcription` method performs
+/// the same request and returns the provider's native type, and
+/// [`TranscriptionResponse::raw`] carries that value serialized.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionResponse {
+    /// The transcribed text.
     pub text: String,
-    pub response: T,
+    /// Token or duration usage as the provider reported it. Zero-valued when
+    /// the provider reported none — the same sentinel [`Usage`] documents for
+    /// completions. Duration-billed endpoints report no token counts.
+    #[serde(default)]
+    pub usage: Usage,
+    /// Stable descriptor name of the provider that produced this response,
+    /// for example `"openai"`. Always populated.
+    pub provider: String,
+    /// Provider-reported model identifier, when the wire response named one.
+    /// This is the model the provider says answered, not the model requested.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Provider-assigned response-scoped identifier, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    /// The provider's transport-level request identifier, taken from the HTTP
+    /// response headers (OpenAI `x-request-id`, Mistral
+    /// `mistral-correlation-id`) — the id provider support asks for. `None`
+    /// means the provider reported none; that is a documented outcome, never
+    /// an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
+    /// The provider's own response for this call: the value the model's
+    /// inherent `raw_transcription` would have returned, serialized. Every
+    /// provider seam populates it. `Value::Null` means the value was built
+    /// without a provider behind it ([`TranscriptionResponse::new`] in a test
+    /// double), never that the provider sent nothing.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
+}
+
+impl TranscriptionResponse {
+    /// Create a response from its required parts; optional metadata starts
+    /// unset and is filled in with the `with_*` helpers.
+    pub fn new(text: impl Into<String>, provider: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            usage: Usage::new(),
+            provider: provider.into(),
+            model: None,
+            response_id: None,
+            provider_request_id: None,
+            raw: serde_json::Value::Null,
+        }
+    }
+
+    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
+    /// Transcriptions are never replayed as assistant messages, so
+    /// `message_id` is always `None`.
+    pub fn identity(&self) -> ResponseIdentity {
+        ResponseIdentity {
+            message_id: None,
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
+    }
+}
+
+crate::provider_response::modality_response_metadata_setters!(TranscriptionResponse);
+
+/// Convert a provider's own transcription payload into the normalized
+/// [`TranscriptionResponse`].
+///
+/// The provider descriptor name is an *input*, never something the conversion
+/// knows: the OpenAI transcription wire shape is shared by several providers,
+/// and a conversion that hardcoded a name would mislabel every provider but
+/// one. This is a trait rather than `TryFrom<(&str, T)>` so that a provider
+/// extension outside `rig-core` can implement it on its own response type —
+/// a tuple is not a local type, and the orphan rule would reject the `TryFrom`
+/// form anywhere but here.
+pub trait NormalizeTranscriptionResponse {
+    /// Normalize this payload, attributing it to `provider`.
+    fn normalize(self, provider: &str) -> Result<TranscriptionResponse, TranscriptionError>;
 }
 
 /// Trait defining a transcription model that can be used to generate transcription requests.
 /// This trait is meant to be implemented by the user to define a custom transcription model,
 /// either from a third-party provider (e.g: OpenAI) or a local model.
-pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
-    /// The raw response type returned by the underlying model.
-    type Response: WasmCompatSend + WasmCompatSync;
-    type Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
+///
+/// The trait describes only what a model *does*: it has no associated types.
+/// Construction lives on [`crate::client::TranscriptionClient`], and
+/// `Clone` is required only by [`TranscriptionModel::transcription_request`],
+/// which needs to hand the builder its own copy. A model behind an `Arc` is a
+/// model: the trait is implemented for `Arc<M>` by forwarding.
+pub trait TranscriptionModel: WasmCompatSend + WasmCompatSync {
     /// Generates a completion response for the given transcription model
     fn transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<TranscriptionResponse<Self::Response>, TranscriptionError>,
-    > + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, TranscriptionError>>
+    + WasmCompatSend;
 
     /// Generates a transcription request builder for the given `file`
-    fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing> {
+    fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing>
+    where
+        Self: Sized + Clone,
+    {
         TranscriptionRequestBuilder::new(self.clone())
     }
 }
+
+impl<M> TranscriptionModel for Arc<M>
+where
+    M: TranscriptionModel,
+{
+    fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> impl std::future::Future<Output = Result<TranscriptionResponse, TranscriptionError>>
+    + WasmCompatSend {
+        (**self).transcription(request)
+    }
+}
+
 /// Struct representing a general transcription request that can be sent to a transcription model provider.
 pub struct TranscriptionRequest {
     /// The file data to be sent to the transcription model provider
@@ -238,22 +338,37 @@ where
     M: TranscriptionModel,
 {
     /// Builds the transcription request
-    /// Panics if data is empty.
     pub fn build(self) -> TranscriptionRequest {
-        TranscriptionRequest {
-            data: self.data.0,
-            filename: self.filename.unwrap_or("file".to_string()),
-            language: self.language,
-            prompt: self.prompt,
-            temperature: self.temperature,
-            additional_params: self.additional_params,
-        }
+        self.into_parts().1
+    }
+
+    fn into_parts(self) -> (M, TranscriptionRequest) {
+        let Self {
+            model,
+            data,
+            filename,
+            language,
+            prompt,
+            temperature,
+            additional_params,
+        } = self;
+        (
+            model,
+            TranscriptionRequest {
+                data: data.0,
+                filename: filename.unwrap_or("file".to_string()),
+                language,
+                prompt,
+                temperature,
+                additional_params,
+            },
+        )
     }
 
     /// Sends the transcription request to the transcription model provider and returns the transcription response
-    pub async fn send(self) -> Result<TranscriptionResponse<M::Response>, TranscriptionError> {
-        let model = self.model.clone();
-        model.transcription(self.build()).await
+    pub async fn send(self) -> Result<TranscriptionResponse, TranscriptionError> {
+        let (model, request) = self.into_parts();
+        model.transcription(request).await
     }
 }
 

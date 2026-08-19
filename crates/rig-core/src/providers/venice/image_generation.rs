@@ -9,7 +9,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
+use crate::image_generation::{
+    self, ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+};
 use crate::json_utils::merge_inplace;
 use crate::providers::internal::image_generation::{
     GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
@@ -61,18 +63,20 @@ pub struct ImageGenerationResponse {
     pub timing: Option<ImageGenerationTiming>,
 }
 
-impl TryFrom<ImageGenerationResponse>
-    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
-{
-    type Error = ImageGenerationError;
-
-    fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        decode_base64_image(
-            value,
+impl NormalizeImageGenerationResponse for ImageGenerationResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        let image = decode_base64_image(
+            &self,
             |response| response.images.first().map(String::as_str),
             "No image data returned",
             Some("Base64 decode error: "),
-        )
+        )?;
+        Ok(image_generation::ImageGenerationResponse::new(
+            image, provider,
+        ))
     }
 }
 
@@ -82,6 +86,7 @@ pub type ImageGenerationModel<T = reqwest::Client> =
 
 impl JsonImageGenerationProvider for super::client::VeniceExt {
     const IMAGE_GENERATION_PATH: &'static str = "/image/generate";
+    const PROVIDER_NAME: &'static str = "venice";
     type Response = ImageGenerationResponse;
 
     fn image_generation_request_body(
@@ -169,7 +174,8 @@ mod tests {
             .expect("image generation should succeed");
 
         assert_eq!(response.image, b"hello");
-        assert_eq!(response.response.id, "abc");
+        assert_eq!(response.provider, "venice");
+        assert_eq!(response.raw["id"], "abc");
 
         let requests = http_client.requests();
         let recorded = requests.first().expect("one request");

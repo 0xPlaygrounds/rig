@@ -384,12 +384,6 @@ mod tests {
     impl EmbeddingModel for MockEmbeddingModel {
         const MAX_DOCUMENTS: usize = 4;
 
-        type Client = Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
-        }
-
         fn ndims(&self) -> usize {
             3
         }
@@ -405,6 +399,12 @@ mod tests {
                     vec: vec![0.0, 0.0, 0.0],
                 })
                 .collect())
+        }
+    }
+
+    impl rig_core::client::ConstructEmbeddingModel<Nothing> for MockEmbeddingModel {
+        fn construct(_: &Nothing, _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 

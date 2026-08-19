@@ -13,9 +13,17 @@ use crate::http_client::{self, HttpClientExt};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// Provider-specific request construction for the shared raw-audio model.
-pub(crate) trait RawAudioGenerationProvider: Provider {
+#[doc(hidden)]
+pub trait RawAudioGenerationProvider: Provider {
     const AUDIO_GENERATION_PATH: &'static str;
     const EXPLICIT_JSON_CONTENT_TYPE: bool = false;
+
+    /// Stable descriptor name of the provider, stamped on every normalized
+    /// response — an input to normalization, never hardcoded in the driver.
+    const PROVIDER_NAME: &'static str;
+
+    /// The provider's transport request-id response header, when it has one.
+    const REQUEST_ID_HEADER: Option<&'static str> = None;
 
     fn audio_generation_request_builder<H>(
         client: &Client<Self, H>,
@@ -81,29 +89,71 @@ impl<Ext, H> GenericAudioGenerationModel<Ext, H> {
     }
 }
 
+impl<Ext, H> GenericAudioGenerationModel<Ext, H>
+where
+    Ext: RawAudioGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    /// Perform the generation and return the provider's native response —
+    /// the audio bytes as sent, these endpoints answer with no JSON envelope
+    /// — instead of the normalized [`AudioGenerationResponse`]. Same request,
+    /// transport, and error path as
+    /// [`audio_generation::AudioGenerationModel::audio_generation`].
+    pub async fn raw_audio_generation(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> Result<Bytes, AudioGenerationError> {
+        self.raw_audio_generation_with_request_id(request)
+            .await
+            .map(|(bytes, _)| bytes)
+    }
+
+    /// [`Self::raw_audio_generation`] plus the transport request id from the
+    /// provider's request-id response header, when it carries one.
+    pub async fn raw_audio_generation_with_request_id(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> Result<(Bytes, Option<String>), AudioGenerationError> {
+        let builder = Ext::audio_generation_request_builder(&self.client, &self.model)?;
+        let body = Ext::audio_generation_request_body(&self.model, request)?;
+        send_audio_generation(&self.client, builder, body, Ext::REQUEST_ID_HEADER).await
+    }
+}
+
 impl<Ext, H> audio_generation::AudioGenerationModel for GenericAudioGenerationModel<Ext, H>
 where
     Ext: RawAudioGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = Bytes;
-    type Client = Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     async fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let builder = Ext::audio_generation_request_builder(&self.client, &self.model)?;
-        let body = Ext::audio_generation_request_body(&self.model, request)?;
-        send_audio_generation(&self.client, builder, body).await
+    ) -> Result<AudioGenerationResponse, AudioGenerationError> {
+        let (bytes, provider_request_id) =
+            self.raw_audio_generation_with_request_id(request).await?;
+        // The native response is bytes, not JSON: `raw` stays `Null` and the
+        // typed route is `raw_audio_generation`.
+        Ok(
+            AudioGenerationResponse::new(bytes.to_vec(), Ext::PROVIDER_NAME)
+                .with_optional_provider_request_id(provider_request_id),
+        )
     }
 }
 
-/// Sends an audio generation request and returns the raw audio bytes.
+impl<Ext, H> crate::client::ConstructAudioGenerationModel<Client<Ext, H>>
+    for GenericAudioGenerationModel<Ext, H>
+where
+    Ext: RawAudioGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn construct(client: &Client<Ext, H>, model: String) -> Self {
+        Self::new(client.clone(), model)
+    }
+}
+
+/// Sends an audio generation request and returns the raw audio bytes plus the
+/// transport request id read from `request_id_header`, when the provider has
+/// one and the response carried it.
 ///
 /// `builder` is the provider's already-path-built POST request; `body` is the
 /// provider's JSON request body. Provider error bodies are preserved raw via
@@ -112,7 +162,8 @@ pub(crate) async fn send_audio_generation<C>(
     client: &C,
     builder: http_client::Builder,
     body: serde_json::Value,
-) -> Result<AudioGenerationResponse<Bytes>, AudioGenerationError>
+    request_id_header: Option<&str>,
+) -> Result<(Bytes, Option<String>), AudioGenerationError>
 where
     C: HttpClientExt,
 {
@@ -129,6 +180,8 @@ where
     // (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
+    let provider_request_id =
+        super::transcription::request_id_from_headers(&parts.headers, request_id_header);
     let bytes: Bytes = body.await?;
 
     if !status.is_success() {
@@ -139,10 +192,7 @@ where
         .with_response_headers(Some(Box::new(parts.headers))));
     }
 
-    Ok(AudioGenerationResponse {
-        audio: bytes.to_vec(),
-        response: bytes,
-    })
+    Ok((bytes, provider_request_id))
 }
 
 #[cfg(test)]
@@ -160,6 +210,7 @@ mod tests {
 
     impl RawAudioGenerationProvider for DefaultAudioExt {
         const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
+        const PROVIDER_NAME: &'static str = "test";
     }
 
     fn body(additional_params: Option<serde_json::Value>) -> serde_json::Value {
@@ -240,10 +291,10 @@ mod header_preservation_tests {
                 .method(http::Method::POST)
                 .uri("https://example.test/v1/audio/speech"),
             serde_json::json!({}),
+            None,
         )
         .await
-        .err()
-        .expect("a 429 should fail");
+        .expect_err("a 429 should fail");
 
         assert_eq!(
             error

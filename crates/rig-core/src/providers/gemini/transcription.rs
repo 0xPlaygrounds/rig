@@ -5,17 +5,18 @@ use mime_guess;
 use serde_json::{Map, Value};
 
 use crate::{
+    completion::Usage,
     http_client::HttpClientExt,
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
         visible_text_parts,
     },
     providers::internal::transcription::send_json_transcription,
-    transcription::{self, TranscriptionError},
+    transcription::{self, NormalizeTranscriptionResponse, TranscriptionError},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-use super::{Client, completion::gemini_api_types::GenerateContentResponse};
+use super::completion::gemini_api_types::GenerateContentResponse;
 
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
@@ -26,25 +27,19 @@ pub type TranscriptionModel<T = reqwest::Client> =
         T,
     >;
 
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> TranscriptionModel<T>
 where
     T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
 {
-    type Response = GenerateContentResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        TranscriptionModel::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    /// Perform the transcription and return Gemini's native
+    /// [`GenerateContentResponse`] instead of the normalized
+    /// [`transcription::TranscriptionResponse`]. Same request, transport,
+    /// parser, and error path as
+    /// [`transcription::TranscriptionModel::transcription`].
+    pub async fn raw_transcription(
         &self,
         request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        // Handle Gemini specific parameters
+    ) -> Result<GenerateContentResponse, TranscriptionError> {
         let additional_params = request
             .additional_params
             .unwrap_or_else(|| Value::Object(Map::new()));
@@ -97,11 +92,13 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
+        // Gemini sends no transport request-id header.
         send_json_transcription(
             &self.client,
             self.client
                 .post(format!("/v1beta/models/{}:generateContent", self.model))?,
             body,
+            None,
             |_, body| {
                 let body: GenerateContentResponse = serde_json::from_slice(body)?;
 
@@ -117,37 +114,48 @@ where
 
                 tracing::debug!("Received response");
 
-                transcription::TranscriptionResponse::try_from(body)
+                Ok(body)
             },
         )
         .await
+        .map(|(response, _)| response)
     }
 }
 
-impl TryFrom<GenerateContentResponse>
-    for transcription::TranscriptionResponse<GenerateContentResponse>
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
 {
-    type Error = TranscriptionError;
+    async fn transcription(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        let response = self.raw_transcription(request).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response
+            .normalize(super::completion::PROVIDER_NAME)?
+            .with_raw(captured))
+    }
+}
 
-    fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
-        let candidate = response.candidates.first().ok_or_else(|| {
+impl<T> crate::client::ConstructTranscriptionModel<super::Client<T>> for TranscriptionModel<T>
+where
+    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
+{
+    fn construct(client: &super::Client<T>, model: String) -> Self {
+        TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl NormalizeTranscriptionResponse for GenerateContentResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        let candidate = self.candidates.first().ok_or_else(|| {
             TranscriptionError::ResponseError("No response candidates in response".into())
         })?;
 
-        // The transcript is *every* visible text part, concatenated. Reading
-        // only `parts.first()` mistook the two shapes Gemini routinely
-        // returns here: a thinking model answers with its chain-of-thought in
-        // parts[0] (`thought: true`) and the transcript after it, so the
-        // reasoning was returned as the transcript and the transcript was
-        // dropped; and a transcript split across several text parts kept only
-        // the first. `visible_text_parts` is the shared skip-the-thoughts rule
-        // — no separator is invented between parts, because Gemini's split
-        // points are not sentence boundaries.
-        //
-        // "No text" stays a *structural* question — are there visible text
-        // parts at all — rather than "is the joined string empty". A turn
-        // whose text part is genuinely empty still converted before this
-        // change, and still does.
         let mut parts = candidate
             .content
             .as_ref()
@@ -162,7 +170,16 @@ impl TryFrom<GenerateContentResponse>
         }
         let text = parts.collect::<String>();
 
-        Ok(transcription::TranscriptionResponse { text, response })
+        let usage = self
+            .usage_metadata
+            .as_ref()
+            .map(Usage::from)
+            .unwrap_or_default();
+
+        Ok(transcription::TranscriptionResponse::new(text, provider)
+            .with_optional_model(self.model_version)
+            .with_response_id(self.response_id)
+            .with_usage(usage))
     }
 }
 
@@ -201,8 +218,7 @@ mod tests {
         let error = model
             .transcription(transcription_request())
             .await
-            .err()
-            .expect("should fail with non-success status");
+            .expect_err("should fail with non-success status");
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));
         assert_eq!(

@@ -493,18 +493,8 @@ impl MockEmbeddingModel {
     }
 }
 
-struct MockClient;
-
 impl EmbeddingModel for MockEmbeddingModel {
     const MAX_DOCUMENTS: usize = 100;
-
-    type Client = MockClient;
-
-    fn make(_client: &Self::Client, _model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self {
-            dimensions: dims.unwrap_or(1536),
-        }
-    }
 
     fn ndims(&self) -> usize {
         self.dimensions

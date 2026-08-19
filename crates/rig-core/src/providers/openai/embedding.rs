@@ -179,18 +179,6 @@ where
 {
     const MAX_DOCUMENTS: usize = Ext::MAX_DOCUMENTS;
 
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let dimensions_were_explicitly_set = ndims.is_some();
-        let dims = ndims
-            .or_else(|| Ext::default_ndims(&model))
-            .unwrap_or_default();
-
-        Self::from_parts(client.clone(), model, dims, dimensions_were_explicitly_set)
-    }
-
     fn ndims(&self) -> usize {
         self.ndims
     }
@@ -365,6 +353,27 @@ where
             let text = http_client::text(response).await?;
             Err(EmbeddingError::from_http_response(status, text))
         }
+    }
+}
+
+impl<Ext, H> crate::client::ConstructEmbeddingModel<crate::client::Client<Ext, H>>
+    for GenericEmbeddingModel<Ext, H>
+where
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
+{
+    fn construct(
+        client: &crate::client::Client<Ext, H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self {
+        let dimensions_were_explicitly_set = ndims.is_some();
+        let dims = ndims
+            .or_else(|| Ext::default_ndims(&model))
+            .unwrap_or_default();
+
+        Self::from_parts(client.clone(), model, dims, dimensions_were_explicitly_set)
     }
 }
 

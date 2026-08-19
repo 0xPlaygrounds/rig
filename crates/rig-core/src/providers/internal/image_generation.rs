@@ -14,41 +14,52 @@ use serde::de::DeserializeOwned;
 use super::envelope::ProviderEnvelope;
 use crate::client::{Client, Provider};
 use crate::http_client::{self, HttpClientExt};
-use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
+use crate::image_generation::{
+    self, ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// Decodes the first base64 image selected from a provider response while
 /// retaining that response in Rig's normalized wrapper.
+/// Decodes the base64 image `select` picks out of a provider payload, with
+/// the provider's own wording for the missing-image and decode-failure
+/// errors preserved.
 pub(crate) fn decode_base64_image<T>(
-    response: T,
+    response: &T,
     select: fn(&T) -> Option<&str>,
     missing_message: &'static str,
     decode_error_prefix: Option<&'static str>,
-) -> Result<image_generation::ImageGenerationResponse<T>, ImageGenerationError> {
-    let encoded = select(&response)
+) -> Result<Vec<u8>, ImageGenerationError> {
+    let encoded = select(response)
         .ok_or_else(|| ImageGenerationError::ResponseError(missing_message.to_owned()))?;
-    let image = BASE64_STANDARD.decode(encoded).map_err(|error| {
+    BASE64_STANDARD.decode(encoded).map_err(|error| {
         ImageGenerationError::ResponseError(match decode_error_prefix {
             Some(prefix) => format!("{prefix}{error}"),
             None => error.to_string(),
         })
-    })?;
-    Ok(image_generation::ImageGenerationResponse { image, response })
+    })
 }
 
-/// Provider-specific request and response types for the shared OpenAI-envelope
-/// image generation model.
 #[doc(hidden)]
 pub trait JsonImageGenerationProvider: Provider {
     const IMAGE_GENERATION_PATH: &'static str;
 
+    /// Stable descriptor name of the provider, stamped on every normalized
+    /// response — an input to normalization, never hardcoded in the shared
+    /// conversion.
+    const PROVIDER_NAME: &'static str;
+
+    /// The provider's transport request-id response header, when it has one.
+    const REQUEST_ID_HEADER: Option<&'static str> = None;
+
+    /// The provider's own image-generation payload: what the model's inherent
+    /// `raw_image_generation` returns, and what normalizes onto
+    /// [`image_generation::ImageGenerationResponse`].
     type Response: DeserializeOwned
+        + serde::Serialize
         + WasmCompatSend
         + WasmCompatSync
-        + TryInto<
-            image_generation::ImageGenerationResponse<Self::Response>,
-            Error = ImageGenerationError,
-        >;
+        + NormalizeImageGenerationResponse;
     fn image_generation_request_builder<H>(
         client: &Client<Self, H>,
         _model: &str,
@@ -65,7 +76,6 @@ pub trait JsonImageGenerationProvider: Provider {
     ) -> Result<serde_json::Value, ImageGenerationError>;
 }
 
-/// Shared model shell for JSON image-generation endpoints.
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct GenericImageGenerationModel<Ext, H = reqwest::Client> {
@@ -89,50 +99,81 @@ impl<Ext, H> GenericImageGenerationModel<Ext, H> {
     }
 }
 
-impl<Ext, H> image_generation::ImageGenerationModel for GenericImageGenerationModel<Ext, H>
+impl<Ext, H> GenericImageGenerationModel<Ext, H>
 where
     Ext: JsonImageGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = Ext::Response;
-    type Client = Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn image_generation(
+    /// Perform the generation and return the provider's native response
+    /// instead of the normalized [`image_generation::ImageGenerationResponse`].
+    /// Same request, transport, parser, and error path as
+    /// [`image_generation::ImageGenerationModel::image_generation`].
+    pub async fn raw_image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
+    ) -> Result<Ext::Response, ImageGenerationError> {
+        self.raw_image_generation_with_request_id(request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// [`Self::raw_image_generation`] plus the transport request id from the
+    /// provider's request-id response header, when it carries one.
+    pub async fn raw_image_generation_with_request_id(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> Result<(Ext::Response, Option<String>), ImageGenerationError> {
         let builder = Ext::image_generation_request_builder(&self.client, &self.model)?;
         let body = Ext::image_generation_request_body(&self.model, request)?;
         send_image_generation::<_, crate::providers::openai::client::ApiResponse<Ext::Response>>(
             &self.client,
             builder,
             body,
+            Ext::REQUEST_ID_HEADER,
         )
         .await
     }
 }
 
-/// Sends an image generation request and decodes the shared success-or-error
-/// envelope.
-///
-/// `builder` is the provider's already-path-built POST request; `body` is the
-/// provider's JSON request body; `A` is the provider's own response envelope
-/// so error-body classification is unchanged. Provider error bodies are
-/// preserved raw via [`ImageGenerationError::from_http_response`].
+impl<Ext, H> image_generation::ImageGenerationModel for GenericImageGenerationModel<Ext, H>
+where
+    Ext: JsonImageGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    async fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        let (response, provider_request_id) =
+            self.raw_image_generation_with_request_id(request).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response
+            .normalize(Ext::PROVIDER_NAME)?
+            .with_optional_provider_request_id(provider_request_id)
+            .with_raw(captured))
+    }
+}
+
+impl<Ext, H> crate::client::ConstructImageGenerationModel<Client<Ext, H>>
+    for GenericImageGenerationModel<Ext, H>
+where
+    Ext: JsonImageGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn construct(client: &Client<Ext, H>, model: String) -> Self {
+        Self::new(client.clone(), model)
+    }
+}
+
 pub(crate) async fn send_image_generation<C, A>(
     client: &C,
     builder: http_client::Builder,
     body: serde_json::Value,
-) -> Result<image_generation::ImageGenerationResponse<A::Payload>, ImageGenerationError>
+    request_id_header: Option<&str>,
+) -> Result<(A::Payload, Option<String>), ImageGenerationError>
 where
     C: HttpClientExt,
     A: DeserializeOwned + ProviderEnvelope,
-    A::Payload: TryInto<image_generation::ImageGenerationResponse<A::Payload>, Error = ImageGenerationError>,
 {
     let body = serde_json::to_vec(&body)?;
 
@@ -147,6 +188,8 @@ where
     // path (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
+    let provider_request_id =
+        super::transcription::request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let response_body = body.into_future().await?;
 
@@ -159,7 +202,7 @@ where
     }
 
     match serde_json::from_slice::<A>(&response_body)?.into_payload() {
-        Ok(response) => response.try_into(),
+        Ok(response) => Ok((response, provider_request_id)),
         Err(message) => {
             tracing::warn!(message = %message, "provider returned an error response");
             Err(ImageGenerationError::from_http_response(
@@ -171,9 +214,6 @@ where
     }
 }
 
-/// rig#2210: a failed image-generation response keeps its headers, so the
-/// capability error's `provider_response_headers()` is not a promise the
-/// driver quietly breaks.
 #[cfg(test)]
 mod header_preservation_tests {
     use super::*;
@@ -184,14 +224,6 @@ mod header_preservation_tests {
     /// returns before any decoding, so its conversion is never reached.
     #[derive(serde::Deserialize)]
     struct Payload;
-
-    impl TryFrom<Payload> for image_generation::ImageGenerationResponse<Payload> {
-        type Error = ImageGenerationError;
-
-        fn try_from(_: Payload) -> Result<Self, Self::Error> {
-            unreachable!("a 429 never reaches payload conversion")
-        }
-    }
 
     #[tokio::test]
     async fn non_success_response_preserves_headers() {
@@ -209,6 +241,7 @@ mod header_preservation_tests {
                 .method(http::Method::POST)
                 .uri("https://example.test/v1/images/generations"),
             serde_json::json!({}),
+            None,
         )
         .await
         .err()

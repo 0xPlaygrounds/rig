@@ -37,12 +37,16 @@ async fn image_generation_smoke() {
                 !response.image.is_empty(),
                 "expected decoded image bytes from the base64 payload"
             );
+            assert_eq!(response.provider, "venice");
+            let raw: rig::providers::venice::ImageGenerationResponse =
+                serde_json::from_value(response.raw.clone())
+                    .expect("raw payload should round-trip to Venice's own type");
             assert!(
-                !response.response.id.is_empty(),
+                !raw.id.is_empty(),
                 "expected Venice to report a generation id"
             );
             assert_eq!(
-                response.response.images.len(),
+                raw.images.len(),
                 1,
                 "expected exactly one image for a single-variant request"
             );

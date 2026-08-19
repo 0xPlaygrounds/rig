@@ -6,7 +6,7 @@ mod image {
     /// Clone is required for conversions between client types.
     pub trait ImageGenerationClient {
         /// The ImageGenerationModel used by the Client
-        type ImageGenerationModel: ImageGenerationModel<Client = Self>;
+        type ImageGenerationModel: ImageGenerationModel;
 
         /// Create an image generation model with the given name.
         ///
@@ -24,6 +24,20 @@ mod image {
         /// # }
         /// ```
         fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel;
+    }
+
+    /// Construction hook for the blanket [`ImageGenerationClient`] implementation over
+    /// [`crate::client::Client`] — the image generation twin of
+    /// [`crate::client::ConstructCompletionModel`].
+    ///
+    /// Public for the same reason: an out-of-tree provider extension built on the
+    /// generic `Client<Ext, H>` cannot implement [`ImageGenerationClient`] for that foreign
+    /// type (orphan rule), so it implements this trait on its own model type and
+    /// the blanket implementation supplies the constructor. Providers with their
+    /// own client type implement [`ImageGenerationClient`] directly and never need this.
+    pub trait ConstructImageGenerationModel<C>: Sized {
+        /// Build this model from its provider client and a model identifier.
+        fn construct(client: &C, model: String) -> Self;
     }
 }
 

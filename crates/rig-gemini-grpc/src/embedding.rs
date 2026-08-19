@@ -30,12 +30,6 @@ impl EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 100;
 
-    type Client = super::Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-
     fn ndims(&self) -> usize {
         self.ndims
     }
@@ -88,6 +82,12 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         }
 
         Ok(embeddings)
+    }
+}
+
+impl rig_core::client::ConstructEmbeddingModel<super::Client> for EmbeddingModel {
+    fn construct(client: &super::Client, model: String, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims)
     }
 }
 

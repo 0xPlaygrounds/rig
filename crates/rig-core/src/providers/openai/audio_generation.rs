@@ -16,10 +16,14 @@ pub type CompletionsAudioGenerationModel<T = reqwest::Client> =
 
 impl RawAudioGenerationProvider for OpenAIResponsesExt {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
 impl RawAudioGenerationProvider for OpenAICompletionsExt {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
 #[cfg(test)]
@@ -51,8 +55,7 @@ mod tests {
         let error = model
             .audio_generation(request)
             .await
-            .err()
-            .expect("should fail with non-success status");
+            .expect_err("should fail with non-success status");
 
         assert!(matches!(error, AudioGenerationError::HttpError(_)));
         assert_eq!(

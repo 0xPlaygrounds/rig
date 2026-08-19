@@ -489,12 +489,6 @@ mod tests {
     impl EmbeddingModel for SlowFirstBatchModel {
         const MAX_DOCUMENTS: usize = 5;
 
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self::new()
-        }
-
         fn ndims(&self) -> usize {
             10
         }
@@ -514,6 +508,12 @@ mod tests {
                     vec: vec![0.0; 10],
                 })
                 .collect())
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for SlowFirstBatchModel {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self::new()
         }
     }
 
@@ -539,12 +539,6 @@ mod tests {
     impl EmbeddingModel for DescendingLatencyModel {
         const MAX_DOCUMENTS: usize = 5;
 
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self::new()
-        }
-
         fn ndims(&self) -> usize {
             10
         }
@@ -567,6 +561,12 @@ mod tests {
                     vec: vec![0.0; 10],
                 })
                 .collect())
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for DescendingLatencyModel {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self::new()
         }
     }
 
@@ -723,12 +723,6 @@ mod tests {
     impl EmbeddingModel for OneAtATimeReversedLatency {
         const MAX_DOCUMENTS: usize = 1;
 
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
-        }
-
         fn ndims(&self) -> usize {
             10
         }
@@ -762,6 +756,12 @@ mod tests {
                     vec: vec![0.0; 10],
                 })
                 .collect())
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for OneAtATimeReversedLatency {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 

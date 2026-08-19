@@ -1135,18 +1135,6 @@ where
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
-    type Client = Client<H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = ndims.unwrap_or(match model.as_str() {
-            TEXT_EMBEDDING_3_LARGE => 3072,
-            TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => 1536,
-            _ => 0,
-        });
-        Self::new(client.clone(), model, dims)
-    }
-
     fn ndims(&self) -> usize {
         self.ndims
     }
@@ -1265,6 +1253,21 @@ where
             let text = http_client::text(response).await?;
             Err(EmbeddingError::from_http_response(status, text))
         }
+    }
+}
+
+impl<H> crate::client::ConstructEmbeddingModel<Client<H>> for EmbeddingModel<H>
+where
+    Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn construct(client: &Client<H>, model: String, ndims: Option<usize>) -> Self {
+        let dims = ndims.unwrap_or(match model.as_str() {
+            TEXT_EMBEDDING_3_LARGE => 3072,
+            TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => 1536,
+            _ => 0,
+        });
+        Self::new(client.clone(), model, dims)
     }
 }
 

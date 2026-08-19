@@ -80,12 +80,6 @@ impl EmbeddingModel {
 impl embeddings::EmbeddingModel for EmbeddingModel {
     const MAX_DOCUMENTS: usize = 1024;
 
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-
     fn ndims(&self) -> usize {
         self.ndims.unwrap_or_default()
     }
@@ -121,5 +115,11 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             None => Ok(results),
             Some(err) => Err(EmbeddingError::ResponseError(err.to_string())),
         }
+    }
+}
+
+impl rig_core::client::ConstructEmbeddingModel<Client> for EmbeddingModel {
+    fn construct(client: &Client, model: String, dims: Option<usize>) -> Self {
+        Self::new(client.clone(), model, dims)
     }
 }

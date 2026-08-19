@@ -4996,12 +4996,6 @@ mod tests {
     impl EmbeddingModel for TestEmbeddingModel {
         const MAX_DOCUMENTS: usize = 16;
 
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
-        }
-
         fn ndims(&self) -> usize {
             2
         }
@@ -5017,6 +5011,12 @@ mod tests {
                     vec: vec![1.0, 0.0],
                 })
                 .collect())
+        }
+    }
+
+    impl rig_core::client::ConstructEmbeddingModel<()> for TestEmbeddingModel {
+        fn construct(_: &(), _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 }
