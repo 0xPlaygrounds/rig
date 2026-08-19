@@ -522,7 +522,7 @@ mod tests {
         let model = client.embedding_model(super::super::LLAMA_CPP);
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding request should succeed");
 

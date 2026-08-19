@@ -23,7 +23,10 @@ use std::{fmt, sync::Arc};
 
 use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
-use super::{Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse};
+use super::{
+    Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse, ImageEmbeddingModel,
+    ImageEmbeddingResponse,
+};
 
 /// Private object-safe mirror of [`EmbeddingModel`]: the public trait stays
 /// generic (RPITIT futures, `impl IntoIterator` arguments); this dyn-safe twin
@@ -38,7 +41,7 @@ trait ErasedEmbeddingModel: WasmCompatSend + WasmCompatSync {
         texts: Vec<String>,
     ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
 
-    fn embed_texts_with_usage(
+    fn embed_texts_response(
         &self,
         texts: Vec<String>,
     ) -> WasmBoxedFuture<'_, Result<EmbeddingResponse, EmbeddingError>>;
@@ -58,11 +61,11 @@ where
         Box::pin(EmbeddingModel::embed_texts(self, texts))
     }
 
-    fn embed_texts_with_usage(
+    fn embed_texts_response(
         &self,
         texts: Vec<String>,
     ) -> WasmBoxedFuture<'_, Result<EmbeddingResponse, EmbeddingError>> {
-        Box::pin(EmbeddingModel::embed_texts_with_usage(self, texts))
+        Box::pin(EmbeddingModel::embed_texts_response(self, texts))
     }
 }
 
@@ -151,14 +154,14 @@ impl EmbeddingModel for EmbeddingModelHandle {
         self.inner.model.embed_texts(texts.into_iter().collect())
     }
 
-    fn embed_texts_with_usage(
+    fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> impl std::future::Future<Output = Result<EmbeddingResponse, EmbeddingError>> + WasmCompatSend
     {
         self.inner
             .model
-            .embed_texts_with_usage(texts.into_iter().collect())
+            .embed_texts_response(texts.into_iter().collect())
     }
 }
 
@@ -166,6 +169,126 @@ impl fmt::Debug for EmbeddingModelHandle {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("EmbeddingModelHandle")
+            .field("label", &self.label())
+            .field("ndims", &self.inner.ndims)
+            .field("max_documents", &self.inner.max_documents)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Private object-safe mirror of [`ImageEmbeddingModel`]; see
+/// [`ErasedEmbeddingModel`].
+trait ErasedImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
+    fn embed_images(
+        &self,
+        images: Vec<Vec<u8>>,
+    ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>>;
+
+    fn embed_images_response(
+        &self,
+        images: Vec<Vec<u8>>,
+    ) -> WasmBoxedFuture<'_, Result<ImageEmbeddingResponse, EmbeddingError>>;
+}
+
+impl<M> ErasedImageEmbeddingModel for M
+where
+    M: ImageEmbeddingModel + 'static,
+{
+    fn embed_images(
+        &self,
+        images: Vec<Vec<u8>>,
+    ) -> WasmBoxedFuture<'_, Result<Vec<Embedding>, EmbeddingError>> {
+        Box::pin(ImageEmbeddingModel::embed_images(self, images))
+    }
+
+    fn embed_images_response(
+        &self,
+        images: Vec<Vec<u8>>,
+    ) -> WasmBoxedFuture<'_, Result<ImageEmbeddingResponse, EmbeddingError>> {
+        Box::pin(ImageEmbeddingModel::embed_images_response(self, images))
+    }
+}
+
+/// A cloneable, opaque handle to live image-embedding-model behavior — the
+/// [`ImageEmbeddingModel`] twin of [`EmbeddingModelHandle`], same shape and
+/// same guarantees (one `Arc`, `ndims`/`max_documents` captured by value, the
+/// model never cloned, no way to replace it).
+#[derive(Clone)]
+pub struct ImageEmbeddingModelHandle {
+    inner: Arc<EmbeddingDriver<dyn ErasedImageEmbeddingModel>>,
+}
+
+impl ImageEmbeddingModelHandle {
+    /// Erase a typed image embedding model into a runtime handle.
+    pub fn new<M>(model: M) -> Self
+    where
+        M: ImageEmbeddingModel + 'static,
+    {
+        Self::from_parts(None, model)
+    }
+
+    /// Erase a typed image embedding model and attach a diagnostic label.
+    pub fn named<M>(label: impl Into<String>, model: M) -> Self
+    where
+        M: ImageEmbeddingModel + 'static,
+    {
+        Self::from_parts(Some(label.into()), model)
+    }
+
+    fn from_parts<M>(label: Option<String>, model: M) -> Self
+    where
+        M: ImageEmbeddingModel + 'static,
+    {
+        let ndims = model.ndims();
+        let max_documents = model.max_documents();
+        Self {
+            inner: Arc::new(EmbeddingDriver {
+                ndims,
+                max_documents,
+                label,
+                model,
+            }),
+        }
+    }
+
+    /// Returns the optional diagnostic label attached to this handle.
+    pub fn label(&self) -> Option<&str> {
+        self.inner.label.as_deref()
+    }
+}
+
+impl ImageEmbeddingModel for ImageEmbeddingModelHandle {
+    fn max_documents(&self) -> usize {
+        self.inner.max_documents
+    }
+
+    fn ndims(&self) -> usize {
+        self.inner.ndims
+    }
+
+    fn embed_images_response(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<ImageEmbeddingResponse, EmbeddingError>> + WasmCompatSend
+    {
+        self.inner
+            .model
+            .embed_images_response(images.into_iter().collect())
+    }
+
+    fn embed_images(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + WasmCompatSend
+    {
+        self.inner.model.embed_images(images.into_iter().collect())
+    }
+}
+
+impl fmt::Debug for ImageEmbeddingModelHandle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ImageEmbeddingModelHandle")
             .field("label", &self.label())
             .field("ndims", &self.inner.ndims)
             .field("max_documents", &self.inner.max_documents)
@@ -209,17 +332,20 @@ mod tests {
             self.inner.ndims
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             texts: impl IntoIterator<Item = String> + WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
-            Ok(texts
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0; self.inner.ndims],
-                })
-                .collect())
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
+            Ok(EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0; self.inner.ndims],
+                    })
+                    .collect(),
+                "probe",
+            ))
         }
     }
 
@@ -241,7 +367,7 @@ mod tests {
             EmbeddingModel::embed_text(&handle, "c")
                 .await
                 .expect("embed one");
-            EmbeddingModel::embed_texts_with_usage(&handle, vec!["d".to_owned()])
+            EmbeddingModel::embed_texts_response(&handle, vec!["d".to_owned()])
                 .await
                 .expect("embed with usage");
         }
@@ -289,10 +415,10 @@ mod tests {
             1
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             _texts: impl IntoIterator<Item = String> + WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             Err(EmbeddingError::ResponseError("probe".to_owned()))
         }
     }
@@ -302,5 +428,72 @@ mod tests {
         fn assert_embedding_model<M: EmbeddingModel>() {}
         assert_embedding_model::<EmbeddingModelHandle>();
         let _ = || EmbeddingModelHandle::new(NonCloneModel);
+    }
+
+    /// The image twin: same invariant, same probe.
+    struct CloneCountingImageModel {
+        clones: Arc<AtomicUsize>,
+    }
+
+    impl Clone for CloneCountingImageModel {
+        fn clone(&self) -> Self {
+            self.clones.fetch_add(1, Ordering::SeqCst);
+            Self {
+                clones: Arc::clone(&self.clones),
+            }
+        }
+    }
+
+    impl ImageEmbeddingModel for CloneCountingImageModel {
+        fn max_documents(&self) -> usize {
+            2
+        }
+
+        fn ndims(&self) -> usize {
+            4
+        }
+
+        async fn embed_images_response(
+            &self,
+            images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+        ) -> Result<ImageEmbeddingResponse, EmbeddingError> {
+            Ok(ImageEmbeddingResponse::new(
+                images
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, _)| Embedding {
+                        document: format!("image-{index}"),
+                        vec: vec![0.0; 4],
+                    })
+                    .collect(),
+                "probe",
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn image_erasure_never_clones_the_model() {
+        let clones = Arc::new(AtomicUsize::new(0));
+        let handle = ImageEmbeddingModelHandle::named(
+            "img",
+            CloneCountingImageModel {
+                clones: Arc::clone(&clones),
+            },
+        );
+        for _ in 0..3 {
+            ImageEmbeddingModel::embed_images(&handle, vec![vec![1u8], vec![2u8]])
+                .await
+                .expect("embed");
+            ImageEmbeddingModel::embed_image(&handle, &[3u8])
+                .await
+                .expect("embed one");
+            ImageEmbeddingModel::embed_images_response(&handle.clone(), vec![vec![4u8]])
+                .await
+                .expect("embed response via clone");
+        }
+        assert_eq!(clones.load(Ordering::SeqCst), 0);
+        assert_eq!(handle.ndims(), 4);
+        assert_eq!(handle.max_documents(), 2);
+        assert_eq!(handle.label(), Some("img"));
     }
 }

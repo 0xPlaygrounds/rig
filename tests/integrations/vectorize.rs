@@ -502,10 +502,10 @@ impl EmbeddingModel for MockEmbeddingModel {
         self.dimensions
     }
 
-    async fn embed_texts(
+    async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<Vec<rig::embeddings::Embedding>, rig::embeddings::EmbeddingError> {
+    ) -> Result<rig::embeddings::EmbeddingResponse, rig::embeddings::EmbeddingError> {
         let texts: Vec<String> = texts.into_iter().collect();
         let embeddings = texts
             .into_iter()
@@ -523,7 +523,7 @@ impl EmbeddingModel for MockEmbeddingModel {
                 }
             })
             .collect();
-        Ok(embeddings)
+        Ok(rig::embeddings::EmbeddingResponse::new(embeddings, "mock"))
     }
 }
 

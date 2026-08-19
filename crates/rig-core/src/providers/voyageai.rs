@@ -5,7 +5,7 @@ use crate::http_client::HttpClientExt;
 use crate::rerank;
 use crate::rerank::RerankError;
 use bytes::Bytes;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // ================================================================
@@ -103,7 +103,7 @@ pub fn model_dimensions_from_identifier(model_identifier: &str) -> Option<usize>
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     pub object: String,
     pub data: Vec<EmbeddingData>,
@@ -111,7 +111,42 @@ pub struct EmbeddingResponse {
     pub usage: Usage,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
+    fn normalize(
+        self,
+        provider: &str,
+        documents: Vec<String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        if self.data.len() != documents.len() {
+            return Err(EmbeddingError::ResponseError(
+                "Response data length does not match input length".into(),
+            ));
+        }
+
+        let usage = crate::completion::Usage {
+            input_tokens: self.usage.total_tokens as u64,
+            output_tokens: 0,
+            total_tokens: self.usage.total_tokens as u64,
+            ..crate::completion::Usage::new()
+        };
+
+        let embeddings = self
+            .data
+            .into_iter()
+            .zip(documents)
+            .map(|(embedding, document)| embeddings::Embedding {
+                document,
+                vec: embedding.embedding,
+            })
+            .collect();
+
+        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
+            .with_model(self.model)
+            .with_usage(usage))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Usage {
     pub total_tokens: usize,
 }
@@ -143,7 +178,7 @@ pub(crate) enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingData {
     pub object: String,
     pub embedding: Vec<f64>,
@@ -183,31 +218,18 @@ pub struct EmbeddingModel<T> {
     options: EmbeddingOptions,
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    fn max_documents(&self) -> usize {
-        1024
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+    /// Perform the request and return Voyage AI's native response instead of
+    /// the normalized [`embeddings::EmbeddingResponse`]. Same request,
+    /// transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-        let response = self.embed_texts_with_usage(documents).await?;
-        Ok(response.embeddings)
-    }
-
-    async fn embed_texts_with_usage(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
         let mut request = json!({
             "model": self.model,
@@ -247,34 +269,7 @@ where
                         "VoyageAI embedding token usage: {}",
                         response.usage.total_tokens
                     );
-
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
-
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.total_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    };
-
-                    let embeddings = response
-                        .data
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding.embedding,
-                        })
-                        .collect();
-
-                    Ok(embeddings::EmbeddingResponse { embeddings, usage })
+                    Ok(response)
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
@@ -290,6 +285,34 @@ where
                 String::from_utf8_lossy(&response_body),
             ))
         }
+    }
+}
+
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1024
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        use embeddings::NormalizeEmbeddingResponse as _;
+
+        let documents: Vec<String> = documents.into_iter().collect();
+        // Voyage AI reports no transport request-id header.
+        let response = self.raw_embed_texts(documents.clone()).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response
+            .normalize("voyageai", documents)?
+            .with_raw(captured))
     }
 }
 
@@ -578,7 +601,7 @@ mod tests {
                 truncation: Some(true),
                 output_dimension: Some(256),
             })
-            .embed_texts_with_usage(vec!["doc".to_string()])
+            .embed_texts_response(vec!["doc".to_string()])
             .await
             .expect("embed should succeed");
 
@@ -614,7 +637,7 @@ mod tests {
         let model = client.embedding_model(super::VOYAGE_3_LARGE);
 
         model
-            .embed_texts_with_usage(vec!["doc".to_string()])
+            .embed_texts_response(vec!["doc".to_string()])
             .await
             .expect("embed should succeed");
 

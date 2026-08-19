@@ -1202,7 +1202,7 @@ mod tests {
 #[cfg(test)]
 mod external_modality_extension_probe {
     use super::*;
-    use crate::embeddings::{Embedding, EmbeddingError, EmbeddingModel};
+    use crate::embeddings::{EmbeddingError, EmbeddingModel, EmbeddingResponse};
     use crate::rerank::{RerankError, RerankModel, RerankResponse};
     use crate::transcription::{
         TranscriptionError, TranscriptionModel, TranscriptionRequest, TranscriptionResponse,
@@ -1296,10 +1296,10 @@ mod external_modality_extension_probe {
             self.ndims.unwrap_or(3)
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             _texts: impl IntoIterator<Item = String> + Send,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             Err(EmbeddingError::ResponseError(self.model.clone()))
         }
     }

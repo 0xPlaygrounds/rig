@@ -27,21 +27,18 @@ impl EmbeddingModel {
     }
 }
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
-    fn max_documents(&self) -> usize {
-        100
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+impl EmbeddingModel {
+    /// Perform the requests and return Gemini's native gRPC answers — one
+    /// `EmbedContentResponse` per input text, in input order, because
+    /// `EmbedContent` takes one content per call — instead of the normalized
+    /// [`embeddings::EmbeddingResponse`]. Same requests, transport, and error
+    /// path as [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<Vec<proto::EmbedContentResponse>, EmbeddingError> {
         let documents_vec: Vec<String> = documents.into_iter().collect();
-        let mut embeddings = Vec::new();
+        let mut responses = Vec::with_capacity(documents_vec.len());
 
         let mut grpc_client = self
             .client
@@ -71,6 +68,30 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 .map_err(rpc_error)?
                 .into_inner();
 
+            responses.push(response);
+        }
+
+        Ok(responses)
+    }
+}
+
+impl embeddings::EmbeddingModel for EmbeddingModel {
+    fn max_documents(&self) -> usize {
+        100
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        let documents_vec: Vec<String> = documents.into_iter().collect();
+        let responses = self.raw_embed_texts(documents_vec.clone()).await?;
+        let mut embeddings = Vec::with_capacity(responses.len());
+        for (response, doc) in responses.into_iter().zip(documents_vec) {
             if let Some(embedding) = response.embedding {
                 embeddings.push(embeddings::Embedding {
                     document: doc,
@@ -83,7 +104,13 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             }
         }
 
-        Ok(embeddings)
+        // gRPC: the native answers are prost messages, not JSON, and
+        // `EmbedContent` reports no usage or response id. `raw` stays `Null`;
+        // `raw_embed_texts` is the typed route.
+        Ok(embeddings::EmbeddingResponse::new(
+            embeddings,
+            super::completion::PROVIDER_NAME,
+        ))
     }
 }
 

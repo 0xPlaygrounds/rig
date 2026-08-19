@@ -188,7 +188,7 @@ where
             .map(|chunk| async {
                 let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
 
-                let response: EmbeddingResponse = self.model.embed_texts_with_usage(batch).await?;
+                let response: EmbeddingResponse = self.model.embed_texts_response(batch).await?;
                 Ok::<_, EmbeddingError>((
                     slots
                         .into_iter()
@@ -271,7 +271,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::embeddings::embed::{EmbedError, TextEmbedder};
-    use crate::embeddings::{Embed, Embedding, EmbeddingError, EmbeddingModel};
+    use crate::embeddings::{Embed, Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse};
     use crate::test_utils::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 
     use super::EmbeddingsBuilder;
@@ -496,21 +496,24 @@ mod tests {
             10
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             let nth = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if nth == 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
             }
-            Ok(documents
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0; 10],
-                })
-                .collect())
+            Ok(EmbeddingResponse::new(
+                documents
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0; 10],
+                    })
+                    .collect(),
+                "mock",
+            ))
         }
     }
 
@@ -548,10 +551,10 @@ mod tests {
             10
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             let nth = self
                 .batches
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u64;
@@ -559,13 +562,16 @@ mod tests {
                 120u64.saturating_sub(nth * 40),
             ))
             .await;
-            Ok(documents
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0; 10],
-                })
-                .collect())
+            Ok(EmbeddingResponse::new(
+                documents
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0; 10],
+                    })
+                    .collect(),
+                "mock",
+            ))
         }
     }
 
@@ -734,10 +740,10 @@ mod tests {
             10
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             let documents: Vec<String> = documents.into_iter().collect();
             // Earlier texts wait longer, so completion order is close to the
             // reverse of submission order. Texts are named `d{doc}t{i}`, so the
@@ -756,13 +762,16 @@ mod tests {
             );
             let delay = position.map_or(0, |n| 60u64.saturating_sub(n * 10));
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-            Ok(documents
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0; 10],
-                })
-                .collect())
+            Ok(EmbeddingResponse::new(
+                documents
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0; 10],
+                    })
+                    .collect(),
+                "mock",
+            ))
         }
     }
 

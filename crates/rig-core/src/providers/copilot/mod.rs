@@ -1100,17 +1100,55 @@ pub struct EmbeddingModel<H = reqwest::Client> {
     ndims: usize,
 }
 
-#[derive(Deserialize)]
-struct CopilotEmbeddingResponse {
-    data: Vec<CopilotEmbeddingData>,
+/// Copilot's embeddings wire response: what
+/// [`EmbeddingModel::raw_embed_texts`] returns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopilotEmbeddingResponse {
+    pub data: Vec<CopilotEmbeddingData>,
     // Copilot fronts several vendors, so usage is not guaranteed on the wire.
     #[serde(default)]
-    usage: Option<openai::completion::Usage>,
+    pub usage: Option<openai::completion::Usage>,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct CopilotEmbeddingData {
-    embedding: Vec<serde_json::Number>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopilotEmbeddingData {
+    pub embedding: Vec<serde_json::Number>,
+}
+
+impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
+    fn normalize(
+        self,
+        provider: &str,
+        documents: Vec<String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        // Embeddings consume only prompt tokens, so a missing usage
+        // payload normalizes to the documented zero-usage sentinel.
+        let usage = self
+            .usage
+            .as_ref()
+            .map(|usage| usage.to_normalized())
+            .unwrap_or_default();
+
+        let embeddings = self
+            .data
+            .into_iter()
+            .zip(documents)
+            .map(|(embedding, document)| embeddings::Embedding {
+                document,
+                vec: embedding
+                    .embedding
+                    .into_iter()
+                    .filter_map(|n| n.as_f64())
+                    .collect(),
+            })
+            .collect();
+
+        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
+            .with_optional_model(self.model)
+            .with_usage(usage))
+    }
 }
 
 impl<H> EmbeddingModel<H>
@@ -1129,31 +1167,30 @@ where
     }
 }
 
-impl<H> embeddings::EmbeddingModel for EmbeddingModel<H>
+impl<H> EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn max_documents(&self) -> usize {
-        1024
-    }
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+    /// Perform the request and return Copilot's native response instead of
+    /// the normalized [`embeddings::EmbeddingResponse`]. Same request,
+    /// transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
-        let response = self.embed_texts_with_usage(documents).await?;
-        Ok(response.embeddings)
+    ) -> Result<CopilotEmbeddingResponse, EmbeddingError> {
+        self.raw_embed_texts_with_request_id(documents)
+            .await
+            .map(|(response, _)| response)
     }
 
-    async fn embed_texts_with_usage(
+    /// [`Self::raw_embed_texts`] plus the `x-request-id` transport request
+    /// id, when the response carried one.
+    pub async fn raw_embed_texts_with_request_id(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    ) -> Result<(CopilotEmbeddingResponse, Option<String>), EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
         let auth = self
             .client
@@ -1191,9 +1228,15 @@ where
         .map_err(|err| EmbeddingError::HttpError(err.into()))?;
 
         let response = self.client.send(req).await?;
-        let status = response.status();
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let provider_request_id =
+            crate::providers::internal::transcription::request_id_from_headers(
+                &parts.headers,
+                Some("x-request-id"),
+            );
+        let body: Vec<u8> = body.await?;
         if status.is_success() {
-            let body: Vec<u8> = response.into_body().await?;
             #[derive(Deserialize)]
             struct NestedApiError {
                 error: NestedApiErrorMessage,
@@ -1228,33 +1271,44 @@ where
                 }
             };
 
-            // Embeddings consume only prompt tokens, so a missing usage
-            // payload normalizes to the documented zero-usage sentinel.
-            let usage = body
-                .usage
-                .as_ref()
-                .map(|usage| usage.to_normalized())
-                .unwrap_or_default();
-
-            let embeddings = body
-                .data
-                .into_iter()
-                .zip(documents.into_iter())
-                .map(|(embedding, document)| embeddings::Embedding {
-                    document,
-                    vec: embedding
-                        .embedding
-                        .into_iter()
-                        .filter_map(|n| n.as_f64())
-                        .collect(),
-                })
-                .collect();
-
-            Ok(embeddings::EmbeddingResponse { embeddings, usage })
+            Ok((body, provider_request_id))
         } else {
-            let text = http_client::text(response).await?;
-            Err(EmbeddingError::from_http_response(status, text))
+            Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body).into_owned(),
+            ))
         }
+    }
+}
+
+impl<H> embeddings::EmbeddingModel for EmbeddingModel<H>
+where
+    Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1024
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        use embeddings::NormalizeEmbeddingResponse as _;
+
+        let documents = documents.into_iter().collect::<Vec<_>>();
+        let (response, provider_request_id) = self
+            .raw_embed_texts_with_request_id(documents.clone())
+            .await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response
+            .normalize(PROVIDER_NAME, documents)?
+            .with_optional_provider_request_id(provider_request_id)
+            .with_raw(captured))
     }
 }
 

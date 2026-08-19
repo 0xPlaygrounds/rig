@@ -181,10 +181,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         self.ndims
     }
 
-    async fn embed_texts(
+    async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let Some(embedder) = &self.embedder else {
             let message = self
                 .init_error
@@ -212,7 +212,9 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             })
             .collect::<Vec<embeddings::Embedding>>();
 
-        Ok(docs)
+        // FastEmbed runs in-process: there is no provider payload, no usage,
+        // and no request id. `raw` stays `Null`.
+        Ok(embeddings::EmbeddingResponse::new(docs, "fastembed"))
     }
 }
 

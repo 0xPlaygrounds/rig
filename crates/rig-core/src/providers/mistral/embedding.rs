@@ -123,7 +123,7 @@ mod tests {
             .encoding_format(EncodingFormat::Float);
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding request should succeed");
 

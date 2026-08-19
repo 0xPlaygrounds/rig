@@ -8,13 +8,13 @@ use base64::{
     Engine as _,
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
 const MAX_IMAGE_BYTES: usize = 5_000_000;
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     #[serde(default)]
     pub response_type: Option<String>,
@@ -25,7 +25,7 @@ pub struct EmbeddingResponse {
     pub meta: Option<Meta>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
     pub api_version: ApiVersion,
     pub billed_units: BilledUnits,
@@ -33,7 +33,7 @@ pub struct Meta {
     pub warnings: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiVersion {
     pub version: String,
     #[serde(default)]
@@ -42,7 +42,7 @@ pub struct ApiVersion {
     pub is_experimental: Option<bool>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BilledUnits {
     #[serde(default)]
     pub input_tokens: u32,
@@ -70,17 +70,68 @@ impl std::fmt::Display for BilledUnits {
     }
 }
 
-#[derive(Deserialize)]
-struct ImageEmbeddingResponse {
-    embeddings: FloatEmbeddings,
+/// One Cohere `/v1/embed` answer for a single image: what
+/// [`ImageEmbeddingModel::raw_embed_images`] returns, one per input image.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageEmbeddingResponse {
     #[serde(default)]
-    meta: Option<Meta>,
+    pub id: Option<String>,
+    pub embeddings: FloatEmbeddings,
+    #[serde(default)]
+    pub meta: Option<Meta>,
 }
 
-#[derive(Deserialize)]
-struct FloatEmbeddings {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FloatEmbeddings {
     #[serde(rename = "float")]
-    values: Vec<Vec<serde_json::Number>>,
+    pub values: Vec<Vec<serde_json::Number>>,
+}
+
+impl BilledUnits {
+    fn to_usage(&self) -> crate::completion::Usage {
+        crate::completion::Usage {
+            input_tokens: self.input_tokens as u64,
+            output_tokens: self.output_tokens as u64,
+            total_tokens: (self.input_tokens + self.output_tokens) as u64,
+            ..crate::completion::Usage::new()
+        }
+    }
+}
+
+impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
+    fn normalize(
+        self,
+        provider: &str,
+        documents: Vec<String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        if self.embeddings.len() != documents.len() {
+            return Err(EmbeddingError::DocumentError(
+                format!(
+                    "Expected {} embeddings, got {}",
+                    documents.len(),
+                    self.embeddings.len()
+                )
+                .into(),
+            ));
+        }
+        let usage = self
+            .meta
+            .as_ref()
+            .map(|meta| meta.billed_units.to_usage())
+            .unwrap_or_default();
+        let embeddings = self
+            .embeddings
+            .into_iter()
+            .zip(documents)
+            .map(|(embedding, document)| embeddings::Embedding {
+                document,
+                vec: embedding.into_iter().filter_map(|n| n.as_f64()).collect(),
+            })
+            .collect();
+        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
+            .with_response_id(self.id)
+            .with_usage(usage))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -144,21 +195,18 @@ pub struct ImageEmbeddingModel<T = reqwest::Client> {
     client: Client<T>,
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn max_documents(&self) -> usize {
-        96
-    }
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+    /// Perform the request and return Cohere's native `/v1/embed` response
+    /// instead of the normalized [`embeddings::EmbeddingResponse`]. Same
+    /// request, transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let body = json!({
@@ -189,7 +237,7 @@ where
 
             match body {
                 ApiResponse::Ok(response) => {
-                    match response.meta {
+                    match &response.meta {
                         Some(meta) => tracing::info!(target: "rig",
                             "Cohere embeddings billed units: {}",
                             meta.billed_units,
@@ -198,27 +246,7 @@ where
                             "Cohere embeddings billed units: n/a",
                         ),
                     };
-
-                    if response.embeddings.len() != documents.len() {
-                        return Err(EmbeddingError::DocumentError(
-                            format!(
-                                "Expected {} embeddings, got {}",
-                                documents.len(),
-                                response.embeddings.len()
-                            )
-                            .into(),
-                        ));
-                    }
-
-                    Ok(response
-                        .embeddings
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding.into_iter().filter_map(|n| n.as_f64()).collect(),
-                        })
-                        .collect())
+                    Ok(response)
                 }
                 ApiResponse::Err(error) => {
                     tracing::warn!(
@@ -240,6 +268,33 @@ where
     }
 }
 
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn max_documents(&self) -> usize {
+        96
+    }
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        use embeddings::NormalizeEmbeddingResponse as _;
+
+        let documents = documents.into_iter().collect::<Vec<_>>();
+        // Cohere reports no transport request-id header on this endpoint.
+        let response = self.raw_embed_texts(documents.clone()).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response
+            .normalize(super::completion::PROVIDER_NAME, documents)?
+            .with_raw(captured))
+    }
+}
+
 impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -257,32 +312,35 @@ impl<T> embeddings::ImageEmbeddingModel for ImageEmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1;
+    fn max_documents(&self) -> usize {
+        1
+    }
 
     fn ndims(&self) -> usize {
         1_024
     }
 
-    async fn embed_images(
+    async fn embed_images_response(
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let images = images
-            .into_iter()
-            .map(|bytes| {
-                let media_type = validate_image(&bytes)?;
-                let document = image_document(&bytes, media_type);
-                Ok((bytes, media_type, document))
-            })
-            .collect::<Result<Vec<_>, EmbeddingError>>()?;
-        let mut embeddings = Vec::with_capacity(images.len());
-
-        for (image, media_type, document) in images {
-            let data_url = image_data_url(&image, media_type);
-            embeddings.push(self.embed_image_data_url(data_url, document).await?);
+    ) -> Result<embeddings::ImageEmbeddingResponse, EmbeddingError> {
+        let (responses, documents) = self.raw_embed_images_with_documents(images).await?;
+        let captured = serde_json::to_value(&responses)?;
+        let mut embeddings = Vec::with_capacity(responses.len());
+        let mut usage = crate::completion::Usage::new();
+        for (response, document) in responses.into_iter().zip(documents) {
+            if let Some(meta) = &response.meta {
+                usage += meta.billed_units.to_usage();
+            }
+            embeddings.push(response.into_embedding(document)?);
         }
-
-        Ok(embeddings)
+        // One Cohere answer per image: a batch has no single response id, so
+        // identity is reachable per answer through `raw` / `raw_embed_images`.
+        Ok(
+            embeddings::ImageEmbeddingResponse::new(embeddings, super::completion::PROVIDER_NAME)
+                .with_usage(usage)
+                .with_raw(captured),
+        )
     }
 }
 
@@ -321,11 +379,49 @@ impl<T> ImageEmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    async fn embed_image_data_url(
+    /// Perform the requests and return Cohere's native answers — one
+    /// [`ImageEmbeddingResponse`] per input image, in input order, because
+    /// Cohere Embed v3 accepts one image per request — instead of the
+    /// normalized [`embeddings::ImageEmbeddingResponse`]. Same requests,
+    /// transport, parser, and error path as
+    /// [`embeddings::ImageEmbeddingModel::embed_images_response`].
+    pub async fn raw_embed_images(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> Result<Vec<ImageEmbeddingResponse>, EmbeddingError> {
+        self.raw_embed_images_with_documents(images)
+            .await
+            .map(|(responses, _)| responses)
+    }
+
+    async fn raw_embed_images_with_documents(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> Result<(Vec<ImageEmbeddingResponse>, Vec<String>), EmbeddingError> {
+        let images = images
+            .into_iter()
+            .map(|bytes| {
+                let media_type = validate_image(&bytes)?;
+                let document = image_document(&bytes, media_type);
+                Ok((bytes, media_type, document))
+            })
+            .collect::<Result<Vec<_>, EmbeddingError>>()?;
+        let mut responses = Vec::with_capacity(images.len());
+        let mut documents = Vec::with_capacity(images.len());
+
+        for (image, media_type, document) in images {
+            let data_url = image_data_url(&image, media_type);
+            responses.push(self.raw_embed_image_data_url(data_url).await?);
+            documents.push(document);
+        }
+
+        Ok((responses, documents))
+    }
+
+    async fn raw_embed_image_data_url(
         &self,
         data_url: String,
-        document: String,
-    ) -> Result<embeddings::Embedding, EmbeddingError> {
+    ) -> Result<ImageEmbeddingResponse, EmbeddingError> {
         let body = json!({
             "model": super::EMBED_ENGLISH_V3,
             "images": [&data_url],
@@ -370,7 +466,7 @@ where
             }
         };
 
-        match response.meta {
+        match &response.meta {
             Some(meta) => tracing::info!(target: "rig",
                 "Cohere embeddings billed units: {}",
                 meta.billed_units,
@@ -378,26 +474,27 @@ where
             None => tracing::info!(target: "rig", "Cohere embeddings billed units: n/a"),
         }
 
-        if response.embeddings.values.len() != 1 {
+        Ok(response)
+    }
+}
+
+impl ImageEmbeddingResponse {
+    fn into_embedding(self, document: String) -> Result<embeddings::Embedding, EmbeddingError> {
+        if self.embeddings.values.len() != 1 {
             return Err(EmbeddingError::DocumentError(
                 format!(
                     "Expected 1 image embedding, got {}",
-                    response.embeddings.values.len()
+                    self.embeddings.values.len()
                 )
                 .into(),
             ));
         }
 
-        let vector = response
-            .embeddings
-            .values
-            .into_iter()
-            .next()
-            .ok_or_else(|| {
-                EmbeddingError::ResponseError(
-                    "Cohere returned an empty image embedding response".to_string(),
-                )
-            })?;
+        let vector = self.embeddings.values.into_iter().next().ok_or_else(|| {
+            EmbeddingError::ResponseError(
+                "Cohere returned an empty image embedding response".to_string(),
+            )
+        })?;
 
         Ok(embeddings::Embedding {
             document,

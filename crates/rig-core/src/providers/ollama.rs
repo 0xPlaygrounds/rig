@@ -174,7 +174,7 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     pub model: String,
     pub embeddings: Vec<Vec<f64>>,
@@ -184,6 +184,34 @@ pub struct EmbeddingResponse {
     pub load_duration: Option<u64>,
     #[serde(default)]
     pub prompt_eval_count: Option<u64>,
+}
+
+impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
+    fn normalize(
+        self,
+        provider: &str,
+        documents: Vec<String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        if self.embeddings.len() != documents.len() {
+            return Err(EmbeddingError::ResponseError(
+                "Number of returned embeddings does not match input".into(),
+            ));
+        }
+        let usage = crate::completion::Usage {
+            input_tokens: self.prompt_eval_count.unwrap_or(0),
+            total_tokens: self.prompt_eval_count.unwrap_or(0),
+            ..crate::completion::Usage::new()
+        };
+        let embeddings = self
+            .embeddings
+            .into_iter()
+            .zip(documents)
+            .map(|(vec, document)| embeddings::Embedding { document, vec })
+            .collect();
+        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
+            .with_model(self.model)
+            .with_usage(usage))
+    }
 }
 
 // ---------- Embedding Model ----------
@@ -213,21 +241,18 @@ impl<T> EmbeddingModel<T> {
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    fn max_documents(&self) -> usize {
-        1024
-    }
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+    /// Perform the request and return Ollama's native `/api/embed` response
+    /// instead of the normalized [`embeddings::EmbeddingResponse`]. Same
+    /// request, transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let docs: Vec<String> = documents.into_iter().collect();
 
         let body = serde_json::to_vec(&json!({
@@ -250,20 +275,32 @@ where
         }
 
         let bytes: Vec<u8> = response.into_body().await?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+}
 
-        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1024
+    }
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
 
-        if api_resp.embeddings.len() != docs.len() {
-            return Err(EmbeddingError::ResponseError(
-                "Number of returned embeddings does not match input".into(),
-            ));
-        }
-        Ok(api_resp
-            .embeddings
-            .into_iter()
-            .zip(docs.into_iter())
-            .map(|(vec, document)| embeddings::Embedding { document, vec })
-            .collect())
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        use embeddings::NormalizeEmbeddingResponse as _;
+
+        let docs: Vec<String> = documents.into_iter().collect();
+        // Ollama reports no transport request-id header.
+        let response = self.raw_embed_texts(docs.clone()).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response.normalize(PROVIDER_NAME, docs)?.with_raw(captured))
     }
 }
 
