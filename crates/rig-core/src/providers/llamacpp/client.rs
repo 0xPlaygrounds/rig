@@ -616,6 +616,46 @@ mod tests {
         );
     }
 
+    /// A 200 whose body is not a rerank payload is a *named* error, not a bare
+    /// serde failure.
+    ///
+    /// The one path in the shared driver a live server cannot produce:
+    /// llama.cpp always answers the Jina shape on this route, so the case only
+    /// arises behind a proxy or gateway that returns something else with a 200.
+    /// Without the provider label the caller gets a `serde_json` message with
+    /// no indication of which server produced it, and this driver is shared.
+    #[tokio::test]
+    async fn rerank_names_the_provider_when_the_body_is_not_a_ranking() {
+        use crate::rerank::RerankModel as _;
+
+        let http_client = RecordingHttpClient::new(r#"{"detail":"upstream unavailable"}"#);
+        let client = Client::builder()
+            .api_key(LlamacppApiKey::default())
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+
+        let error = client
+            .rerank_model("reranker")
+            .rerank("q", vec!["a".into()])
+            .await
+            .expect_err("a 200 that is not a ranking must fail");
+
+        match error {
+            crate::rerank::RerankError::ResponseError(message) => {
+                assert!(
+                    message.starts_with("llamacpp:"),
+                    "the shared driver must name which provider produced it: {message}"
+                );
+                assert!(
+                    message.contains("Jina-shaped"),
+                    "and say what it expected: {message}"
+                );
+            }
+            other => panic!("expected a named ResponseError, got {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn rerank_sends_top_n_when_set() {
         use crate::rerank::RerankModel as _;

@@ -19,6 +19,7 @@
 //! | [`a_single_document_is_still_a_ranking`] | one document | index 0, one result |
 //! | [`top_n_beyond_the_document_count_is_clamped`] | `top_n` > len | clamped, not an error |
 //! | [`top_n_below_the_document_count_truncates`] | `top_n` < len | the highest-scoring `n` |
+//! | [`top_n_zero_returns_an_empty_ranking`] | `top_n` == 0 | an empty list, not an error and not the whole list |
 //! | empty document list | 0 documents | `error_matrix.rs` — a 400 from the server |
 //! | no reranker loaded | wrong server | `error_matrix.rs` — a 501 |
 //!
@@ -257,4 +258,52 @@ async fn top_n_below_the_document_count_truncates() {
         serde_json::json!(1)
     );
     assert_eq!(recorded_results("rerank_matrix/top_n_truncates").len(), 1);
+}
+
+/// `top_n: 0` is an empty ranking, not an error and not "all of them".
+///
+/// The third arm of the `top_n` dimension, and the one where a clamp
+/// implemented as `min(top_n, len)` could plausibly have gone the other way —
+/// treating 0 as "unset" and returning everything. It does not:
+/// `elements.resize(0)` is exactly what it says. Worth pinning because rig's
+/// driver passes the value straight through, so whatever llama.cpp decides is
+/// what the caller gets.
+#[tokio::test]
+async fn top_n_zero_returns_an_empty_ranking() {
+    with_llamacpp_rerank_cassette("rerank_matrix/top_n_zero", |client| async move {
+        let reranked = client
+            .rerank_model(CASSETTE_RERANK_MODEL)
+            .top_n(0)
+            .rerank(QUERY, documents())
+            .await
+            .expect("top_n 0 is a valid request, not an error");
+
+        assert!(
+            reranked.results.is_empty(),
+            "zero means zero — not the whole list: {:?}",
+            reranked.results
+        );
+        assert!(
+            reranked.usage.total_tokens > 0,
+            "the documents were still scored and still billed: {:?}",
+            reranked.usage
+        );
+    })
+    .await;
+
+    let request = recorded_json_request("llamacpp", "rerank_matrix/top_n_zero");
+    assert_eq!(
+        request["top_n"],
+        serde_json::json!(0),
+        "0 must reach the wire rather than being dropped as falsy: {request}"
+    );
+    assert_eq!(
+        request["documents"].as_array().map(Vec::len),
+        Some(3),
+        "and all three documents were sent"
+    );
+    assert!(
+        recorded_results("rerank_matrix/top_n_zero").is_empty(),
+        "the wire itself returned nothing"
+    );
 }

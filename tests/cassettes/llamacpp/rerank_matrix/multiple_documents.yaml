@@ -13,4 +13,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=utf-8
-  body: '{"model":"bge-reranker-v2-m3-Q4_K_M","object":"list","results":[{"index":2,"relevance_score":0.8224502801895142},{"index":1,"relevance_score":-4.758295059204102},{"index":0,"relevance_score":-8.376104354858398}],"usage":{"prompt_tokens":55,"total_tokens":55}}'
+  body: '{"model":"bge-reranker-v2-m3-Q4_K_M","object":"list","results":[{"index":2,"relevance_score":0.8215377926826477},{"index":1,"relevance_score":-4.758295059204102},{"index":0,"relevance_score":-8.376104354858398}],"usage":{"prompt_tokens":55,"total_tokens":55}}'
