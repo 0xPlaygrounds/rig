@@ -98,9 +98,48 @@ impl<T> CompletionModel<T> {
     /// [`crate::providers::gemini::cached_content::CachedContentClient`], and
     /// delete it when you are done — storage bills until you do.
     ///
-    /// The cache owns the system instruction and tool set, so a request built
-    /// from this model must not carry either. Rig rejects that before the
-    /// request goes out rather than letting Gemini answer 400.
+    /// # What can actually use the handle
+    ///
+    /// The cache owns the system instruction, the tool set *and* the tool
+    /// choice, so a request built from this model must carry none of the three;
+    /// rig rejects that before the request goes out rather than letting Gemini
+    /// answer 400.
+    ///
+    /// That is a tighter constraint than it looks for rig's `Agent`, because an
+    /// agent does not choose what to send — it sends what it holds:
+    ///
+    /// * a preamble becomes `systemInstruction`, so an agent reading from a
+    ///   cache must have no preamble and put those instructions in the cache;
+    /// * every always-exposed tool is advertised on every turn, and the agent
+    ///   can only dispatch what it advertised, so an agent reading from a cache
+    ///   must have no tools — and a function tool set moved into the cache is
+    ///   declarations the agent could never execute (see
+    ///   [`crate::providers::gemini::cached_content::NewCachedContent::tools`]).
+    ///   An empty `RequestPatch::active_tools` allow-list does suppress the
+    ///   `tools` field for a turn, so a tool-holding agent *can* be made to pass
+    ///   this check — but it gains a request, not a dispatch: neither its own
+    ///   suppressed tools nor the cache's are callable on that turn;
+    /// * a configured `tool_choice` becomes `toolConfig` even on a tool-less
+    ///   agent, so it has to go too — though dropping it costs a tool-less agent
+    ///   nothing;
+    /// * `output_schema` is fine under the default `OutputMode::Auto`, which for
+    ///   a tool-less agent resolves to `Native` and sends the schema as a
+    ///   `generationConfig` constraint with no tool. It is not fine in `Tool`
+    ///   mode, which advertises a synthetic output tool *and* appends an
+    ///   instruction to the preamble — and `Extractor` pins `Tool` mode, so
+    ///   extractors cannot read from a cache at all. `Prompted` is out for the
+    ///   same reason: it writes the schema into the preamble, so even a
+    ///   preamble-less agent ends up sending a `systemInstruction`.
+    ///
+    /// Context documents are fine either way: they are appended to the chat
+    /// history as user content, never to the system instruction.
+    ///
+    /// So there are two supported shapes: an agent with no preamble, no tools
+    /// and no `tool_choice` (with or without native structured output), or this
+    /// model driven directly
+    /// through
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion)
+    /// or [`Self::raw_completion`] with a tool loop you run yourself.
     pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
         self.cached_content = Some(name.into());
         self
@@ -250,16 +289,50 @@ pub(crate) fn create_request_body(
     // only inspects the typed fields. Callers reach this path whenever they set
     // the handle through `additional_params` without touching
     // `with_cached_content`, which is the plainest route there is.
-    let smuggled_cached_content = additional_params_payload
-        .as_object_mut()
-        .and_then(|object| object.remove("cachedContent"))
-        .map(|value| match value {
-            Value::String(name) => Ok(name),
-            other => Err(CompletionError::RequestError(
-                format!("additional_params.cachedContent should be a string, got {other}").into(),
-            )),
-        })
-        .transpose()?;
+    // Every spelling, not just the camelCase one. `cached_content` is a working
+    // wire spelling — measured: it reaches the cache lookup and answers
+    // `CachedContent not found` for a bogus handle — so a handle written that
+    // way used to skip the lift, and with it every check `with_cached_content`
+    // owns: the conflict refusal, the `cachedContents/<id>` shape check, the
+    // string-type check and the set-twice comparison. It still reached the wire,
+    // because the blob is flattened verbatim.
+    //
+    // Each spelling found is fed through `with_cached_content` in turn, so two
+    // spellings carrying different handles are caught by the set-twice rule that
+    // is already there.
+    let mut smuggled_cached_content = Vec::new();
+    for spelling in CACHED_CONTENT {
+        let Some(value) = additional_params_payload
+            .as_object_mut()
+            .and_then(|object| object.remove(spelling))
+        else {
+            continue;
+        };
+        match value {
+            Value::String(name) => smuggled_cached_content.push(name),
+            other => {
+                return Err(CompletionError::RequestError(
+                    format!("additional_params.{spelling} should be a string, got {other}").into(),
+                ));
+            }
+        }
+    }
+    // The other two fields a cached content owns are *detected* here and left
+    // exactly where the caller put them.
+    //
+    // Deserializing them into the typed fields was tried and reverted: rig's
+    // `ToolConfig`/`FunctionCallingMode` model `mode` and a snake_case
+    // `allowed_function_names` only, so round-tripping a caller's config
+    // through them silently dropped `allowedFunctionNames` — turning a request
+    // restricted to one function into one free to call any — and hard-failed
+    // every `mode` rig does not model (`MODE_UNSPECIFIED`, `VALIDATED`, and
+    // whatever Google adds next). `Content` is narrower than the wire the same
+    // way. An `additional_params` blob is a deliberate escape hatch for shapes
+    // rig has no type for; narrowing it through a type is the one thing it must
+    // not do.
+    let smuggled_system_instruction =
+        smuggled_field(&additional_params_payload, &SYSTEM_INSTRUCTION);
+    let smuggled_tool_config = smuggled_field(&additional_params_payload, &TOOL_CONFIG);
 
     let AdditionalParameters {
         mut generation_config,
@@ -312,6 +385,24 @@ pub(crate) fn create_request_body(
             role: Some(Role::Model),
         })
     };
+    // A preamble and an `additional_params.systemInstruction` are two answers to
+    // one question. Before this they were both put on the wire and Gemini took
+    // the last, so the preamble the caller wrote was silently discarded; now the
+    // ambiguity is reported, matching how a doubly-set `cachedContent` is
+    // treated.
+    if let (Some(typed), Some(spelling)) = (&system_instruction, smuggled_system_instruction) {
+        return Err(CompletionError::RequestError(
+            format!(
+                "a Gemini request set the system instruction twice — once as a preamble or \
+                 system message ({} part(s)) and once through `additional_params.{spelling}`. \
+                 Both would reach the wire, and Gemini rejects that outright: \
+                 `system_instruction` is an optional proto field, so a second one is `oneof \
+                 field '_system_instruction' is already set`. Set it one way or the other",
+                typed.parts.len()
+            )
+            .into(),
+        ));
+    }
 
     let mut tools = if function_tools.is_empty() {
         Vec::new()
@@ -328,6 +419,22 @@ pub(crate) fn create_request_body(
     } else {
         None
     };
+    // Same rule as the system instruction above: `tool_choice` and
+    // `additional_params.toolConfig` are one field reached two ways.
+    if tool_config.is_some()
+        && let Some(spelling) = smuggled_tool_config
+    {
+        return Err(CompletionError::RequestError(
+            format!(
+                "a Gemini request set the tool choice twice — once as `tool_choice` and once \
+                 through `additional_params.{spelling}`. Both would reach the wire, and Gemini \
+                 does not take the last — it *merges* them, so the two allowed-function lists \
+                 are unioned and the narrower `tool_choice` silently stops restricting anything. \
+                 Set it one way or the other"
+            )
+            .into(),
+        ));
+    }
 
     let mut request = GenerateContentRequest {
         contents: full_history
@@ -346,7 +453,7 @@ pub(crate) fn create_request_body(
         additional_params,
     };
 
-    if let Some(name) = smuggled_cached_content {
+    for name in smuggled_cached_content {
         request.with_cached_content(&name)?;
     }
 
@@ -369,6 +476,42 @@ pub fn split_system_messages_from_history(
     }
 
     (system, remaining)
+}
+
+/// Both spellings Gemini accepts for `systemInstruction`.
+///
+/// The API speaks proto3 JSON, which accepts a field under its lowerCamelCase
+/// alias *and* its original proto name. A check that knows only one of them is
+/// a check with a documented bypass.
+const SYSTEM_INSTRUCTION: [&str; 2] = ["systemInstruction", "system_instruction"];
+
+/// Both spellings Gemini accepts for `toolConfig`. See [`SYSTEM_INSTRUCTION`].
+const TOOL_CONFIG: [&str; 2] = ["toolConfig", "tool_config"];
+
+/// Both spellings Gemini accepts for `cachedContent`. See [`SYSTEM_INSTRUCTION`].
+const CACHED_CONTENT: [&str; 2] = ["cachedContent", "cached_content"];
+
+/// The spelling Gemini accepts for `tools`. A one-element list because the proto
+/// name and its JSON alias coincide; kept in this shape so the three lookups in
+/// `with_cached_content` read alike and a second spelling has somewhere to go.
+const TOOLS: [&str; 1] = ["tools"];
+
+/// The spelling under which one of `spellings` appears in an `additional_params`
+/// blob, if any of them does.
+///
+/// Presence, never the value. `additional_params` is the escape hatch for wire
+/// shapes rig has no type for, so nothing on this path may narrow it by parsing:
+/// deserializing a caller's `toolConfig` into rig's own type drops every field
+/// that type does not model — `allowedFunctionNames` among them, which turns a
+/// request restricted to one function into one free to call any — and rejects
+/// every `mode` rig has not enumerated. An explicit `null` counts as absent,
+/// matching how serde treats a missing field.
+fn smuggled_field<'a>(payload: &Value, spellings: &[&'a str]) -> Option<&'a str> {
+    let object = payload.as_object()?;
+    spellings
+        .iter()
+        .find(|spelling| object.get(**spelling).is_some_and(|value| !value.is_null()))
+        .copied()
 }
 
 fn extract_tools_from_additional_params(
@@ -2408,22 +2551,89 @@ impl gemini_api_types::GenerateContentRequest {
             ));
         }
 
+        // Read `additional_params` as well as the typed fields. It is
+        // `#[serde(flatten)]`, so anything left in it reaches the wire beside
+        // the typed field — a conflict the provider will reject just the same,
+        // and one that used to walk straight past this check because the check
+        // only looked at the typed side.
+        //
+        // `tools` is looked up here too, even though `create_request_body` has
+        // already moved it onto `self.tools` by this point. This method is
+        // `pub`, and on a request built by hand nothing has run that lift — so
+        // without the lookup, tool declarations in the blob would sit beside a
+        // handle in one body, which is the shape this check exists to refuse.
+        let blob = self.additional_params.as_ref();
+        let smuggled = |spellings: &'static [&'static str]| {
+            blob.and_then(|payload| smuggled_field(payload, spellings))
+        };
+
         let mut conflicts = Vec::new();
-        if self.system_instruction.is_some() {
+        if self.system_instruction.is_some() || smuggled(&SYSTEM_INSTRUCTION).is_some() {
             conflicts.push("a system instruction (preamble)");
         }
-        if self.tools.is_some() {
+        let smuggled_tools = smuggled(&TOOLS);
+        if self.tools.is_some() || smuggled_tools.is_some() {
             conflicts.push("tools");
         }
-        if self.tool_config.is_some() {
+        if self.tool_config.is_some() || smuggled(&TOOL_CONFIG).is_some() {
             conflicts.push("a tool choice");
         }
         if !conflicts.is_empty() {
+            // "Move them into the cache" is the right remedy for a system
+            // instruction — that is the feature. It is the wrong remedy for
+            // tools, and the difference is structural rather than a gap rig
+            // could close: rig's `Agent` derives the declarations it sends and
+            // the handles it dispatches through from one tool-registry snapshot,
+            // so it can only dispatch a tool it advertised, and a call to
+            // something it never advertised is always an invalid tool call. An
+            // agent therefore cannot execute a function tool set that lives in
+            // the cache, and the message must not send the reader after a
+            // configuration that does not exist.
+            //
+            // Gated on *function* declarations rather than on the field: a
+            // provider-hosted tool (`additional_params.tools = [{"codeExecution":
+            // {}}]`, lifted onto the request by
+            // `extract_tools_from_additional_params`) runs on Gemini's side and
+            // needs no loop, so moving one into the cache does work — and
+            // telling that caller to go write a tool loop would be nonsense.
+            let declares_function = |tool: &Value| {
+                ["functionDeclarations", "function_declarations"]
+                    .iter()
+                    .any(|spelling| {
+                        tool.get(spelling)
+                            .and_then(Value::as_array)
+                            .is_some_and(|declarations| !declarations.is_empty())
+                    })
+            };
+            // The blob is scanned as well, for the same hand-built request the
+            // `tools` lookup above exists for.
+            let declares_functions = self
+                .tools
+                .iter()
+                .flatten()
+                .chain(
+                    smuggled_tools
+                        .and_then(|spelling| blob?.get(spelling))
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten(),
+                )
+                .any(declares_function);
+            let tool_caveat = if declares_functions {
+                " Note that function declarations in a cache are declarations only — rig's \
+                 `Agent` can only dispatch tools it advertised, so a cached function tool set is \
+                 never executable from an agent; it is usable only when you drive \
+                 `CompletionModel` yourself and run the tool loop. (Provider-hosted tools such \
+                 as `codeExecution` run on Gemini's side and are fine to keep in the cache.)"
+            } else {
+                ""
+            };
             return Err(CompletionError::RequestError(
                 format!(
                     "a Gemini request using cached content `{name}` also set {}. The cached \
                      content already owns the system instruction, tools and tool choice for every \
-                     request that uses it — move them into the cache, or drop the cache handle.",
+                     request that uses it — move them into the cache, or drop the cache \
+                     handle.{tool_caveat}",
                     conflicts.join(" and ")
                 )
                 .into(),
@@ -4214,6 +4424,103 @@ mod cached_content_request_tests {
         assert!(error.to_string().contains("tools"), "{error}");
     }
 
+    /// The remedy differs per conflict, and only the tools arm may say so.
+    ///
+    /// "Move them into the cache" is exactly right for a system instruction —
+    /// that is what explicit caching is for. It is wrong for tools: a cache's
+    /// tool set is declarations, and rig's `Agent` derives the declarations it
+    /// sends from the same registry it dispatches through, so it can neither
+    /// advertise nothing while executing something nor execute a tool that lives
+    /// only in the cache. A reader who follows the bare remedy ends up with a
+    /// cache no agent can use, so the caveat must appear for tools and must not
+    /// appear when only the system instruction conflicted.
+    #[test]
+    fn the_tools_conflict_says_a_cached_tool_set_is_declarations_only() {
+        let mut with_tools = request_with(None, true);
+        let tools_error = with_tools
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("tools conflict with cached content");
+        let tools_message = tools_error.to_string();
+        assert!(
+            tools_message.contains("declarations only"),
+            "the tools conflict must correct the `move them into the cache` remedy: \
+             {tools_message}"
+        );
+        assert!(
+            tools_message.contains("CompletionModel"),
+            "the tools conflict must name the surface that can actually use a cached tool set: \
+             {tools_message}"
+        );
+
+        let mut with_preamble = request_with(Some("you are terse"), false);
+        let preamble_message = with_preamble
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("a system instruction conflicts with cached content")
+            .to_string();
+        assert!(
+            !preamble_message.contains("declarations only"),
+            "moving a system instruction into the cache IS the remedy; the tools caveat must not \
+             leak onto it: {preamble_message}"
+        );
+    }
+
+    /// The branch the `declares_functions` gate exists for, and the one neither
+    /// cell above reaches: `tools` is present but carries no function
+    /// declarations.
+    ///
+    /// A provider-hosted tool runs on Gemini's side and needs no loop, so
+    /// "you must run the tool loop yourself" is nonsense advice for it — the
+    /// code comment says as much. Without this cell the gate is free to
+    /// collapse to `self.tools.is_some()`: that mutation leaves every other
+    /// test in the workspace green, and hands a `codeExecution` caller a
+    /// paragraph about dispatching declarations they never wrote.
+    #[test]
+    fn a_provider_hosted_tool_conflicts_without_the_function_declaration_caveat() {
+        for (label, tools) in [
+            ("codeExecution", serde_json::json!([{"codeExecution": {}}])),
+            ("googleSearch", serde_json::json!([{"googleSearch": {}}])),
+            (
+                "an empty functionDeclarations list",
+                serde_json::json!([{"functionDeclarations": []}]),
+            ),
+        ] {
+            let mut request = build_with(None, Some(serde_json::json!({ "tools": tools })))
+                .expect("request should build");
+            let message = request
+                .with_cached_content("cachedContents/abc123")
+                .expect_err("tools conflict with a cache handle however they are declared")
+                .to_string();
+
+            assert!(
+                message.contains("also set tools"),
+                "{label}: the conflict must still name the tool set: {message}"
+            );
+            assert!(
+                !message.contains("declarations only"),
+                "{label}: a cache carrying a provider-hosted tool is usable from an agent, so \
+                 the function-declaration caveat must not appear: {message}"
+            );
+        }
+    }
+
+    /// The other side of the gate, through the same route: function
+    /// declarations arriving in `additional_params.tools` do earn the caveat.
+    #[test]
+    fn a_smuggled_function_declaration_still_earns_the_caveat() {
+        let mut request = build_with(
+            None,
+            Some(serde_json::json!({
+                "tools": [{"functionDeclarations": [{"name": "probe", "description": "probe"}]}]
+            })),
+        )
+        .expect("request should build");
+        let message = request
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("tools conflict with a cache handle")
+            .to_string();
+        assert!(message.contains("declarations only"), "{message}");
+    }
+
     #[test]
     fn a_clean_request_accepts_the_handle_and_puts_it_on_the_wire() {
         let mut request = request_with(None, false);
@@ -4369,8 +4676,333 @@ mod cached_content_request_tests {
         );
         assert_eq!(body.get("topK").and_then(|v| v.as_u64()), Some(5));
     }
-}
 
+    /// The other two fields a cached content owns, smuggled the same way the
+    /// handle was.
+    ///
+    /// Lifting `cachedContent` alone left this open: the conflict check reads
+    /// the typed fields, and a `systemInstruction` or `toolConfig` sitting in
+    /// the flattened blob is not one. The handle was accepted, the request went
+    /// out, and Gemini answered the 400 the check exists to pre-empt — while
+    /// the docs promised it would not.
+    #[test]
+    fn a_system_instruction_or_tool_choice_from_additional_params_still_conflicts() {
+        for (label, smuggled) in [
+            (
+                "systemInstruction",
+                serde_json::json!({
+                    "systemInstruction": {"parts": [{"text": "you are terse"}], "role": "model"}
+                }),
+            ),
+            (
+                "toolConfig",
+                serde_json::json!({
+                    "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
+                }),
+            ),
+        ] {
+            let mut request = build_with(None, Some(smuggled)).expect("request should build");
+            let message = request
+                .with_cached_content("cachedContents/abc123")
+                .expect_err(&format!("a smuggled {label} conflicts with a cache handle"))
+                .to_string();
+            let expected = if label == "systemInstruction" {
+                "a system instruction"
+            } else {
+                "a tool choice"
+            };
+            assert!(
+                message.contains(expected),
+                "the {label} route must reach the same conflict as the typed field: {message}"
+            );
+        }
+    }
+
+    /// Whether or not a cache is involved, one field reached two ways is
+    /// ambiguous — and used to be resolved silently, in favour of whichever
+    /// serde emitted last.
+    #[test]
+    fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order() {
+        let message = build_with(
+            Some("you are terse"),
+            Some(serde_json::json!({
+                "systemInstruction": {"parts": [{"text": "you are verbose"}], "role": "model"}
+            })),
+        )
+        .expect_err("a preamble and a smuggled system instruction are two answers")
+        .to_string();
+        assert!(
+            message.contains("set the system instruction twice"),
+            "{message}"
+        );
+
+        let message = super::create_request_body(CompletionRequest {
+            preamble: None,
+            chat_history: vec![Message::User {
+                content: vec![UserContent::text("hi")],
+            }],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(crate::message::ToolChoice::Auto),
+            additional_params: Some(serde_json::json!({
+                "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
+            })),
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect_err("a tool_choice and a smuggled toolConfig are two answers")
+        .to_string();
+        assert!(message.contains("set the tool choice twice"), "{message}");
+    }
+
+    /// Whatever the caller put in `additional_params` reaches the wire byte for
+    /// byte — including everything rig has no type for.
+    ///
+    /// This is the cell that forbids the obvious implementation. Detecting
+    /// these fields by deserializing them into rig's own `ToolConfig` was tried,
+    /// and it silently dropped `allowedFunctionNames`: a request restricted to
+    /// one function became a request free to call any, with no error anywhere.
+    /// `additional_params` exists precisely for shapes rig does not model, so
+    /// the one thing this path must never do is narrow it.
+    #[test]
+    fn a_smuggled_field_reaches_the_wire_exactly_as_the_caller_wrote_it() {
+        for smuggled in [
+            // The lossy case: `allowedFunctionNames` is not a field of rig's
+            // `FunctionCallingMode` (which spells it `allowed_function_names`).
+            serde_json::json!({
+                "toolConfig": {
+                    "functionCallingConfig": {
+                        "mode": "ANY",
+                        "allowedFunctionNames": ["get_weather"]
+                    }
+                }
+            }),
+            // Modes rig does not enumerate. `MODE_UNSPECIFIED` is the proto
+            // default and `VALIDATED` was added after rig's enum was written;
+            // the next one Google adds must not need a rig release either.
+            serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "MODE_UNSPECIFIED"}}}),
+            serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "VALIDATED"}}}),
+            // The proto-original spelling, which proto3 JSON accepts alongside
+            // the lowerCamelCase alias.
+            serde_json::json!({"tool_config": {"function_calling_config": {"mode": "ANY"}}}),
+            // A system instruction carrying a part kind rig genuinely has no
+            // variant for. `videoMetadata` is a real Gemini `Part` field and
+            // `PartKind` does not model it, so a round-trip through `Content`
+            // would drop it. (An earlier version of this cell used `inlineData`,
+            // which rig *does* model — it failed under the reverted
+            // implementation only because `Content::role` re-serialized as an
+            // added `null`, i.e. for the wrong reason.)
+            serde_json::json!({
+                "systemInstruction": {
+                    "parts": [{"videoMetadata": {"startOffset": "0s", "endOffset": "5s"}}]
+                }
+            }),
+        ] {
+            let request = build_with(None, Some(smuggled.clone()))
+                .unwrap_or_else(|error| panic!("{smuggled} should build, got {error}"));
+            // `to_string`, not `to_value`: a `Value` is a map, so round-tripping
+            // through one silently deduplicates repeated members and shows only
+            // the last. The claim here is about the bytes.
+            let body = serde_json::to_string(&request).expect("serialize");
+
+            for (key, expected) in smuggled.as_object().expect("object") {
+                let needle = format!(
+                    "\"{key}\":{}",
+                    serde_json::to_string(expected).expect("serialize")
+                );
+                assert!(
+                    body.contains(&needle),
+                    "additional_params must reach the wire byte for byte; expected {needle} in \
+                     {body}"
+                );
+            }
+        }
+    }
+
+    /// The conflict check has to know both spellings, or it documents its own
+    /// bypass.
+    #[test]
+    fn the_proto_original_spelling_conflicts_too() {
+        for (spelling, expected) in [
+            ("system_instruction", "a system instruction"),
+            ("tool_config", "a tool choice"),
+        ] {
+            let mut request = build_with(
+                None,
+                Some(serde_json::json!({ spelling: {"parts": [{"text": "x"}]} })),
+            )
+            .expect("request should build");
+            let message = request
+                .with_cached_content("cachedContents/abc123")
+                .expect_err("the proto spelling is the same field")
+                .to_string();
+            assert!(
+                message.contains(expected),
+                "`{spelling}` must reach the same conflict as its camelCase alias: {message}"
+            );
+        }
+    }
+
+    /// A field reached through the blob is emitted *twice* — once as the typed
+    /// `null`, once from the blob — and Gemini accepts that.
+    ///
+    /// Pinned rather than fixed, because "fixed" means `skip_serializing_if` on
+    /// `system_instruction` and `tool_config`, which would drop
+    /// `"systemInstruction":null` from every recorded Gemini request body and
+    /// invalidate the whole cassette corpus. It is worth pinning because it
+    /// looks like a bug and is not: measured against the live API,
+    /// `{"toolConfig":null,"toolConfig":{...allowedFunctionNames:["get_weather"]}}`
+    /// returns 200 *and honours the allow-list*, and the `systemInstruction`
+    /// equivalent returns 200 with the instruction applied. A `null` does not
+    /// set the proto field, so no `oneof` is claimed and nothing is overwritten.
+    ///
+    /// Two *non-null* copies are a different matter, and that is exactly what
+    /// the set-twice refusals above prevent: Gemini answers a doubled
+    /// `systemInstruction` with `oneof field '_system_instruction' is already
+    /// set`, and merges a doubled `toolConfig` into the union of both
+    /// allowed-function lists.
+    ///
+    /// So: if this cell ever fails, the fix is not to make it pass — it is to
+    /// re-record the corpus deliberately.
+    #[test]
+    fn a_blob_field_is_emitted_beside_its_typed_null_and_that_is_accepted() {
+        let request = build_with(
+            None,
+            Some(serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "ANY"}}})),
+        )
+        .expect("request should build");
+        let body = serde_json::to_string(&request).expect("serialize");
+
+        assert_eq!(
+            body.matches("\"toolConfig\"").count(),
+            2,
+            "the typed null and the blob copy are both emitted, and the provider accepts it: \
+             {body}"
+        );
+        assert!(
+            body.find("\"toolConfig\":null") < body.find("\"toolConfig\":{"),
+            "the null must come first — serde flattens the blob after the named fields, which is \
+             what makes the caller's value the one that survives: {body}"
+        );
+    }
+
+    /// The handle's own proto-original spelling, which used to skip everything.
+    ///
+    /// `cached_content` is a working wire spelling — measured against the live
+    /// API, it reaches the cache lookup and answers `CachedContent not found`
+    /// for a bogus handle. Matching only `cachedContent` therefore meant a
+    /// handle written the other way was never lifted, `with_cached_content` was
+    /// never called, and every check it owns was skipped while the handle sailed
+    /// through the flattened blob onto the wire.
+    #[test]
+    fn the_protos_own_spelling_of_the_handle_is_validated_too() {
+        // The conflict check.
+        let message = build_with(
+            Some("you are terse"),
+            Some(serde_json::json!({"cached_content": "cachedContents/abc123"})),
+        )
+        .expect_err("a preamble conflicts with a handle however the handle is spelled")
+        .to_string();
+        assert!(message.contains("a system instruction"), "{message}");
+
+        // The handle-shape check.
+        let message = build_with(None, Some(serde_json::json!({"cached_content": "abc123"})))
+            .expect_err("a bare id is not a handle however it is spelled")
+            .to_string();
+        assert!(message.contains("cachedContents/<id>"), "{message}");
+
+        // The type check.
+        let message = build_with(None, Some(serde_json::json!({"cached_content": 7})))
+            .expect_err("a number is not a handle")
+            .to_string();
+        assert!(
+            message.contains("additional_params.cached_content"),
+            "{message}"
+        );
+
+        // The set-twice check, across the two spellings.
+        let message = build_with(
+            None,
+            Some(serde_json::json!({
+                "cachedContent": "cachedContents/one",
+                "cached_content": "cachedContents/two"
+            })),
+        )
+        .expect_err("two spellings naming different caches is still two caches")
+        .to_string();
+        assert!(message.contains("twice"), "{message}");
+
+        // And the clean case still works, under either spelling.
+        let request = build_with(
+            None,
+            Some(serde_json::json!({"cached_content": "cachedContents/ok"})),
+        )
+        .expect("a well-formed handle is accepted under the proto spelling");
+        assert_eq!(request.cached_content.as_deref(), Some("cachedContents/ok"));
+    }
+
+    /// `with_cached_content` is `pub`, and on a hand-built request nothing has
+    /// run `extract_tools_from_additional_params` — so the blob is the only
+    /// place its tools live, and the check has to look there.
+    #[test]
+    fn a_hand_built_request_conflicts_on_tools_left_in_additional_params() {
+        for (label, tools, wants_caveat) in [
+            (
+                "function declarations",
+                serde_json::json!([{"functionDeclarations": [{"name": "f", "description": "d"}]}]),
+                true,
+            ),
+            (
+                "the proto spelling of function declarations",
+                serde_json::json!([{"function_declarations": [{"name": "f", "description": "d"}]}]),
+                true,
+            ),
+            (
+                "a provider-hosted tool",
+                serde_json::json!([{"codeExecution": {}}]),
+                false,
+            ),
+        ] {
+            let mut request = GenerateContentRequest {
+                contents: vec![],
+                generation_config: None,
+                safety_settings: None,
+                tools: None,
+                tool_config: None,
+                system_instruction: None,
+                cached_content: None,
+                additional_params: Some(serde_json::json!({ "tools": tools })),
+            };
+            let message = request
+                .with_cached_content("cachedContents/abc123")
+                .expect_err("tools in the blob conflict with a handle just as typed ones do")
+                .to_string();
+            assert!(message.contains("also set tools"), "{label}: {message}");
+            assert_eq!(
+                message.contains("declarations only"),
+                wants_caveat,
+                "{label}: the caveat must track whether functions were declared: {message}"
+            );
+        }
+    }
+
+    /// An explicit `null` is how serde spells "unset", so it must not be
+    /// mistaken for a value the caller set.
+    #[test]
+    fn an_explicit_null_is_not_a_conflict() {
+        let mut request = build_with(
+            None,
+            Some(serde_json::json!({"systemInstruction": null, "toolConfig": null})),
+        )
+        .expect("request should build");
+        request
+            .with_cached_content("cachedContents/abc123")
+            .expect("a null is not a value the caller set");
+    }
+}
 #[cfg(test)]
 mod cached_content_conflict_matrix {
     //! All 2^3 combinations of the fields a cached content owns.
@@ -4439,16 +5071,29 @@ mod cached_content_conflict_matrix {
                             "{label}: the cache owns these fields, so this must be refused"
                         ));
                         let message = error.to_string();
-                        // The message must name every conflict, which is the
-                        // whole advantage over the provider's own 400.
+                        // Assert against the conflict clause, not the whole
+                        // message: the sentence that follows it names all three
+                        // fields unconditionally ("already owns the system
+                        // instruction, tools and tool choice"), so a naive
+                        // `message.contains("tools")` passed for every cell in
+                        // the matrix, including the ones that set no tools. The
+                        // clause is the only part that varies per cell, which is
+                        // the whole advantage over the provider's own 400.
+                        let clause = message
+                            .split_once(". The cached content")
+                            .map(|(head, _)| head)
+                            .unwrap_or(message.as_str());
                         if system {
-                            assert!(message.contains("system instruction"), "{label}: {message}");
+                            assert!(clause.contains("system instruction"), "{label}: {message}");
                         }
-                        if tools {
-                            assert!(message.contains("tools"), "{label}: {message}");
-                        }
+                        assert_eq!(
+                            clause.contains("tools"),
+                            tools,
+                            "{label}: the clause must name the tool set only when it conflicted: \
+                             {message}"
+                        );
                         if tool_choice {
-                            assert!(message.contains("tool choice"), "{label}: {message}");
+                            assert!(clause.contains("tool choice"), "{label}: {message}");
                         }
                         assert!(message.contains(HANDLE), "{label}: {message}");
                     }
