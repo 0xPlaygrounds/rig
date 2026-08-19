@@ -379,6 +379,31 @@ pub(super) async fn always_deleting_cached_contents<Fut>(
 ) where
     Fut: Future<Output = ()>,
 {
+    always_deleting_cached_contents_reporting(client, handles, body, |warning| {
+        // libtest prints captured stderr under the failing test, which is
+        // exactly when someone needs this.
+        eprintln!("{warning}");
+    })
+    .await;
+}
+
+/// [`always_deleting_cached_contents`] with the leak warning routed somewhere a
+/// test can read it.
+///
+/// The warning only fires when the body panicked *and* the cleanup failed, and
+/// on that path the body's panic is re-raised — so from the outside the guard is
+/// indistinguishable from one that never warned at all. Left on `eprintln!`, the
+/// whole block could be deleted with all four cells still green, and the one
+/// path that names a still-billing handle would be gone silently.
+async fn always_deleting_cached_contents_reporting<Fut, R>(
+    client: &gemini::Client,
+    handles: &[String],
+    body: Fut,
+    report: R,
+) where
+    Fut: Future<Output = ()>,
+    R: FnOnce(String),
+{
     let outcome = AssertUnwindSafe(body).catch_unwind().await;
 
     let caches = client.cached_contents();
@@ -393,12 +418,11 @@ pub(super) async fn always_deleting_cached_contents<Fut>(
         if !failures.is_empty() {
             // The body's panic wins the cell, but a cleanup that also failed
             // leaves a billed cache behind, and this is the only place its
-            // handle is ever named — libtest prints captured stderr under the
-            // failing test, which is exactly when someone needs it.
-            eprintln!(
+            // handle is ever named.
+            report(format!(
                 "WARNING: cached contents left billing after a failed cell — delete by hand: {}",
                 failures.join("; ")
-            );
+            ));
         }
         resume_unwind(payload);
     }
@@ -568,10 +592,18 @@ mod always_deleting_cached_contents_tests {
         let (client, _stub) =
             stub_cached_contents(Arc::clone(&seen), StatusCode::INTERNAL_SERVER_ERROR).await;
 
-        let panicked = AssertUnwindSafe(always_deleting_cached_contents(
+        let warnings = Arc::new(Mutex::new(Vec::new()));
+        let collected = Arc::clone(&warnings);
+        let panicked = AssertUnwindSafe(always_deleting_cached_contents_reporting(
             &client,
             &["cachedContents/leaky".to_owned()],
             async { panic!("the assertion under test failed") },
+            move |warning| {
+                collected
+                    .lock()
+                    .expect("warning sink should not be poisoned")
+                    .push(warning)
+            },
         ))
         .catch_unwind()
         .await
@@ -588,6 +620,54 @@ mod always_deleting_cached_contents_tests {
                 .as_slice(),
             ["DELETE /v1beta/cachedContents/leaky"],
             "the delete must still be attempted, even though its failure is discarded"
+        );
+
+        // The panic is re-raised either way, so this warning is the *only*
+        // trace the still-billing cache leaves. Without this assertion the
+        // whole block can be deleted with every cell still green.
+        let warnings = warnings
+            .lock()
+            .expect("warning sink should not be poisoned");
+        let [warning] = warnings.as_slice() else {
+            panic!("a discarded cleanup failure must still be reported: {warnings:?}");
+        };
+        assert!(
+            warning.contains("cachedContents/leaky"),
+            "the warning has to name the handle — it is what someone types to delete it by hand: \
+             {warning}"
+        );
+    }
+
+    /// The converse: a cleanup that *succeeded* after a panicking body has
+    /// nothing to report, so a reader is not sent hunting for a cache that is
+    /// already gone.
+    #[tokio::test]
+    async fn a_clean_cleanup_after_a_panicking_body_reports_no_leak() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (client, _stub) = stub_cached_contents(Arc::clone(&seen), StatusCode::OK).await;
+
+        let warnings = Arc::new(Mutex::new(Vec::new()));
+        let collected = Arc::clone(&warnings);
+        let _ = AssertUnwindSafe(always_deleting_cached_contents_reporting(
+            &client,
+            &["cachedContents/tidy".to_owned()],
+            async { panic!("the assertion under test failed") },
+            move |warning| {
+                collected
+                    .lock()
+                    .expect("warning sink should not be poisoned")
+                    .push(warning)
+            },
+        ))
+        .catch_unwind()
+        .await;
+
+        assert!(
+            warnings
+                .lock()
+                .expect("warning sink should not be poisoned")
+                .is_empty(),
+            "the cache was deleted; there is no leak to warn about"
         );
     }
 }
