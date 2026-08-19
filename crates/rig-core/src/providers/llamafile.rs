@@ -66,6 +66,13 @@ impl openai::completion::OpenAICompatibleProvider for LlamafileExt {
     // llama.cpp-based servers can emit a whole tool call in one streaming chunk.
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
 
+    // llama.cpp delivers an image inside a `role:"tool"` message to the model,
+    // unlike official OpenAI. Measured against `llama-server` b1-6d05498 with
+    // Qwen3-VL-2B: a solid-colour square handed back through a tool is named
+    // correctly for magenta, green and yellow, matching a control that sends the
+    // same bytes in a `user` message.
+    const SUPPORTS_IMAGE_TOOL_RESULTS: bool = true;
+
     type Response = openai::CompletionResponse;
 }
 

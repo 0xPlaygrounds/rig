@@ -346,6 +346,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("Groq request should convert");
@@ -370,6 +371,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
@@ -440,6 +442,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
@@ -476,6 +479,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
