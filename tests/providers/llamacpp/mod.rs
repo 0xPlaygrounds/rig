@@ -20,6 +20,7 @@ mod cassette {
     mod streaming;
     mod streaming_tools;
     mod structured_output;
+    mod structured_output_matrix;
     mod tool_matrix;
     mod tools;
     mod typed_prompt_tools;
