@@ -56,6 +56,7 @@
 //! | Dimension | Module | Server(s) |
 //! | --- | --- | --- |
 //! | errors (10 classes) | `error_matrix` | 8080, 8083, 8084, 8085, 8086, 8087, 8089 |
+//! | embedding widths — declared vs returned | `embedding_matrix` | 8081 |
 //! | sampling — temperature, `max_tokens`, `stop`, `seed` | `sampling_matrix` | 8080, 8083 |
 //! | tools — arity, parallel, failure, `tool_choice`, result payloads | `tool_matrix` | 8088 |
 //! | structured output — `json_object`, `json_schema`, GBNF, conflicts | `structured_output_matrix` | 8080, 8088 |
@@ -131,6 +132,7 @@ mod cassette {
     mod bare_openai_client;
     mod content_matrix;
     mod context;
+    mod embedding_matrix;
     mod embeddings;
     mod error_matrix;
     mod extractor;

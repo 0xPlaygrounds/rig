@@ -219,10 +219,6 @@ impl openai::completion::OpenAICompatibleProvider for LlamacppExt {
     }
 }
 
-impl openai::embedding::OpenAIEmbeddingsCompatible for LlamacppExt {
-    const PROVIDER_NAME: &'static str = "llamacpp";
-}
-
 impl_model_lister!(
     /// [`ModelLister`](crate::client::ModelLister) for `llama-server`'s
     /// `GET /v1/models`.

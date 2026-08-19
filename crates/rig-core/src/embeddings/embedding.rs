@@ -64,6 +64,35 @@ crate::provider_response::provider_error_enum!(
         /// Provider whose response omitted usage.
         provider: &'static str,
     },
+
+    /// The provider returned vectors of a width other than the one the caller
+    /// declared through
+    /// [`embedding_model_with_ndims`](crate::client::EmbeddingsClient::embedding_model_with_ndims).
+    ///
+    /// Raised only when the width was set *explicitly*: a model handle built
+    /// without one reports whatever the provider's own table says and has
+    /// nothing to disagree with.
+    ///
+    /// The failure this prevents is silent and expensive. `ndims()` is what a
+    /// vector store sizes its index from, so a model reporting one width while
+    /// returning another builds an index that cannot hold its own vectors —
+    /// and nothing on the request path can catch it, because the providers
+    /// where it happens are exactly the ones that *ignore* the `dimensions`
+    /// field instead of rejecting it. Measured on `llama-server`
+    /// b10499-6d05498, whose embeddings handler reads no such field at all: a
+    /// request for 128 dimensions answers 200 with 1024-wide vectors.
+    #[error(
+        "{provider} embedding response returned {returned}-dimension vectors, but the model was \
+         created with {requested} dimensions; this provider does not resize embeddings"
+    )]
+    MismatchedDimensions {
+        /// Provider whose response disagreed with the declared width.
+        provider: &'static str,
+        /// Width the caller declared.
+        requested: usize,
+        /// Width the provider actually returned.
+        returned: usize,
+    },
     }
 );
 
