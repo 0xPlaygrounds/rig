@@ -150,6 +150,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_llamacpp_mistral_family_cassette",
             "with_llamacpp_gemma_family_cassette",
             "with_llamacpp_prompt_caching_cassette",
+            "with_llamacpp_large_vision_cassette",
             "with_llamacpp_api_key_cassette",
             "with_llamacpp_missing_api_key_cassette",
         ],

@@ -14,6 +14,7 @@ mod cassette {
     mod model_family_matrix;
     mod models;
     mod multi_extract;
+    mod multimodal_matrix;
     mod permission_control;
     mod prompt_caching;
     mod raw_capture_matrix;

@@ -208,6 +208,24 @@ server_config_wrapper!(
 );
 
 server_config_wrapper!(
+    /// The larger vision tier — `ggml-org/Qwen2.5-VL-7B-Instruct-GGUF` Q4_K_M
+    /// with its `mmproj`, `-c 8192`.
+    ///
+    /// For cells that need the model to be *right* rather than merely
+    /// responsive. Qwen3-VL-2B answers "which of these two images is the
+    /// photograph" with "FIRST" whichever order the images arrive in; this one
+    /// tracks the order. It has the opposite weakness — its chat template
+    /// declares `supports_tool_calls: false` — so image-plus-tools stays on
+    /// the smaller vision model, which does support them.
+    with_llamacpp_large_vision_cassette,
+    "LLAMACPP_LARGE_VISION_UPSTREAM",
+    8093
+);
+
+/// The larger vision model the multi-image cells were recorded against.
+pub(super) const CASSETTE_LARGE_VISION_MODEL: &str = "Qwen2.5-VL-7B-Instruct-Q4_K_M";
+
+server_config_wrapper!(
     /// The Llama family (`unsloth/Llama-3.2-3B-Instruct-GGUF` Q4_K_M) — a
     /// different chat template, and therefore a different tool-call wire.
     with_llamacpp_llama_family_cassette,
