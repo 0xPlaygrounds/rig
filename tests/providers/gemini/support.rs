@@ -21,33 +21,90 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 /// in the cassette (a response body, a JSON schema property) cannot make an
 /// absence assertion silently pass or fail.
 pub(super) fn recorded_request_generation_configs(scenario: &str) -> Vec<serde_json::Value> {
-    let path = crate::cassettes::cassette_path("gemini", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
-
-    let configs: Vec<serde_json::Value> = serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            let document = serde_yaml::Value::deserialize(document)
-                .unwrap_or_else(|error| panic!("cassette document should parse: {error}"));
-            let body = document
-                .get("when")
-                .and_then(|when| when.get("body"))
-                .and_then(serde_yaml::Value::as_str)
-                .expect("each recorded interaction should carry a request body")
-                .to_owned();
-            let body: serde_json::Value = serde_json::from_str(&body)
-                .unwrap_or_else(|error| panic!("recorded request body should be JSON: {error}"));
+    recorded_request_bodies(scenario)
+        .into_iter()
+        .map(|body| {
             body.get("generationConfig")
                 .cloned()
                 .unwrap_or(serde_json::Value::Null)
         })
-        .collect();
+        .collect()
+}
+
+/// Every recorded **request** body of a scenario, parsed, in recorded order.
+///
+/// The general form of [`recorded_request_generation_configs`]. A cell whose
+/// claim is about what rig *sent* — a handle present, a field absent — can only
+/// prove it here: the response says nothing about which of them the request
+/// carried, and a cassette replays regardless.
+///
+/// Bodyless interactions are skipped rather than treated as an error, because a
+/// `cachedContents` scenario records its own `GET` and `DELETE` alongside the
+/// completion, and those carry no body by construction. The non-empty assert
+/// still catches a scenario that recorded nothing to read.
+pub(super) fn recorded_request_bodies(scenario: &str) -> Vec<serde_json::Value> {
+    let path = crate::cassettes::cassette_path("gemini", scenario);
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
+
+    let bodies: Vec<serde_json::Value> =
+        serde_yaml::Deserializer::from_str(&contents)
+            .filter_map(|document| {
+                let document = serde_yaml::Value::deserialize(document)
+                    .unwrap_or_else(|error| panic!("cassette document should parse: {error}"));
+                let body = document
+                    .get("when")
+                    .and_then(|when| when.get("body"))
+                    .and_then(serde_yaml::Value::as_str)
+                    .filter(|body| !body.is_empty())?
+                    .to_owned();
+                Some(serde_json::from_str(&body).unwrap_or_else(|error| {
+                    panic!("recorded request body should be JSON: {error}")
+                }))
+            })
+            .collect();
 
     assert!(
-        !configs.is_empty(),
-        "scenario {scenario} recorded no interactions, so it asserts nothing"
+        !bodies.is_empty(),
+        "scenario {scenario} recorded no request bodies, so it asserts nothing"
     );
-    configs
+    bodies
+}
+
+/// Assert that every recorded `generateContent` request in `scenario` carried
+/// `cachedContent` and none of the three fields a cached content owns.
+///
+/// The cassette's own body matching would fail a request that changed, but only
+/// as an opaque "no recorded interaction matched" — this states the guarantee,
+/// so a cell about reading from a cache cannot quietly become a cell about
+/// something else. `cachedContents` lifecycle calls (create/delete) are skipped:
+/// they carry no `contents`.
+pub(super) fn assert_recorded_requests_read_from_a_cache(scenario: &str) {
+    let mut generate_requests = 0;
+    for (turn, body) in recorded_request_bodies(scenario).iter().enumerate() {
+        if body.get("contents").is_none_or(serde_json::Value::is_null) {
+            continue;
+        }
+        generate_requests += 1;
+        assert!(
+            body.get("cachedContent")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|handle| handle.starts_with("cachedContents/")),
+            "{scenario} turn {turn}: this cell is about reading from a cache, so every \
+             generateContent request has to carry the handle: {body}"
+        );
+        for field in ["systemInstruction", "tools", "toolConfig"] {
+            assert!(
+                body.get(field).is_none_or(serde_json::Value::is_null),
+                "{scenario} turn {turn}: the cache owns {field}, so the request must not carry \
+                 its own — and the provider would reject it: {body}"
+            );
+        }
+    }
+    assert!(
+        generate_requests > 0,
+        "{scenario} recorded no generateContent request, so it proves nothing about caching"
+    );
 }
 
 /// Assert that no recorded request for `scenario` carried a `generationConfig`

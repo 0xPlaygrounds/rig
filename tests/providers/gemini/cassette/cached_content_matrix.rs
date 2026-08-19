@@ -54,7 +54,10 @@ use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use std::time::Duration;
 
-use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
+use super::super::support::{
+    always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
+    assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
+};
 
 /// Deterministic, committed timestamp for the absolute-expiry arm. A computed
 /// "now + 10 minutes" would churn the fixture on every re-record.
@@ -432,6 +435,17 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
         },
     )
     .await;
+
+    // The answer alone proves nothing — a model can multiply two numbers in its
+    // head and return the same string with no tool involved at all. The cell's
+    // claim is that the tool *in the cache* ran, so it has to be read off the
+    // recorded bytes: Python generated and executed on Gemini's side, for a
+    // request that declared no tools of its own.
+    assert_recorded_response_contains(
+        "cached_content_matrix/edge_cached_code_execution",
+        &["executableCode", "codeExecutionResult"],
+    );
+    assert_recorded_requests_read_from_a_cache("cached_content_matrix/edge_cached_code_execution");
 }
 
 /// The exception to the cell above, recorded because it is the one that would
@@ -501,6 +515,12 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
         },
     )
     .await;
+
+    // The whole claim is about what left the process: a `tools` field
+    // suppressed and a handle sent. A passing prompt says neither.
+    assert_recorded_requests_read_from_a_cache(
+        "cached_content_matrix/edge_agent_active_tools_suppressed",
+    );
 }
 
 #[tokio::test]
