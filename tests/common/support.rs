@@ -663,11 +663,11 @@ pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named(
     while let Some(chunk) = stream.next().await {
         match chunk.expect("stream item should be ok") {
             StreamedAssistantContent::Final(_) => saw_final = true,
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                if tool_call.function.name == expected_name {
-                    assert_eq!(tool_call.function.arguments, json!({}));
-                    saw_matching_tool_call = true;
-                }
+            StreamedAssistantContent::ToolCall { tool_call, .. }
+                if tool_call.function.name == expected_name =>
+            {
+                assert_eq!(tool_call.function.arguments, json!({}));
+                saw_matching_tool_call = true;
             }
             _ => {}
         }

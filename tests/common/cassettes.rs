@@ -1351,15 +1351,11 @@ fn scrub_local_filesystem_paths(text: &str) -> String {
     let mut rest = text;
     let mut consumed = 0usize;
 
-    'outer: loop {
-        let Some((prefix, at)) = HOME_PREFIXES
-            .iter()
-            .filter_map(|p| rest.find(*p).map(|i| (*p, i)))
-            .min_by_key(|(_, i)| *i)
-        else {
-            break;
-        };
-
+    while let Some((prefix, at)) = HOME_PREFIXES
+        .iter()
+        .filter_map(|p| rest.find(*p).map(|i| (*p, i)))
+        .min_by_key(|(_, i)| *i)
+    {
         // Anchored: the value must begin here. Anything else is a path segment
         // inside a larger string (a URL, prose) and is not ours to rewrite.
         let absolute = consumed + at;
@@ -1395,7 +1391,7 @@ fn scrub_local_filesystem_paths(text: &str) -> String {
         consumed = absolute + path.len();
         rest = tail;
         if rest.is_empty() {
-            break 'outer;
+            break;
         }
     }
 

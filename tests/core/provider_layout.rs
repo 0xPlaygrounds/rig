@@ -195,7 +195,9 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ),
     (
         "rig-custom-agent",
-        Exempt("consumer-side custom agent runtime — reads the canonical grammar, never decodes a wire"),
+        Exempt(
+            "consumer-side custom agent runtime — reads the canonical grammar, never decodes a wire",
+        ),
     ),
     ("rig-derive", Exempt("proc-macro crate — no runtime wire")),
     (

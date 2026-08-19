@@ -1,10 +1,10 @@
+use rig::client::{CompletionClient, ProviderClient};
 use rig::core::tool::{PortableTool, ToolExecutionError};
-use rig::providers::openai;
-use rig::client::{ProviderClient, CompletionClient};
 use rig::custom_agent::CustomAgentBuilder;
+use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::json;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Deserialize)]
 struct AddArgs {
@@ -44,7 +44,9 @@ impl PortableTool for AddTool {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing to stdout with debug level
     fmt()
-        .with_env_filter(EnvFilter::new("rig_custom_agent=debug,custom_agent_telemetry=debug"))
+        .with_env_filter(EnvFilter::new(
+            "rig_custom_agent=debug,custom_agent_telemetry=debug",
+        ))
         .init();
 
     // Initialize the OpenAI client
@@ -52,7 +54,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the custom agent, injecting the custom tool
     let agent = CustomAgentBuilder::new(client.completion_model(openai::GPT_4O))
-        .preamble("You are a helpful assistant that adds numbers together. You MUST use the add tool.")
+        .preamble(
+            "You are a helpful assistant that adds numbers together. You MUST use the add tool.",
+        )
         .tool(AddTool)
         .build();
 

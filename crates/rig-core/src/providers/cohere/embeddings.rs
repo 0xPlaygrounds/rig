@@ -222,7 +222,7 @@ where
                     Ok(response
                         .embeddings
                         .into_iter()
-                        .zip(documents.into_iter())
+                        .zip(documents)
                         .map(|(embedding, document)| embeddings::Embedding {
                             document,
                             vec: embedding.into_iter().filter_map(|n| n.as_f64()).collect(),

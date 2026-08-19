@@ -1,6 +1,6 @@
 use rig_core::{
-    completion::{CompletionRequest, CompletionError, CompletionModel, Message, ToolDefinition},
-    tool::{portable::PortableTool, PortableDynamicTool, IntoToolOutput, ToolExecutionError},
+    completion::{CompletionError, CompletionModel, CompletionRequest, Message, ToolDefinition},
+    tool::{IntoToolOutput, PortableDynamicTool, ToolExecutionError, portable::PortableTool},
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -262,14 +262,21 @@ impl<M: CompletionModel + Clone> CustomAgent<M> {
             match tool.execute(args.clone()).await {
                 Ok(output) => {
                     debug!("Tool execution succeeded");
-                    rig_core::message::UserContent::tool_result(call_id, name, output.into_content())
+                    rig_core::message::UserContent::tool_result(
+                        call_id,
+                        name,
+                        output.into_content(),
+                    )
                 }
                 Err(e) => {
                     warn!(error = %e, "Tool execution failed");
                     rig_core::message::UserContent::tool_result(
                         call_id,
                         name,
-                        vec![rig_core::message::ToolResultContent::text(format!("Error: {}", e))],
+                        vec![rig_core::message::ToolResultContent::text(format!(
+                            "Error: {}",
+                            e
+                        ))],
                     )
                 }
             }
