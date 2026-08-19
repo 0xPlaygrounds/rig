@@ -2616,6 +2616,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "custom_agent_telemetry"
+version = "0.42.0"
+dependencies = [
+ "rig",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "custom_vector_store"
 version = "0.42.0"
 dependencies = [
@@ -9810,6 +9822,7 @@ dependencies = [
  "rig-bedrock",
  "rig-candle",
  "rig-core",
+ "rig-custom-agent",
  "rig-derive",
  "rig-fastembed",
  "rig-gemini-grpc",
@@ -9968,6 +9981,17 @@ dependencies = [
  "tracing-subscriber",
  "trybuild",
  "url",
+]
+
+[[package]]
+name = "rig-custom-agent"
+version = "0.42.0"
+dependencies = [
+ "rig-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

@@ -59,6 +59,13 @@ pub mod agent {
     }
 }
 
+/// Custom observable agent orchestration and lifecycle APIs.
+#[cfg(feature = "custom-agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "custom-agent")))]
+pub mod custom_agent {
+    pub use rig_custom_agent::*;
+}
+
 /// Provider clients plus classic agent/extractor constructors.
 pub mod client {
     // Classic-runtime construction extensions: `agent()` / `extractor()` on any

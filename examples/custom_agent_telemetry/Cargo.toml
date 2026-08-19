@@ -1,0 +1,13 @@
+[package]
+name = "custom_agent_telemetry"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+rig = { path = "../../", features = ["custom-agent"] }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

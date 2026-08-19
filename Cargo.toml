@@ -50,6 +50,7 @@ default-members = [
     ".",
     "crates/rig-core",
     "crates/rig-agent",
+    "crates/rig-custom-agent",
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
@@ -228,6 +229,7 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
+rig-custom-agent = { path = "crates/rig-custom-agent", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.42.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.42.0", optional = true, default-features = false }
@@ -324,6 +326,7 @@ url = { workspace = true }
 [features]
 default = ["rig-core/default", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent"]
+custom-agent = ["dep:rig-custom-agent"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # Internal: opt in to the slow nested-`cargo check` facade build tests
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
