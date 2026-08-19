@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":30,"messages":[{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"view_file"},"id":"call_REDACTED_1","type":"function"}]},{"content":[{"image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGP4z/CfJMQwqmFUw/DVAAAg0/4QF5nKuAAAAABJRU5ErkJggg=="},"type":"image_url"}],"role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"Call view_file, then reply with ONLY the dominant colour name.","role":"user"}],"model":"Qwen3-VL-2B-Instruct-Q8_0","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Pink","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-VL-2B-Instruct-Q8_0.gguf","object":"chat.completion","system_fingerprint":"b1-6d05498","timings":{"cache_n":0,"predicted_ms":8.02,"predicted_n":2,"predicted_per_second":124.68827930174564,"predicted_per_token_ms":8.02,"prompt_ms":336.992,"prompt_n":61,"prompt_per_second":181.01319912638874,"prompt_per_token_ms":5.524459016393443},"usage":{"completion_tokens":2,"prompt_tokens":61,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":63}}'
