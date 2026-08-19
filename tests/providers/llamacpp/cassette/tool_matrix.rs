@@ -23,6 +23,7 @@
 //! | [`a_tool_result_carrying_text_reaches_the_model`] | result: text | |
 //! | [`a_tool_result_carrying_json_reaches_the_model`] | result: JSON | serialized as text on this wire |
 //! | tool result carrying an image | result: image | `image_tool_result.rs`, on the vision server |
+//! | [`the_smoke_tier_round_trip_is_covered_elsewhere`] | smoke-tier round trip | cross-references `tools::tools_roundtrip` rather than re-recording it |
 //!
 //! # Two interesting rows
 //!

@@ -68,6 +68,34 @@
 //! | unmapped surface — decisions | `unmapped_surface` | 8080, 8082 |
 //! | the bare `openai::Client` path | `bare_openai_client` | 8080 |
 //!
+//! ## Migrated smoke coverage
+//!
+//! The cells the two pre-merge suites contributed, all on the default server
+//! (8080) unless noted. Each is one or two straightforward cells over a
+//! surface the matrices above then exercise in depth; they are indexed here
+//! rather than tabulated per module, and `matrix_index` enforces that
+//! distinction.
+//!
+//! | Module | Cells | Covers |
+//! | --- | --- | --- |
+//! | `agent` | 1 | an agent prompt end to end |
+//! | `context` | 1 | RAG context injection |
+//! | `embeddings` | 2 | `embed_texts` and the `Embed` derive (server 8081) |
+//! | `extractor` | 1 | the extractor facade |
+//! | `extractor_usage` | 5 | `extract_with_usage` and its backward-compatible twin |
+//! | `image_tool_result` | 2 | an image in a tool result, plus its user-message control (server 8082) |
+//! | `loaders` | 1 | the file-loader facade feeding an agent |
+//! | `models` | 1 | `list_models` smoke |
+//! | `multi_extract` | 1 | a concurrent batch extractor (`CassetteSpec::unordered`) |
+//! | `permission_control` | 2 | agent hooks gating tool calls, blocking and streaming |
+//! | `request_hook` | 1 | a hook observing the request and response |
+//! | `streaming` | 2 | a streamed prompt |
+//! | `streaming_tools` | 7 | streamed tool calls, including the `raw_stream` views |
+//! | `structured_output` | 4 | `prompt_typed` and `output_schema` |
+//! | `tools` | 2 | a blocking tool round trip |
+//! | `typed_prompt_tools` | 2 | `prompt_typed` with a tool round trip |
+//! | `matrix_index` | 3 | the guard that keeps every table on this page honest |
+//!
 //! # Model tiers, and the rule for escalating
 //!
 //! The **smoke tier** (`unsloth/Qwen3-1.7B-GGUF` Q4_K_M) is the default and
@@ -109,6 +137,7 @@ mod cassette {
     mod extractor_usage;
     mod image_tool_result;
     mod loaders;
+    mod matrix_index;
     mod model_family_matrix;
     mod models;
     mod multi_extract;

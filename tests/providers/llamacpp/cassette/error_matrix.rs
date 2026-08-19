@@ -17,6 +17,7 @@
 //! | [`an_unknown_model_is_ignored_rather_than_rejected`] | default | **200** | — | llama.cpp never reads `model` for routing |
 //! | [`a_missing_api_key_is_a_401_the_caller_can_read`] | `--api-key` | 401 | `authentication_error` | |
 //! | [`the_api_key_the_provider_sends_is_accepted`] | `--api-key` | 200 | — | the paired positive; impossible before this PR |
+//! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `VERIFY_PATH` is `/props`, not the public `/models` |
 //! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
 //! | [`embeddings_with_pooling_none_are_a_400`] | `--pooling none` | 400 | `invalid_request_error` | not the 500 the README implies |
 //! | [`embeddings_on_a_causal_lm_return_pooled_numbers`] | causal LM + `--pooling mean` | 200 | — | the answer to "did the old embeddings cells mean anything" |
