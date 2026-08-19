@@ -9988,6 +9988,7 @@ name = "rig-custom-agent"
 version = "0.42.0"
 dependencies = [
  "rig-core",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

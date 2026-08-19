@@ -26,6 +26,9 @@ pub struct CustomAgentBuilder<M: CompletionModel + Clone> {
     max_tokens: Option<u64>,
     additional_params: Option<serde_json::Value>,
     documents: Vec<rig_core::completion::Document>,
+    tool_choice: Option<rig_core::message::ToolChoice>,
+    output_schema: Option<schemars::Schema>,
+    record_telemetry_content: bool,
 }
 
 impl<M: CompletionModel + Clone> CustomAgentBuilder<M> {
@@ -39,6 +42,9 @@ impl<M: CompletionModel + Clone> CustomAgentBuilder<M> {
             max_tokens: None,
             additional_params: None,
             documents: Vec::new(),
+            tool_choice: None,
+            output_schema: None,
+            record_telemetry_content: false,
         }
     }
 
@@ -96,6 +102,24 @@ impl<M: CompletionModel + Clone> CustomAgentBuilder<M> {
         self
     }
 
+    /// Set the tool choice for the completion model.
+    pub fn tool_choice(mut self, tool_choice: rig_core::message::ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Set the output schema for the completion model.
+    pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Enable telemetry content recording for the completion model.
+    pub fn record_telemetry_content(mut self, record: bool) -> Self {
+        self.record_telemetry_content = record;
+        self
+    }
+
     /// Consume the builder and return the configured [`CustomAgent`].
     pub fn build(self) -> CustomAgent<M> {
         CustomAgent {
@@ -106,6 +130,9 @@ impl<M: CompletionModel + Clone> CustomAgentBuilder<M> {
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
             documents: self.documents,
+            tool_choice: self.tool_choice,
+            output_schema: self.output_schema,
+            record_telemetry_content: self.record_telemetry_content,
         }
     }
 }
@@ -119,6 +146,9 @@ pub struct CustomAgent<M: CompletionModel + Clone> {
     max_tokens: Option<u64>,
     additional_params: Option<serde_json::Value>,
     documents: Vec<rig_core::completion::Document>,
+    tool_choice: Option<rig_core::message::ToolChoice>,
+    output_schema: Option<schemars::Schema>,
+    record_telemetry_content: bool,
 }
 
 impl<M: CompletionModel + Clone> CustomAgent<M> {
@@ -158,10 +188,10 @@ impl<M: CompletionModel + Clone> CustomAgent<M> {
                 tools: tool_defs,
                 temperature: self.temperature,
                 max_tokens: self.max_tokens,
-                tool_choice: None,
+                tool_choice: self.tool_choice.clone(),
                 additional_params: self.additional_params.clone(),
-                output_schema: None,
-                record_telemetry_content: false,
+                output_schema: self.output_schema.clone(),
+                record_telemetry_content: self.record_telemetry_content,
             };
 
             info!("Sending request to model");
