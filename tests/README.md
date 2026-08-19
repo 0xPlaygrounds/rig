@@ -319,7 +319,7 @@ cargo test -p rig --all-features --test openai \
 
 Use the provider-specific environment variables named in the ignored test reason or provider
 module, such as `OPENROUTER_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `XAI_API_KEY`,
-`HUGGINGFACE_API_KEY`, or local services such as Ollama, llamafile, and llama.cpp.
+`HUGGINGFACE_API_KEY`, or local services such as Ollama and llama.cpp (`llama-server`, which also serves a `.llamafile`).
 
 ## Local Artifact Model Tests
 

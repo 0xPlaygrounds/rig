@@ -170,7 +170,7 @@ impl AgentHook for PermissionHook {
 
 #[tokio::test]
 async fn permission_control_prompt_example() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "permission_control/permission_control_prompt_example",
         |client| async move {
             let scratch = ScratchFile::new("prompt")?;
@@ -219,7 +219,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 
 #[tokio::test]
 async fn permission_control_streaming_example() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "permission_control/permission_control_streaming_example",
         |client| async move {
             let scratch = ScratchFile::new("streaming")?;

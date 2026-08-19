@@ -1,9 +1,9 @@
-//! Matrix for raw terminal-record capture on llamafile's streaming path
+//! Matrix for raw terminal-record capture on llama.cpp's streaming path
 //! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
 //!
 //! # The feature
 //!
-//! Capture is always on. llamafile streams through the shared OpenAI Chat
+//! Capture is always on. llama.cpp streams through the shared OpenAI Chat
 //! Completions model, whose
 //! [`raw_stream`](rig::providers::openai::GenericCompletionModel::raw_stream)
 //! yields [`openai::StreamingCompletionResponse`] as its terminal record: the
@@ -32,24 +32,24 @@
 //!
 //! Every cell is recorded against Ollama's OpenAI-compatible endpoint (the
 //! `cassette_support` default upstream) serving `qwen3:4b`. Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamafile llamafile::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llama.cpp llamacpp::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 
 use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
-use rig::providers::{llamafile, openai};
+use rig::providers::{llamacpp, openai};
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::super::cassette_support::with_llamafile_cassette;
+use super::super::cassette_support::with_llamacpp_cassette;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
 
-const LLAMAFILE_PROVIDER: &str = "llamafile";
+const LLAMACPP_PROVIDER: &str = "llamacpp";
 const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &llamafile::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &llamacpp::CompletionModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
 }
 
@@ -73,11 +73,11 @@ async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) ->
 /// `(all frames, terminal frame)`.
 fn recorded_frames_with_terminal(scenario: &str) -> (Vec<Value>, Value) {
     assert_eq!(
-        recorded_interaction_bodies(LLAMAFILE_PROVIDER, scenario).len(),
+        recorded_interaction_bodies(LLAMACPP_PROVIDER, scenario).len(),
         1,
         "{scenario}: the scenario must record exactly one interaction"
     );
-    let frames = recorded_sse_json_frames(LLAMAFILE_PROVIDER, scenario);
+    let frames = recorded_sse_json_frames(LLAMACPP_PROVIDER, scenario);
     let terminal = frames
         .last()
         .cloned()
@@ -112,7 +112,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(MODEL);
@@ -175,7 +175,7 @@ async fn stream_raw_exposes_envelope_fields() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
             let model = client.completion_model(MODEL);

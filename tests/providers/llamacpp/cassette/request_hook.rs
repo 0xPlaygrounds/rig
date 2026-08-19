@@ -70,7 +70,7 @@ impl AgentHook for SessionIdHook<'_> {
 
 #[tokio::test]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
             let agent = client

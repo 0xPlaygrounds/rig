@@ -9,7 +9,7 @@
 //! - Groq
 //! - Hugging Face
 //! - Hyperbolic
-//! - Llamafile
+//! - llama.cpp (`llama-server`, and llamafile)
 //! - MiniMax
 //! - Mira
 //! - Mistral
@@ -119,7 +119,7 @@ pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
 pub mod internal;
-pub mod llamafile;
+pub mod llamacpp;
 pub mod minimax;
 pub mod mira;
 pub mod mistral;

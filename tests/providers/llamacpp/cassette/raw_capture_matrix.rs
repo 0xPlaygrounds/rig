@@ -1,9 +1,9 @@
-//! Matrix for raw response capture on llamafile's blocking path
+//! Matrix for raw response capture on llama.cpp's blocking path
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
-//! Capture is always on. llamafile is driven by the shared OpenAI Chat
+//! Capture is always on. llama.cpp is driven by the shared OpenAI Chat
 //! Completions model (`openai::GenericCompletionModel<LlamafileExt>`), whose
 //! wire type is [`openai::CompletionResponse`]. Every completion the seam
 //! returns therefore carries `raw`: the value
@@ -33,21 +33,21 @@
 //! Every cell is recorded. The fixtures were recorded against Ollama's
 //! OpenAI-compatible endpoint (the `cassette_support` default upstream) serving
 //! `qwen3:4b`, so the model name here is that one rather than the
-//! `llama-server` model the older llamafile cassettes use; the wire shape is
+//! `llama-server` model the older llama.cpp cassettes use; the wire shape is
 //! the same chat-completions envelope either way. Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamafile llamafile::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llama.cpp llamacpp::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 
 use rig::completion::NormalizeCompletionResponse as _;
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
 use rig::prelude::*;
-use rig::providers::{llamafile, openai};
+use rig::providers::{llamacpp, openai};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::super::cassette_support::with_llamafile_cassette;
+use super::super::cassette_support::with_llamacpp_cassette;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
 
-const LLAMAFILE_PROVIDER: &str = "llamafile";
+const LLAMACPP_PROVIDER: &str = "llamacpp";
 /// The model Ollama's OpenAI-compatible endpoint served at recording time.
 const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
@@ -55,7 +55,7 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 /// qwen3 spends tokens on a reasoning trace before the one-word answer and the
 /// chat-completions route has no `think` switch, so the cap is generous
 /// enough that the turn stops on its own (`finish_reason: "stop"`).
-fn request(model: &llamafile::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &llamacpp::CompletionModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
 }
 
@@ -87,7 +87,7 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
 /// The single recorded interaction of a scenario, request and response parsed
 /// as JSON.
 fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
-    let bodies = recorded_interaction_bodies(LLAMAFILE_PROVIDER, scenario);
+    let bodies = recorded_interaction_bodies(LLAMACPP_PROVIDER, scenario);
     assert_eq!(
         bodies.len(),
         1,
@@ -140,7 +140,7 @@ fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
 #[tokio::test]
 async fn raw_round_trips_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(MODEL);
@@ -161,7 +161,7 @@ async fn raw_round_trips_provider_type() {
             // The typed view agrees with the normalized one on what the model
             // said, so raw is a superset, not a divergent copy.
             assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-            assert_eq!(response.provider, LLAMAFILE_PROVIDER);
+            assert_eq!(response.provider, LLAMACPP_PROVIDER);
             assert!(!response.choice.is_empty());
         },
     )
@@ -182,7 +182,7 @@ async fn raw_exposes_envelope_fields() {
     let scenario = "raw_capture_matrix/raw_exposes_envelope_fields";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "raw_capture_matrix/raw_exposes_envelope_fields",
         |client| async move {
             let model = client.completion_model(MODEL);
@@ -250,7 +250,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
             let model = client.completion_model(MODEL);
@@ -264,11 +264,11 @@ async fn normalized_fields_equal_raw_renormalized() {
             // body, so the raw-derived normalization is given the same one.
             let from_raw = openai::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into openai::CompletionResponse")
-                .normalize(LLAMAFILE_PROVIDER)
+                .normalize(LLAMACPP_PROVIDER)
                 .expect("raw must normalize")
                 .with_optional_provider_request_id(response.provider_request_id.clone());
 
-            assert_eq!(response.provider, LLAMAFILE_PROVIDER);
+            assert_eq!(response.provider, LLAMACPP_PROVIDER);
             assert_eq!(from_raw.provider, response.provider);
             assert_eq!(from_raw.model, response.model);
             assert_eq!(from_raw.finish_reason(), response.finish_reason());
@@ -295,7 +295,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     assert_recorded_envelope(&body, scenario);
     let from_wire = openai::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response")
-        .normalize(LLAMAFILE_PROVIDER)
+        .normalize(LLAMACPP_PROVIDER)
         .expect("recorded body must normalize")
         .with_optional_provider_request_id(response.provider_request_id.clone());
     let mut live = normalized_without_raw(response);

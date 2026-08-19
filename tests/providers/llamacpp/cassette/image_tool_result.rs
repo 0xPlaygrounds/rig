@@ -20,7 +20,7 @@ use rig::client::CompletionClient as _;
 use rig::completion::CompletionModel as _;
 use rig::message::{ImageMediaType, ProviderCallId, ToolCallId, ToolResult, ToolResultContent};
 
-use super::super::cassette_support::with_llamafile_cassette;
+use super::super::cassette_support::with_llamacpp_cassette;
 
 /// 16x16 solid magenta. Distinctive on purpose: "red" and "blue" are plausible
 /// blind guesses for "what colour is this image", so a cell using them could
@@ -75,7 +75,7 @@ fn assistant_text(response: &rig::completion::CompletionResponse) -> String {
 /// catching.
 #[tokio::test]
 async fn a_tool_result_image_is_read_by_the_model() {
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "image_tool_result/a_tool_result_image_is_read_by_the_model",
         |client| async move {
             let model = client.completion_model(VISION_MODEL);
@@ -115,7 +115,7 @@ async fn a_tool_result_image_is_read_by_the_model() {
 /// the only variable is the message role.
 #[tokio::test]
 async fn the_same_image_in_a_user_message_is_read_too() {
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "image_tool_result/the_same_image_in_a_user_message_is_read_too",
         |client| async move {
             let model = client.completion_model(VISION_MODEL);

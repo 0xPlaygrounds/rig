@@ -1,4 +1,4 @@
-//! Llamafile loaders smoke test.
+//! llama.cpp loaders smoke test.
 
 use rig::completion::Prompt;
 use rig::loaders::FileLoader;
@@ -9,7 +9,7 @@ use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relev
 
 #[tokio::test]
 async fn loaders_smoke() {
-    with_llamafile_cassette("loaders/loaders_smoke", |client| async move {
+    with_llamacpp_cassette("loaders/loaders_smoke", |client| async move {
 
         let examples = FileLoader::with_glob(LOADERS_GLOB)
             .expect("examples glob should parse")
@@ -18,7 +18,7 @@ async fn loaders_smoke() {
             .into_iter();
 
         let agent = examples
-            .fold(client.agent(CASSETTE_CHAT_MODEL), |builder, (path, content)| {
+            .fold(client.agent(CASSETTE_MODEL), |builder, (path, content)| {
                 builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
             })
             .preamble(

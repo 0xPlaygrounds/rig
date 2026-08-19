@@ -9,7 +9,7 @@ use super::super::cassette_support::*;
 
 #[tokio::test]
 async fn completion_smoke() {
-    with_llamacpp_completions_cassette("agent/completion_smoke", |client| async move {
+    with_llamacpp_cassette("agent/completion_smoke", |client| async move {
         let agent = client
             .agent(CASSETTE_MODEL)
             .preamble(BASIC_PREAMBLE)

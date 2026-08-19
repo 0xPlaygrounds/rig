@@ -1,4 +1,4 @@
-//! Llamafile embeddings smoke test.
+//! llama.cpp embeddings smoke test.
 //!
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
@@ -6,9 +6,8 @@
 use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
 
-use super::super::cassette_support::{CASSETTE_EMBEDDING_MODEL, with_llamafile_cassette};
-
 use super::super::cassette_support::*;
+
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 use rig::Embed;
 
@@ -21,7 +20,7 @@ struct Greetings {
 
 #[tokio::test]
 async fn embeddings_smoke() {
-    with_llamafile_cassette("embeddings/embeddings_smoke", |client| async move {
+    with_llamacpp_cassette("embeddings/embeddings_smoke", |client| async move {
         let model = client.embedding_model(CASSETTE_EMBEDDING_MODEL);
 
         let embeddings = model
@@ -36,11 +35,11 @@ async fn embeddings_smoke() {
 
 #[tokio::test]
 async fn derive_document_embeddings() {
-    with_llamafile_cassette(
+    with_llamacpp_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
             let embeddings = client
-                .embeddings(CASSETTE_CHAT_MODEL)
+                .embeddings(CASSETTE_MODEL)
                 .document(Greetings {
                     message: "Hello, world!".to_string(),
                 })
