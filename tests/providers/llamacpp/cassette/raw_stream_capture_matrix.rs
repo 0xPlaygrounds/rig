@@ -29,10 +29,20 @@
 //! |---|------|-----------|----------|--------|
 //! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
 //! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded frames; usage equals the terminal frame | recorded |
+//! | 3 | `stream_raw_preserves_llamacpp_timings` | Part 4: dropped fields | `timings` from the terminal frame survives under `additional_params` | recorded |
 //!
-//! Every cell is recorded against Ollama's OpenAI-compatible endpoint (the
-//! `cassette_support` default upstream) serving `qwen3:4b`. Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llama.cpp llamacpp::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
+//! Cell 3 is the streaming half of the asymmetry `raw_capture_matrix`'s
+//! timings cell describes. `StreamingCompletionChunk` carries a
+//! `#[serde(flatten)]` catch-all for exactly this reason — "raw_stream must
+//! not erase them merely because the shared wire shape does not know their
+//! names yet" — so llama.cpp's `timings` reach the caller here *without* any
+//! provider-specific type. `openai::CompletionResponse` on the blocking path
+//! has no such catch-all, which is why `llamacpp::CompletionResponse` exists.
+//!
+//! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
+//! Re-record with:
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
 use futures::StreamExt;
 use rig::completion::CompletionModel as _;
@@ -42,11 +52,10 @@ use rig::streaming::{StreamFinal, StreamedAssistantContent};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::super::cassette_support::with_llamacpp_cassette;
+use super::super::cassette_support::*;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
-const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request(model: &llamacpp::CompletionModel) -> rig::completion::CompletionRequest {
@@ -115,7 +124,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion_model(CASSETTE_MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -178,7 +187,7 @@ async fn stream_raw_exposes_envelope_fields() {
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion_model(CASSETTE_MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -246,5 +255,66 @@ async fn stream_raw_exposes_envelope_fields() {
     assert_eq!(
         typed_params.get("system_fingerprint"),
         frames[0].get("system_fingerprint")
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 3: `timings` reach the caller on the streaming path with no provider type
+// ---------------------------------------------------------------------------
+
+/// llama.cpp's `timings` ride the terminal frame and land under
+/// `additional_params`.
+///
+/// The blocking path needed `llamacpp::CompletionResponse` to keep this field;
+/// the streaming path keeps it for free, because the chunk type has a
+/// `#[serde(flatten)]` catch-all. Pinning both halves is what makes the
+/// asymmetry a measured fact rather than a reading of the source.
+#[tokio::test]
+async fn stream_raw_preserves_llamacpp_timings() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings";
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let sink = std::sync::Arc::clone(&captured);
+
+    with_llamacpp_cassette(
+        "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
+        |client| async move {
+            let model = client.completion_model(CASSETTE_MODEL);
+            let terminal = terminal_of(
+                model
+                    .stream(request(&model))
+                    .await
+                    .expect("stream should start"),
+            )
+            .await;
+            *sink.lock().expect("capture mutex") = Some(terminal.raw.clone());
+        },
+    )
+    .await;
+
+    let raw = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured raw");
+    let (_, terminal_frame) = recorded_frames_with_terminal(scenario);
+
+    let recorded_timings = terminal_frame
+        .get("timings")
+        .expect("llama.cpp puts timings on the terminal streaming frame");
+    let carried = raw
+        .get("additional_params")
+        .and_then(|params| params.get("timings"))
+        .expect("the flattened catch-all must carry timings through to the caller");
+    assert_eq!(
+        carried, recorded_timings,
+        "the terminal frame's timings must survive verbatim"
+    );
+
+    // And it really is the same shape the blocking path's typed field reads.
+    let typed: rig::providers::llamacpp::Timings =
+        serde_json::from_value(carried.clone()).expect("timings must decode into the typed form");
+    assert!(
+        typed.predicted_per_second.is_some_and(|rate| rate > 0.0),
+        "{typed:?}"
     );
 }

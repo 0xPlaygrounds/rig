@@ -159,7 +159,10 @@ impl openai::completion::OpenAICompatibleProvider for LlamacppExt {
     // sends the same bytes in a `user` message.
     const SUPPORTS_IMAGE_TOOL_RESULTS: bool = true;
 
-    type Response = openai::CompletionResponse;
+    // llama.cpp adds `timings` to the OpenAI payload; see
+    // [`super::completion::CompletionResponse`] for why that earns its own
+    // type rather than being dropped by the shared one.
+    type Response = super::completion::CompletionResponse;
 }
 
 impl openai::embedding::OpenAIEmbeddingsCompatible for LlamacppExt {
