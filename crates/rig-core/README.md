@@ -78,7 +78,7 @@ Rig supports the following LLM providers out of the box:
 - Groq
 - Hugging Face
 - Hyperbolic
-- Llamafile
+- llama.cpp (`llama-server`, and llamafile)
 - MiniMax
 - Mira
 - Mistral

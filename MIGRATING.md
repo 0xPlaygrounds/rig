@@ -819,7 +819,7 @@ Every type moves with it: `llamafile::CompletionModel` → `llamacpp::Completion
 the old module is deleted, so this is a compile error rather than a silent
 change.
 
-Four things behave differently, and none of them is a rename:
+Six things behave differently, and none of them is a rename:
 
 1. **An API key is now possible.** `llamafile`'s `ApiKey` type was `Nothing`,
    which cannot produce an `Authorization` header at all, so a
@@ -856,6 +856,19 @@ Four things behave differently, and none of them is a rename:
    old behaviour you were not getting the tool you asked for; advertise only
    that tool in `tools` to force it.
 
+5. **`verify()` targets `/props` instead of `/models`.** `GET /v1/models` and
+   `/health` are the only two routes `llama-server` serves *without* its
+   API-key check, so verifying against `/models` returned `Ok(())` for a wrong
+   key — or no key — against a server that would reject every real request.
+   `/props` is behind the check and is served by every configuration. If your
+   deployment is behind a proxy that only forwards `/v1/*` — a common nginx
+   `location /v1/` — `verify()` will now 404 where it used to succeed, and you
+   need to forward `/props` as well. Note that llama.cpp serves its
+   operational routes off the server root, *not* under `/v1`.
+
+6. **`embedding_model_with_ndims` can now fail.** See the standalone section
+   below; it applies to every OpenAI-compatible provider, not only this one.
+
 `llamacpp` additionally declares two capability slots `llamafile` did not:
 `model_listing` (`GET /v1/models`) and `rerank` (`POST /v1/rerank`, which needs
 a server started with `--reranking` and a cross-encoder loaded).
@@ -885,12 +898,46 @@ the streaming path — `raw_stream` already preserved `timings` under
 `additional_params`, because the shared streaming chunk type carries a
 catch-all and the blocking one does not.
 
+### A declared embedding width the provider ignores is now an error
+
+**This is not llama.cpp-specific.** It affects every provider on the shared
+OpenAI-compatible embeddings path — openai, azure, together, openrouter,
+venice, doubleword, mistral and llamacpp.
+
+`ndims()` is what a vector store sizes its index from. When a caller declared a
+width *explicitly* and the provider returned vectors of a different one, rig
+kept reporting the declared number, so the disagreement surfaced far from the
+call that caused it — as an index that could not hold its own vectors. The
+providers where this happens are the ones that **ignore** `dimensions` rather
+than rejecting it, so nothing in the response says anything is wrong.
+
+```rust
+// before: Ok, with 1536-wide vectors and ndims() == 512
+// after:  Err(EmbeddingError::MismatchedDimensions { requested: 512, returned: 1536, .. })
+let model = client.embedding_model_with_ndims("text-embedding-ada-002", 512);
+let embeddings = model.embed_texts(["hello"]).await?;
+```
+
+The check applies only to a width that was **set explicitly** — through
+`EmbeddingsClient::embedding_model_with_ndims` or
+`openai::embedding::GenericEmbeddingModel::new` / `with_model` /
+`with_encoding_format`. A handle built with `embedding_model` reports whatever
+the provider's own table says and is untouched.
+
+A width of **zero is unaffected**: zero is rig's sentinel for *unknown* — it is
+what `default_ndims` returning `None` produces — not a declaration, so
+`GenericEmbeddingModel::new(client, model, 0)` behaves exactly as before.
+
+If you hit this, you were already getting vectors of a width `ndims()` did not
+describe. Either drop to `embedding_model` and let the provider's width stand,
+or pass the width the model actually returns.
+
 ### `RerankResult::relevance_score` is no longer documented as 0..1
 
 No code change; the type is the same `f64`. The doc comment claimed a 0-to-1
 range, which was true of the only implementation that existed and is false of
 llama.cpp's: it returns the cross-encoder's raw logit, so negative scores are
-normal (measured: `0.2516`, `-4.761`, `-8.377` for three documents against one
+normal (measured: `0.8225`, `-4.7583`, `-8.3761` for three documents against one
 query). Use the field to *order* results within one response; code that
 thresholded it as a probability was already wrong on any logit-scoring
 provider.

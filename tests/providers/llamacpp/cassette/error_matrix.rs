@@ -18,6 +18,7 @@
 //! | [`a_missing_api_key_is_a_401_the_caller_can_read`] | `--api-key` | 401 | `authentication_error` | |
 //! | [`the_api_key_the_provider_sends_is_accepted`] | `--api-key` | 200 | — | the paired positive; impossible before this PR |
 //! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `VERIFY_PATH` is `/props`, not the public `/models` |
+//! | [`the_model_listing_is_public_even_on_a_keyed_server`] | `--api-key` | **200** | — | the measurement that justifies the row above |
 //! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
 //! | [`embeddings_with_pooling_none_are_a_400`] | `--pooling none` | 400 | `invalid_request_error` | not the 500 the README implies |
 //! | [`embeddings_on_a_causal_lm_return_pooled_numbers`] | causal LM + `--pooling mean` | 200 | — | the answer to "did the old embeddings cells mean anything" |
@@ -57,7 +58,9 @@
 //!   400 that must survive rig's SSE funnel rather than the unary one.
 
 use futures::StreamExt;
-use rig::client::{CompletionClient, EmbeddingsClient, RerankingClient, VerifyClient};
+use rig::client::{
+    CompletionClient, EmbeddingsClient, ModelListingClient, RerankingClient, VerifyClient,
+};
 use rig::completion::CompletionModel;
 use rig::embeddings::{EmbeddingError, EmbeddingModel};
 use rig::rerank::{RerankError, RerankModel};
@@ -403,6 +406,56 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
         paths,
         vec!["/props".to_string()],
         "verification must hit the API-key-checked route, not the public one"
+    );
+}
+
+/// The claim `VERIFY_PATH` rests on, recorded: `GET /v1/models` answers **200
+/// without a credential** on a server that rejects everything else.
+///
+/// The cell above explains why `/props` replaced `/models`; this is the half
+/// that makes it a measurement. Against the *same* `--api-key` server and the
+/// *same* unkeyed client, the model listing succeeds while a completion 401s —
+/// so a provider verifying against `/models`, as the predecessor did, reports
+/// a healthy credential for a server that will reject every real request.
+#[tokio::test]
+async fn the_model_listing_is_public_even_on_a_keyed_server() {
+    with_llamacpp_missing_api_key_cassette(
+        "error_matrix/model_listing_is_public",
+        |client| async move {
+            let models = client
+                .list_models()
+                .await
+                .expect("`/v1/models` is served without the API-key check");
+            assert!(
+                !models.data.is_empty(),
+                "and it really answers, rather than returning an empty list: \
+                 {models:#?}"
+            );
+        },
+    )
+    .await;
+
+    let recorded = recorded_statuses_and_bodies("llamacpp", "error_matrix/model_listing_is_public");
+    assert_eq!(
+        recorded[0].0, 200,
+        "no credential, and a 200 — on the same server whose completions 401"
+    );
+    assert_eq!(
+        crate::cassettes::recorded_request_paths(
+            "llamacpp",
+            "error_matrix/model_listing_is_public"
+        ),
+        vec!["/v1/models".to_string()]
+    );
+
+    // The contrast, from the sibling scenario's own bytes: the same client
+    // against the same server gets a 401 the moment it asks for anything else.
+    let refused = recorded_statuses_and_bodies("llamacpp", "error_matrix/missing_api_key_is_401");
+    assert_eq!(
+        refused.last().expect("an interaction").0,
+        401,
+        "the server does reject an unkeyed request — otherwise `/models` \
+         answering is unremarkable"
     );
 }
 

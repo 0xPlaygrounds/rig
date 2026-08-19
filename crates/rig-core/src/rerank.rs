@@ -52,7 +52,7 @@ pub struct RerankResult {
     /// returns a normalized 0..1 score, while llama.cpp returns the
     /// cross-encoder's raw logit — measured against `llama-server`
     /// b10499-6d05498 with `bge-reranker-v2-m3`, ranking three documents
-    /// against "What is a panda?" gives `0.2516`, `-4.761` and `-8.377`.
+    /// against "What is a panda?" gives `0.8225`, `-4.7583` and `-8.3761`.
     /// Negative values are normal there, and code that treated this as a
     /// probability (thresholding at 0.5, or multiplying scores) would silently
     /// reorder or discard results on any logit-scoring provider.

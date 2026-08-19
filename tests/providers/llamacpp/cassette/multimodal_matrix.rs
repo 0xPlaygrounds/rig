@@ -287,8 +287,11 @@ async fn a_malformed_data_uri_is_a_400() {
 /// An image URL the server cannot fetch is a **500**.
 ///
 /// llama.cpp fetches remote images itself, and reports a failed fetch as
-/// `server_error` — the third row in this corpus where a caller error arrives
-/// as a 5xx, after `--no-jinja` with tools and the schema/grammar conflict.
+/// `server_error`. It joins a list this corpus keeps finding: `tools` without
+/// `--jinja`, the top-level schema/grammar conflict, an embeddings input past
+/// the physical batch, and — in this same file — an image sent to a server
+/// with no `--mmproj`. Five caller errors, all arriving as 5xx, all of which
+/// a client that retries 5xx and not 4xx will retry forever.
 #[tokio::test]
 async fn a_url_the_server_cannot_fetch_is_a_500() {
     with_llamacpp_vision_cassette(

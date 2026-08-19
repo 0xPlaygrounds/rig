@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":64,"messages":[{"content":"/no_think Name one colour. One word.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","n":2}'
+  body: '{"max_tokens":64,"messages":[{"content":"/no_think Invent a two-word name for a fictional harbour town. Reply with the name only.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","n":2,"seed":11,"temperature":1.4}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=utf-8
-  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Red.","role":"assistant"}},{"finish_reason":"stop","index":1,"message":{"content":"Red.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":17,"predicted_ms":49.118,"predicted_n":7,"predicted_per_second":122.15481086363451,"predicted_per_token_ms":8.186333333333334,"prompt_ms":5.773,"prompt_n":1,"prompt_per_second":173.22016282695307,"prompt_per_token_ms":5.773},"usage":{"completion_tokens":7,"prompt_tokens":18,"prompt_tokens_details":{"cached_tokens":17},"total_tokens":25}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Tidefall","role":"assistant"}},{"finish_reason":"stop","index":1,"message":{"content":"Tideve","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":6,"predicted_ms":54.117,"predicted_n":8,"predicted_per_second":129.34937265554262,"predicted_per_token_ms":7.731,"prompt_ms":24.116,"prompt_n":22,"prompt_per_second":912.257422458119,"prompt_per_token_ms":1.0961818181818181},"usage":{"completion_tokens":8,"prompt_tokens":28,"prompt_tokens_details":{"cached_tokens":6},"total_tokens":36}}'

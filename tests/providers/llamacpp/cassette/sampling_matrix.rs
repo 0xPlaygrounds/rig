@@ -14,7 +14,7 @@
 //! | [`a_cap_past_the_context_is_clamped`] | `max_tokens` past `-c` | recorded in the error matrix; cross-referenced here |
 //! | [`a_single_stop_sequence_truncates_the_answer`] | `stop: ["…"]` | the stop text is absent from the answer, `finish_reason: stop` |
 //! | [`several_stop_sequences_fire_on_whichever_comes_first`] | `stop: [a, b]` | the earlier one wins |
-//! | [`a_stop_sequence_that_never_matches_changes_nothing`] | `stop: ["…"]` | the cap terminates instead |
+//! | [`a_stop_sequence_that_never_matches_changes_nothing`] | `stop: ["…"]` | the turn ends exactly as it would have without the sequence |
 //! | [`stop_matching_is_case_sensitive`] | `stop` | a case-mismatched sequence does not fire — a real footgun |
 //! | [`a_fixed_seed_and_an_absent_seed_are_both_accepted`] | `seed` | present round-trips; absent falls back to the server's `--seed` |
 //! | [`additional_params_wins_over_the_typed_field_it_collides_with`] | precedence | `additional_params` overrides a typed builder call, silently |

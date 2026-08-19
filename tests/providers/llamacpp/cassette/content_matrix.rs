@@ -91,9 +91,15 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
                 ),
                 other => panic!("expected the shared empty-response error, got {other:?}"),
             }
+            // Deliberately *not* `provider_response_status().is_none()`: that
+            // is structurally true for `ResponseError` and would assert
+            // nothing. The real claim is that the error carries no preserved
+            // provider body either — rig built it locally from a healthy
+            // response, so there is nothing of the server's in it.
             assert!(
-                error.provider_response_status().is_none(),
-                "there is no failed provider response — the server answered 200: {error}"
+                error.provider_response_body().is_none(),
+                "the error is rig's own reading of a 200, not a preserved \
+                 provider failure: {error}"
             );
         },
     )
@@ -229,14 +235,24 @@ async fn unicode_split_across_stream_chunks_reassembles() {
         "the recorded stream must be genuinely chunked for this cell to test \
          anything, saw {pieces} content deltas"
     );
-    // And at least one recorded delta must itself be a bare multi-byte
-    // fragment, which is what makes reassembly non-trivial.
+    // And the deltas really are carrying the multi-byte runs, so the cell
+    // would not pass on an ASCII answer.
+    //
+    // What this cannot check, and does not claim to: that a UTF-8 *sequence*
+    // was split across two frames. llama.cpp buffers until a character is
+    // whole before emitting a delta, and every recorded delta is therefore
+    // already valid UTF-8 — so the split case is not reachable through this
+    // wire at all. The reassembly claim above is about rig concatenating
+    // correct fragments in order, which is what is actually at risk.
+    let multibyte_deltas = frames
+        .iter()
+        .filter_map(|frame| frame["choices"][0]["delta"]["content"].as_str())
+        .filter(|piece| piece.chars().any(|ch| ch.len_utf8() > 1))
+        .count();
     assert!(
-        frames
-            .iter()
-            .filter_map(|frame| frame["choices"][0]["delta"]["content"].as_str())
-            .any(|piece| piece.chars().any(|ch| ch.len_utf8() > 1)),
-        "no delta carried a multi-byte character; the cell would pass on ASCII"
+        multibyte_deltas >= 3,
+        "only {multibyte_deltas} deltas carried a multi-byte character; the cell \
+         would be passing on mostly-ASCII output"
     );
 }
 

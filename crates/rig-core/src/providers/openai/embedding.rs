@@ -315,9 +315,19 @@ where
                         .collect();
 
                     // A width the caller *declared* must be the width they
-                    // got. Only checked when it was set explicitly: a handle
-                    // built without one reports whatever the provider table
-                    // says and has nothing to disagree with.
+                    // got. Two carve-outs, and both matter:
+                    //
+                    // * the width must have been set explicitly — a handle
+                    //   built without one reports whatever the provider table
+                    //   says and has nothing to disagree with;
+                    // * and it must be non-zero. Zero is rig's sentinel for
+                    //   *unknown*, not a declaration: `default_ndims`
+                    //   returning `None` lands here through
+                    //   `unwrap_or_default()`, and
+                    //   `GenericEmbeddingModel::new(client, model, 0)` is the
+                    //   documented way to say "I do not know how wide this
+                    //   is". Treating it as a claim would turn every such
+                    //   handle into a hard error on its first request.
                     //
                     // The failure this catches is silent, because the
                     // providers where it happens are the ones that *ignore*
@@ -328,6 +338,7 @@ where
                     // `ndims()` then builds an index that cannot hold its own
                     // vectors, and the first thing to notice is the store.
                     if self.dimensions_were_explicitly_set
+                        && self.ndims > 0
                         && let Some(returned) = embeddings
                             .iter()
                             .map(|embedding| embedding.vec.len())
@@ -503,6 +514,35 @@ mod tests {
         assert_eq!(body["dimensions"], serde_json::json!(1_536));
         assert_eq!(body["encoding_format"], serde_json::json!("float"));
         assert_eq!(body["user"], serde_json::json!("user-123"));
+    }
+
+    /// A width of zero is rig's "unknown", not a declaration.
+    ///
+    /// `default_ndims` returning `None` lands here through
+    /// `unwrap_or_default()`, and `GenericEmbeddingModel::new(client, model, 0)`
+    /// is how a caller says they do not know the width. Treating either as a
+    /// claim would make the width check turn every such handle into a hard
+    /// error on its first request.
+    #[tokio::test]
+    async fn a_zero_width_is_unknown_rather_than_a_claim() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        let embeddings = client
+            .embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, 0)
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect("a zero width must not be checked against the response");
+
+        assert_eq!(
+            embeddings[0].vec.len(),
+            2,
+            "the response's own width is what came back"
+        );
     }
 
     /// `ada-002` accepts no `dimensions`, so a width asked for is a width the

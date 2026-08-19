@@ -519,11 +519,33 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
     let content = response["choices"][0]["message"]["content"]
         .as_str()
         .unwrap_or_default();
+    // Not an `||` over plausible words: the claim is that the *template's own
+    // call syntax* lands in the text, so the assertion is on the delimiter
+    // Qwen's template uses. Prose that merely mentions "subtract" would pass a
+    // looser check while proving nothing.
     assert!(
-        content.contains("tool_call") || content.contains("subtract"),
-        "with `none` llama.cpp leaves the tool definitions in the prompt, so the \
-         model's own call syntax lands in `content`; if this ever stops being \
-         true the module docs need updating: {content:?}"
+        content.contains("<tool_call>") && content.contains("</tool_call>"),
+        "with `none` llama.cpp leaves the tool definitions in the prompt and only \
+         switches off the parser, so the model's raw call syntax lands in \
+         `content`; if this ever stops being true the module docs need \
+         updating: {content:?}"
+    );
+    let inner = content
+        .split_once("<tool_call>")
+        .and_then(|(_, rest)| rest.split_once("</tool_call>"))
+        .map(|(inner, _)| inner.trim().to_string())
+        .expect("the delimiters were just asserted");
+    let parsed: Value = serde_json::from_str(&inner).unwrap_or_else(|error| {
+        panic!(
+            "the leaked payload is the model's own tool call, \
+             so it parses as one: {error}: {inner:?}"
+        )
+    });
+    assert_eq!(
+        parsed["name"],
+        json!("subtract"),
+        "and it names the tool the prompt needed — the call was made, only \
+         unparsed: {parsed}"
     );
     assert!(
         recorded_json_request("llamacpp", "tool_matrix/tool_choice_none")["tools"]

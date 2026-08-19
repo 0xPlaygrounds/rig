@@ -19,6 +19,11 @@
 //! | Mistral | `unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF` Q4_K_M | yes, parallel | [`mistral_family_calls_a_tool`] | [`mistral_family_streams_tool_call_arguments_as_deltas`] |
 //! | Gemma | `unsloth/gemma-3-12b-it-GGUF` Q4_K_M | **none** | [`gemma_family_has_no_tool_calling_in_its_template`] | dropped — nothing to stream |
 //!
+//! Plus one cell that reads an existing fixture rather than recording:
+//! [`even_a_zero_argument_call_streams_as_two_fragments`], the strongest case
+//! against the const, since a two-character argument object is the one that
+//! would arrive whole if any did.
+//!
 //! # The finding: llama.cpp does not emit single-chunk tool calls
 //!
 //! `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` asks whether the backend can put a
@@ -374,5 +379,41 @@ async fn gemma_family_has_no_tool_calling_in_its_template() {
     assert!(
         recorded_tool_calls("model_family_matrix/gemma_tool_request_degrades_to_text").is_empty(),
         "and no parsed call comes back"
+    );
+}
+
+/// Even a *zero-argument* call streams as `{` then `}`, never as `{}`.
+///
+/// The strongest possible case against
+/// `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS`: if any call could arrive whole in
+/// one chunk it would be this one, whose entire argument object is two
+/// characters. It does not.
+///
+/// Read out of `streaming_tools/raw_stream_emits_required_zero_arg_tool_call`
+/// rather than re-recorded, because that fixture already exists — and because
+/// its own cell asserts only on the reassembled `{}` and never looks at the
+/// wire, which is exactly the gap this closes.
+#[test]
+fn even_a_zero_argument_call_streams_as_two_fragments() {
+    let deltas =
+        recorded_tool_call_deltas("streaming_tools/raw_stream_emits_required_zero_arg_tool_call");
+    assert!(
+        deltas.len() > 1,
+        "a zero-argument call whose whole object is `{{}}` still arrives in \
+         fragments: {deltas:?}"
+    );
+    let assembled = deltas
+        .iter()
+        .filter_map(|(_, arguments)| arguments.clone())
+        .collect::<String>();
+    assert_eq!(
+        assembled, "{}",
+        "and they reassemble to the empty object: {deltas:?}"
+    );
+    assert_ne!(
+        deltas[0].1.clone().unwrap_or_default(),
+        "{}",
+        "the opening fragment is not the whole object — which is the claim \
+         `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS = true` would have made"
     );
 }

@@ -12,7 +12,7 @@
 //! | --- | --- | --- |
 //! | [`the_transport_request_id_is_absent_because_the_server_sends_none`] | `provider_request_id` | `None`, and the recorded headers show why |
 //! | [`the_response_id_reaches_the_caller_on_both_transports`] | `response_id` | llama.cpp's `chatcmpl-…`, blocking and streaming |
-//! | [`the_typed_route_reproduces_the_normalized_one`] | `raw_completion` parity | field-for-field, id included |
+//! | [`the_typed_route_reproduces_the_normalized_one`] | `raw_completion` parity | provider, model, finish reason, usage and the absence of a transport id |
 //!
 //! # `provider_request_id` is `None`, and that is a measurement
 //!
@@ -22,14 +22,18 @@
 //! to `ProviderResponse` provider-wide, so "no contract" needs to be right
 //! rather than merely convenient.
 //!
-//! It is: `llama-server` b10499 stamps **no** id header on any route.
-//! Measured on both transports, the full response header set is
-//! `Server`, `Access-Control-Allow-Origin`, `Content-Type`, `Content-Length`
-//! (blocking) or `X-Accel-Buffering` + `Transfer-Encoding` (streaming), and
-//! `Keep-Alive`. The cell asserts that against the *recorded* headers, which
-//! matters because the cassette policy's allowlist explicitly keeps
-//! `request-id`, `x-request-id` and `mistral-correlation-id` — so an empty
-//! result is the server's silence, not the scrubber's.
+//! It is. Measured live against b10499-6d05498 on both transports, the full
+//! response header set is `Server`, `Access-Control-Allow-Origin`,
+//! `Content-Type`, and `Content-Length` (blocking) or `X-Accel-Buffering` +
+//! `Transfer-Encoding` (streaming), plus `Keep-Alive` — no id among them.
+//!
+//! The *fixtures* cannot show that set: `RESPONSE_HEADER_ALLOWLIST` keeps only
+//! `content-type` and the transport-id names, so every recording here carries
+//! exactly one header. That is precisely what makes the recorded check
+//! meaningful in the one direction it can go — the three id names **are** on
+//! the allowlist, so if llama.cpp ever started sending one it would be
+//! recorded, and the cell's absence check would fail. An empty result is the
+//! server's silence rather than the recorder's filtering.
 //!
 //! # And `response_id` is not the same thing
 //!
@@ -226,6 +230,13 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
 /// plain typed route is *already* complete here. That is the parity claim, and
 /// it is worth recording rather than assuming: it is the reason this provider
 /// needs no `raw_completion_with_request_id` dance.
+///
+/// The two turns are separate calls against a sampling server, so what is
+/// compared is everything the wire makes equal — provider, model, finish
+/// reason, prompt usage, and the absence of a transport id — plus the presence
+/// of a response id on each side. The answer *text* is deliberately not
+/// compared: two calls need not produce the same tokens, and requiring it
+/// would make the cell a flake rather than a parity check.
 #[tokio::test]
 async fn the_typed_route_reproduces_the_normalized_one() {
     with_llamacpp_cassette(

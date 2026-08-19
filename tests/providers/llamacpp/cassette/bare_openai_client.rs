@@ -13,7 +13,7 @@
 //! | --- | --- |
 //! | base-URL composition — the caller supplies `/v1`, the provider does not | [`caller_supplies_the_v1_prefix_the_provider_would_add`] |
 //! | the `Authorization` header — `openai::Client` always sends one | [`bare_openai_client_always_sends_an_authorization_header`] |
-//! | the absence of this provider's consts — `openai`'s `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` is `false` | [`tool_call_streams_decode_without_the_single_chunk_const`] |
+//! | the absence of this provider's consts — a fragmented tool-call stream still reassembles | [`a_fragmented_tool_call_stream_reassembles_without_the_provider_consts`] |
 //! | the Responses/Completions split, which `llamacpp::Client` does not have | [`agent_prompt_through_completions_api`] |
 //! | `raw_completion` normalization under the `openai` descriptor name | [`raw_response_text_matches_normalized_choice_text`] |
 //!
@@ -24,6 +24,7 @@ use rig::completion::CompletionModel;
 use rig::completion::NormalizeCompletionResponse;
 use rig::completion::Prompt;
 use rig::prelude::*;
+use rig::providers::{llamacpp, openai};
 use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
@@ -84,12 +85,69 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
 /// `Authorization` — and llama.cpp accepts any bearer token when it was not
 /// started with `--api-key`.
 ///
-/// `llamacpp::Client` sends no header at all in the same situation (pinned
-/// definitionally in `providers::llamacpp::client`'s unit tests). That
+/// `llamacpp::Client` sends no header at all in the same situation. That
 /// asymmetry is the whole reason the provider needed its own key type, and it
 /// is why a server started *with* `--api-key` was unreachable before this PR.
+///
+/// The header cannot be read back from a fixture — `authorization` is
+/// sensitive and is scrubbed out of every recording — so the cell proves it
+/// two ways instead. In process, both clients are driven through the same
+/// recording HTTP backend and their headers compared directly; on the wire,
+/// the recorded turn shows the local server accepting the request the header
+/// rode on.
 #[tokio::test]
 async fn bare_openai_client_always_sends_an_authorization_header() {
+    // The in-process half: two clients, one backend, one comparison.
+    {
+        use rig::embeddings::EmbeddingModel as _;
+        use rig::test_utils::RecordingHttpClient;
+
+        let recorder = RecordingHttpClient::new(
+            r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
+                "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
+        );
+        let bare = openai::Client::builder()
+            .api_key("llamacpp-local")
+            .http_client(recorder.clone())
+            .build()
+            .expect("client should build");
+        let _ = bare
+            .embedding_model_with_ndims("m", 1)
+            .embed_texts(["probe".to_string()])
+            .await;
+        let sent = &recorder.requests()[0];
+        assert_eq!(
+            sent.headers
+                .get("authorization")
+                .map(|value| value.to_str().unwrap_or_default()),
+            Some("Bearer llamacpp-local"),
+            "a bare openai::Client has no way *not* to send one"
+        );
+
+        let recorder = RecordingHttpClient::new(
+            r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
+                "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
+        );
+        let provider = llamacpp::Client::builder()
+            .api_key(llamacpp::LlamacppApiKey::default())
+            .http_client(recorder.clone())
+            .build()
+            .expect("client should build");
+        let _ = provider
+            .embedding_model_with_ndims("m", 1)
+            .embed_texts(["probe".to_string()])
+            .await;
+        assert!(
+            recorder.requests()[0]
+                .headers
+                .get("authorization")
+                .is_none(),
+            "and the provider has a way not to, which is the asymmetry this cell \
+             exists for"
+        );
+    }
+
+    // The on-the-wire half: the local server accepts it.
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/authorization_header_is_always_sent",
         |client| async move {
@@ -108,12 +166,6 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     )
     .await;
 
-    // `authorization` is a sensitive header and is scrubbed out of every
-    // fixture, so the *presence* of the header cannot be read back from the
-    // cassette. What the cassette does prove is that the request the header
-    // rode on was accepted, which is the behavioral half. The header itself is
-    // pinned in-process by `providers::llamacpp::client`'s unit tests, which
-    // read it off a recording HTTP client rather than off a fixture.
     let request = recorded_json_request(
         "llamacpp",
         "bare_openai_client/authorization_header_is_always_sent",
@@ -121,16 +173,24 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     assert_eq!(request["model"], serde_json::json!(CASSETTE_MODEL));
 }
 
-/// The same tool-call stream, decoded by a provider whose
-/// `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` is `false`.
+/// The same tool-call stream, decoded by a provider that is **not**
+/// `llamacpp` — and reassembled identically.
 ///
-/// llama.cpp emits a whole tool call in one chunk; `openai`'s extension does
-/// not claim that, so the shared streaming layer holds the call until the
-/// stream ends instead of emitting it on arrival. Both must still produce the
-/// same answer — a const that changed *what a stream means* rather than *when
-/// it is delivered* would break here and nowhere else.
+/// This cell used to be framed around
+/// `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` differing between the two paths.
+/// It no longer does: this PR measured llama.cpp's streaming and set the
+/// llamacpp const to `false`, which is also `openai`'s trait default, so both
+/// paths now take the same branch. Keeping the old framing would have left a
+/// cell whose doc described a difference that does not exist.
+///
+/// What it is worth instead is the *reassembly* claim, which no other cell in
+/// this file makes: llama.cpp streams tool-call arguments one token at a time,
+/// and a caller who reaches it through a bare `openai::Client` — with none of
+/// this provider's associated consts — must still get one complete call with
+/// parseable arguments. The premise is re-derived from the fixture: the
+/// recorded stream must genuinely be fragmented, or the cell tests nothing.
 #[tokio::test]
-async fn tool_call_streams_decode_without_the_single_chunk_const() {
+async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
@@ -154,6 +214,37 @@ async fn tool_call_streams_decode_without_the_single_chunk_const() {
         },
     )
     .await;
+
+    // The premise: the recorded stream really did split the call's arguments
+    // across fragments, and the first of them is not parseable on its own.
+    let frames = crate::cassettes::recorded_sse_json_frames(
+        "llamacpp",
+        "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
+    );
+    let fragments: Vec<String> = frames
+        .iter()
+        .flat_map(|frame| {
+            frame["choices"][0]["delta"]["tool_calls"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter_map(|call| call["function"]["arguments"].as_str().map(str::to_string))
+        .collect();
+    assert!(
+        fragments.len() > 1,
+        "the recorded stream must be fragmented for this cell to be about \
+         reassembly at all: {fragments:?}"
+    );
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&fragments[0]).is_err(),
+        "and the opening fragment must not parse on its own: {:?}",
+        fragments[0]
+    );
+    let assembled: String = fragments.concat();
+    let parsed: serde_json::Value = serde_json::from_str(&assembled)
+        .unwrap_or_else(|error| panic!("the concatenation must parse: {error}: {assembled:?}"));
+    assert!(parsed.is_object(), "{parsed}");
 }
 
 /// `openai::Client` exposes a Responses/Completions split that

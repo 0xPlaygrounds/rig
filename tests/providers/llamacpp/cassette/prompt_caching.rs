@@ -16,9 +16,11 @@
 //! `timings.cache_n`, which this provider preserves through
 //! [`llamacpp::Timings`](rig::providers::llamacpp::Timings).
 //!
-//! Measured against b10499-6d05498 with `unsloth/Qwen3-1.7B-GGUF` Q4_K_M: a
-//! 1,697-token prefix re-sent comes back with 1,690 cached — 99.6%, far above
-//! the 0.80 floor every other provider in the matrix is held to.
+//! Measured by the fixtures below, against b10499-6d05498 with
+//! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M: `prompt_caching/blocking_probe` bills
+//! 2,825 prompt tokens on turn 1 and reads **2,824** of them back on turn 2 —
+//! far above the 0.80 floor every other provider in the matrix is held to.
+//! Turn 3 grows the prefix to 2,854 and still reads 2,825.
 //!
 //! | Cell | Dimension | Pinned |
 //! | --- | --- | --- |

@@ -27,7 +27,7 @@
 //! [`RerankResult::relevance_score`](rig::rerank::RerankResult::relevance_score)
 //! is documented as "between 0 and 1". llama.cpp returns the cross-encoder's
 //! **raw logit**: measured on b10499-6d05498, ranking three documents against
-//! "What is a panda?" gives `0.2516`, `-4.761` and `-8.377`. The ordering is
+//! "What is a panda?" gives `0.8225`, `-4.7583` and `-8.3761`. The ordering is
 //! meaningful and is what a reranker is for; the magnitude is not a
 //! probability and negative values are normal. That mismatch is a defect in
 //! the field's *documentation* rather than in any mapping, and this PR

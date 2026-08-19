@@ -49,6 +49,12 @@ use super::super::cassette_support::*;
 /// `reasoning_content` is populated.
 const REASONING_PROMPT: &str = "What is 2+2? Answer briefly.";
 
+/// An open-ended prompt sampled at a high temperature, so two candidates
+/// genuinely differ — which is what makes "rig picked candidate 0" a
+/// falsifiable claim rather than a tautology.
+const TWO_CANDIDATE_PROMPT: &str =
+    "/no_think Invent a two-word name for a fictional harbour town. Reply with the name only.";
+
 /// llama.cpp puts hidden reasoning in a non-standard `reasoning_content`
 /// field, and rig maps it to a structured reasoning block on both transports.
 ///
@@ -191,43 +197,57 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
     );
 }
 
-/// `n > 1`: both transports answer from candidate 0.
+/// `n > 1`: both transports answer from candidate 0, and the answer rig
+/// produced is compared against the recorded candidate.
+///
+/// The comparison is on **rig's output**, not on two fixtures. A cell that
+/// only checked "the answer is non-empty" would pass on a decoder that
+/// selected candidate 1, or concatenated both — and with a deterministic
+/// server the two candidates are byte-identical, so comparing fixture to
+/// fixture proves nothing either. The prompt is therefore one whose two
+/// candidates *can* differ, the recorded candidates are asserted distinct
+/// before anything else, and rig's answer is required to equal candidate 0
+/// exactly.
 #[tokio::test]
 async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     use futures::StreamExt as _;
     use rig::streaming::StreamedAssistantContent;
 
+    let blocking_answer = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let blocking_sink = std::sync::Arc::clone(&blocking_answer);
     with_llamacpp_cassette(
         "response_shape_matrix/two_candidates_blocking",
-        |client| async move {
+        move |client| async move {
             let model = client.completion_model(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model
-                        .completion_request("/no_think Name one colour. One word.")
+                        .completion_request(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
-                        .additional_params(json!({ "n": 2 }))
+                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
                 )
                 .await
                 .expect("llama.cpp serves n > 1");
 
-            let text = assistant_text_response(&response.choice).unwrap_or_default();
-            assert!(!text.trim().is_empty(), "one answer, not two concatenated");
+            *blocking_sink.lock().expect("answer") =
+                assistant_text_response(&response.choice).unwrap_or_default();
         },
     )
     .await;
 
+    let streaming_answer = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    let streaming_sink = std::sync::Arc::clone(&streaming_answer);
     with_llamacpp_cassette(
         "response_shape_matrix/two_candidates_streaming",
-        |client| async move {
+        move |client| async move {
             let model = client.completion_model(CASSETTE_MODEL);
             let mut stream = model
                 .stream(
                     model
-                        .completion_request("/no_think Name one colour. One word.")
+                        .completion_request(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
-                        .additional_params(json!({ "n": 2 }))
+                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 }))
                         .build(),
                 )
                 .await
@@ -241,13 +261,12 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                     text.push_str(&chunk.text);
                 }
             }
-            assert!(!text.trim().is_empty());
+            *streaming_sink.lock().expect("answer") = text;
         },
     )
     .await;
 
-    // The premise: both requests really did ask for two candidates, and both
-    // recordings really do carry two.
+    // The premise: both requests asked for two candidates.
     for scenario in [
         "response_shape_matrix/two_candidates_blocking",
         "response_shape_matrix/two_candidates_streaming",
@@ -259,42 +278,61 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
         );
     }
 
+    // And — the part that makes the cell able to fail — the two recorded
+    // candidates differ, on both transports. Identical candidates would make
+    // "rig picked candidate 0" unfalsifiable.
     let blocking =
         recorded_statuses_and_bodies("llamacpp", "response_shape_matrix/two_candidates_blocking");
     let response: Value = serde_json::from_str(&blocking[0].1).expect("response should be JSON");
     let choices = response["choices"].as_array().expect("choices");
     assert_eq!(choices.len(), 2, "the server returned both candidates");
+    let recorded_zero = choices[0]["message"]["content"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let recorded_one = choices[1]["message"]["content"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert_ne!(
+        recorded_zero.trim(),
+        recorded_one.trim(),
+        "the two blocking candidates must differ, or selecting the wrong one is \
+         undetectable — raise the temperature or change the prompt"
+    );
 
     let frames =
         recorded_sse_json_frames("llamacpp", "response_shape_matrix/two_candidates_streaming");
-    let indices: std::collections::BTreeSet<u64> = frames
-        .iter()
-        .filter_map(|frame| frame["choices"][0]["index"].as_u64())
-        .collect();
+    let streamed_of = |index: u64| -> String {
+        frames
+            .iter()
+            .filter(|frame| frame["choices"][0]["index"].as_u64() == Some(index))
+            .filter_map(|frame| frame["choices"][0]["delta"]["content"].as_str())
+            .collect()
+    };
+    let (streamed_zero, streamed_one) = (streamed_of(0), streamed_of(1));
     assert!(
-        indices.contains(&0) && indices.contains(&1),
-        "the streamed candidates must be interleaved and index-distinguished for \
-         this cell to be about selection at all: {indices:?}"
+        !streamed_zero.is_empty() && !streamed_one.is_empty(),
+        "the streamed candidates must be interleaved and index-distinguished: \
+         {streamed_zero:?} / {streamed_one:?}"
+    );
+    assert_ne!(
+        streamed_zero.trim(),
+        streamed_one.trim(),
+        "the two streamed candidates must differ for the same reason"
     );
 
-    // And the answer rig produced is candidate 0's, on both transports — the
-    // whole point, since the two are separate code paths.
-    let candidate_zero = choices[0]["message"]["content"]
-        .as_str()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let streamed: String = frames
-        .iter()
-        .filter(|frame| frame["choices"][0]["index"].as_u64() == Some(0))
-        .filter_map(|frame| frame["choices"][0]["delta"]["content"].as_str())
-        .collect();
+    // The claim itself: what rig returned is candidate 0, on both transports.
     assert_eq!(
-        candidate_zero,
-        streamed.trim(),
-        "the blocking answer and the streamed index-0 candidate must be the same \
-         text; if they diverge the transports disagree about which candidate the \
-         caller asked for"
+        blocking_answer.lock().expect("answer").trim(),
+        recorded_zero.trim(),
+        "the blocking answer must be candidate 0's text — not candidate 1's, and \
+         not the two concatenated"
+    );
+    assert_eq!(
+        streaming_answer.lock().expect("answer").trim(),
+        streamed_zero.trim(),
+        "and the streamed answer must be the index-0 candidate's"
     );
 }
 
@@ -354,14 +392,18 @@ async fn logprobs_survive_into_the_raw_response() {
 }
 
 /// llama.cpp can emit exactly three finish reasons, and this suite records all
-/// three.
+/// three — and no others.
 ///
 /// `server-task.cpp` builds the field from one of `"length"`, `"stop"` and
-/// `"tool_calls"` — there is no fourth, and no
+/// `"tool_calls"`; there is no fourth, and no
 /// [`FinishReason::Other`](rig::completion::FinishReason::Other) to reach
 /// through this provider. The dimension is therefore *closed*, and this cell
-/// is what says so with evidence rather than by reading the source: it sweeps
-/// the recorded corpus and requires each value to appear.
+/// says so with evidence rather than by reading the source.
+///
+/// It sweeps the corpus for **every** `finish_reason` value present, not just
+/// the three it expects — an earlier version scanned for the three by name,
+/// which made `seen ⊆ expected` true by construction and left the "a fourth
+/// value would fail this" half of the claim unenforceable.
 #[test]
 fn the_finish_reason_vocabulary_is_covered_end_to_end() {
     use std::collections::BTreeSet;
@@ -377,10 +419,18 @@ fn the_finish_reason_vocabulary_is_covered_end_to_end() {
                 continue;
             }
             let contents = std::fs::read_to_string(&path).unwrap_or_default();
-            for reason in ["length", "stop", "tool_calls"] {
-                if contents.contains(&format!("\"finish_reason\":\"{reason}\"")) {
-                    seen.insert(reason.to_string());
-                }
+            // Read whatever value is there, rather than looking for the ones
+            // we expect. `"finish_reason":` appears in both the blocking and
+            // the streamed spelling, and a `null` (every non-terminal
+            // streaming frame) is not a value.
+            for (index, _) in contents.match_indices("\"finish_reason\":") {
+                let rest = &contents[index + "\"finish_reason\":".len()..];
+                let rest = rest.trim_start();
+                let Some(rest) = rest.strip_prefix('"') else {
+                    continue;
+                };
+                let Some(end) = rest.find('"') else { continue };
+                seen.insert(rest[..end].to_owned());
             }
         }
     }
@@ -393,7 +443,8 @@ fn the_finish_reason_vocabulary_is_covered_end_to_end() {
     assert_eq!(
         seen, expected,
         "llama.cpp builds `finish_reason` from exactly these three values \
-         (`server-task.cpp`), so a corpus missing one has a gap and a corpus \
-         containing a fourth means the server grew a value rig has never mapped"
+         (`server-task.cpp`). A missing one is a corpus gap; an extra one means \
+         the server grew a value rig has never mapped, and the finish-reason \
+         mapping needs revisiting."
     );
 }

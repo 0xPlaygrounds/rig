@@ -1,8 +1,16 @@
-//! llama.cpp streaming tool round-trip (exercises llama.cpp-style
-//! complete-single-chunk tool call streaming through the shared OpenAI path).
+//! llama.cpp streaming tool round-trips through the shared OpenAI path.
 //!
-//! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
-//! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
+//! This file used to open by saying it exercised "llama.cpp-style
+//! complete-single-chunk tool call streaming". It does not, and llama.cpp does
+//! not: measured on b10499-6d05498 across four chat templates, tool-call
+//! arguments stream one token at a time, which is why
+//! `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` is now `false`. What these cells
+//! actually exercise is the shared accumulator reassembling those fragments
+//! into one complete call — see `model_family_matrix` for the per-template
+//! measurement.
+//!
+//! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
 
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
