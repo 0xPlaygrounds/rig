@@ -173,17 +173,8 @@ impl EmbeddingModel {
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client;
-
-    fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-        Self {
-            embedder: None,
-            init_error: Some(FastembedError::UnsupportedMake),
-            model: FastembedModel::AllMiniLML6V2Q,
-            ndims: 0,
-        }
+    fn max_documents(&self) -> usize {
+        1024
     }
 
     fn ndims(&self) -> usize {
@@ -222,5 +213,16 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             .collect::<Vec<embeddings::Embedding>>();
 
         Ok(docs)
+    }
+}
+
+impl rig_core::client::ConstructEmbeddingModel<Client> for EmbeddingModel {
+    fn construct(_: &Client, _: String, _: Option<usize>) -> Self {
+        Self {
+            embedder: None,
+            init_error: Some(FastembedError::UnsupportedMake),
+            model: FastembedModel::AllMiniLML6V2Q,
+            ndims: 0,
+        }
     }
 }

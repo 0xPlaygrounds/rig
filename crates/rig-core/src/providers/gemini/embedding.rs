@@ -57,14 +57,8 @@ impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: Clone + HttpClientExt + 'static,
 {
-    type Client = Client<T>;
-
-    const MAX_DOCUMENTS: usize = 1024;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
-        Self::new(client.clone(), model, ndims)
+    fn max_documents(&self) -> usize {
+        1024
     }
 
     fn ndims(&self) -> usize {
@@ -152,6 +146,16 @@ where
     }
 }
 
+impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+where
+    T: Clone + HttpClientExt + 'static,
+{
+    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+        let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
+        Self::new(client.clone(), model, ndims)
+    }
+}
+
 // =================================================================
 // Gemini API Types
 // =================================================================
@@ -174,6 +178,7 @@ mod gemini_api_types {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::EmbeddingsClient;
 
     #[test]
     fn test_embedding_values_deserializes_without_empty_values_field() {
@@ -194,21 +199,15 @@ mod tests {
         let client = Client::new("test_key").unwrap();
 
         // EMBEDDING_001 defaults to 3072
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, None);
+        let model = client.embedding_model(EMBEDDING_001);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 3072);
 
         // EMBEDDING_004 defaults to 768
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_004, None);
+        let model = client.embedding_model(EMBEDDING_004);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
 
         // Unknown model falls back to 768
-        let model = <EmbeddingModel as embeddings::EmbeddingModel>::make(
-            &client,
-            "some-future-model",
-            None,
-        );
+        let model = client.embedding_model("some-future-model");
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
     }
 
@@ -216,8 +215,7 @@ mod tests {
     fn test_make_respects_explicit_dims() {
         let client = Client::new("test_key").unwrap();
 
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, Some(256));
+        let model = client.embedding_model_with_ndims(EMBEDDING_001, 256);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 256);
     }
 

@@ -493,17 +493,9 @@ impl MockEmbeddingModel {
     }
 }
 
-struct MockClient;
-
 impl EmbeddingModel for MockEmbeddingModel {
-    const MAX_DOCUMENTS: usize = 100;
-
-    type Client = MockClient;
-
-    fn make(_client: &Self::Client, _model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self {
-            dimensions: dims.unwrap_or(1536),
-        }
+    fn max_documents(&self) -> usize {
+        100
     }
 
     fn ndims(&self) -> usize {
@@ -547,7 +539,7 @@ fn get_env_or_skip(var: &str) -> Option<String> {
     std::env::var(var).ok()
 }
 
-fn create_vector_store() -> Option<VectorizeVectorStore<MockEmbeddingModel>> {
+fn create_vector_store() -> Option<VectorizeVectorStore> {
     let account_id = get_env_or_skip("CLOUDFLARE_ACCOUNT_ID")?;
     let api_token = get_env_or_skip("CLOUDFLARE_API_TOKEN")?;
     let index_name = get_env_or_skip("VECTORIZE_INDEX_NAME")?;

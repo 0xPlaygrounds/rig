@@ -178,11 +178,12 @@ where
         }
 
         let total_texts = texts.len();
+        let max_documents = max(1, self.model.max_documents());
 
         // Compute the embeddings.
         let (slots, usage) = stream::iter(texts.into_iter().enumerate())
             // Chunk them into batches. Each batch size is at most the embedding API limit per request.
-            .chunks(M::MAX_DOCUMENTS)
+            .chunks(max_documents)
             // Generate the embeddings for each batch with usage tracking.
             .map(|chunk| async {
                 let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
@@ -197,7 +198,7 @@ where
                 ))
             })
             // Parallelize the embeddings generation over 10 concurrent requests
-            .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
+            .buffer_unordered(max(1, 1024 / max_documents))
             // Write each embedding into the slot its text came from, and
             // accumulate usage.
             .try_fold(
@@ -487,12 +488,8 @@ mod tests {
     }
 
     impl EmbeddingModel for SlowFirstBatchModel {
-        const MAX_DOCUMENTS: usize = 5;
-
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self::new()
+        fn max_documents(&self) -> usize {
+            5
         }
 
         fn ndims(&self) -> usize {
@@ -517,6 +514,12 @@ mod tests {
         }
     }
 
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for SlowFirstBatchModel {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self::new()
+        }
+    }
+
     /// A model whose batches finish in reverse submission order: batch `n`
     /// sleeps longer the earlier it was submitted.
     ///
@@ -537,12 +540,8 @@ mod tests {
     }
 
     impl EmbeddingModel for DescendingLatencyModel {
-        const MAX_DOCUMENTS: usize = 5;
-
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self::new()
+        fn max_documents(&self) -> usize {
+            5
         }
 
         fn ndims(&self) -> usize {
@@ -567,6 +566,12 @@ mod tests {
                     vec: vec![0.0; 10],
                 })
                 .collect())
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for DescendingLatencyModel {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self::new()
         }
     }
 
@@ -721,12 +726,8 @@ mod tests {
     struct OneAtATimeReversedLatency;
 
     impl EmbeddingModel for OneAtATimeReversedLatency {
-        const MAX_DOCUMENTS: usize = 1;
-
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
+        fn max_documents(&self) -> usize {
+            1
         }
 
         fn ndims(&self) -> usize {
@@ -762,6 +763,12 @@ mod tests {
                     vec: vec![0.0; 10],
                 })
                 .collect())
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for OneAtATimeReversedLatency {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 

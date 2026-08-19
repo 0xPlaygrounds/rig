@@ -148,18 +148,9 @@ impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    const MAX_DOCUMENTS: usize = 96;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = dims
-            .or(super::model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-
-        Self::new(client.clone(), model, "search_document", dims)
+    fn max_documents(&self) -> usize {
+        96
     }
-
     fn ndims(&self) -> usize {
         self.ndims
     }
@@ -246,6 +237,19 @@ where
                 String::from_utf8_lossy(&raw_body),
             ))
         }
+    }
+}
+
+impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+        let dims = dims
+            .or(super::model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+
+        Self::new(client.clone(), model, "search_document", dims)
     }
 }
 

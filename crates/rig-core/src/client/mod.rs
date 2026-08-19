@@ -12,23 +12,24 @@ pub mod verify;
 
 use bytes::Bytes;
 pub use completion::{CompletionClient, ConstructCompletionModel};
-pub use embeddings::EmbeddingsClient;
+pub use embeddings::{ConstructEmbeddingModel, EmbeddingsClient};
 use http::{HeaderMap, HeaderName, HeaderValue};
 pub use model_listing::{ModelLister, ModelListingClient};
-pub use rerank::RerankingClient;
+pub use rerank::{ConstructRerankModel, RerankingClient};
 use std::{env::VarError, fmt::Debug, marker::PhantomData, sync::Arc};
 use thiserror::Error;
+pub use transcription::ConstructTranscriptionModel;
 pub use verify::{VerifyClient, VerifyError};
 
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationModel;
 #[cfg(feature = "image")]
-use image_generation::ImageGenerationClient;
+pub use image_generation::{ConstructImageGenerationModel, ImageGenerationClient};
 
 #[cfg(feature = "audio")]
 use crate::audio_generation::*;
 #[cfg(feature = "audio")]
-use audio_generation::*;
+pub use audio_generation::{AudioGenerationClient, ConstructAudioGenerationModel};
 
 use crate::{
     completion::CompletionModel,
@@ -964,52 +965,48 @@ where
 
 // Every single-model capability client impl on `Client<Ext, H>` shares the
 // same shape: gate on the matching `Capabilities` slot, name the model type,
-// and construct it with `M::make`. The macro keeps the per-capability
-// variation (trait, slot, associated type, method, extra model bounds, and
-// feature gate) in one invocation each. `CompletionClient` (different
-// constructor protocol) and `EmbeddingsClient` (extra `_with_ndims` method)
-// stay hand-written below.
+// and construct it through the capability's public `Construct*Model` hook.
+// The macro keeps the per-capability variation (trait, slot, associated type,
+// method, hook, and feature gate) in one invocation each. `EmbeddingsClient`
+// (extra `_with_ndims` method and a `dims` argument on its hook) stays
+// hand-written below.
 macro_rules! impl_capability_client {
     (
         $(#[cfg(feature = $feature:literal)])?
-        $client_trait:ident { $slot:ident, $assoc:ident, $method:ident, $model_trait:ident $(+ $extra:path)* }
+        $client_trait:ident { $slot:ident, $assoc:ident, $method:ident, $model_trait:ident, $construct:ident }
     ) => {
         $(#[cfg(feature = $feature)])?
         impl<M, Ext, H> $client_trait for Client<Ext, H>
         where
             Ext: Capabilities<H, $slot = Capable<M>>,
-            M: $model_trait<Client = Self> $(+ $extra)*,
+            M: $model_trait + $construct<Self>,
         {
             type $assoc = M;
 
             fn $method(&self, model: impl Into<String>) -> Self::$assoc {
-                M::make(self, model)
+                M::construct(self, model.into())
             }
         }
     };
 }
 
-impl<M, Ext, H> CompletionClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, Completion = Capable<M>>,
-    M: CompletionModel + ConstructCompletionModel<Self>,
-{
-    type CompletionModel = M;
-
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        M::construct(self, model.into())
-    }
-}
+impl_capability_client!(CompletionClient {
+    Completion,
+    CompletionModel,
+    completion_model,
+    CompletionModel,
+    ConstructCompletionModel
+});
 
 impl<M, Ext, H> EmbeddingsClient for Client<Ext, H>
 where
     Ext: Capabilities<H, Embeddings = Capable<M>>,
-    M: EmbeddingModel<Client = Self>,
+    M: EmbeddingModel + ConstructEmbeddingModel<Self>,
 {
     type EmbeddingModel = M;
 
     fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
-        M::make(self, model, None)
+        M::construct(self, model.into(), None)
     }
 
     fn embedding_model_with_ndims(
@@ -1017,7 +1014,7 @@ where
         model: impl Into<String>,
         ndims: usize,
     ) -> Self::EmbeddingModel {
-        M::make(self, model, Some(ndims))
+        M::construct(self, model.into(), Some(ndims))
     }
 }
 
@@ -1025,14 +1022,16 @@ impl_capability_client!(RerankingClient {
     Rerank,
     RerankModel,
     rerank_model,
-    RerankModel
+    RerankModel,
+    ConstructRerankModel
 });
 
 impl_capability_client!(TranscriptionClient {
     Transcription,
     TranscriptionModel,
     transcription_model,
-    TranscriptionModel + WasmCompatSend
+    TranscriptionModel,
+    ConstructTranscriptionModel
 });
 
 impl_capability_client!(
@@ -1041,7 +1040,8 @@ impl_capability_client!(
         ImageGeneration,
         ImageGenerationModel,
         image_generation_model,
-        ImageGenerationModel
+        ImageGenerationModel,
+        ConstructImageGenerationModel
     }
 );
 
@@ -1051,7 +1051,8 @@ impl_capability_client!(
         AudioGeneration,
         AudioGenerationModel,
         audio_generation_model,
-        AudioGenerationModel
+        AudioGenerationModel,
+        ConstructAudioGenerationModel
     }
 );
 
@@ -1189,5 +1190,262 @@ mod tests {
             .api_key("Foo")
             .build()
             .unwrap();
+    }
+}
+
+/// Compile coverage for an out-of-tree provider extension built on the generic
+/// [`Client`] that offers every non-completion modality: implementing the
+/// public `Construct*Model` hooks is all it takes for the blanket capability
+/// client impls to apply. Everything here uses only public API, mirroring what
+/// a downstream crate can write — the same probe [`completion`] ships for
+/// [`ConstructCompletionModel`].
+#[cfg(test)]
+mod external_modality_extension_probe {
+    use super::*;
+    use crate::embeddings::{Embedding, EmbeddingError, EmbeddingModel};
+    use crate::rerank::{RerankError, RerankModel, RerankResponse};
+    use crate::transcription::{
+        TranscriptionError, TranscriptionModel, TranscriptionRequest, TranscriptionResponse,
+    };
+
+    #[derive(Debug, Default, Clone, Copy)]
+    struct ExternalExt;
+    #[derive(Debug, Default, Clone, Copy)]
+    struct ExternalExtBuilder;
+
+    impl Provider for ExternalExt {
+        type Builder = ExternalExtBuilder;
+        const VERIFY_PATH: &'static str = "/";
+    }
+
+    impl ProviderBuilder for ExternalExtBuilder {
+        type Extension<H>
+            = ExternalExt
+        where
+            H: HttpClientExt;
+        type ApiKey = BearerAuth;
+
+        const BASE_URL: &'static str = "https://external.invalid";
+
+        fn build<H>(
+            _builder: &ClientBuilder<Self, Self::ApiKey, H>,
+        ) -> http_client::Result<Self::Extension<H>>
+        where
+            H: HttpClientExt,
+        {
+            Ok(ExternalExt)
+        }
+    }
+
+    impl<H> Capabilities<H> for ExternalExt {
+        type Completion = Nothing;
+        type Embeddings = Capable<ExternalModel<H>>;
+        type Transcription = Capable<ExternalModel<H>>;
+        type ModelListing = Nothing;
+        #[cfg(feature = "image")]
+        type ImageGeneration = Capable<ExternalModel<H>>;
+        #[cfg(feature = "audio")]
+        type AudioGeneration = Capable<ExternalModel<H>>;
+        type Rerank = Capable<ExternalModel<H>>;
+    }
+
+    impl DebugExt for ExternalExt {}
+
+    /// One model type standing in for every modality; deliberately not
+    /// `Clone`, which the relaxed supertraits no longer require.
+    struct ExternalModel<H> {
+        _client: Client<ExternalExt, H>,
+        model: String,
+        ndims: Option<usize>,
+    }
+
+    impl<H> TranscriptionModel for ExternalModel<H>
+    where
+        H: Send + Sync + 'static,
+    {
+        async fn transcription(
+            &self,
+            _request: TranscriptionRequest,
+        ) -> Result<TranscriptionResponse, TranscriptionError> {
+            Err(TranscriptionError::ResponseError(self.model.clone()))
+        }
+    }
+
+    impl<H> ConstructTranscriptionModel<Client<ExternalExt, H>> for ExternalModel<H>
+    where
+        H: Clone,
+    {
+        fn construct(client: &Client<ExternalExt, H>, model: String) -> Self {
+            Self {
+                _client: client.clone(),
+                model,
+                ndims: None,
+            }
+        }
+    }
+
+    impl<H> EmbeddingModel for ExternalModel<H>
+    where
+        H: Send + Sync + 'static,
+    {
+        fn max_documents(&self) -> usize {
+            1
+        }
+
+        fn ndims(&self) -> usize {
+            self.ndims.unwrap_or(3)
+        }
+
+        async fn embed_texts(
+            &self,
+            _texts: impl IntoIterator<Item = String> + Send,
+        ) -> Result<Vec<Embedding>, EmbeddingError> {
+            Err(EmbeddingError::ResponseError(self.model.clone()))
+        }
+    }
+
+    impl<H> ConstructEmbeddingModel<Client<ExternalExt, H>> for ExternalModel<H>
+    where
+        H: Clone,
+    {
+        fn construct(client: &Client<ExternalExt, H>, model: String, ndims: Option<usize>) -> Self {
+            Self {
+                _client: client.clone(),
+                model,
+                ndims,
+            }
+        }
+    }
+
+    impl<H> RerankModel for ExternalModel<H>
+    where
+        H: Send + Sync + 'static,
+    {
+        const MAX_DOCUMENTS: usize = 1;
+
+        async fn rerank(
+            &self,
+            _query: &str,
+            _documents: Vec<String>,
+        ) -> Result<RerankResponse, RerankError> {
+            Err(RerankError::ResponseError(self.model.clone()))
+        }
+    }
+
+    impl<H> ConstructRerankModel<Client<ExternalExt, H>> for ExternalModel<H>
+    where
+        H: Clone,
+    {
+        fn construct(client: &Client<ExternalExt, H>, model: String) -> Self {
+            Self {
+                _client: client.clone(),
+                model,
+                ndims: None,
+            }
+        }
+    }
+
+    #[cfg(feature = "image")]
+    impl<H> ImageGenerationModel for ExternalModel<H>
+    where
+        H: Send + Sync + 'static,
+    {
+        async fn image_generation(
+            &self,
+            _request: crate::image_generation::ImageGenerationRequest,
+        ) -> Result<
+            crate::image_generation::ImageGenerationResponse,
+            crate::image_generation::ImageGenerationError,
+        > {
+            Err(crate::image_generation::ImageGenerationError::ResponseError(self.model.clone()))
+        }
+    }
+
+    #[cfg(feature = "image")]
+    impl<H> ConstructImageGenerationModel<Client<ExternalExt, H>> for ExternalModel<H>
+    where
+        H: Clone,
+    {
+        fn construct(client: &Client<ExternalExt, H>, model: String) -> Self {
+            Self {
+                _client: client.clone(),
+                model,
+                ndims: None,
+            }
+        }
+    }
+
+    #[cfg(feature = "audio")]
+    impl<H> AudioGenerationModel for ExternalModel<H>
+    where
+        H: Send + Sync + 'static,
+    {
+        async fn audio_generation(
+            &self,
+            _request: AudioGenerationRequest,
+        ) -> Result<AudioGenerationResponse, AudioGenerationError> {
+            Err(AudioGenerationError::ResponseError(self.model.clone()))
+        }
+    }
+
+    #[cfg(feature = "audio")]
+    impl<H> ConstructAudioGenerationModel<Client<ExternalExt, H>> for ExternalModel<H>
+    where
+        H: Clone,
+    {
+        fn construct(client: &Client<ExternalExt, H>, model: String) -> Self {
+            Self {
+                _client: client.clone(),
+                model,
+                ndims: None,
+            }
+        }
+    }
+
+    #[test]
+    fn external_extension_reaches_every_blanket_capability_client_impl() {
+        fn assert_transcription<C: TranscriptionClient>() {}
+        fn assert_embeddings<C: EmbeddingsClient>() {}
+        fn assert_rerank<C: RerankingClient>() {}
+        #[cfg(feature = "image")]
+        fn assert_image<C: ImageGenerationClient>() {}
+        #[cfg(feature = "audio")]
+        fn assert_audio<C: AudioGenerationClient>() {}
+
+        type ExternalClient = Client<ExternalExt, reqwest::Client>;
+        assert_transcription::<ExternalClient>();
+        assert_embeddings::<ExternalClient>();
+        assert_rerank::<ExternalClient>();
+        #[cfg(feature = "image")]
+        assert_image::<ExternalClient>();
+        #[cfg(feature = "audio")]
+        assert_audio::<ExternalClient>();
+    }
+
+    #[test]
+    fn embedding_hook_receives_the_requested_dims() {
+        let client: Client<ExternalExt, reqwest::Client> = Client::<ExternalExt>::builder()
+            .api_key("key")
+            .build()
+            .expect("client should build");
+        assert_eq!(client.embedding_model("m").ndims(), 3);
+        assert_eq!(client.embedding_model_with_ndims("m", 7).ndims(), 7);
+    }
+
+    /// `Arc<M>` is a model: the relaxed supertraits make "wrap it in an Arc"
+    /// real through the generic APIs, as for `CompletionModel`.
+    #[test]
+    fn arc_wrapped_models_satisfy_the_modality_traits() {
+        fn assert_transcription_model<M: TranscriptionModel>() {}
+        #[cfg(feature = "image")]
+        fn assert_image_model<M: ImageGenerationModel>() {}
+        #[cfg(feature = "audio")]
+        fn assert_audio_model<M: AudioGenerationModel>() {}
+
+        assert_transcription_model::<Arc<ExternalModel<reqwest::Client>>>();
+        #[cfg(feature = "image")]
+        assert_image_model::<Arc<ExternalModel<reqwest::Client>>>();
+        #[cfg(feature = "audio")]
+        assert_audio_model::<Arc<ExternalModel<reqwest::Client>>>();
     }
 }

@@ -281,6 +281,8 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     const MODEL_IN_FORM: bool = true;
+    const PROVIDER_NAME: &'static str = "groq";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
     fn transcription_request(
         &self,

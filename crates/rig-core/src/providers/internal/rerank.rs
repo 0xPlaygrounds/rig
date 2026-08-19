@@ -120,12 +120,6 @@ where
 {
     const MAX_DOCUMENTS: usize = Ext::MAX_DOCUMENTS;
 
-    type Client = Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     async fn rerank(
         &self,
         query: &str,
@@ -187,5 +181,16 @@ where
                 tool_use_prompt_tokens: 0,
             },
         })
+    }
+}
+
+impl<Ext, H> crate::client::ConstructRerankModel<Client<Ext, H>> for GenericRerankModel<Ext, H>
+where
+    Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: JinaCompatibleRerank + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: WasmCompatSend + WasmCompatSync,
+{
+    fn construct(client: &Client<Ext, H>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }

@@ -97,7 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Initialize SQLite vector store
-    let vector_store: SqliteVectorStore<_, Document> =
+    let vector_store: SqliteVectorStore<Document> =
         SqliteVectorStore::with_distance_metric(conn, &model, SqliteDistanceMetric::Cosine).await?;
 
     // Add embeddings to vector store

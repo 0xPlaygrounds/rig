@@ -10,7 +10,7 @@ use std::future::Future;
 
 use reqwest::{Client, StatusCode};
 use rig_core::{
-    embeddings::EmbeddingModel,
+    embeddings::{EmbeddingModel, EmbeddingModelHandle},
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -130,9 +130,13 @@ impl HelixDBClient for HelixDB {
 /// # Ok(())
 /// # }
 /// ```
-pub struct HelixDBVectorStore<C, E> {
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`], which is fixed for the store's lifetime: an index
+/// populated under one model is only meaningful when queried under that model.
+pub struct HelixDBVectorStore<C> {
     client: C,
-    model: E,
+    model: EmbeddingModelHandle,
 }
 
 pub type HelixDBFilter = Filter<serde_json::Value>;
@@ -171,14 +175,16 @@ struct VecResult {
     vec_docs: Vec<QueryResult>,
 }
 
-impl<C, E> HelixDBVectorStore<C, E>
+impl<C> HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend,
-    E: EmbeddingModel,
 {
     /// Creates a new HelixDB vector store.
-    pub fn new(client: C, model: E) -> Self {
-        Self { client, model }
+    pub fn new(client: C, model: impl EmbeddingModel + 'static) -> Self {
+        Self {
+            client,
+            model: EmbeddingModelHandle::new(model),
+        }
     }
 
     /// Returns the underlying HelixDB client.
@@ -187,11 +193,10 @@ where
     }
 }
 
-impl<C, E> HelixDBVectorStore<C, E>
+impl<C> HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
-    E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
 {
     /// Embeds the query and runs the `VectorSearch` HelixDB query.
     async fn vector_search(
@@ -213,11 +218,10 @@ where
     }
 }
 
-impl<C, E> InsertDocuments for HelixDBVectorStore<C, E>
+impl<C> InsertDocuments for HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
-    E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
 {
     async fn insert_documents<Doc: Serialize + rig_core::Embed + WasmCompatSend>(
         &self,
@@ -254,11 +258,10 @@ where
     }
 }
 
-impl<C, E> VectorStoreIndex for HelixDBVectorStore<C, E>
+impl<C> VectorStoreIndex for HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
-    E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
 {
     type Filter = HelixDBFilter;
 

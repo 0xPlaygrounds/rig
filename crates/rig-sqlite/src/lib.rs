@@ -8,7 +8,7 @@
 //! `sqlite` feature is enabled.
 
 use rig_core::Embed;
-use rig_core::embeddings::{Embedding, EmbeddingModel};
+use rig_core::embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -346,21 +346,25 @@ fn sqlite_metadata_value(
     }
 }
 
+/// A SQLite-backed vector store for documents of type `T`.
+///
+/// The store does not name an embedding model in its type; the model is only
+/// consulted (for `ndims`) at construction, and the index built from it via
+/// [`SqliteVectorStore::index`] holds the model behind an erased
+/// [`EmbeddingModelHandle`].
 #[derive(Clone)]
-pub struct SqliteVectorStore<E, T>
+pub struct SqliteVectorStore<T>
 where
-    E: EmbeddingModel + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
     conn: Connection,
     distance_metric: SqliteDistanceMetric,
     metadata_columns: Vec<SqliteMetadataColumn>,
-    _phantom: PhantomData<(E, T)>,
+    _phantom: PhantomData<T>,
 }
 
-impl<E, T> SqliteVectorStore<E, T>
+impl<T> SqliteVectorStore<T>
 where
-    E: EmbeddingModel + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
     async fn candidate_limit(&self, samples: u64, exhaustive: bool) -> Result<u64, VectorStoreError>
@@ -411,13 +415,15 @@ where
     }
 }
 
-impl<E, T> SqliteVectorStore<E, T>
+impl<T> SqliteVectorStore<T>
 where
-    E: EmbeddingModel + Clone + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
     /// Creates a SQLite vector store using cosine similarity.
-    pub async fn new(conn: Connection, embedding_model: &E) -> Result<Self, VectorStoreError> {
+    pub async fn new(
+        conn: Connection,
+        embedding_model: &impl EmbeddingModel,
+    ) -> Result<Self, VectorStoreError> {
         Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
     }
 
@@ -428,7 +434,7 @@ where
     /// returned score values.
     pub async fn with_distance_metric(
         conn: Connection,
-        embedding_model: &E,
+        embedding_model: &impl EmbeddingModel,
         distance_metric: SqliteDistanceMetric,
     ) -> Result<Self, VectorStoreError> {
         let dims = embedding_model.ndims();
@@ -558,7 +564,7 @@ where
         })
     }
 
-    pub fn index(self, model: E) -> SqliteVectorIndex<E, T> {
+    pub fn index(self, model: impl EmbeddingModel + 'static) -> SqliteVectorIndex<T> {
         SqliteVectorIndex::new(model, self)
     }
 
@@ -689,9 +695,8 @@ where
     }
 }
 
-impl<E, T> InsertDocuments for SqliteVectorStore<E, T>
+impl<T> InsertDocuments for SqliteVectorStore<T>
 where
-    E: EmbeddingModel + Clone + WasmCompatSend + WasmCompatSync + 'static,
     T: SqliteVectorStoreTable
         + for<'de> Deserialize<'de>
         + WasmCompatSend
@@ -1506,7 +1511,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 ///
 /// // Initialize vector store
-/// let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::with_distance_metric(
+/// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
 ///     conn,
 ///     &model,
 ///     SqliteDistanceMetric::Cosine,
@@ -1546,31 +1551,35 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # }
 /// # let _ = example();
 /// ```
-pub struct SqliteVectorIndex<E, T>
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`], which is fixed for the index's lifetime: an index
+/// populated under one model is only meaningful when queried under that model.
+pub struct SqliteVectorIndex<T>
 where
-    E: EmbeddingModel + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
-    store: SqliteVectorStore<E, T>,
-    embedding_model: E,
+    store: SqliteVectorStore<T>,
+    embedding_model: EmbeddingModelHandle,
 }
 
-impl<E, T> SqliteVectorIndex<E, T>
+impl<T> SqliteVectorIndex<T>
 where
-    E: EmbeddingModel + 'static,
     T: SqliteVectorStoreTable,
 {
-    pub fn new(embedding_model: E, store: SqliteVectorStore<E, T>) -> Self {
+    pub fn new(
+        embedding_model: impl EmbeddingModel + 'static,
+        store: SqliteVectorStore<T>,
+    ) -> Self {
         Self {
             store,
-            embedding_model,
+            embedding_model: EmbeddingModelHandle::new(embedding_model),
         }
     }
 }
 
-impl<E, T> SqliteVectorIndex<E, T>
+impl<T> SqliteVectorIndex<T>
 where
-    E: EmbeddingModel + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
     /// Runs the shared candidate search for `top_n`/`top_n_ids`.
@@ -1933,9 +1942,7 @@ fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Res
     }
 }
 
-impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorStoreIndex
-    for SqliteVectorIndex<E, T>
-{
+impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     type Filter = SqliteSearchFilter;
 
     async fn top_n<D>(
@@ -2981,7 +2988,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, TestDocument> =
+        let vector_store: SqliteVectorStore<TestDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store
@@ -3037,7 +3044,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, TestDocument> =
+        let vector_store: SqliteVectorStore<TestDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         let multi_document = TestDocument {
@@ -3825,7 +3832,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, ReorderedIdDocument> =
+        let vector_store: SqliteVectorStore<ReorderedIdDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store
@@ -3873,7 +3880,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, InternalAliasDocument> =
+        let vector_store: SqliteVectorStore<InternalAliasDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store
@@ -4252,7 +4259,7 @@ mod tests {
     async fn live_test_index(
         name: &str,
         rows: Vec<(TestDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
         live_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
     }
 
@@ -4260,7 +4267,7 @@ mod tests {
         name: &str,
         rows: Vec<(TestDocument, Vec<Embedding>)>,
         distance_metric: SqliteDistanceMetric,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
@@ -4276,7 +4283,7 @@ mod tests {
     async fn live_typed_test_index(
         name: &str,
         rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
         live_typed_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
     }
 
@@ -4284,12 +4291,12 @@ mod tests {
         name: &str,
         rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
         distance_metric: SqliteDistanceMetric,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, TypedTestDocument> =
+        let vector_store: SqliteVectorStore<TypedTestDocument> =
             SqliteVectorStore::with_distance_metric(conn, &model, distance_metric).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4300,12 +4307,12 @@ mod tests {
     async fn live_common_type_test_index(
         name: &str,
         rows: Vec<(CommonTypeDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, CommonTypeDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<CommonTypeDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, CommonTypeDocument> =
+        let vector_store: SqliteVectorStore<CommonTypeDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4316,12 +4323,12 @@ mod tests {
     async fn live_json_metadata_test_index(
         name: &str,
         rows: Vec<(JsonMetadataDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, JsonMetadataDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<JsonMetadataDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, JsonMetadataDocument> =
+        let vector_store: SqliteVectorStore<JsonMetadataDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4332,12 +4339,12 @@ mod tests {
     async fn live_structured_json_metadata_test_index(
         name: &str,
         rows: Vec<(StructuredJsonMetadataDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, StructuredJsonMetadataDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<StructuredJsonMetadataDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, StructuredJsonMetadataDocument> =
+        let vector_store: SqliteVectorStore<StructuredJsonMetadataDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4994,12 +5001,8 @@ mod tests {
     struct TestEmbeddingModel;
 
     impl EmbeddingModel for TestEmbeddingModel {
-        const MAX_DOCUMENTS: usize = 16;
-
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
+        fn max_documents(&self) -> usize {
+            16
         }
 
         fn ndims(&self) -> usize {
@@ -5017,6 +5020,12 @@ mod tests {
                     vec: vec![1.0, 0.0],
                 })
                 .collect())
+        }
+    }
+
+    impl rig_core::client::ConstructEmbeddingModel<()> for TestEmbeddingModel {
+        fn construct(_: &(), _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 }

@@ -322,11 +322,11 @@ impl Neo4jClient {
     /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
     ///
     /// ❗IMPORTANT: The index must be created with the same embedding model that will be used to query the index.
-    pub async fn get_index<M: EmbeddingModel>(
+    pub async fn get_index(
         &self,
-        model: M,
+        model: impl EmbeddingModel + 'static,
         index_name: &str,
-    ) -> Result<Neo4jVectorIndex<M>, VectorStoreError> {
+    ) -> Result<Neo4jVectorIndex, VectorStoreError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexInfo {

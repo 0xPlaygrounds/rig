@@ -15,12 +15,8 @@ use crate::{
 pub struct MockEmbeddingModel;
 
 impl EmbeddingModel for MockEmbeddingModel {
-    const MAX_DOCUMENTS: usize = 5;
-
-    type Client = Nothing;
-
-    fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-        Self
+    fn max_documents(&self) -> usize {
+        5
     }
 
     fn ndims(&self) -> usize {
@@ -38,6 +34,12 @@ impl EmbeddingModel for MockEmbeddingModel {
                 vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
             })
             .collect())
+    }
+}
+
+impl crate::client::ConstructEmbeddingModel<Nothing> for MockEmbeddingModel {
+    fn construct(_: &Nothing, _: String, _: Option<usize>) -> Self {
+        Self
     }
 }
 

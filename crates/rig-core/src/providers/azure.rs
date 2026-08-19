@@ -427,6 +427,8 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     const MODEL_IN_FORM: bool = false;
+    const PROVIDER_NAME: &'static str = "azure.openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = None;
 
     fn transcription_request(
         &self,
@@ -458,6 +460,7 @@ mod image_generation {
 
     impl JsonImageGenerationProvider for AzureExt {
         const IMAGE_GENERATION_PATH: &'static str = "";
+        const PROVIDER_NAME: &'static str = "azure.openai";
         type Response = ImageGenerationResponse;
 
         fn image_generation_request_builder<H>(
@@ -506,6 +509,7 @@ mod audio_generation {
 
     impl RawAudioGenerationProvider for AzureExt {
         const AUDIO_GENERATION_PATH: &'static str = "";
+        const PROVIDER_NAME: &'static str = "azure.openai";
 
         fn audio_generation_request_builder<H>(
             client: &crate::client::Client<Self, H>,
@@ -588,6 +592,7 @@ mod azure_tests {
     #[cfg(feature = "image")]
     #[tokio::test]
     async fn image_generation_non_success_response_preserves_status_and_body() {
+        use crate::client::image_generation::ImageGenerationClient;
         use crate::image_generation::{
             ImageGenerationError, ImageGenerationModel as ImageGenerationModelTrait,
             ImageGenerationRequest,
@@ -597,7 +602,7 @@ mod azure_tests {
         let body = r#"{"error":{"message":"invalid image request"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-        let model = ImageGenerationModel::make(&test_client(http_client), "dall-e-3");
+        let model = test_client(http_client).image_generation_model("dall-e-3");
 
         let error = model
             .image_generation(ImageGenerationRequest {
@@ -794,7 +799,7 @@ mod azure_tests {
             .http_client(http_client)
             .build()
             .expect("build client");
-        let model = super::EmbeddingModel::make(&client, TEXT_EMBEDDING_3_SMALL, None);
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
 
         let error = match model.embed_texts(vec!["Hello, world!".to_string()]).await {
             Err(error) => error,
@@ -827,7 +832,7 @@ mod azure_tests {
             .http_client(http_client.clone())
             .build()
             .expect("build client");
-        let model = super::EmbeddingModel::make(&client, TEXT_EMBEDDING_3_SMALL, None);
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
 
         let response = model
             .embed_texts_with_usage(vec!["Hello, world!".to_string()])

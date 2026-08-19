@@ -8,7 +8,7 @@
 //! become `AssistantContent::Reasoning`); two other readers of the same
 //! payload did not:
 //!
-//! * `TryFrom<GenerateContentResponse> for TranscriptionResponse` read
+//! * `NormalizeTranscriptionResponse for GenerateContentResponse` read
 //!   `parts.first()`. With thoughts on, parts[0] is the reasoning — so
 //!   `response.text` was **the model's private reasoning** and the actual
 //!   transcript, sitting in parts[1], was dropped. A transcript split across
@@ -220,7 +220,10 @@ async fn transcription_body(
     }
 
     let response = request.send().await.expect("transcription should succeed");
-    let (visible, thoughts) = split_parts(&response.response);
+    let raw: rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse =
+        serde_json::from_value(response.raw.clone())
+            .expect("raw payload should round-trip to Gemini's own response type");
+    let (visible, thoughts) = split_parts(&raw);
 
     assert_eq!(
         !thoughts.is_empty(),
@@ -1131,7 +1134,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 mod unit {
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::telemetry::ProviderResponseExt;
-    use rig::transcription::TranscriptionResponse;
+    use rig::transcription::{NormalizeTranscriptionResponse, TranscriptionResponse};
     use serde_json::{Value, json};
 
     /// A thought part with the shape recorded in
@@ -1218,8 +1221,9 @@ mod unit {
             "model",
         );
 
-        let transcription: TranscriptionResponse<GenerateContentResponse> =
-            response.try_into().expect("transcription should convert");
+        let transcription = response
+            .normalize("gcp.gemini")
+            .expect("transcription should convert");
         assert_eq!(
             transcription.text,
             "The sun was setting slowly, casting long shadows across the empty field.",
@@ -1235,18 +1239,13 @@ mod unit {
     fn transcription_rejects_a_thought_only_candidate() {
         let response = response_with(vec![thought_part("Let me listen again...")], "model");
         assert_transcription_response_error(
-            TranscriptionResponse::<GenerateContentResponse>::try_from(response),
+            response.normalize("gcp.gemini"),
             "a thought-only candidate has no transcript",
         );
     }
 
-    /// `TranscriptionResponse` carries the provider payload and is not
-    /// `Debug`, so `expect_err` is unavailable; assert on the `Err` directly.
     fn assert_transcription_response_error(
-        result: Result<
-            TranscriptionResponse<GenerateContentResponse>,
-            rig::transcription::TranscriptionError,
-        >,
+        result: Result<TranscriptionResponse, rig::transcription::TranscriptionError>,
         context: &str,
     ) {
         match result {
@@ -1269,8 +1268,8 @@ mod unit {
     #[test]
     fn transcription_keeps_an_empty_visible_text_part() {
         let response = response_with(vec![thought_part("hmm"), text_part("")], "model");
-        let transcription: TranscriptionResponse<GenerateContentResponse> = response
-            .try_into()
+        let transcription = response
+            .normalize("gcp.gemini")
             .expect("an empty visible text part is still a (blank) transcript");
         assert_eq!(transcription.text, "");
     }
@@ -1292,7 +1291,7 @@ mod unit {
         }))
         .expect("recorded-shape payload should deserialize");
         assert_transcription_response_error(
-            TranscriptionResponse::<GenerateContentResponse>::try_from(response),
+            response.normalize("gcp.gemini"),
             "a candidate with no parts at all has no transcript",
         );
     }
@@ -1307,7 +1306,7 @@ mod unit {
             "model",
         );
         assert_transcription_response_error(
-            TranscriptionResponse::<GenerateContentResponse>::try_from(response),
+            response.normalize("gcp.gemini"),
             "a candidate with no text part has no transcript",
         );
     }

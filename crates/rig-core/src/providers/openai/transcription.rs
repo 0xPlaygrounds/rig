@@ -1,9 +1,10 @@
+use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 use crate::providers::openai::{Client, CompletionsClient};
 use crate::transcription;
-use crate::transcription::TranscriptionError;
-use serde::Deserialize;
+use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
+use serde::{Deserialize, Serialize};
 
 // ================================================================
 // OpenAI Transcription API
@@ -11,16 +12,16 @@ use serde::Deserialize;
 
 pub const WHISPER_1: &str = "whisper-1";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResponse {
     pub text: String,
     /// What the transcription cost, as the endpoint reported it.
     ///
-    /// Both live model families return this beside the transcript, and it is
-    /// the only accounting a caller gets for a transcription — the normalized
-    /// [`transcription::TranscriptionResponse`] carries no usage slot, so
-    /// dropping it here dropped it everywhere. Optional because a compatible
-    /// provider on this wire may not report one.
+    /// Token-billed shapes normalize onto
+    /// [`transcription::TranscriptionResponse::usage`]; the duration-billed
+    /// `seconds` figure has no normalized slot and is read from here (via the
+    /// raw route). Optional because a compatible provider on this wire may
+    /// not report one.
     #[serde(default)]
     pub usage: Option<TranscriptionUsage>,
 }
@@ -39,7 +40,7 @@ pub struct TranscriptionResponse {
 /// falls to the verbatim catch-all rather than failing the whole
 /// transcription — the same invariant the Responses `Output` enum keeps for
 /// unmodeled output items.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum TranscriptionUsage {
     /// Duration-billed models.
@@ -70,7 +71,7 @@ pub enum TranscriptionUsage {
 }
 
 /// The wire tag of [`TranscriptionUsage::Duration`].
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DurationTag {
     /// `"duration"`.
@@ -78,7 +79,7 @@ pub enum DurationTag {
 }
 
 /// The wire tag of [`TranscriptionUsage::Tokens`].
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TokensTag {
     /// `"tokens"`.
@@ -86,7 +87,7 @@ pub enum TokensTag {
 }
 
 /// How a token-billed transcription's input tokens split by modality.
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TranscriptionInputTokenDetails {
     /// Input tokens attributable to the audio.
     #[serde(default)]
@@ -96,16 +97,31 @@ pub struct TranscriptionInputTokenDetails {
     pub text_tokens: u64,
 }
 
-impl TryFrom<TranscriptionResponse>
-    for transcription::TranscriptionResponse<TranscriptionResponse>
-{
-    type Error = TranscriptionError;
-
-    fn try_from(value: TranscriptionResponse) -> Result<Self, Self::Error> {
-        Ok(transcription::TranscriptionResponse {
-            text: value.text.clone(),
-            response: value,
-        })
+impl NormalizeTranscriptionResponse for TranscriptionResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        let usage = match &self.usage {
+            Some(TranscriptionUsage::Tokens {
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                ..
+            }) => Usage {
+                input_tokens: *input_tokens,
+                output_tokens: *output_tokens,
+                total_tokens: *total_tokens,
+                ..Usage::new()
+            },
+            // Duration billing reports no token counts; the zero sentinel is
+            // the documented "not reported" value, and the seconds stay
+            // reachable on the raw payload.
+            Some(TranscriptionUsage::Duration { .. })
+            | Some(TranscriptionUsage::Other(_))
+            | None => Usage::new(),
+        };
+        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
     }
 }
 
@@ -122,6 +138,8 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     const MODEL_IN_FORM: bool = true;
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
     fn transcription_request(
         &self,
@@ -136,6 +154,8 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     const MODEL_IN_FORM: bool = true;
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
     fn transcription_request(
         &self,

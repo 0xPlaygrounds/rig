@@ -17,7 +17,7 @@ use aws_sdk_s3vectors::{
 };
 use aws_smithy_types::Document;
 use rig_core::{
-    embeddings::EmbeddingModel,
+    embeddings::{EmbeddingModel, EmbeddingModelHandle},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -123,25 +123,25 @@ impl S3SearchFilter {
     }
 }
 
-pub struct S3VectorsVectorStore<M> {
-    embedding_model: M,
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an
+/// index populated under one model is only meaningful under that model).
+pub struct S3VectorsVectorStore {
+    embedding_model: EmbeddingModelHandle,
     client: Client,
     bucket_name: String,
     index_name: String,
 }
 
-impl<M> S3VectorsVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl S3VectorsVectorStore {
     pub fn new(
-        embedding_model: M,
+        embedding_model: impl EmbeddingModel + 'static,
         client: aws_sdk_s3vectors::Client,
         bucket_name: &str,
         index_name: &str,
     ) -> Self {
         Self {
-            embedding_model,
+            embedding_model: EmbeddingModelHandle::new(embedding_model),
             client,
             bucket_name: bucket_name.to_string(),
             index_name: index_name.to_string(),
@@ -230,10 +230,7 @@ where
     }
 }
 
-impl<M> InsertDocuments for S3VectorsVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl InsertDocuments for S3VectorsVectorStore {
     async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + Send>(
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
@@ -335,10 +332,7 @@ fn document_to_json_value(value: &Document) -> Value {
     }
 }
 
-impl<M> VectorStoreIndex for S3VectorsVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl VectorStoreIndex for S3VectorsVectorStore {
     type Filter = S3SearchFilter;
 
     async fn top_n<T: for<'a> serde::Deserialize<'a> + Send>(

@@ -187,17 +187,8 @@ impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = dims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-
-        Self::new(client.clone(), model, dims)
+    fn max_documents(&self) -> usize {
+        1024
     }
 
     fn ndims(&self) -> usize {
@@ -302,6 +293,19 @@ where
     }
 }
 
+impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+        let dims = dims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+
+        Self::new(client.clone(), model, dims)
+    }
+}
+
 // ================================================================
 // Voyage AI Rerank API
 // ================================================================
@@ -380,12 +384,6 @@ where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
     const MAX_DOCUMENTS: usize = 1000;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
 
     async fn rerank(
         &self,
@@ -472,6 +470,15 @@ where
                 String::from_utf8_lossy(&response_body),
             ))
         }
+    }
+}
+
+impl<T> crate::client::ConstructRerankModel<Client<T>> for RerankModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 

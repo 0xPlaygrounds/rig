@@ -23,12 +23,6 @@ pub trait RerankModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of documents that can be reranked in a single request.
     const MAX_DOCUMENTS: usize;
 
-    /// Provider client type used to construct this rerank model.
-    type Client;
-
-    /// Construct a model handle from a provider client and model identifier.
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
     /// Rerank a list of documents against a query.
     fn rerank(
         &self,

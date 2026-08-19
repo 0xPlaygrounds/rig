@@ -16,6 +16,7 @@ pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel
 
 impl RawAudioGenerationProvider for XAiExt {
     const AUDIO_GENERATION_PATH: &'static str = "/v1/tts";
+    const PROVIDER_NAME: &'static str = "xai";
 
     fn audio_generation_request_body(
         _model: &str,
@@ -101,8 +102,7 @@ mod tests {
         let error = model
             .audio_generation(request)
             .await
-            .err()
-            .expect("should fail with non-success status");
+            .expect_err("should fail with non-success status");
 
         assert!(matches!(error, AudioGenerationError::HttpError(_)));
         assert_eq!(

@@ -1,7 +1,7 @@
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use rig_core::image_generation;
-use rig_core::image_generation::ImageGenerationError;
+use rig_core::image_generation::{ImageGenerationError, NormalizeImageGenerationResponse};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -94,24 +94,23 @@ impl TextToImageGeneration {
     }
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TextToImageResponse {
     pub images: Option<Vec<String>>,
     pub error: Option<String>,
 }
 
-impl TryFrom<TextToImageResponse>
-    for image_generation::ImageGenerationResponse<TextToImageResponse>
-{
-    type Error = ImageGenerationError;
-
-    fn try_from(value: TextToImageResponse) -> Result<Self, Self::Error> {
-        if let Some(error) = value.error {
+impl NormalizeImageGenerationResponse for TextToImageResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        if let Some(error) = self.error {
             return Err(ImageGenerationError::ResponseError(error));
         }
 
-        if let Some(images) = value.to_owned().images {
+        if let Some(images) = self.images {
             let image = images.first().ok_or_else(|| {
                 ImageGenerationError::ResponseError("Bedrock image response was empty".into())
             })?;
@@ -119,10 +118,9 @@ impl TryFrom<TextToImageResponse>
                 .decode(image)
                 .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
 
-            return Ok(Self {
-                image: data,
-                response: value,
-            });
+            return Ok(image_generation::ImageGenerationResponse::new(
+                data, provider,
+            ));
         }
 
         Err(ImageGenerationError::ResponseError(

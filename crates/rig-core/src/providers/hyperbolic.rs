@@ -149,12 +149,14 @@ pub use image_generation::*;
 mod image_generation {
     use super::HyperbolicExt;
     use crate::image_generation;
-    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::image_generation::{
+        ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+    };
     use crate::json_utils::merge_inplace;
     use crate::providers::internal::image_generation::{
         GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
     };
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
 
     pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
@@ -168,33 +170,36 @@ mod image_generation {
     /// Hyperbolic image generation model.
     pub type ImageGenerationModel<T> = GenericImageGenerationModel<HyperbolicExt, T>;
 
-    #[derive(Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Image {
-        image: String,
+        pub image: String,
     }
 
-    #[derive(Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ImageGenerationResponse {
-        images: Vec<Image>,
+        pub images: Vec<Image>,
     }
 
-    impl TryFrom<ImageGenerationResponse>
-        for image_generation::ImageGenerationResponse<ImageGenerationResponse>
-    {
-        type Error = ImageGenerationError;
-
-        fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-            decode_base64_image(
-                value,
+    impl NormalizeImageGenerationResponse for ImageGenerationResponse {
+        fn normalize(
+            self,
+            provider: &str,
+        ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+            let image = decode_base64_image(
+                &self,
                 |response| response.images.first().map(|image| image.image.as_str()),
                 "missing image data",
                 None,
-            )
+            )?;
+            Ok(image_generation::ImageGenerationResponse::new(
+                image, provider,
+            ))
         }
     }
 
     impl JsonImageGenerationProvider for HyperbolicExt {
         const IMAGE_GENERATION_PATH: &'static str = "/v1/image/generation";
+        const PROVIDER_NAME: &'static str = "hyperbolic";
         type Response = ImageGenerationResponse;
 
         fn image_generation_request_body(
@@ -228,12 +233,14 @@ pub use audio_generation::*;
 mod audio_generation {
     use super::{ApiResponse, Client};
     use crate::audio_generation;
-    use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+    use crate::audio_generation::{
+        AudioGenerationError, AudioGenerationRequest, NormalizeAudioGenerationResponse,
+    };
     use crate::http_client::{self, HttpClientExt};
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
     use bytes::Bytes;
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
 
     #[derive(Clone)]
@@ -242,47 +249,39 @@ mod audio_generation {
         pub language: String,
     }
 
-    #[derive(Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct AudioGenerationResponse {
-        audio: String,
+        pub audio: String,
     }
 
-    impl TryFrom<AudioGenerationResponse>
-        for audio_generation::AudioGenerationResponse<AudioGenerationResponse>
-    {
-        type Error = AudioGenerationError;
-
-        fn try_from(value: AudioGenerationResponse) -> Result<Self, Self::Error> {
+    impl NormalizeAudioGenerationResponse for AudioGenerationResponse {
+        fn normalize(
+            self,
+            provider: &str,
+        ) -> Result<audio_generation::AudioGenerationResponse, AudioGenerationError> {
             let data = BASE64_STANDARD
-                .decode(&value.audio)
+                .decode(&self.audio)
                 .map_err(|err| AudioGenerationError::ResponseError(err.to_string()))?;
 
-            Ok(Self {
-                audio: data,
-                response: value,
-            })
+            Ok(audio_generation::AudioGenerationResponse::new(
+                data, provider,
+            ))
         }
     }
 
-    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
+    impl<T> AudioGenerationModel<T>
     where
         T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
     {
-        type Response = AudioGenerationResponse;
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, language: impl Into<String>) -> Self {
-            Self {
-                client: client.clone(),
-                language: language.into(),
-            }
-        }
-
-        async fn audio_generation(
+        /// Perform the generation and return Hyperbolic's native response
+        /// (base64 audio) instead of the normalized
+        /// [`audio_generation::AudioGenerationResponse`]. Same request,
+        /// transport, parser, and error path as
+        /// [`audio_generation::AudioGenerationModel::audio_generation`].
+        pub async fn raw_audio_generation(
             &self,
             request: AudioGenerationRequest,
-        ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
-        {
+        ) -> Result<AudioGenerationResponse, AudioGenerationError> {
             let request = json!({
                 "language": self.language,
                 "speaker": request.voice,
@@ -310,7 +309,7 @@ mod audio_generation {
             }
 
             match serde_json::from_slice::<ApiResponse<AudioGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Ok(response) => Ok(response),
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
                     Err(AudioGenerationError::from_http_response(
@@ -318,6 +317,32 @@ mod audio_generation {
                         String::from_utf8_lossy(&response_body),
                     ))
                 }
+            }
+        }
+    }
+
+    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
+        async fn audio_generation(
+            &self,
+            request: AudioGenerationRequest,
+        ) -> Result<audio_generation::AudioGenerationResponse, AudioGenerationError> {
+            let response = self.raw_audio_generation(request).await?;
+            let captured = serde_json::to_value(&response)?;
+            Ok(response.normalize("hyperbolic")?.with_raw(captured))
+        }
+    }
+
+    impl<T> crate::client::ConstructAudioGenerationModel<Client<T>> for AudioGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    {
+        fn construct(client: &Client<T>, language: String) -> Self {
+            Self {
+                client: client.clone(),
+                language,
             }
         }
     }
@@ -463,8 +488,7 @@ mod tests {
         let error = model
             .image_generation(request)
             .await
-            .err()
-            .expect("image generation should fail with non-success status");
+            .expect_err("image generation should fail with non-success status");
 
         assert!(matches!(error, ImageGenerationError::HttpError(_)));
         assert_eq!(
@@ -502,8 +526,7 @@ mod tests {
         let error = model
             .image_generation(request)
             .await
-            .err()
-            .expect("image generation should fail with provider error envelope");
+            .expect_err("image generation should fail with provider error envelope");
 
         match &error {
             ImageGenerationError::ProviderResponse(stored) => {
@@ -543,8 +566,7 @@ mod tests {
         let error = model
             .audio_generation(request)
             .await
-            .err()
-            .expect("audio generation should fail with non-success status");
+            .expect_err("audio generation should fail with non-success status");
 
         assert!(matches!(error, AudioGenerationError::HttpError(_)));
         assert_eq!(
@@ -582,8 +604,7 @@ mod tests {
         let error = model
             .audio_generation(request)
             .await
-            .err()
-            .expect("audio generation should fail with provider error envelope");
+            .expect_err("audio generation should fail with provider error envelope");
 
         match &error {
             AudioGenerationError::ProviderResponse(stored) => {
