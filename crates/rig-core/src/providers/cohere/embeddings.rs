@@ -148,7 +148,9 @@ impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    const MAX_DOCUMENTS: usize = 96;
+    fn max_documents(&self) -> usize {
+        96
+    }
     fn ndims(&self) -> usize {
         self.ndims
     }

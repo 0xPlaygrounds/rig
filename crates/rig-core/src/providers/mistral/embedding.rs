@@ -238,9 +238,12 @@ mod batch_tests {
     /// `tests/providers/mistral/capability_edges.rs`.
     #[test]
     fn builder_chunks_at_mistrals_cap_not_openais() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel as _;
         assert_eq!(MAX_DOCUMENTS, 256);
+        let client = super::super::Client::new("key").expect("client");
         assert_eq!(
-            <super::super::EmbeddingModel as crate::embeddings::EmbeddingModel>::MAX_DOCUMENTS,
+            client.embedding_model(super::MISTRAL_EMBED).max_documents(),
             256,
             "the generic model must take the provider's cap; the shared default is OpenAI's 1024, \
              which Mistral rejects"

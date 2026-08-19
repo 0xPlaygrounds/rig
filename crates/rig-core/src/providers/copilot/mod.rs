@@ -1134,7 +1134,9 @@ where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1024;
+    fn max_documents(&self) -> usize {
+        1024
+    }
     fn ndims(&self) -> usize {
         self.ndims
     }

@@ -11,7 +11,7 @@ mod filter;
 use reqwest::StatusCode;
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
@@ -22,9 +22,13 @@ use serde::{Deserialize, Serialize};
 use crate::filter::Filter;
 
 /// Represents a vector store implementation using Milvus - <https://milvus.io/> as the backend.
-pub struct MilvusVectorStore<M> {
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an index
+/// populated under one model is only meaningful under that same model).
+pub struct MilvusVectorStore {
     /// Model used to generate embeddings for the vector store
-    model: M,
+    model: EmbeddingModelHandle,
     base_url: String,
     client: reqwest::Client,
     database_name: String,
@@ -84,10 +88,7 @@ struct SearchResultDataOnlyId {
     distance: f64,
 }
 
-impl<M> MilvusVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl MilvusVectorStore {
     /// Creates a new instance of `MilvusVectorStore`.
     ///
     /// # Arguments
@@ -95,9 +96,14 @@ where
     /// * `base_url` - The URL of where your Milvus instance is located. Alternatively if you're using the Milvus offering provided by Zilliz, your cluster endpoint.
     /// * `database_name` - The name of your database
     /// * `collection_name` - The name of your collection
-    pub fn new(model: M, base_url: String, database_name: String, collection_name: String) -> Self {
+    pub fn new(
+        model: impl EmbeddingModel + 'static,
+        base_url: String,
+        database_name: String,
+        collection_name: String,
+    ) -> Self {
         Self {
-            model,
+            model: EmbeddingModelHandle::new(model),
             base_url,
             client: reqwest::Client::new(),
             database_name,
@@ -195,10 +201,7 @@ where
     }
 }
 
-impl<Model> InsertDocuments for MilvusVectorStore<Model>
-where
-    Model: EmbeddingModel + Send + Sync,
-{
+impl InsertDocuments for MilvusVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -239,10 +242,7 @@ where
     }
 }
 
-impl<M> VectorStoreIndex for MilvusVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl VectorStoreIndex for MilvusVectorStore {
     type Filter = Filter;
 
     /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.

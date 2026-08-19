@@ -177,7 +177,9 @@ where
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
 {
-    const MAX_DOCUMENTS: usize = Ext::MAX_DOCUMENTS;
+    fn max_documents(&self) -> usize {
+        Ext::MAX_DOCUMENTS
+    }
 
     fn ndims(&self) -> usize {
         self.ndims

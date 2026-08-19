@@ -19,7 +19,7 @@ use qdrant_client::{
 };
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
     },
@@ -28,19 +28,20 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Represents a vector store implementation using Qdrant - <https://qdrant.tech/> as the backend.
-pub struct QdrantVectorStore<M: EmbeddingModel> {
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime, since an
+/// index populated under one model is only meaningful under that same model.
+pub struct QdrantVectorStore {
     /// Model used to generate embeddings for the vector store
-    model: M,
+    model: EmbeddingModelHandle,
     /// Client instance for Qdrant server communication
     client: Qdrant,
     /// Default search parameters
     query_params: QueryPoints,
 }
 
-impl<M> QdrantVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl QdrantVectorStore {
     /// Creates a new instance of `QdrantVectorStore`.
     ///
     /// # Arguments
@@ -48,10 +49,14 @@ where
     /// * `model` - Embedding model instance
     /// * `query_params` - Search parameters for vector queries
     ///   Reference: <https://api.qdrant.tech/v-1-12-x/api-reference/search/query-points>
-    pub fn new(client: Qdrant, model: M, query_params: QueryPoints) -> Self {
+    pub fn new(
+        client: Qdrant,
+        model: impl EmbeddingModel + 'static,
+        query_params: QueryPoints,
+    ) -> Self {
         Self {
             client,
-            model,
+            model: EmbeddingModelHandle::new(model),
             query_params,
         }
     }
@@ -115,10 +120,7 @@ where
     }
 }
 
-impl<Model> InsertDocuments for QdrantVectorStore<Model>
-where
-    Model: EmbeddingModel + Send + Sync,
-{
+impl InsertDocuments for QdrantVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -165,10 +167,7 @@ fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
     }
 }
 
-impl<M> VectorStoreIndex for QdrantVectorStore<M>
-where
-    M: EmbeddingModel + std::marker::Sync + Send,
-{
+impl VectorStoreIndex for QdrantVectorStore {
     type Filter = QdrantFilter;
 
     /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.

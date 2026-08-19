@@ -98,8 +98,13 @@ crate::provider_response::provider_error_enum!(
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
-    /// The maximum number of documents that can be embedded in a single request.
-    const MAX_DOCUMENTS: usize;
+    /// The maximum number of documents that can be embedded in a single
+    /// request.
+    ///
+    /// A method rather than an associated constant so the value survives type
+    /// erasure: [`EmbeddingModelHandle`](super::EmbeddingModelHandle) captures
+    /// it by value at construction.
+    fn max_documents(&self) -> usize;
 
     /// The number of dimensions in the embedding vector.
     fn ndims(&self) -> usize;

@@ -11,7 +11,7 @@ use std::fmt::Display;
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -26,12 +26,16 @@ use surrealdb::{
 pub use surrealdb::engine::local::Mem;
 pub use surrealdb::engine::remote::ws::{Ws, Wss};
 
-pub struct SurrealVectorStore<C, Model>
+/// A SurrealDB-backed vector store.
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`], which is fixed for the store's lifetime: an index
+/// populated under one model is only meaningful when queried under that model.
+pub struct SurrealVectorStore<C>
 where
     C: Connection,
-    Model: EmbeddingModel,
 {
-    model: Model,
+    model: EmbeddingModelHandle,
     surreal: Surreal<C>,
     documents_table: String,
     distance_function: SurrealDistanceFunction,
@@ -96,10 +100,9 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
-impl<C, Model> InsertDocuments for SurrealVectorStore<C, Model>
+impl<C> InsertDocuments for SurrealVectorStore<C>
 where
     C: Connection + Send + Sync,
-    Model: EmbeddingModel + Send + Sync,
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
@@ -248,19 +251,18 @@ impl SurrealSearchFilter {
     }
 }
 
-impl<C, Model> SurrealVectorStore<C, Model>
+impl<C> SurrealVectorStore<C>
 where
     C: Connection,
-    Model: EmbeddingModel,
 {
     pub fn new(
-        model: Model,
+        model: impl EmbeddingModel + 'static,
         surreal: Surreal<C>,
         documents_table: Option<String>,
         distance_function: SurrealDistanceFunction,
     ) -> Self {
         Self {
-            model,
+            model: EmbeddingModelHandle::new(model),
             surreal,
             documents_table: documents_table.unwrap_or(String::from("documents")),
             distance_function,
@@ -271,7 +273,7 @@ where
         &self.surreal
     }
 
-    pub fn with_defaults(model: Model, surreal: Surreal<C>) -> Self {
+    pub fn with_defaults(model: impl EmbeddingModel + 'static, surreal: Surreal<C>) -> Self {
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)
     }
 
@@ -319,10 +321,9 @@ where
     }
 }
 
-impl<C, Model> VectorStoreIndex for SurrealVectorStore<C, Model>
+impl<C> VectorStoreIndex for SurrealVectorStore<C>
 where
     C: Connection,
-    Model: EmbeddingModel,
 {
     type Filter = SurrealSearchFilter;
 
@@ -382,7 +383,9 @@ mod tests {
     struct MockEmbeddingModel;
 
     impl EmbeddingModel for MockEmbeddingModel {
-        const MAX_DOCUMENTS: usize = 4;
+        fn max_documents(&self) -> usize {
+            4
+        }
 
         fn ndims(&self) -> usize {
             3

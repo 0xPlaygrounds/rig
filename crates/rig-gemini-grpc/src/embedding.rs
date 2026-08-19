@@ -28,7 +28,9 @@ impl EmbeddingModel {
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
-    const MAX_DOCUMENTS: usize = 100;
+    fn max_documents(&self) -> usize {
+        100
+    }
 
     fn ndims(&self) -> usize {
         self.ndims

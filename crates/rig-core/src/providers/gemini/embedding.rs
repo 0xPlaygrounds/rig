@@ -57,7 +57,9 @@ impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: Clone + HttpClientExt + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1024;
+    fn max_documents(&self) -> usize {
+        1024
+    }
 
     fn ndims(&self) -> usize {
         self.ndims

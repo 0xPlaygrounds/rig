@@ -15,7 +15,9 @@ use crate::{
 pub struct MockEmbeddingModel;
 
 impl EmbeddingModel for MockEmbeddingModel {
-    const MAX_DOCUMENTS: usize = 5;
+    fn max_documents(&self) -> usize {
+        5
+    }
 
     fn ndims(&self) -> usize {
         10
