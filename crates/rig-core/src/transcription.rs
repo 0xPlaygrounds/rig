@@ -117,7 +117,7 @@ pub trait NormalizeTranscriptionResponse {
 /// either from a third-party provider (e.g: OpenAI) or a local model.
 ///
 /// The trait describes only what a model *does*: it has no associated types.
-/// Construction lives on [`crate::client::TranscriptionClient`], and
+/// Construction lives on [`crate::client::transcription::TranscriptionClient`], and
 /// `Clone` is required only by [`TranscriptionModel::transcription_request`],
 /// which needs to hand the builder its own copy. A model behind an `Arc` is a
 /// model: the trait is implemented for `Arc<M>` by forwarding.
