@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","type":"text"}],"role":"system"},{"content":"Bob Johnson is a 55 year old retired teacher.","role":"user"}],"model":"llama3.2:latest","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"age":{"format":"uint8","maximum":255,"minimum":0,"type":["integer","null"]},"name":{"type":["string","null"]},"profession":{"type":["string","null"]}},"title":"Person","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the structured data using the submit function.\n\nFirst, the name is Bob Johnson. The age is 55. The profession is retired teacher. The title is Person. \n\nLooking at the submit function parameters: name is a string, age is an integer between 0-255, profession is a string, and title is Person. \n\nSo, I need to map the sentence to these fields. The age is 55, which is within the range. The profession is \"retired teacher\", but the function expects a string, so that''s fine. The title is Person. \n\nI should check if any fields are optional. The name and age are required, but the others are optional. Since the user provided all the necessary info, I can fill all the fields. \n\nSo the structured data would have name: Bob Johnson, age: 55, profession: retired teacher, title: Person. \n\nI need to make sure the age is formatted as uint8, which it is. The profession is a string, so no issues. \n\nTherefore, the submit function call should include all these fields.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}","name":"submit"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b1-0329fcd","timings":{"cache_n":157,"predicted_ms":2544.825,"predicted_n":295,"predicted_per_second":115.52857269163893,"predicted_per_token_ms":8.655867346938775,"prompt_ms":110.752,"prompt_n":150,"prompt_per_second":1354.3773475874027,"prompt_per_token_ms":0.7383466666666666},"usage":{"completion_tokens":295,"prompt_tokens":307,"prompt_tokens_details":{"cached_tokens":157},"total_tokens":602}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","type":"text"}],"role":"system"},{"content":"Bob Johnson is a 55 year old retired teacher.","role":"user"}],"model":"llama3.2:latest","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"age":{"format":"uint8","maximum":255,"minimum":0,"type":["integer","null"]},"name":{"type":["string","null"]},"profession":{"type":["string","null"]}},"title":"Person","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user provided a sentence: \"Bob Johnson is a 55 year old retired teacher.\" I need to extract the structured data using the submit function.\n\nFirst, the name is Bob Johnson. The age is 55. The profession is retired teacher. The title is Person. \n\nLooking at the submit function parameters: name is a string, age is an integer between 0-255, profession is a string, and title is Person. \n\nSo, I need to map the sentence to these fields. The age is 55, which is within the range. The profession is \"retired teacher\", but the function expects a string, so that''s fine. The title is Person. \n\nI should check if any fields are optional. The name and age are required, but the others are optional. Since the user provided all the necessary info, I can fill all the fields. \n\nSo the structured data would have name: Bob Johnson, age: 55, profession: retired teacher, title: Person. \n\nI need to make sure the age is formatted as uint8, which it is. The profession is a string, so no issues. \n\nTherefore, the submit function call should include all these fields.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}","name":"submit"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b1-0329fcd","timings":{"cache_n":306,"predicted_ms":2282.14,"predicted_n":295,"predicted_per_second":128.8264523648856,"predicted_per_token_ms":7.762380952380952,"prompt_ms":9.005,"prompt_n":1,"prompt_per_second":111.04941699056079,"prompt_per_token_ms":9.005},"usage":{"completion_tokens":295,"prompt_tokens":307,"prompt_tokens_details":{"cached_tokens":306},"total_tokens":602}}'

@@ -132,9 +132,18 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_ollama_cassette"],
     },
     ProviderCassetteSuite {
+        provider: "llamacpp",
+        source_dir: "tests/providers/llamacpp/cassette",
+        wrapper_names: &[
+            "with_llamacpp_cassette",
+            "with_llamacpp_completions_cassette",
+            "with_llamacpp_completions_cassette_result",
+        ],
+    },
+    ProviderCassetteSuite {
         provider: "llamafile",
         source_dir: "tests/providers/llamafile/cassette",
-        wrapper_names: &["with_llamafile_cassette"],
+        wrapper_names: &["with_llamafile_cassette", "with_llamafile_cassette_result"],
     },
     ProviderCassetteSuite {
         provider: "xai",

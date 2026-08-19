@@ -7,7 +7,9 @@ use rig::completion::{Chat, Message};
 use rig::prelude::*;
 
 use super::super::cassette_support::{CASSETTE_CHAT_MODEL, with_llamafile_cassette};
+
 use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_expected_number};
+use rig::completion::Prompt;
 
 #[tokio::test]
 async fn tools_roundtrip() {
@@ -24,6 +26,31 @@ async fn tools_roundtrip() {
             .chat("Calculate 2 - 5.", &mut Vec::<Message>::new())
             .await
             .expect("tool round-trip should succeed");
+
+        assert_mentions_expected_number(&response, -3);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn tools_smoke() {
+    with_llamafile_cassette("tools/tools_smoke", |client| async move {
+
+        let agent = client
+            .agent(CASSETTE_CHAT_MODEL)
+            .preamble(
+                "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
+                 After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",
+            )
+            .tool(Adder)
+            .tool(Subtract)
+            .build();
+
+        let response = agent
+            .prompt("Calculate 2 - 5. Call `subtract` exactly once, then answer with just the result.")
+            .max_turns(3)
+            .await
+            .expect("tool prompt should succeed");
 
         assert_mentions_expected_number(&response, -3);
     })
