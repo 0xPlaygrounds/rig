@@ -44,7 +44,20 @@ pub struct RerankResult {
     pub index: usize,
     /// The document text, if requested via `return_documents`.
     pub document: Option<String>,
-    /// Relevance score between 0 and 1 (higher is more relevant).
+    /// How relevant this document is to the query — **higher is more
+    /// relevant, and that is the only guarantee.**
+    ///
+    /// Deliberately not "between 0 and 1". The range is the provider's
+    /// business and the two implementations in tree disagree: Voyage AI
+    /// returns a normalized 0..1 score, while llama.cpp returns the
+    /// cross-encoder's raw logit — measured against `llama-server`
+    /// b10499-6d05498 with `bge-reranker-v2-m3`, ranking three documents
+    /// against "What is a panda?" gives `0.2516`, `-4.761` and `-8.377`.
+    /// Negative values are normal there, and code that treated this as a
+    /// probability (thresholding at 0.5, or multiplying scores) would silently
+    /// reorder or discard results on any logit-scoring provider.
+    ///
+    /// Use it to *order* documents, and compare only within one response.
     pub relevance_score: f64,
 }
 

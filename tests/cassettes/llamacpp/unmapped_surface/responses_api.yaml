@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"/no_think Reply with the single word: ok","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"completed_at":0,"created_at":0,"id":"resp_REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"ok","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"status":"completed","usage":{"input_tokens":18,"input_tokens_details":{"cached_tokens":0},"output_tokens":6,"total_tokens":24}}'
