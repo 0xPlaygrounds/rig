@@ -796,6 +796,105 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### `providers::llamafile` is now `providers::llamacpp`
+
+The provider named after Mozilla's single-file distribution is gone; the one
+named after the upstream everyone actually runs replaces it. `llamafile` the
+project serves the same OpenAI-compatible API from the same llama.cpp core, so
+one provider genuinely covers both: point `llamacpp::Client` at a running
+`.llamafile` and everything works exactly as it did.
+
+```rust
+// before
+let client = rig::providers::llamafile::Client::from_url("http://localhost:8080")?;
+
+// after
+let client = rig::providers::llamacpp::Client::from_url("http://localhost:8080")?;
+```
+
+Every type moves with it: `llamafile::CompletionModel` → `llamacpp::CompletionModel`,
+`llamafile::EmbeddingModel` → `llamacpp::EmbeddingModel`,
+`llamafile::LlamafileExt` → `llamacpp::LlamacppExt`,
+`llamafile::LLAMA_CPP` → `llamacpp::LLAMA_CPP`. There is no deprecated alias:
+the old module is deleted, so this is a compile error rather than a silent
+change.
+
+Four things behave differently, and none of them is a rename:
+
+1. **An API key is now possible.** `llamafile`'s `ApiKey` type was `Nothing`,
+   which cannot produce an `Authorization` header at all, so a
+   `llama-server --api-key <key>` deployment was unreachable. `llamacpp` takes
+   an optional key and sends `Authorization: Bearer <key>` when one is set —
+   and still sends no header at all when none is, so an unsecured local server
+   keeps working unchanged.
+
+   ```rust
+   let secured = rig::providers::llamacpp::Client::builder()
+       .api_key("hunter2")
+       .base_url("http://localhost:8080")
+       .build()?;
+   ```
+
+2. **`from_env` no longer requires a base URL.** `LLAMAFILE_API_BASE_URL` was
+   mandatory; `LLAMACPP_API_BASE_URL` is optional and defaults to
+   `http://localhost:8080`. `LLAMACPP_API_KEY` is read when present.
+
+3. **A base URL ending in `/v1` is no longer doubled.** `llamafile` appended
+   `/v1` unconditionally, so passing the URL from its own doc line
+   (`http://localhost:8080/v1`) produced `/v1/v1/chat/completions` and a 404.
+   `llamacpp` adds the prefix only when the base URL lacks it. llama.cpp's
+   own operational routes (`/props`, `/health`, `/slots`, `/tokenize`, …) live
+   outside the `/v1` namespace and are addressed there from either spelling.
+
+4. **A specific-function `tool_choice` is now refused instead of silently
+   ignored.** `llama-server` reads `tool_choice` as a *string* and understands
+   only `auto`, `none` and `required`; an OpenAI-shaped
+   `{"type": "function", "function": {"name": "…"}}` type-mismatches that read
+   and is served as `auto`, so the model returns whichever tool it liked.
+   `ToolChoice::Specific` now returns a `CompletionError::ProviderError` naming
+   the tool and pointing at `ToolChoice::Required`. If you were relying on the
+   old behaviour you were not getting the tool you asked for; advertise only
+   that tool in `tools` to force it.
+
+`llamacpp` additionally declares two capability slots `llamafile` did not:
+`model_listing` (`GET /v1/models`) and `rerank` (`POST /v1/rerank`, which needs
+a server started with `--reranking` and a cross-encoder loaded).
+
+### `llamacpp::raw_completion` returns a llama.cpp response type, not OpenAI's
+
+`llamafile`'s `OpenAICompatibleProvider::Response` was
+`openai::CompletionResponse`, so `raw_completion` returned that. `llamacpp`'s
+is `llamacpp::CompletionResponse`: the same OpenAI payload `#[serde(flatten)]`ed
+under a public `openai` field, plus llama.cpp's own `timings` — the server-side
+latency accounting (`prompt_ms`, `predicted_per_second`, `cache_n`) that the
+OpenAI type has nowhere to put and was therefore dropping.
+
+```rust
+// before
+let raw: openai::CompletionResponse = model.raw_completion(request).await?;
+let id = raw.id;
+
+// after
+let raw: llamacpp::CompletionResponse = model.raw_completion(request).await?;
+let id = raw.openai.id;
+let tokens_per_second = raw.predicted_tokens_per_second();
+```
+
+The normalized `CompletionModel::completion` surface is unchanged, and so is
+the streaming path — `raw_stream` already preserved `timings` under
+`additional_params`, because the shared streaming chunk type carries a
+catch-all and the blocking one does not.
+
+### `RerankResult::relevance_score` is no longer documented as 0..1
+
+No code change; the type is the same `f64`. The doc comment claimed a 0-to-1
+range, which was true of the only implementation that existed and is false of
+llama.cpp's: it returns the cross-encoder's raw logit, so negative scores are
+normal (measured: `0.2516`, `-4.761`, `-8.377` for three documents against one
+query). Use the field to *order* results within one response; code that
+thresholded it as a probability was already wrong on any logit-scoring
+provider.
+
 ### Raw OpenAI-compatible streaming terminals gain `logprobs`
 
 `openai::completion::StreamingCompletionResponse<U>` — the provider-native
