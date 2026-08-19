@@ -28,7 +28,6 @@ use rig::providers::{llamacpp, openai};
 use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
-use crate::cassettes::recorded_json_request;
 use crate::support::{
     Adder, RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT, STREAMING_TOOLS_PREAMBLE,
     STREAMING_TOOLS_PROMPT, Subtract, assert_contains_all_case_insensitive,
@@ -166,11 +165,26 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     )
     .await;
 
-    let request = recorded_json_request(
+    // And the recorded turn carries no `authorization` at all — which is the
+    // stated reason the fixture cannot be the proof, turned into an assertion
+    // about the recorder rather than a restatement of the cell's own input.
+    let headers = crate::cassettes::recorded_request_header_pairs(
         "llamacpp",
         "bare_openai_client/authorization_header_is_always_sent",
     );
-    assert_eq!(request["model"], serde_json::json!(CASSETTE_MODEL));
+    assert!(!headers.is_empty(), "the scenario recorded an interaction");
+    for interaction in &headers {
+        assert!(
+            !interaction.iter().any(|(name, _)| name == "authorization"),
+            "`authorization` is not on RECORDED_REQUEST_HEADERS, so no fixture in \
+             this repository may ever contain one: {interaction:?}"
+        );
+        assert!(
+            interaction.iter().any(|(name, _)| name == "content-type"),
+            "the recording does keep the headers it is meant to, or the check \
+             above is vacuous: {interaction:?}"
+        );
+    }
 }
 
 /// The same tool-call stream, decoded by a provider that is **not**
