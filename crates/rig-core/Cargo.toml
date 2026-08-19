@@ -26,6 +26,15 @@ doctest = true
 [dependencies]
 as-any = { workspace = true }
 async-stream = { workspace = true }
+aws-config = { workspace = true, optional = true }
+aws-credential-types = { workspace = true, optional = true }
+aws-sigv4 = { workspace = true, optional = true }
+# Only for `tokio::sync::OnceCell`, which caches the resolved SdkConfig so the credential chain is
+# walked once rather than per request. `std::sync::OnceLock` cannot replace it: initialisation is
+# `async` (it awaits `load_defaults`), and OnceLock has no async initialiser. Optional and
+# feature-gated because rig-core carries tokio only as a dev-dependency — a default build must not
+# gain a tokio dependency from this.
+tokio = { workspace = true, features = ["sync"], optional = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 epub = { workspace = true, optional = true }
@@ -102,3 +111,20 @@ test-utils = []
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
+# AWS SigV4 request signing, for Anthropic-compatible endpoints fronted by AWS. Default-OFF on
+# purpose: it pulls the AWS credential chain, which has no place in a `wasm` build and no place in
+# builds that only ever talk to api.anthropic.com.
+# The two aws-config features are required, not cosmetic. The workspace pins aws-config with
+# default-features = false (rig-bedrock supplies its own), and `load_defaults` walks the full
+# credential chain, which needs both of these. Each failure is a runtime panic at first credential
+# resolution, not a compile error, so `cargo check` cannot catch either:
+#   default-https-client — without it: "a http_client is required"
+#   rt-tokio            — without it: "An async sleep implementation is required for retry to work"
+sigv4 = [
+    "dep:aws-config",
+    "dep:aws-credential-types",
+    "dep:aws-sigv4",
+    "dep:tokio",
+    "aws-config/default-https-client",
+    "aws-config/rt-tokio",
+]
