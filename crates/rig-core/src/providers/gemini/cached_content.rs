@@ -356,7 +356,7 @@ where
 
     /// Fetch one cached content by handle.
     pub async fn get(&self, name: &str) -> Result<CachedContent, CachedContentError> {
-        let http = self.client.get(resource_path(name))?.body(Vec::new())?;
+        let http = self.client.get(resource_path(name)?)?.body(Vec::new())?;
         self.send(http, Some(name)).await
     }
 
@@ -450,7 +450,10 @@ where
             ),
         };
 
-        let path = format!("{}?updateMask={mask}", resource_path(name));
+        // The `?` below is only ours because `resource_path` refuses an id that
+        // carries one: an unvalidated handle would put `updateMask` inside the
+        // caller's query string on a resource we did not mean to patch.
+        let path = format!("{}?updateMask={mask}", resource_path(name)?);
         let http = self
             .client
             .patch(&path)?
@@ -462,8 +465,13 @@ where
     ///
     /// Storage bills until this is called, so a cache created for the duration
     /// of a task should be deleted on the failure path too.
+    ///
+    /// A handle that is not a plain `cachedContents/<id>` (or a bare `<id>`) is
+    /// refused with [`CachedContentError::Invalid`] before anything is sent —
+    /// spliced into the path, a `?` or `#` would aim this delete at a different
+    /// cache and succeed.
     pub async fn delete(&self, name: &str) -> Result<(), CachedContentError> {
-        let http = self.client.delete(resource_path(name))?.body(Vec::new())?;
+        let http = self.client.delete(resource_path(name)?)?.body(Vec::new())?;
         let _: serde_json::Value = self.send_json(http, Some(name)).await?;
         Ok(())
     }
@@ -487,32 +495,46 @@ where
         let response = HttpClientExt::send::<_, Vec<u8>>(&self.client, request).await;
 
         let bytes = match response {
+            // A transport is free to hand the non-success status back as an
+            // `Ok` response rather than an error, and rig's own test double
+            // does exactly that. Without this arm the *error* body fell through
+            // to the `serde_json::from_str` below and surfaced as "missing
+            // field `name`" — a deserialization failure standing in for a 404,
+            // with `Expired` unreachable. Every other status triage in the
+            // crate checks this on the `Ok` path too (`client::Client::verify`,
+            // `internal::model_listing::decode_json_response`).
+            Ok(response) if !response.status().is_success() => {
+                let status = response.status().as_u16();
+                // A failed body read must not cancel the triage. The status is
+                // already in hand, and the `Err` arm below classifies even when
+                // the error carries no body at all — dropping to `Http` here
+                // would throw away the one thing that says the handle is gone.
+                let message = http_client::text(response)
+                    .await
+                    .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
+                return Err(classify_failure(status, message, name));
+            }
             Ok(response) => http_client::text(response)
                 .await
                 .map_err(CachedContentError::Http)?,
-            Err(http_client::Error::InvalidStatusCodeWithDetails { status, body, .. }) => {
-                let message = body.to_string();
-                // 403 and 404 both mean "this handle is gone" depending on how
-                // long ago it lapsed; collapsing them spares callers from
-                // matching on a status code to answer one question.
-                if matches!(status.as_u16(), 403 | 404)
-                    && let Some(name) = name
-                {
-                    // Carry the provider's own message. A 403 also covers a
-                    // disabled key, a project without the API enabled, and quota
-                    // denial — collapsing those into "expired" without the
-                    // message would throw away the only text that says which.
-                    return Err(CachedContentError::Expired {
-                        name: name.to_owned(),
-                        message,
-                    });
-                }
-                return Err(CachedContentError::Api {
-                    status: status.as_u16(),
-                    message,
-                });
+            // Triage on the *status*, not on one error variant. The bundled
+            // reqwest transports always report a non-success status as
+            // `InvalidStatusCodeWithDetails`, but `H` is a public extension
+            // point (`ClientBuilder::http_client`) and a custom `HttpClientExt`
+            // may report `InvalidStatusCode` or `InvalidStatusCodeWithMessage`
+            // instead. Matching the one variant dropped those into `Http`
+            // below, so the recovery this module documents — recreate the cache
+            // on `Expired` — never fired outside the bundled clients.
+            Err(error) => {
+                let Some(status) = error.non_success_status() else {
+                    // No status at all: a genuine transport failure (DNS, TLS,
+                    // a dropped connection), which recreating a cache does not
+                    // answer.
+                    return Err(CachedContentError::Http(error));
+                };
+                let message = error.non_success_body().unwrap_or_default().to_owned();
+                return Err(classify_failure(status.as_u16(), message, name));
             }
-            Err(error) => return Err(CachedContentError::Http(error)),
         };
 
         // DELETE answers `{}`; `serde_json::Value` absorbs that, and a typed
@@ -533,15 +555,102 @@ fn qualify_model(model: &str) -> String {
     }
 }
 
+/// Stand-in for the provider's message when a failure carried no text.
+///
+/// [`http_client::Error::InvalidStatusCode`] carries a status and nothing else,
+/// and a non-success response can have an empty body; either way there is
+/// nothing to quote. An empty `message` would leave both [`CachedContentError`]
+/// Displays ending in a bare colon, which reads as a truncated error rather
+/// than as a silent provider.
+const NO_RESPONSE_BODY: &str = "no response body";
+
+/// Turn a non-success status and its body into the error a caller matches on.
+///
+/// Shared by both failure paths in [`CachedContentClient::send_json`] — the
+/// transport that reports the status as an error and the one that hands back
+/// the non-success response — so the two cannot drift apart.
+///
+/// `name` is `Some` only for calls that address an existing handle. `create`
+/// passes `None` deliberately: a 403 there is a disabled key, a project without
+/// the API enabled, or quota denial, and reporting it as `Expired` for a cache
+/// that was never made would send a caller into a recreate loop.
+fn classify_failure(status: u16, message: String, name: Option<&str>) -> CachedContentError {
+    let message = if message.trim().is_empty() {
+        NO_RESPONSE_BODY.to_owned()
+    } else {
+        message
+    };
+
+    // 403 and 404 both mean "this handle is gone" depending on how long ago it
+    // lapsed; collapsing them spares callers from matching on a status code to
+    // answer one question.
+    if matches!(status, 403 | 404)
+        && let Some(name) = name
+    {
+        // Carry the provider's own message. A 403 also covers a disabled key, a
+        // project without the API enabled, and quota denial — collapsing those
+        // into "expired" without the message would throw away the only text
+        // that says which.
+        return CachedContentError::Expired {
+            name: name.to_owned(),
+            message,
+        };
+    }
+
+    CachedContentError::Api { status, message }
+}
+
+/// The characters a Gemini `cachedContents` id is made of.
+///
+/// The ids Gemini hands back are twelve lowercase alphanumerics
+/// (`cachedContents/n3v1qk0nqz9k`). `-` and `_` are admitted on top of that
+/// because the cassette scrubber rewrites every recorded id to
+/// `cached-REDACTED_1` (`tests/common/cassettes.rs`), and a replayed test
+/// hands that placeholder straight back to `delete`. `.` is deliberately left
+/// out: no observed id carries one, and a `..` segment is path traversal.
+fn is_cache_id_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_')
+}
+
 /// `/v1beta/cachedContents/<id>` from either a bare id or a full handle.
-fn resource_path(name: &str) -> String {
+///
+/// Validates rather than interpolating, because this is the path `get`,
+/// `update_expiry` and — the one that matters — `delete` send. A handle
+/// carrying a `?` does not produce a malformed URL the provider rejects:
+/// `GeminiExt::build_uri` switches its key separator to `&` the moment it sees
+/// a `?` in the path, so `delete("abc?stale")` would issue a perfectly
+/// well-formed `DELETE /v1beta/cachedContents/abc?stale&key=…` and destroy the
+/// cache named `abc`. A `#` truncates the path the same way, a `/` retargets it
+/// at another resource, and an empty id aims the request at the *collection*.
+///
+/// Refusing beats percent-encoding here. The id is server-assigned and opaque,
+/// so a caller holding one that needs escaping is holding a bug; and encoding
+/// would have to escape the id while leaving the optional `cachedContents/`
+/// prefix intact — two rules for one string, in service of quietly rewriting
+/// input that is always wrong.
+///
+/// The prefix stays optional here, unlike
+/// [`super::completion::gemini_api_types::GenerateContentRequest::with_cached_content`],
+/// which requires it. That is not an inconsistency: there the handle is a wire
+/// value the API compares verbatim, here it is a path segment this function
+/// writes itself.
+fn resource_path(name: &str) -> Result<String, CachedContentError> {
     let id = name.strip_prefix("cachedContents/").unwrap_or(name);
-    format!("{CACHED_CONTENTS_PATH}/{id}")
+    if id.is_empty() || !id.chars().all(is_cache_id_char) {
+        return Err(CachedContentError::Invalid(format!(
+            "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
+             `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \
+             where a `?`, `#` or `/` silently retargets the call at a different resource — and \
+             this is the path that deletes"
+        )));
+    }
+    Ok(format!("{CACHED_CONTENTS_PATH}/{id}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
     #[test]
     fn model_is_qualified_idempotently() {
@@ -554,10 +663,112 @@ mod tests {
 
     #[test]
     fn resource_path_accepts_a_bare_id_or_a_full_handle() {
-        assert_eq!(resource_path("abc123"), "/v1beta/cachedContents/abc123");
         assert_eq!(
-            resource_path("cachedContents/abc123"),
+            resource_path("abc123").expect("a bare id is a handle"),
             "/v1beta/cachedContents/abc123"
+        );
+        assert_eq!(
+            resource_path("cachedContents/abc123").expect("a full handle is a handle"),
+            "/v1beta/cachedContents/abc123"
+        );
+    }
+
+    /// The destructive path, end to end: a handle that would mis-target must
+    /// not reach the socket at all.
+    ///
+    /// `resource_path`'s unit tests prove the string is refused; this proves the
+    /// refusal happens *before* the request is built. It matters because the
+    /// URL these handles produce is not malformed — `GeminiExt::build_uri`
+    /// appends the API key with `&` once the path contains a `?`, so
+    /// `DELETE /v1beta/cachedContents/abc?stale&key=…` is a well-formed request
+    /// that deletes cache `abc` and returns 200.
+    #[tokio::test]
+    async fn a_mis_targeting_handle_never_reaches_the_socket() {
+        for smuggled in ["abc?stale", "abc#frag", "abc/def", ""] {
+            // No scripted responses: anything that does escape fails twice, once
+            // on the error variant and once on the captured request.
+            let http_client = SequencedHttpClient::default();
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(http_client.clone())
+                .build()
+                .expect("client should build");
+            let caches = client.cached_contents();
+
+            let outcomes = [
+                ("get", caches.get(smuggled).await.err()),
+                ("delete", caches.delete(smuggled).await.err()),
+                (
+                    "update_expiry",
+                    caches
+                        .update_expiry(smuggled, CacheExpiry::ttl(Duration::from_secs(60)))
+                        .await
+                        .err(),
+                ),
+            ];
+            for (label, error) in outcomes {
+                let error = error
+                    .unwrap_or_else(|| panic!("{label} should refuse the handle {smuggled:?}"));
+                assert!(
+                    matches!(error, CachedContentError::Invalid(_)),
+                    "{label} on {smuggled:?}: {error:?}"
+                );
+            }
+
+            assert!(
+                http_client.requests().is_empty(),
+                "handle {smuggled:?} escaped the process: {:?}",
+                http_client.requests()
+            );
+        }
+    }
+
+    /// The exact URI `update_expiry` builds, so the ordering of its three
+    /// query-string writers is pinned in one place.
+    ///
+    /// `resource_path` writes the path, the `format!` appends `?updateMask=`,
+    /// and `build_uri` follows with `&key=` because it now sees a `?`. That
+    /// layout is only stable while a handle cannot carry its own `?` — which is
+    /// what `resource_path` refuses, and what the cells above cover. This cell
+    /// pins the well-formed side: it passed before the validation existed and
+    /// exists to catch the mask being concatenated ahead of it, or the path
+    /// being escaped. The recorded PATCH in
+    /// `cached_content_matrix/edge_update_expiry_absolute` pins the same layout
+    /// against the live API; this one names it locally.
+    #[tokio::test]
+    async fn update_expiry_puts_its_update_mask_after_the_validated_path() {
+        let http_client = SequencedHttpClient::new([MockHttpResponse::success(
+            serde_json::json!({
+                "name": "cachedContents/n3v1qk0nqz9k",
+                "model": "models/gemini-2.5-flash"
+            })
+            .to_string(),
+        )]);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
+
+        client
+            .cached_contents()
+            .update_expiry(
+                "cachedContents/n3v1qk0nqz9k",
+                CacheExpiry::ttl(Duration::from_secs(600)),
+            )
+            .await
+            .expect("a well-formed handle should be patched");
+
+        let requests = http_client.requests();
+        let [request] = requests.as_slice() else {
+            panic!("exactly one request should have been sent: {requests:?}");
+        };
+        assert!(
+            request
+                .uri
+                .ends_with("/v1beta/cachedContents/n3v1qk0nqz9k?updateMask=ttl&key=test-key"),
+            "{}",
+            request.uri
         );
     }
 
@@ -636,20 +847,47 @@ mod exhaustive_validation_tests {
         }
     }
 
-    /// `/v1beta/cachedContents/<id>` from a bare id or a full handle, and the
-    /// prefix is stripped exactly once.
+    /// Every shape a handle can arrive in, against the path that `get`,
+    /// `update_expiry` and `delete` all build from it.
+    ///
+    /// The refusals carry the weight. `abc?stale` is not a malformed URL the
+    /// provider would reject — `build_uri` appends the API key with `&` once a
+    /// `?` is present, so it is a valid `DELETE` of cache `abc`. `#` and `/`
+    /// mis-target the same way, and an empty id aims the request at the
+    /// collection endpoint.
     #[test]
-    fn resource_path_is_total() {
+    fn resource_path_accepts_server_assigned_ids_and_refuses_everything_else() {
         for (input, expected) in [
-            ("abc", "/v1beta/cachedContents/abc"),
-            ("cachedContents/abc", "/v1beta/cachedContents/abc"),
+            // The shapes the API actually hands back, in both spellings, plus
+            // the scrubbed spelling a replayed cassette feeds back to `delete`.
+            ("n3v1qk0nqz9k", Some("/v1beta/cachedContents/n3v1qk0nqz9k")),
             (
-                "cachedContents/cachedContents/abc",
-                "/v1beta/cachedContents/cachedContents/abc",
+                "cachedContents/n3v1qk0nqz9k",
+                Some("/v1beta/cachedContents/n3v1qk0nqz9k"),
             ),
-            ("", "/v1beta/cachedContents/"),
+            (
+                "cached-REDACTED_1",
+                Some("/v1beta/cachedContents/cached-REDACTED_1"),
+            ),
+            ("abc?stale", None),
+            ("abc#frag", None),
+            ("abc/def", None),
+            ("cachedContents/cachedContents/abc", None),
+            ("abc%2Fdef", None),
+            ("abc def", None),
+            ("abc\n", None),
+            ("..", None),
+            ("", None),
+            ("cachedContents/", None),
         ] {
-            assert_eq!(resource_path(input), expected, "input {input:?}");
+            match (resource_path(input), expected) {
+                (Ok(path), Some(expected)) => assert_eq!(path, expected, "input {input:?}"),
+                (Err(CachedContentError::Invalid(message)), None) => assert!(
+                    message.contains(input),
+                    "input {input:?}: the refusal should quote the handle, got {message}"
+                ),
+                (outcome, _) => panic!("input {input:?}: unexpected {outcome:?}"),
+            }
         }
     }
 
@@ -814,5 +1052,176 @@ mod exhaustive_validation_tests {
             })
             .collect();
         assert_eq!(texts, vec!["first", "second", "third"]);
+    }
+}
+
+#[cfg(test)]
+mod status_triage_tests {
+    //! Non-success triage across every shape a transport can report one in.
+    //!
+    //! The recorded cassettes only ever exercise the bundled reqwest shape,
+    //! `http_client::Error::InvalidStatusCodeWithDetails`. But `H` is a public
+    //! extension point (`ClientBuilder::http_client`), and a custom
+    //! [`HttpClientExt`] may report the same 404 as a bare
+    //! `InvalidStatusCode`, as `InvalidStatusCodeWithMessage`, or as an `Ok`
+    //! response carrying the status — shapes rig's own test double produces.
+    //! On those the triage used to fall through to `CachedContentError::Http`
+    //! or to a bogus deserialization error, so the recovery this module
+    //! documents (`Expired { .. } => recreate the cache`) silently never fired.
+
+    use super::*;
+    use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+    /// A `cachedContents` client whose transport answers the next request with
+    /// `response` and nothing after it.
+    fn caches(response: MockHttpResponse) -> CachedContentClient<SequencedHttpClient> {
+        Client::builder()
+            .api_key("test-key")
+            .http_client(SequencedHttpClient::new(vec![response]))
+            .build()
+            .expect("client should build")
+            .cached_contents()
+    }
+
+    const GONE: &str =
+        r#"{"error":{"code":404,"message":"CachedContent not found (or permission denied)."}}"#;
+
+    /// A transport that reports the 404 as `InvalidStatusCodeWithMessage` —
+    /// the variant every non-bundled `HttpClientExt` in rig produces — must
+    /// still reach `Expired`.
+    ///
+    /// Before the triage moved from the variant to the status this fell into
+    /// the catch-all `Err(error) => Http(error)` arm, so a caller matching
+    /// `Expired` to recreate the cache saw an opaque transport error instead.
+    #[tokio::test]
+    async fn a_status_error_without_captured_headers_still_reports_expired() {
+        let error = caches(MockHttpResponse::error(http::StatusCode::NOT_FOUND, GONE))
+            .get("cachedContents/abc123")
+            .await
+            .expect_err("a missing handle should not resolve");
+
+        let CachedContentError::Expired { name, message } = &error else {
+            panic!("a handle that is gone should report Expired: {error:?}");
+        };
+        assert_eq!(name, "cachedContents/abc123");
+        assert!(message.contains("permission denied"), "{message}");
+    }
+
+    /// A transport that hands back the 404 as an `Ok` response instead of an
+    /// error must reach `Expired` too.
+    ///
+    /// This is the worse half of the same bug: the error body reached
+    /// `serde_json::from_str::<CachedContent>` and failed there, so the call
+    /// reported `CachedContentError::Serde` ("missing field `name`") for what
+    /// is plainly a 404 — a status-shaped failure disguised as a parse bug.
+    #[tokio::test]
+    async fn a_non_success_response_is_triaged_rather_than_deserialized() {
+        let error = caches(MockHttpResponse::ErrorResponse(
+            http::StatusCode::NOT_FOUND,
+            GONE.into(),
+        ))
+        .get("cachedContents/abc123")
+        .await
+        .expect_err("a missing handle should not resolve");
+
+        let CachedContentError::Expired { name, message } = &error else {
+            panic!("an Ok-wrapped 404 should report Expired, not a parse error: {error:?}");
+        };
+        assert_eq!(name, "cachedContents/abc123");
+        assert!(message.contains("permission denied"), "{message}");
+    }
+
+    /// Gemini answers a handle that lapsed a while ago with 403 rather than
+    /// 404, and both mean the same thing to a caller.
+    #[tokio::test]
+    async fn a_403_on_an_existing_handle_reports_expired_like_a_404() {
+        let error = caches(MockHttpResponse::error(
+            http::StatusCode::FORBIDDEN,
+            r#"{"error":{"code":403,"message":"You do not have permission to access the CachedContent."}}"#,
+        ))
+        .delete("cachedContents/abc123")
+        .await
+        .expect_err("a lapsed handle should not delete");
+
+        assert!(
+            matches!(&error, CachedContentError::Expired { name, .. } if name == "cachedContents/abc123"),
+            "{error:?}"
+        );
+    }
+
+    /// A 403 on `create` is not an expiry — there is no handle yet.
+    ///
+    /// `create` passes `name: None` for exactly this reason: a disabled key or
+    /// a project without the API enabled answers 403, and calling that
+    /// `Expired` would put a caller into a recreate loop against an API that
+    /// will keep refusing.
+    #[tokio::test]
+    async fn a_403_on_create_is_an_api_error_not_an_expiry() {
+        let error = caches(MockHttpResponse::error(
+            http::StatusCode::FORBIDDEN,
+            r#"{"error":{"code":403,"message":"Generative Language API has not been used in project 1234 before or it is disabled."}}"#,
+        ))
+        .create(NewCachedContent::new("gemini-2.5-flash").content("corpus"))
+        .await
+        .expect_err("a refused create should not succeed");
+
+        let CachedContentError::Api { status, message } = &error else {
+            panic!("a create that never made a handle cannot be Expired: {error:?}");
+        };
+        assert_eq!(*status, 403);
+        assert!(
+            message.contains("has not been used in project"),
+            "{message}"
+        );
+    }
+
+    /// Everything that is not a 403/404 on a named handle is an `Api` failure,
+    /// carrying the status a caller needs to decide whether to retry.
+    #[tokio::test]
+    async fn a_server_error_reports_the_status_rather_than_an_expiry() {
+        let error = caches(MockHttpResponse::error(
+            http::StatusCode::INTERNAL_SERVER_ERROR,
+            r#"{"error":{"code":500,"message":"Internal error encountered."}}"#,
+        ))
+        .get("cachedContents/abc123")
+        .await
+        .expect_err("a 500 should not resolve");
+
+        let CachedContentError::Api { status, message } = &error else {
+            panic!("a 500 is not an expiry: {error:?}");
+        };
+        assert_eq!(*status, 500);
+        assert!(message.contains("Internal error"), "{message}");
+    }
+
+    /// `InvalidStatusCode` carries no body, so there is no provider text to
+    /// quote. The message must still say something: an empty one leaves the
+    /// error Display ending in a bare colon, which reads as truncated output
+    /// rather than as a provider that said nothing.
+    #[tokio::test]
+    async fn a_status_error_with_no_body_still_names_why_it_has_no_message() {
+        // `SequencedHttpClient` reports `InvalidStatusCode(501)` once its
+        // scripted responses run out, which is the body-less shape.
+        let caches = Client::builder()
+            .api_key("test-key")
+            .http_client(SequencedHttpClient::new(Vec::new()))
+            .build()
+            .expect("client should build")
+            .cached_contents();
+
+        let error = caches
+            .get("cachedContents/abc123")
+            .await
+            .expect_err("an unscripted request should not resolve");
+
+        let CachedContentError::Api { status, message } = &error else {
+            panic!("a 501 is not an expiry: {error:?}");
+        };
+        assert_eq!(*status, 501);
+        assert_eq!(message, NO_RESPONSE_BODY);
+        assert!(
+            !error.to_string().ends_with(": "),
+            "the Display must not trail off: {error}"
+        );
     }
 }
