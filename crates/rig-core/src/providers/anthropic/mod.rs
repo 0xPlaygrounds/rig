@@ -15,6 +15,8 @@
 pub mod client;
 pub mod completion;
 pub mod model_listing;
+#[cfg(feature = "sigv4")]
+pub(crate) mod sigv4;
 pub mod streaming;
 
-pub use client::{Client, ClientBuilder};
+pub use client::{AnthropicKey, Client, ClientBuilder};

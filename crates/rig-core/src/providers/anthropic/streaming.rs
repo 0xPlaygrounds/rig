@@ -580,11 +580,30 @@ where
 
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
-        let req = self
-            .client
-            .post("/v1/messages")?
-            .body(body)
-            .map_err(http_client::Error::Protocol)?;
+        // See the note in completion.rs: `mut` is only used when signing is compiled in.
+        #[cfg_attr(not(feature = "sigv4"), allow(unused_mut))]
+        let mut builder = self.client.post("/v1/messages")?;
+
+        // Same as the non-streaming path in completion.rs, and it must be duplicated because the
+        // two paths build their requests independently. Signed after the body is final.
+        #[cfg(feature = "sigv4")]
+        if let Some(region) = self.client.ext().sigv4_region() {
+            let uri = builder
+                .uri_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            for (name, value) in super::sigv4::signed_headers("POST", &uri, &body, region).await? {
+                builder = builder.header(name, value);
+            }
+        }
+        #[cfg(not(feature = "sigv4"))]
+        if self.client.ext().sigv4_region().is_some() {
+            return Err(CompletionError::RequestError(
+                "SigV4 auth was selected but rig-core was built without the `sigv4` feature".into(),
+            ));
+        }
+
+        let req = builder.body(body).map_err(http_client::Error::Protocol)?;
 
         let event_source = GenericEventSource::new(self.client.clone(), req);
         let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
