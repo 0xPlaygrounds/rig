@@ -20,6 +20,7 @@
 //! | [`tool_choice_none_suppresses_the_parsed_call`] | `tool_choice: none` | **no parsed call — and the raw syntax leaks into `content`** |
 //! | [`tool_choice_required_forces_a_call`] | `tool_choice: required` | a call even when the prompt does not need one |
 //! | [`tool_choice_specific_is_refused_before_the_request_is_sent`] | `tool_choice: {function}` | **refused client-side** — llama.cpp would serve it as `auto` |
+//! | [`tool_choice_specific_is_refused_on_the_streaming_path_too`] | the same, streaming | a guard covering one surface would let the old behaviour back |
 //! | [`a_tool_result_carrying_text_reaches_the_model`] | result: text | |
 //! | [`a_tool_result_carrying_json_reaches_the_model`] | result: JSON | serialized as text on this wire |
 //! | tool result carrying an image | result: image | `image_tool_result.rs`, on the vision server |
@@ -628,6 +629,43 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
         recorded_json_request("llamacpp", "tool_matrix/tool_choice_required")["tool_choice"],
         json!("required")
     );
+}
+
+/// The refusal applies on the **streaming** transport too.
+///
+/// A guard that only covered one surface would be worse than none: a caller
+/// who moved from `completion` to `stream` would silently get the old
+/// behaviour back. `prepare_request` is invoked by both paths
+/// (`openai/completion/mod.rs` and `openai/completion/streaming.rs`), and this
+/// cell is what makes that a checked fact rather than a reading.
+#[tokio::test]
+async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
+    let client = rig::providers::llamacpp::Client::from_url("http://127.0.0.1:1")
+        .expect("client should build");
+    let model = client.completion_model(CASSETTE_MODEL);
+
+    let error = model
+        .stream(
+            model
+                .completion_request(format!("{NO_THINK}Compute 2 + 3."))
+                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::tool::tool_definition(&Subtract))
+                .tool_choice(ToolChoice::Specific {
+                    function_names: vec!["subtract".to_string()],
+                })
+                .max_tokens(256)
+                .build(),
+        )
+        .await
+        .err()
+        .expect("opening the stream must fail before anything is sent");
+
+    assert!(
+        matches!(error, rig::completion::CompletionError::ProviderError(_)),
+        "the refusal must be rig's own, not the connection error the dead \
+         address would produce: {error:?}"
+    );
+    assert!(error.to_string().contains("subtract"), "{error}");
 }
 
 // ---------------------------------------------------------------------------
