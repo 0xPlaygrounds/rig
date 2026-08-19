@@ -3,6 +3,7 @@ mod cassette_support;
 mod cassette {
     mod agent;
     mod bare_openai_client;
+    mod content_matrix;
     mod context;
     mod embeddings;
     mod error_matrix;
@@ -10,6 +11,7 @@ mod cassette {
     mod extractor_usage;
     mod image_tool_result;
     mod loaders;
+    mod model_family_matrix;
     mod models;
     mod multi_extract;
     mod permission_control;

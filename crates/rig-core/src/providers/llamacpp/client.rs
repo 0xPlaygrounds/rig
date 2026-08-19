@@ -145,12 +145,29 @@ impl openai::completion::OpenAICompatibleProvider for LlamacppExt {
 
     type StreamingUsage = openai::Usage;
 
-    // llama.cpp emits a whole tool call — id, name and complete arguments —
-    // in a single streaming chunk rather than across argument deltas.
-    // Re-measured for this PR against `llama-server` b10499-6d05498 on four
-    // chat templates (Qwen3, Llama 3.2, Mistral Small 3.2, Gemma 3); see
-    // `tests/providers/llamacpp/cassette/model_family_matrix.rs`.
-    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
+    // **Measured false**, against the claim this provider inherited.
+    //
+    // The const asks whether the backend can put a whole tool call — id, name
+    // and *complete* arguments — in one streaming chunk. `llama-server`
+    // b10499-6d05498 cannot: it streams tool-call arguments per token, so the
+    // first chunk carries the name beside a lone `{` and the closing `}`
+    // arrives ten chunks later. Re-measured across every chat template this
+    // PR could load — Qwen3-1.7B, Qwen3-8B, Llama-3.2-3B and
+    // Mistral-Small-3.2-24B — and on both a two-argument and a zero-argument
+    // call, which streams as `{` then `}` rather than as `{}`. Gemma 3's
+    // template declares no tool support at all
+    // (`chat_template_caps.supports_tool_calls: false`), so it has no shape to
+    // measure. See `tests/providers/llamacpp/cassette/model_family_matrix.rs`.
+    //
+    // Flipping it to `false` changes no output, and that is checked rather
+    // than assumed: the shared accumulator's immediate-emit is a *probe*
+    // (`UnparseableToolInput::Keep`) that finalizes a call only if its
+    // accumulated arguments parse, so a lone `{` was already being declined.
+    // The whole recorded streaming corpus replays byte-identically either way.
+    // What `false` buys is that the const stops asserting something untrue,
+    // and that a future build whose partial arguments *did* happen to parse
+    // could not finalize a truncated call.
+    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = false;
 
     // llama.cpp delivers an image inside a `role:"tool"` message to the model,
     // unlike official OpenAI. Measured against `llama-server` b10499-6d05498

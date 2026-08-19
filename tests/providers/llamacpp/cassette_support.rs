@@ -207,6 +207,35 @@ server_config_wrapper!(
     8088
 );
 
+server_config_wrapper!(
+    /// The Llama family (`unsloth/Llama-3.2-3B-Instruct-GGUF` Q4_K_M) — a
+    /// different chat template, and therefore a different tool-call wire.
+    with_llamacpp_llama_family_cassette,
+    "LLAMACPP_LLAMA_FAMILY_UPSTREAM",
+    8090
+);
+
+server_config_wrapper!(
+    /// The Mistral family
+    /// (`unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF` Q4_K_M).
+    with_llamacpp_mistral_family_cassette,
+    "LLAMACPP_MISTRAL_FAMILY_UPSTREAM",
+    8091
+);
+
+server_config_wrapper!(
+    /// The Gemma family (`unsloth/gemma-3-12b-it-GGUF` Q4_K_M), whose template
+    /// declares no tool support at all.
+    with_llamacpp_gemma_family_cassette,
+    "LLAMACPP_GEMMA_FAMILY_UPSTREAM",
+    8092
+);
+
+/// The chat model each family's cassettes were recorded against.
+pub(super) const CASSETTE_LLAMA_MODEL: &str = "Llama-3.2-3B-Instruct-Q4_K_M";
+pub(super) const CASSETTE_MISTRAL_MODEL: &str = "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M";
+pub(super) const CASSETTE_GEMMA_MODEL: &str = "gemma-3-12b-it-Q4_K_M";
+
 /// A server started with `--api-key`, driven by a client that presents the
 /// matching key.
 ///
