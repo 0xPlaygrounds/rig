@@ -6,7 +6,6 @@
 //! [`LlamacppExt`](super::client::LlamacppExt) in `client.rs`.
 
 use crate::providers::openai;
-use crate::telemetry::ProviderResponseExt as _;
 use serde::{Deserialize, Serialize};
 
 // ================================================================

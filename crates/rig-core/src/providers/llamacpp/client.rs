@@ -163,6 +163,42 @@ impl openai::completion::OpenAICompatibleProvider for LlamacppExt {
     // [`super::completion::CompletionResponse`] for why that earns its own
     // type rather than being dropped by the shared one.
     type Response = super::completion::CompletionResponse;
+
+    /// Refuse a specific-function `tool_choice` before the request leaves the
+    /// process.
+    ///
+    /// `llama-server` reads `tool_choice` with
+    /// `json_value(body, "tool_choice", std::string("auto"))` — as a **string**
+    /// — and its vocabulary is exactly `auto | none | required`
+    /// (`common_chat_tool_choice_parse_oaicompat`, `common/chat.cpp`). An
+    /// OpenAI-shaped `{"type":"function","function":{"name":"…"}}` is not a
+    /// string, so the type mismatch falls through to the default and the
+    /// request is served as `auto`. Measured on b10499-6d05498 with both
+    /// Qwen3-1.7B and Qwen3-8B: a request naming `subtract` while the prompt
+    /// asks for an addition calls `add`.
+    ///
+    /// Sending it anyway means a caller who asked for one tool silently gets
+    /// another, or none — the same class of silent loss
+    /// [`SUPPORTS_IMAGE_TOOL_RESULTS`](Self::SUPPORTS_IMAGE_TOOL_RESULTS)
+    /// exists to prevent, and rig's rule there is the rule here: refuse
+    /// locally rather than send something the server mishandles quietly. The
+    /// error names the substitute (`ToolChoice::Required`) that llama.cpp does
+    /// honour.
+    fn prepare_request(
+        &self,
+        request: &mut openai::completion::CompletionRequest,
+    ) -> Result<(), crate::completion::CompletionError> {
+        if let Some(openai::completion::ToolChoice::Function { name }) = &request.tool_choice {
+            return Err(crate::completion::CompletionError::ProviderError(format!(
+                "llama.cpp cannot force a specific tool: `llama-server` accepts only \
+                 `auto`, `none` or `required` for tool_choice and silently treats \
+                 anything else as `auto`, so requesting `{name}` would return whichever \
+                 tool the model picked. Use `ToolChoice::Required` to force a call, or \
+                 advertise only `{name}` in `tools`."
+            )));
+        }
+        Ok(())
+    }
 }
 
 impl openai::embedding::OpenAIEmbeddingsCompatible for LlamacppExt {

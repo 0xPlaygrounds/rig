@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":1,"messages":[{"content":"Count from one to ten.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"<think>","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":4,"predicted_ms":0.001,"predicted_n":1,"predicted_per_second":0.0,"predicted_per_token_ms":0.0,"prompt_ms":24.499,"prompt_n":10,"prompt_per_second":408.17992571125353,"prompt_per_token_ms":2.4499},"usage":{"completion_tokens":1,"prompt_tokens":14,"prompt_tokens_details":{"cached_tokens":4},"total_tokens":15}}'
