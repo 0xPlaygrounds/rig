@@ -17,6 +17,7 @@
 //! | [`a_stop_sequence_that_never_matches_changes_nothing`] | `stop: ["…"]` | the cap terminates instead |
 //! | [`stop_matching_is_case_sensitive`] | `stop` | a case-mismatched sequence does not fire — a real footgun |
 //! | [`a_fixed_seed_and_an_absent_seed_are_both_accepted`] | `seed` | present round-trips; absent falls back to the server's `--seed` |
+//! | [`additional_params_wins_over_the_typed_field_it_collides_with`] | precedence | `additional_params` overrides a typed builder call, silently |
 //!
 //! # Two things worth knowing
 //!
@@ -413,5 +414,69 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
             .is_none(),
         "rig must not invent a seed the caller did not ask for; the corpus's \
          determinism comes from the server's --seed"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Precedence
+// ---------------------------------------------------------------------------
+
+/// `additional_params` **overrides** a typed field of the same name.
+///
+/// Half this matrix reaches the wire through `additional_params` — `stop`,
+/// `seed`, `grammar`, `n`, `logprobs` all have no typed home — so which side
+/// wins when the two collide is load-bearing for reading any of these
+/// fixtures, and nothing stated it.
+///
+/// It is the escape hatch's `#[serde(flatten)]` that decides: the typed fields
+/// serialize first and the flattened map is written over them, so
+/// `additional_params` wins. That is defensible as an escape hatch, and it is
+/// silent — a caller who sets `max_tokens(7)` and then passes an
+/// `additional_params` blob that happens to carry `max_tokens` gets 99 with no
+/// warning.
+///
+/// Definitional rather than observed: this is rig's serialization, not
+/// llama.cpp's parsing, so it is checked without a server.
+#[test]
+fn additional_params_wins_over_the_typed_field_it_collides_with() {
+    use rig::providers::openai::completion::OpenAICompatibleProvider as _;
+
+    let request = rig::completion::CompletionRequest {
+        model: None,
+        preamble: None,
+        chat_history: vec![rig::message::Message::User {
+            content: vec![rig::message::UserContent::text("hi")],
+        }],
+        documents: vec![],
+        tools: vec![],
+        temperature: Some(0.0),
+        max_tokens: Some(7),
+        tool_choice: None,
+        additional_params: Some(json!({ "max_tokens": 99, "top_k": 3 })),
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let typed = rig::providers::llamacpp::LlamacppExt
+        .build_completion_request("m".to_string(), request, Default::default())
+        .expect("the request should build");
+    let body = serde_json::to_value(&typed).expect("the request should serialize");
+
+    assert_eq!(
+        body["max_tokens"],
+        json!(99),
+        "the escape hatch overrides the typed field it collides with"
+    );
+    assert_eq!(
+        body["top_k"],
+        json!(3),
+        "and a key with no typed counterpart passes through unchanged — which is \
+         how `stop`, `seed`, `grammar`, `n` and `logprobs` reach the wire in this \
+         matrix"
+    );
+    assert_eq!(
+        body["temperature"],
+        json!(0.0),
+        "a typed field the blob does not name is untouched"
     );
 }

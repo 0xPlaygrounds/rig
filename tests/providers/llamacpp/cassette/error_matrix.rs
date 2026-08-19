@@ -49,6 +49,12 @@
 //!   key for equality and answers the same `401 authentication_error` either
 //!   way; the middleware runs before routing, so even an unknown path 401s.
 //!   A second cell would record identical bytes.
+//! * **A streaming 401.** The API-key middleware runs before the handler, so a
+//!   `stream: true` request without the key answers the same `401` body before
+//!   any event stream opens — byte-identical to the blocking cell above
+//!   (verified by hand against b10499-6d05498). The streaming-error path is
+//!   already covered where it differs: `context_overflow_streaming` records a
+//!   400 that must survive rig's SSE funnel rather than the unary one.
 
 use futures::StreamExt;
 use rig::client::{CompletionClient, EmbeddingsClient, RerankingClient, VerifyClient};
