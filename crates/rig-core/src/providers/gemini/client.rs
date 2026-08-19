@@ -1,5 +1,6 @@
 use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, Transport};
 use crate::http_client::{self};
+use crate::providers::gemini::cached_content::CachedContentClient;
 use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, GeminiModelLister};
 use serde::Deserialize;
 use std::fmt::Debug;
@@ -173,6 +174,19 @@ client::impl_provider_client!(
 );
 
 impl<H> Client<H> {
+    /// Client for Gemini's explicit context cache (`cachedContents`).
+    ///
+    /// Explicit caching is a different feature from the implicit prefix caching
+    /// that happens automatically: it hits on the first request and across
+    /// unrelated conversations, at the cost of billing storage per token-hour.
+    /// See [`crate::providers::gemini::cached_content`] for when each pays.
+    pub fn cached_contents(&self) -> CachedContentClient<H>
+    where
+        H: Clone,
+    {
+        CachedContentClient::new(self.clone())
+    }
+
     /// Create an Interactions API client from this GenerateContent client.
     pub fn interactions_api(self) -> InteractionsClient<H> {
         let api_key = self.ext().api_key.clone();

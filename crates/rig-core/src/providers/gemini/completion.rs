@@ -61,6 +61,10 @@ pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 pub struct CompletionModel<T = reqwest::Client> {
     pub(crate) client: Client<T>,
     pub model: String,
+    /// Handle of a `cachedContents` resource every request should read from.
+    ///
+    /// See [`CompletionModel::with_cached_content`].
+    pub(crate) cached_content: Option<String>,
 }
 
 impl<T> CompletionModel<T> {
@@ -68,6 +72,7 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            cached_content: None,
         }
     }
 
@@ -75,7 +80,30 @@ impl<T> CompletionModel<T> {
         Self {
             client,
             model: model.into(),
+            cached_content: None,
         }
+    }
+
+    /// Read every request's prefix from an explicit `cachedContents` handle.
+    ///
+    /// This is Gemini's *explicit* context cache, which is a different feature
+    /// from the implicit prefix caching that happens with no API surface at all.
+    /// Explicit caching hits on the first request and across unrelated
+    /// conversations; implicit caching needs a warm-up and keys on a prefix a
+    /// fresh conversation does not have. Measured on `gemini-2.5-flash` over one
+    /// 18.5k-token corpus: implicit read zero cached tokens for five consecutive
+    /// turns, explicit read 100% on turn one.
+    ///
+    /// Create the handle with
+    /// [`crate::providers::gemini::cached_content::CachedContentClient`], and
+    /// delete it when you are done — storage bills until you do.
+    ///
+    /// The cache owns the system instruction and tool set, so a request built
+    /// from this model must not carry either. Rig rejects that before the
+    /// request goes out rather than letting Gemini answer 400.
+    pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
+        self.cached_content = Some(name.into());
+        self
     }
 }
 
@@ -107,7 +135,10 @@ where
         )
         .build();
 
-        let request = create_request_body(completion_request)?;
+        let mut request = create_request_body(completion_request)?;
+        if let Some(name) = self.cached_content.as_deref() {
+            request.with_cached_content(name)?;
+        }
 
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -212,6 +243,23 @@ pub(crate) fn create_request_body(
         .unwrap_or_else(|| Value::Object(Map::new()));
     let mut additional_tools =
         extract_tools_from_additional_params(&mut additional_params_payload)?;
+    // Lift any `cachedContent` out of `additional_params` so it lands in the
+    // typed field instead of being flattened in beside it. Flattened fields
+    // serialize *after* named ones, so leaving it here would overwrite the typed
+    // value — and, worse, skip the conflict validation entirely, because that
+    // only inspects the typed fields. Callers reach this path whenever they set
+    // the handle through `additional_params` without touching
+    // `with_cached_content`, which is the plainest route there is.
+    let smuggled_cached_content = additional_params_payload
+        .as_object_mut()
+        .and_then(|object| object.remove("cachedContent"))
+        .map(|value| match value {
+            Value::String(name) => Ok(name),
+            other => Err(CompletionError::RequestError(
+                format!("additional_params.cachedContent should be a string, got {other}").into(),
+            )),
+        })
+        .transpose()?;
 
     let AdditionalParameters {
         mut generation_config,
@@ -281,7 +329,7 @@ pub(crate) fn create_request_body(
         None
     };
 
-    let request = GenerateContentRequest {
+    let mut request = GenerateContentRequest {
         contents: full_history
             .into_iter()
             .map(|msg| {
@@ -294,8 +342,13 @@ pub(crate) fn create_request_body(
         tools,
         tool_config,
         system_instruction,
+        cached_content: None,
         additional_params,
     };
+
+    if let Some(name) = smuggled_cached_content {
+        request.with_cached_content(&name)?;
+    }
 
     Ok(request)
 }
@@ -2224,7 +2277,17 @@ pub mod gemini_api_types {
         /// Optional. Developer set system instruction(s). Currently, text only.
         /// From [Gemini API Reference](https://ai.google.dev/gemini-api/docs/system-instructions?lang=rest)
         pub system_instruction: Option<Content>,
-        // cachedContent: Optional<String>
+        /// Optional. Handle of a `cachedContents` resource whose content is
+        /// prepended to this request (`cachedContents/<id>`).
+        ///
+        /// Was a commented-out line here until rig learned to create the
+        /// resource it names — see [`crate::providers::gemini::cached_content`].
+        /// Set it through
+        /// [`GenerateContentRequest::with_cached_content`] rather than by hand:
+        /// the cache owns the system instruction and tools, and sending either
+        /// alongside it is a provider error.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub cached_content: Option<String>,
         /// Additional parameters.
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<serde_json::Value>,
@@ -2301,6 +2364,74 @@ pub mod gemini_api_types {
         BlockOnlyHigh,
         BlockNone,
         Off,
+    }
+}
+
+impl gemini_api_types::GenerateContentRequest {
+    /// Point this request at an explicit `cachedContents` handle.
+    ///
+    /// Enforces the two constraints Gemini imposes, before the request leaves
+    /// the process:
+    ///
+    /// * the cache owns `systemInstruction`, `tools` and `toolConfig`, so
+    ///   carrying any of them alongside a handle is rejected. The provider
+    ///   answers this with a 400 reading "CachedContent can not be used with
+    ///   GenerateContent request setting system_instruction, tools or
+    ///   tool_config" — a clear message, but only after a round trip, and
+    ///   without naming *which* of the three the caller set.
+    /// * the handle must look like one (`cachedContents/<id>`), because a bare
+    ///   id is accepted by the type system and rejected by the API.
+    pub fn with_cached_content(&mut self, name: &str) -> Result<(), CompletionError> {
+        if !name.starts_with("cachedContents/") {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "gemini cached content handle should look like `cachedContents/<id>`, got \
+                     `{name}`"
+                )
+                .into(),
+            ));
+        }
+
+        // Set twice with different handles: the caller asked for two caches and
+        // only one can win, so refuse rather than pick. Reachable when a request
+        // carries `cachedContent` in `additional_params` *and* the model was
+        // built with `with_cached_content`.
+        if let Some(existing) = self.cached_content.as_deref()
+            && existing != name
+        {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "a Gemini request set cached content twice, to `{existing}` and `{name}` — \
+                     set it one way or the other"
+                )
+                .into(),
+            ));
+        }
+
+        let mut conflicts = Vec::new();
+        if self.system_instruction.is_some() {
+            conflicts.push("a system instruction (preamble)");
+        }
+        if self.tools.is_some() {
+            conflicts.push("tools");
+        }
+        if self.tool_config.is_some() {
+            conflicts.push("a tool choice");
+        }
+        if !conflicts.is_empty() {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "a Gemini request using cached content `{name}` also set {}. The cached \
+                     content already owns the system instruction, tools and tool choice for every \
+                     request that uses it — move them into the cache, or drop the cache handle.",
+                    conflicts.join(" and ")
+                )
+                .into(),
+            ));
+        }
+
+        self.cached_content = Some(name.to_owned());
+        Ok(())
     }
 }
 
@@ -4016,5 +4147,340 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+}
+
+#[cfg(test)]
+mod cached_content_request_tests {
+    use super::gemini_api_types::GenerateContentRequest;
+    use crate::completion::{CompletionError, CompletionRequest};
+    use crate::message::{Message, UserContent};
+
+    fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
+        let mut tool_defs = Vec::new();
+        if tools {
+            tool_defs.push(crate::completion::ToolDefinition {
+                name: "probe".to_owned(),
+                description: "probe".to_owned(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            });
+        }
+        super::create_request_body(CompletionRequest {
+            preamble: preamble.map(str::to_owned),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::text("hi")],
+            }],
+            documents: vec![],
+            tools: tool_defs,
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect("request should build")
+    }
+
+    #[test]
+    fn a_bare_id_is_rejected_before_the_request_goes_out() {
+        let mut request = request_with(None, false);
+        let error = request
+            .with_cached_content("abc123")
+            .expect_err("a bare id is not a handle");
+        assert!(error.to_string().contains("cachedContents/<id>"), "{error}");
+    }
+
+    /// Gemini answers this with a 400 after a round trip, and does not say
+    /// *which* of the three conflicted. Rig should not need the round trip.
+    #[test]
+    fn a_preamble_alongside_a_cache_handle_is_rejected_locally() {
+        let mut request = request_with(Some("you are a helpful assistant"), false);
+        let error = request
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("a system instruction conflicts with cached content");
+        let message = error.to_string();
+        assert!(message.contains("system instruction"), "{message}");
+        assert!(message.contains("cachedContents/abc123"), "{message}");
+    }
+
+    #[test]
+    fn tools_alongside_a_cache_handle_are_rejected_locally() {
+        let mut request = request_with(None, true);
+        let error = request
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("tools conflict with cached content");
+        assert!(error.to_string().contains("tools"), "{error}");
+    }
+
+    #[test]
+    fn a_clean_request_accepts_the_handle_and_puts_it_on_the_wire() {
+        let mut request = request_with(None, false);
+        request
+            .with_cached_content("cachedContents/abc123")
+            .expect("a request with no system instruction or tools should accept a handle");
+
+        let body = serde_json::to_value(&request).expect("serialize");
+        assert_eq!(
+            body.get("cachedContent").and_then(|v| v.as_str()),
+            Some("cachedContents/abc123")
+        );
+    }
+
+    /// `additional_params` is `#[serde(flatten)]`, so a caller can smuggle
+    /// `cachedContent` onto the wire that way. The typed field must win rather
+    /// than the two colliding into a duplicate key.
+    /// `additional_params` is flattened *after* the named fields, so a
+    /// `cachedContent` smuggled through it silently overwrote the typed one and
+    /// bypassed the conflict validation entirely. An earlier version of this
+    /// test asserted the opposite invariant while passing an unrelated key
+    /// (`topK`), so it never exercised the collision and stayed green over a
+    /// real wire bug.
+    fn build_with(
+        preamble: Option<&str>,
+        additional: Option<serde_json::Value>,
+    ) -> Result<GenerateContentRequest, CompletionError> {
+        super::create_request_body(CompletionRequest {
+            preamble: preamble.map(str::to_owned),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::text("hi")],
+            }],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: additional,
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+    }
+
+    /// The route a caller reaches without ever touching the typed API.
+    ///
+    /// `additional_params` is `#[serde(flatten)]`, and flattened fields
+    /// serialize *after* the named ones — so a handle set this way used to
+    /// overwrite the typed field and, worse, skip the conflict validation
+    /// entirely, because that only inspects the typed fields. Validation now
+    /// happens where the request is built, so every route reaches it.
+    #[test]
+    fn a_handle_set_only_through_additional_params_is_still_validated() {
+        let error = build_with(
+            Some("you are terse"),
+            Some(serde_json::json!({"cachedContent": "cachedContents/smuggled"})),
+        )
+        .expect_err("a preamble alongside a cache handle must be refused however it was set");
+        let message = error.to_string();
+        assert!(message.contains("system instruction"), "{message}");
+        assert!(message.contains("cachedContents/smuggled"), "{message}");
+    }
+
+    /// The same route with nothing to conflict with lands in the *typed* field,
+    /// so it can no longer be overwritten by the flattened copy.
+    #[test]
+    fn a_clean_handle_from_additional_params_is_lifted_into_the_typed_field() {
+        let request = build_with(
+            None,
+            Some(serde_json::json!({"cachedContent": "cachedContents/lifted", "topK": 5})),
+        )
+        .expect("a clean request should build");
+
+        assert_eq!(
+            request.cached_content.as_deref(),
+            Some("cachedContents/lifted")
+        );
+        let body = serde_json::to_value(&request).expect("serialize");
+        assert_eq!(
+            body.get("cachedContent").and_then(|value| value.as_str()),
+            Some("cachedContents/lifted")
+        );
+        // And the unrelated key still flattens through.
+        assert_eq!(body.get("topK").and_then(|value| value.as_u64()), Some(5));
+    }
+
+    /// Two different handles is an ambiguity, not a precedence puzzle.
+    #[test]
+    fn setting_the_handle_twice_with_different_values_is_refused() {
+        let mut request = build_with(
+            None,
+            Some(serde_json::json!({"cachedContent": "cachedContents/from_params"})),
+        )
+        .expect("a clean request should build");
+
+        let error = request
+            .with_cached_content("cachedContents/from_builder")
+            .expect_err("two different handles cannot both win");
+        let message = error.to_string();
+        assert!(message.contains("from_params"), "{message}");
+        assert!(message.contains("from_builder"), "{message}");
+    }
+
+    /// Setting the same handle twice is harmless and must not error.
+    #[test]
+    fn setting_the_same_handle_twice_is_accepted() {
+        let mut request = build_with(
+            None,
+            Some(serde_json::json!({"cachedContent": "cachedContents/same"})),
+        )
+        .expect("a clean request should build");
+        request
+            .with_cached_content("cachedContents/same")
+            .expect("the same handle twice is not ambiguous");
+    }
+
+    /// A non-string handle is a caller error, caught before the wire.
+    #[test]
+    fn a_non_string_handle_in_additional_params_is_refused() {
+        let error = build_with(None, Some(serde_json::json!({"cachedContent": 42})))
+            .expect_err("a numeric handle should be refused");
+        assert!(error.to_string().contains("should be a string"), "{error}");
+    }
+
+    /// Unrelated `additional_params` keys must still flatten alongside the
+    /// typed field.
+    #[test]
+    fn unrelated_additional_params_coexist_with_the_typed_field() {
+        let mut request = super::create_request_body(CompletionRequest {
+            preamble: None,
+            chat_history: vec![Message::User {
+                content: vec![UserContent::text("hi")],
+            }],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({"topK": 5})),
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect("request should build");
+        request
+            .with_cached_content("cachedContents/typed")
+            .expect("handle should be accepted");
+
+        let body = serde_json::to_value(&request).expect("serialize");
+        assert_eq!(
+            body.get("cachedContent").and_then(|v| v.as_str()),
+            Some("cachedContents/typed")
+        );
+        assert_eq!(body.get("topK").and_then(|v| v.as_u64()), Some(5));
+    }
+}
+
+#[cfg(test)]
+mod cached_content_conflict_matrix {
+    //! All 2^3 combinations of the fields a cached content owns.
+    //!
+    //! Gemini rejects `cachedContent` alongside `system_instruction`, `tools` or
+    //! `tool_config` with a single 400 that does not say which one you set. Rig
+    //! checks all three before the request leaves the process, so the matrix is
+    //! exhaustive and free — no socket, no fixture.
+
+    use super::gemini_api_types::GenerateContentRequest;
+    use crate::completion::{CompletionRequest, ToolDefinition};
+    use crate::message::{Message, ToolChoice, UserContent};
+
+    const HANDLE: &str = "cachedContents/matrix";
+
+    fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest {
+        super::create_request_body(CompletionRequest {
+            preamble: system.then(|| "you are terse".to_owned()),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::text("hi")],
+            }],
+            documents: vec![],
+            tools: if tools {
+                vec![ToolDefinition {
+                    name: "probe".to_owned(),
+                    description: "probe".to_owned(),
+                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                }]
+            } else {
+                vec![]
+            },
+            temperature: None,
+            max_tokens: None,
+            tool_choice: tool_choice.then_some(ToolChoice::Auto),
+            additional_params: None,
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect("request should build")
+    }
+
+    #[test]
+    fn every_combination_of_owned_fields_is_classified() {
+        let mut checked = 0usize;
+
+        for system in [false, true] {
+            for tools in [false, true] {
+                for tool_choice in [false, true] {
+                    let mut request = build(system, tools, tool_choice);
+                    let outcome = request.with_cached_content(HANDLE);
+                    let label = format!("system={system} tools={tools} tool_choice={tool_choice}");
+
+                    if !system && !tools && !tool_choice {
+                        outcome.unwrap_or_else(|error| {
+                            panic!("{label}: a clean request must accept a handle: {error}")
+                        });
+                        let body = serde_json::to_value(&request).expect("serialize");
+                        assert_eq!(
+                            body.get("cachedContent").and_then(|value| value.as_str()),
+                            Some(HANDLE),
+                            "{label}: the handle should reach the wire"
+                        );
+                    } else {
+                        let error = outcome.expect_err(&format!(
+                            "{label}: the cache owns these fields, so this must be refused"
+                        ));
+                        let message = error.to_string();
+                        // The message must name every conflict, which is the
+                        // whole advantage over the provider's own 400.
+                        if system {
+                            assert!(message.contains("system instruction"), "{label}: {message}");
+                        }
+                        if tools {
+                            assert!(message.contains("tools"), "{label}: {message}");
+                        }
+                        if tool_choice {
+                            assert!(message.contains("tool choice"), "{label}: {message}");
+                        }
+                        assert!(message.contains(HANDLE), "{label}: {message}");
+                    }
+                    checked += 1;
+                }
+            }
+        }
+
+        assert_eq!(checked, 8, "the matrix should be exhaustive");
+    }
+
+    /// Handle syntax, exhaustively over the shapes a caller might pass.
+    #[test]
+    fn handle_syntax_is_validated() {
+        for (handle, accepted) in [
+            ("cachedContents/abc123", true),
+            ("cachedContents/", true),
+            ("abc123", false),
+            ("", false),
+            ("cachedcontents/abc", false),
+            ("/cachedContents/abc", false),
+            ("models/abc", false),
+            (" cachedContents/abc", false),
+        ] {
+            let mut request = build(false, false, false);
+            let outcome = request.with_cached_content(handle);
+            assert_eq!(
+                outcome.is_ok(),
+                accepted,
+                "handle {handle:?} should {} be accepted",
+                if accepted { "" } else { "not" }
+            );
+        }
     }
 }

@@ -10,6 +10,7 @@ mod cassette {
     mod agent_run_stepping;
     mod agent_run_streamed;
     mod agent_tools_e2e;
+    mod cached_content_matrix;
     mod chat_history;
     mod code_execution_matrix;
     mod document_ordering;

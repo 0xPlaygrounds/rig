@@ -120,6 +120,7 @@ fn create_request_body(
         }),
         safety_settings: None,
         system_instruction: None,
+        cached_content: None,
         additional_params: None,
     };
 

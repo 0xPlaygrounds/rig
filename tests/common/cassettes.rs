@@ -1893,6 +1893,10 @@ const GENERATED_ID_HEADERS: &[&str] = &[
 
 const GENERATED_ID_KEYS: &[&str] = &[
     "call_id",
+    // Pagination cursors: opaque to rig, but they encode provider-side resource
+    // ids, so a recorded cursor leaks what the rest of the fixture redacted.
+    "nextpagetoken",
+    "next_page_token",
     "item_id",
     "previous_interaction_id",
     "previous_response_id",
@@ -1947,6 +1951,30 @@ impl CassetteScrubber {
         scrub_query_params(self.policy, &mut request.query_param);
 
         for query_param in &mut request.query_param {
+            // A pagination cursor is an opaque blob to rig, but not to the
+            // provider: Gemini's `cachedContents` cursors are base64 protobuf
+            // carrying the *real* resource ids of the entries either side of the
+            // page boundary, so a recorded cursor re-exposes ids that were
+            // placeholdered everywhere else in the same fixture.
+            //
+            // Placeholdered rather than blanket-redacted because distinct
+            // cursors must stay distinct: a loop that follows them compares each
+            // against the last to detect a server that stops advancing, and
+            // collapsing every cursor to one value would end that loop early on
+            // replay. `placeholder` maps equal originals to equal placeholders
+            // and distinct ones to distinct, which is exactly the property the
+            // cursor needs — and the same scrubber instance handles the response
+            // body, so the request's cursor and the response that issued it
+            // agree.
+            if query_param.name.eq_ignore_ascii_case("pageToken") {
+                // Scrubbing must be idempotent: the safety check re-scrubs its
+                // own output and requires a fixed point, and minting a fresh
+                // placeholder for an already-placeholdered cursor is not one.
+                if !is_redacted_placeholder(&query_param.value) {
+                    query_param.value = self.placeholder(&query_param.value, "cursor-");
+                }
+                continue;
+            }
             query_param.value = self.scrub_text(&query_param.value);
         }
 
@@ -2219,7 +2247,64 @@ impl CassetteScrubber {
         }
         let scrubbed = self.scrub_grounding_redirects(&scrubbed);
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+        let scrubbed = self.scrub_resource_names(&scrubbed);
         self.scrub_generated_tokens(&scrubbed)
+    }
+
+    /// Scrub server-assigned resource handles of the form `collection/<id>`.
+    ///
+    /// The generated-token machinery cannot reach these: it keys on a prefix and
+    /// then consumes `is_token_char`, which excludes `/`, so a `TokenPrefix` of
+    /// `"cachedContents/"` would match the prefix and then stop the token at the
+    /// slash. Gemini's explicit context cache hands back exactly that shape
+    /// (`cachedContents/n3v1qk0nqz9k`), the id is account-scoped, and it appears
+    /// in request bodies, request *paths* and response bodies alike — so it
+    /// needs a rule of its own or it goes into a fixture verbatim.
+    fn scrub_resource_names(&mut self, text: &str) -> String {
+        const RESOURCE_COLLECTIONS: &[&str] = &["cachedContents/"];
+
+        let mut output = String::with_capacity(text.len());
+        let mut index = 0;
+
+        while index < text.len() {
+            if !text.is_char_boundary(index) {
+                index += 1;
+                continue;
+            }
+
+            let matched = RESOURCE_COLLECTIONS
+                .iter()
+                .find(|collection| text[index..].starts_with(**collection));
+
+            if let Some(collection) = matched {
+                let id_start = index + collection.len();
+                let id_end = token_end(text, id_start);
+                let id = &text[id_start..id_end];
+                // A bare `cachedContents` path segment with no id (the
+                // collection endpoint itself) must survive untouched, or the
+                // recorded request path stops matching on replay.
+                // `token_end` accepts the character at offset 0 unconditionally,
+                // so a non-token char right after the collection prefix comes
+                // back as the "id" — `cachedContents/"` would swallow the
+                // closing quote and emit invalid JSON into a fixture. Require
+                // the id to be entirely token characters.
+                if !id.is_empty() && id.chars().all(is_token_char) && !is_redacted_placeholder(id) {
+                    output.push_str(collection);
+                    output.push_str(&self.placeholder(id, "cached-"));
+                    index = id_end;
+                    continue;
+                }
+            }
+
+            let ch = text[index..]
+                .chars()
+                .next()
+                .expect("index should be on a char boundary");
+            output.push(ch);
+            index += ch.len_utf8();
+        }
+
+        output
     }
 
     /// Replace the account-id segment of every ARN.
@@ -3780,4 +3865,121 @@ pub(crate) fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, St
                 .map(|value| (name.as_str().to_string(), value.to_string()))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod cached_content_scrub_tests {
+    use super::*;
+
+    fn scrub(text: &str) -> String {
+        CassetteScrubber::new(CassettePolicy::default()).scrub_text(text)
+    }
+
+    /// The handle is account-scoped and server-generated, and it rides in
+    /// request bodies, request paths and response bodies alike.
+    #[test]
+    fn a_cached_content_handle_is_placeholdered() {
+        let scrubbed = scrub(r#"{"cachedContent":"cachedContents/n3v1qk0nqz9k"}"#);
+        assert!(!scrubbed.contains("n3v1qk0nqz9k"), "{scrubbed}");
+        assert!(scrubbed.contains("cachedContents/"), "{scrubbed}");
+    }
+
+    /// Equal originals must map to equal placeholders, or a request body and the
+    /// path it was sent to stop agreeing and replay cannot match.
+    #[test]
+    fn the_same_handle_scrubs_to_the_same_placeholder() {
+        let scrubbed = scrub(
+            "/v1beta/cachedContents/abc123def and {\"cachedContent\":\"cachedContents/abc123def\"}",
+        );
+        let placeholders: Vec<&str> = scrubbed
+            .match_indices("cachedContents/")
+            .map(|(i, _)| {
+                let rest = &scrubbed[i + "cachedContents/".len()..];
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+                    .unwrap_or(rest.len());
+                &rest[..end]
+            })
+            .collect();
+        assert_eq!(placeholders.len(), 2, "{scrubbed}");
+        assert_eq!(placeholders[0], placeholders[1], "{scrubbed}");
+        assert!(!placeholders[0].contains("abc123def"), "{scrubbed}");
+    }
+
+    /// The collection endpoint has no id; scrubbing it would break the recorded
+    /// request path.
+    #[test]
+    fn the_bare_collection_path_is_untouched() {
+        assert_eq!(
+            scrub("/v1beta/cachedContents?pageSize=1000"),
+            "/v1beta/cachedContents?pageSize=1000"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cached_content_scrub_edge_tests {
+    use super::*;
+
+    fn scrub(text: &str) -> String {
+        CassetteScrubber::new(CassettePolicy::default()).scrub_text(text)
+    }
+
+    /// `token_end` accepts offset 0 unconditionally, so a non-token character
+    /// straight after the collection prefix used to come back as the "id" —
+    /// swallowing a closing quote and writing invalid JSON into a fixture.
+    #[test]
+    fn a_handle_with_no_id_does_not_eat_the_next_character() {
+        assert_eq!(
+            scrub(r#"{"cachedContent":"cachedContents/"}"#),
+            r#"{"cachedContent":"cachedContents/"}"#
+        );
+    }
+
+    /// The same shape in prose — a provider error quoting the handle template.
+    #[test]
+    fn a_handle_placeholder_in_prose_is_left_alone() {
+        assert_eq!(
+            scrub("expected cachedContents/<id>"),
+            "expected cachedContents/<id>"
+        );
+    }
+}
+
+#[cfg(test)]
+mod pagination_cursor_scrub_tests {
+    use super::*;
+
+    /// Gemini's `cachedContents` cursors are base64 protobuf carrying the real
+    /// resource ids of the entries either side of the page boundary — so a
+    /// recorded cursor re-exposed ids that were placeholdered everywhere else in
+    /// the same fixture.
+    #[test]
+    fn a_next_page_token_is_placeholdered_in_the_body() {
+        let scrubbed = CassetteScrubber::new(CassettePolicy::default())
+            .scrub_body(r#"{"nextPageToken":"cjwKDoIBCwifnJDUBhDo0c8VCipCKHZi"}"#);
+        assert!(
+            !scrubbed.contains("cjwKDoIBCwifnJDUBhDo0c8VCipCKHZi"),
+            "{scrubbed}"
+        );
+        assert!(scrubbed.contains("nextPageToken"), "{scrubbed}");
+    }
+
+    /// Distinct cursors must stay distinct: a loop that follows them compares
+    /// each against the last to spot a server that stops advancing, so
+    /// collapsing them to one value would end that loop early on replay.
+    #[test]
+    fn distinct_cursors_get_distinct_placeholders() {
+        let mut scrubber = CassetteScrubber::new(CassettePolicy::default());
+        let first = scrubber.placeholder("cursor-one-original", "cursor-");
+        let second = scrubber.placeholder("cursor-two-original", "cursor-");
+        let first_again = scrubber.placeholder("cursor-one-original", "cursor-");
+
+        assert_ne!(first, second, "different cursors must not collapse");
+        assert_eq!(
+            first, first_again,
+            "the same cursor must map to the same placeholder, or the request that \
+             replays it stops matching the response that issued it"
+        );
+    }
 }

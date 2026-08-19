@@ -661,6 +661,30 @@ where
     {
         self.request(http::Method::GET, path.as_ref(), Transport::Http)
     }
+
+    /// Build a provider-customized PATCH request for a regular HTTP endpoint.
+    ///
+    /// REST resources that support partial update need this: Gemini's
+    /// `cachedContents` only allows the expiry to be changed, and does it with
+    /// `PATCH ?updateMask=ttl`.
+    pub fn patch<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        self.request(http::Method::PATCH, path.as_ref(), Transport::Http)
+    }
+
+    /// Build a provider-customized DELETE request for a regular HTTP endpoint.
+    ///
+    /// Needed by any provider resource with a lifecycle rather than a single
+    /// call — a cached-content handle bills for storage until it is deleted, so
+    /// deleting one is a first-class operation, not a convenience.
+    pub fn delete<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        self.request(http::Method::DELETE, path.as_ref(), Transport::Http)
+    }
 }
 
 impl<Ext, H> VerifyClient for Client<Ext, H>

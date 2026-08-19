@@ -228,6 +228,19 @@ impl CacheProbe {
         }
     }
 
+    /// A probe with no preamble and no tools.
+    ///
+    /// For explicit-cache scenarios: the cached content owns the system
+    /// instruction and the tool set, and a request that also sends its own is
+    /// rejected by the provider (and, before that, by rig).
+    pub(crate) fn bare(self) -> Self {
+        Self {
+            preamble: String::new(),
+            tools: Vec::new(),
+            ..self
+        }
+    }
+
     pub(crate) fn with_additional_params(mut self, params: serde_json::Value) -> Self {
         self.additional_params = Some(params);
         self
@@ -704,9 +717,28 @@ pub(crate) fn assert_prefix_stable(provider: &str, scenario: &str) {
     let mut compared = 0usize;
 
     for (index, ((request, _), request_path)) in interactions.iter().zip(path.iter()).enumerate() {
+        // GET and DELETE carry no body. A cache scenario that manages a resource
+        // records those alongside its turns, and there is nothing in them to
+        // compare.
+        if request.trim().is_empty() {
+            previous = None;
+            continue;
+        }
         let body: serde_json::Value = serde_json::from_str(request).unwrap_or_else(|error| {
             panic!("[{provider}] {scenario}: recorded request {index} should be JSON: {error}")
         });
+        // A scenario may legitimately mix conversation turns with
+        // resource-management calls — an explicit-cache cell creates and deletes
+        // a `cachedContents` handle around its turns. Those carry no
+        // conversation to compare, so they are skipped rather than modeled.
+        // An endpoint that is neither modeled nor recognised as
+        // non-conversational is still a finding.
+        if cache_prefix::classify_endpoint(request_path)
+            == cache_prefix::EndpointKind::NotConversational
+        {
+            previous = None;
+            continue;
+        }
         let blocks = cache_prefix::canonical_prefix_blocks(request_path, &body).unwrap_or_else(|| {
             panic!(
                 "[{provider}] {scenario}: request {index} speaks {request_path}, which the cache \
@@ -778,7 +810,17 @@ pub(crate) fn assert_cache_key_stable(provider: &str, scenario: &str, support: &
     let interactions = crate::cassettes::recorded_interaction_bodies(provider, scenario);
     let mut seen: Option<serde_json::Value> = None;
 
-    for (index, (request, _)) in interactions.iter().enumerate() {
+    let paths = recorded_request_paths(provider, scenario);
+    for (index, ((request, _), path)) in interactions.iter().zip(paths.iter()).enumerate() {
+        // Only conversation turns carry a cache key. A scenario that manages a
+        // cache resource also records the create/get/update/delete calls — those
+        // are bodiless or address the collection, and asserting a per-turn key on
+        // them would fail for a reason that has nothing to do with caching.
+        if request.trim().is_empty()
+            || cache_prefix::classify_endpoint(path) != cache_prefix::EndpointKind::Modeled
+        {
+            continue;
+        }
         let body: serde_json::Value = serde_json::from_str(request).unwrap_or_else(|error| {
             panic!("[{provider}] {scenario}: recorded request {index} should be JSON: {error}")
         });
@@ -800,6 +842,12 @@ pub(crate) fn assert_cache_key_stable(provider: &str, scenario: &str, support: &
             ),
         }
     }
+
+    assert!(
+        seen.is_some(),
+        "[{provider}] {scenario}: no conversation turn was inspected, so the cache key was never \
+         checked. This assertion proved nothing."
+    );
 }
 
 // ---------------------------------------------------------------------------

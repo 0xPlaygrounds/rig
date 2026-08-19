@@ -201,6 +201,13 @@ pub(crate) const NON_CONVERSATIONAL_ENDPOINTS: &[(&str, &str)] = &[
         "/files",
         "file upload/download carries document bytes, not a chat prefix",
     ),
+    (
+        "/cachedContents",
+        "Gemini's explicit context-cache resource. It carries cacheable content, but as a \
+         one-shot create/get/update/delete against a collection — not a conversation whose turns \
+         can be compared for prefix growth. What the cache holds is pinned by the scenario's own \
+         assertions instead",
+    ),
 ];
 
 /// How the prefix rule sees one recorded request.

@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(gemini)* explicit context caching (`cachedContents`) — create, reuse and delete a server-side cache that hits from the first request ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
 ### Fixed
 
+- *(gemini)* stop dropping thinking, cached and tool-use tokens on the Interactions surface ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vertexai)* stop discarding Vertex's thinking-token count ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(gemini)* serialize tool-schema `properties` in a stable order, so Gemini prompt caching can hit ([#2374](https://github.com/0xPlaygrounds/rig/pull/2374)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(cohere)* serialize document metadata in a stable order, so Cohere prompt caching can hit ([#2374](https://github.com/0xPlaygrounds/rig/pull/2374)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 
