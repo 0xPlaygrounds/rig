@@ -1320,6 +1320,86 @@ fn scrub_body_for_diagnostics(policy: CassettePolicy, body: &str) -> String {
     CassetteScrubber::new(policy).scrub_body(body)
 }
 
+/// Replace the directory part of an absolute home-directory path, keeping the
+/// final component.
+///
+/// Locally-hosted providers echo the path they were launched with. `llama-server`
+/// puts it in `model` on **every** chat response — the whole
+/// `/Users/<name>/.cache/huggingface/hub/models--<org>--<repo>/snapshots/<sha>/<file>.gguf`
+/// — so recording one turn against it writes the operator's username, their
+/// cache layout and a snapshot hash into a fixture that is then committed to a
+/// public repository. Nothing else in the scrubber reaches this: it is not a
+/// token, not a header, not a query parameter, and it trips no
+/// `FORBIDDEN_CASSETTE_PATTERNS` entry, so the safety scan passes it.
+///
+/// The final component survives because it is the useful, non-identifying part
+/// — which model the fixture was recorded against — and because a cell may
+/// legitimately assert on it. Everything to its left is replaced.
+///
+/// The match is anchored to the **start of a JSON string value**, which is what
+/// separates a local path from a URL that merely contains one of these
+/// segments. Anthropic's recorded web-search results cite
+/// `https://math.ucr.edu/home/baez/physics/...`; an unanchored rule rewrites
+/// that public URL and corrupts the fixture, which the safety scan catches as
+/// "not in scrubbed cassette form". A real local path occupies the entire value
+/// (`"model":"/Users/…"`), so requiring a `"` immediately before it keeps the
+/// rule precise.
+fn scrub_local_filesystem_paths(text: &str) -> String {
+    const HOME_PREFIXES: &[&str] = &["/Users/", "/home/", "/root/"];
+
+    let mut output = String::with_capacity(text.len());
+    let mut rest = text;
+    let mut consumed = 0usize;
+
+    'outer: loop {
+        let Some((prefix, at)) = HOME_PREFIXES
+            .iter()
+            .filter_map(|p| rest.find(*p).map(|i| (*p, i)))
+            .min_by_key(|(_, i)| *i)
+        else {
+            break;
+        };
+
+        // Anchored: the value must begin here. Anything else is a path segment
+        // inside a larger string (a URL, prose) and is not ours to rewrite.
+        let absolute = consumed + at;
+        let starts_value = absolute == 0 || text.as_bytes().get(absolute - 1) == Some(&b'"');
+        if !starts_value {
+            let skip = at + prefix.len();
+            output.push_str(&rest[..skip]);
+            rest = &rest[skip..];
+            consumed = absolute + prefix.len();
+            continue;
+        }
+
+        output.push_str(&rest[..at]);
+        let path = &rest[at..];
+        // A path ends at the first character that cannot appear in one. Quotes
+        // and whitespace are the practical terminators inside a JSON string.
+        let end = path
+            .find(|c: char| c == '"' || c == '\\' || c.is_whitespace())
+            .unwrap_or(path.len());
+        let (path, tail) = path.split_at(end);
+
+        // Keep the basename; replace everything before it.
+        match path.rsplit_once('/') {
+            Some((_, base)) if !base.is_empty() => {
+                output.push_str("/REDACTED_PATH/");
+                output.push_str(base);
+            }
+            _ => output.push_str("/REDACTED_PATH"),
+        }
+        consumed = absolute + path.len();
+        rest = tail;
+        if rest.is_empty() {
+            break 'outer;
+        }
+    }
+
+    output.push_str(rest);
+    output
+}
+
 fn scrub_text_for_diagnostics(policy: CassettePolicy, text: &str) -> String {
     CassetteScrubber::new(policy).scrub_text(text)
 }
@@ -2248,6 +2328,7 @@ impl CassetteScrubber {
         let scrubbed = self.scrub_grounding_redirects(&scrubbed);
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
         let scrubbed = self.scrub_resource_names(&scrubbed);
+        let scrubbed = scrub_local_filesystem_paths(&scrubbed);
         self.scrub_generated_tokens(&scrubbed)
     }
 
@@ -3981,5 +4062,109 @@ mod pagination_cursor_scrub_tests {
             "the same cursor must map to the same placeholder, or the request that \
              replays it stops matching the response that issued it"
         );
+    }
+}
+
+#[cfg(test)]
+mod local_path_scrub_tests {
+    //! Absolute home-directory paths must not reach a committed fixture.
+    //!
+    //! A locally-hosted provider echoes the path it was launched with:
+    //! `llama-server` puts the full GGUF path in `model` on every chat
+    //! response. Nothing else in the scrubber reaches it, and no
+    //! `FORBIDDEN_CASSETTE_PATTERNS` entry trips on it, so without this rule the
+    //! safety scan passes a fixture carrying the operator's username.
+
+    use super::scrub_local_filesystem_paths as scrub;
+
+    #[test]
+    fn a_home_path_keeps_only_its_basename() {
+        let scrubbed = scrub(
+            "/Users/someone/.cache/huggingface/hub/models--org--repo/snapshots/abc123/Model-Q8_0.gguf",
+        );
+        assert_eq!(scrubbed, "/REDACTED_PATH/Model-Q8_0.gguf");
+        assert!(
+            !scrubbed.contains("someone"),
+            "the username must not survive"
+        );
+        assert!(
+            !scrubbed.contains("abc123"),
+            "the snapshot hash must not survive"
+        );
+    }
+
+    #[test]
+    fn linux_and_root_homes_are_covered_too() {
+        assert_eq!(scrub("/home/dev/models/m.gguf"), "/REDACTED_PATH/m.gguf");
+        assert_eq!(scrub("/root/m.gguf"), "/REDACTED_PATH/m.gguf");
+    }
+
+    /// The path sits inside a JSON string in practice, so the rule has to stop
+    /// at the closing quote rather than swallowing the rest of the body.
+    #[test]
+    fn a_path_inside_json_stops_at_the_quote() {
+        let scrubbed = scrub(r#"{"model":"/Users/a/b/m.gguf","object":"chat.completion"}"#);
+        assert_eq!(
+            scrubbed,
+            r#"{"model":"/REDACTED_PATH/m.gguf","object":"chat.completion"}"#
+        );
+    }
+
+    /// Several paths in one body are all replaced.
+    #[test]
+    fn every_occurrence_is_replaced() {
+        let scrubbed = scrub(r#"{"a":"/Users/x/one.gguf","b":"/Users/y/two.gguf"}"#);
+        assert!(!scrubbed.contains("/Users/"), "{scrubbed}");
+        assert!(
+            scrubbed.contains("one.gguf") && scrubbed.contains("two.gguf"),
+            "{scrubbed}"
+        );
+    }
+
+    /// Re-scrubbing scrubbed output must not change it — the cassette safety
+    /// check re-scrubs its own output, so a non-idempotent rule fails there.
+    #[test]
+    fn the_rule_is_idempotent() {
+        let once = scrub("/Users/a/.cache/m.gguf");
+        assert_eq!(scrub(&once), once);
+    }
+
+    /// A URL that merely *contains* one of these segments is not a local path
+    /// and must survive verbatim.
+    ///
+    /// This is not hypothetical: anthropic's recorded web-search fixtures cite
+    /// `https://math.ucr.edu/home/baez/physics/...`, and an unanchored rule
+    /// rewrote it — corrupting three committed fixtures and failing the safety
+    /// scan with "not in scrubbed cassette form".
+    #[test]
+    fn a_url_containing_a_home_segment_is_not_a_local_path() {
+        let body =
+            r#"{"url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"}"#;
+        assert_eq!(scrub(body), body);
+        let body = r#"{"url":"https://example.com/Users/profile.html"}"#;
+        assert_eq!(scrub(body), body);
+    }
+
+    /// The anchored rule still catches the real case sitting next to a URL.
+    #[test]
+    fn a_local_path_beside_a_url_is_still_scrubbed() {
+        let scrubbed =
+            scrub(r#"{"url":"https://math.ucr.edu/home/baez/x.html","model":"/Users/me/m.gguf"}"#);
+        assert!(
+            scrubbed.contains("math.ucr.edu/home/baez/x.html"),
+            "{scrubbed}"
+        );
+        assert!(
+            scrubbed.contains(r#""model":"/REDACTED_PATH/m.gguf""#),
+            "{scrubbed}"
+        );
+    }
+
+    /// Text carrying no path is untouched, so the rule cannot churn unrelated
+    /// fixtures.
+    #[test]
+    fn unrelated_text_is_untouched() {
+        let body = r#"{"model":"gpt-4o-mini","choices":[]}"#;
+        assert_eq!(scrub(body), body);
     }
 }
