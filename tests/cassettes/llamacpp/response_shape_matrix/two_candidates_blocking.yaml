@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"/no_think Name one colour. One word.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","n":2}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Red.","role":"assistant"}},{"finish_reason":"stop","index":1,"message":{"content":"Red.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":17,"predicted_ms":49.118,"predicted_n":7,"predicted_per_second":122.15481086363451,"predicted_per_token_ms":8.186333333333334,"prompt_ms":5.773,"prompt_n":1,"prompt_per_second":173.22016282695307,"prompt_per_token_ms":5.773},"usage":{"completion_tokens":7,"prompt_tokens":18,"prompt_tokens_details":{"cached_tokens":17},"total_tokens":25}}'

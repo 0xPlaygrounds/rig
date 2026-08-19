@@ -64,6 +64,7 @@
 //! | model family — Qwen / Llama / Mistral / Gemma | `model_family_matrix` | 8090, 8091, 8092 |
 //! | caching — cold/warm/grown, `cache_prompt`, agent loop | `prompt_caching` | 8080 |
 //! | provider-only fields — `timings` | `raw_capture_matrix`, `raw_stream_capture_matrix` | 8080 |
+//! | response shape — reasoning, `n > 1`, `logprobs`, finish reasons | `response_shape_matrix` | 8080 |
 //! | reranking | `rerank_matrix` | 8085 |
 //! | multimodal | `multimodal_matrix`, `image_tool_result` | 8080, 8082, 8093 |
 //! | unmapped surface — decisions | `unmapped_surface` | 8080, 8082 |
@@ -150,6 +151,7 @@ mod cassette {
     mod raw_stream_capture_matrix;
     mod request_hook;
     mod rerank_matrix;
+    mod response_shape_matrix;
     mod sampling_matrix;
     mod streaming;
     mod streaming_tools;
