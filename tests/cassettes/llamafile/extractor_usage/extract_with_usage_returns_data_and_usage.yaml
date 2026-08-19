@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","type":"text"}],"role":"system"},{"content":"Jane Smith is a 45 year old data scientist.","role":"user"}],"model":"llama3.2:latest","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"age":{"format":"uint8","maximum":255,"minimum":0,"type":["integer","null"]},"name":{"type":["string","null"]},"profession":{"type":["string","null"]}},"title":"Person","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user provided a sentence: \"Jane Smith is a 45 year old data scientist.\" I need to extract the structured data using the submit function.\n\nFirst, the name is Jane Smith. The age is 45. The profession is data scientist. The title is Person. \n\nLooking at the submit function parameters, the name is a string, age is an integer between 0-255, profession is a string, and title is Person. \n\nSo the arguments should be name: \"Jane Smith\", age: 45, profession: \"data scientist\", title: \"Person\". \n\nI need to make sure all fields are filled. The age is 45, which is within the required range. The profession is \"data scientist\" which is a string. \n\nNo null values needed here. So the JSON should include all these parameters. Then call the submit function with that data.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"name\": \"Jane Smith\", \"age\": 45, \"profession\": \"data scientist\"}","name":"submit"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b1-0329fcd","timings":{"cache_n":290,"predicted_ms":1702.96,"predicted_n":228,"predicted_per_second":133.2973176116879,"predicted_per_token_ms":7.502026431718062,"prompt_ms":34.442,"prompt_n":17,"prompt_per_second":493.58341559723596,"prompt_per_token_ms":2.026},"usage":{"completion_tokens":228,"prompt_tokens":307,"prompt_tokens_details":{"cached_tokens":290},"total_tokens":535}}'

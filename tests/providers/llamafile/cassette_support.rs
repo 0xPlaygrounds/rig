@@ -44,3 +44,17 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
+
+/// [`with_llamafile_cassette`] for a cell whose body returns `Result`.
+pub(super) async fn with_llamafile_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(llamafile::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let (cassette, client) = llamafile_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
