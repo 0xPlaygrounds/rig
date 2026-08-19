@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"You are a concise assistant. Answer directly in plain text.","type":"text"}],"role":"system"},{"content":"/no_think Reply with exactly the word: cedar.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"cedar","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":0,"predicted_ms":110.261,"predicted_n":7,"predicted_per_second":54.416339412847705,"predicted_per_token_ms":18.376833333333334,"prompt_ms":143.661,"prompt_n":36,"prompt_per_second":250.5899304612943,"prompt_per_token_ms":3.9905833333333334},"usage":{"completion_tokens":7,"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":43}}'
