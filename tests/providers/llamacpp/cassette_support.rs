@@ -282,6 +282,29 @@ pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
 /// The key the `--api-key` recording server was started with.
 pub(super) const CASSETTE_API_KEY: &str = "llamacpp-local-test-key";
 
+/// Cassette wrapper for the llama.cpp prompt-caching matrix
+/// (`tests/cassettes/llamacpp/prompt_caching/`).
+///
+/// Delegates to [`with_llamacpp_cassette`] — the behaviour is identical, and
+/// deliberately shared so the two cannot drift when the base wrapper gains
+/// policy. What the separate name buys is a per-suite entry in the
+/// cassette-safety registry, so the cache fixtures are auditable as one
+/// concern's evidence.
+///
+/// **Recording note**: llama.cpp's cache is the server's KV slot cache, so
+/// turn 1 is only cold on a freshly started server. Restart the default
+/// configuration before re-recording, or turn 1 records a hit and the probe
+/// pins nothing.
+pub(super) async fn with_llamacpp_prompt_caching_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(llamacpp::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_llamacpp_cassette(spec, test_body).await;
+}
+
 /// Drive a scenario through a **bare `openai::Client`** pointed at the local
 /// server, which is what a caller does with any OpenAI-compatible server rig
 /// has no provider for.
