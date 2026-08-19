@@ -48,6 +48,39 @@
 //! [`super::completion::gemini_api_types::GenerateContentRequest::with_cached_content`] — so the
 //! failure names the conflict instead of surfacing a provider 400.
 //!
+//! ## What that means for an `Agent`
+//!
+//! An agent does not choose which of the three it sends — it sends what it
+//! holds. A preamble becomes `systemInstruction`; every always-exposed tool is
+//! advertised on every turn (one registered through `retrieved_tools` is
+//! advertised on the turns retrieval selects it, so such an agent is refused
+//! intermittently rather than not at all); and a configured tool choice becomes
+//! `toolConfig` whether or not the agent has any tools.
+//!
+//! The agent derives the declarations it sends and the handles it dispatches
+//! through from a single registry snapshot, so it can only ever dispatch a tool
+//! it advertised — a call to a tool it never advertised is an invalid tool call,
+//! not a dispatch. The converse is representable and rig uses it:
+//! `OutputMode::Tool` advertises a synthetic output tool that is deliberately
+//! not executable. But that only ever adds declarations, never dispatch reach,
+//! which is why a tool set that lives in the cache stays out of an agent's
+//! hands.
+//!
+//! An agent can therefore read from a cache only when it has no preamble, no
+//! tools and no tool choice. Native structured output is fine — the schema
+//! rides in `generationConfig`, and the default `OutputMode::Auto` resolves
+//! there for a tool-less agent. `OutputMode::Tool` is not, because it advertises
+//! that synthetic tool *and* extends the preamble; `Extractor` pins that mode,
+//! so extractors cannot use a cache. `OutputMode::Prompted` is not either: it
+//! writes the schema into the preamble. Context documents are fine: they are
+//! appended to the chat history as user content.
+//!
+//! A cache carrying *function declarations* or `toolConfig` is consequently for
+//! the caller who drives [`super::completion::CompletionModel`] directly and
+//! runs the tool loop themselves. A provider-hosted tool is the exception:
+//! `codeExecution` runs on Gemini's side and needs no loop, so a cache carrying
+//! one is usable from an agent that declares nothing itself.
+//!
 //! # Example
 //!
 //! ```no_run
@@ -235,13 +268,32 @@ impl NewCachedContent {
     /// Attach the tool set this cache owns.
     ///
     /// Every request using the handle inherits these; a request may not send its
-    /// own (Gemini rejects that, and so does rig).
+    /// own (Gemini rejects that, and so does rig — see
+    /// [`super::completion::gemini_api_types::GenerateContentRequest::with_cached_content`]).
+    ///
+    /// Function declarations here are *declarations*, not implementations, which
+    /// is what puts them out of reach of rig's `Agent` — see the module docs
+    /// above for why. A cached function tool set is usable only when you drive
+    /// [`super::completion::CompletionModel`] yourself and run the tool loop by
+    /// hand: read the `functionCall` parts off the response and append the
+    /// matching `functionResponse` parts to the next request. A provider-hosted
+    /// tool such as `codeExecution` is different — Gemini runs it, so a cache
+    /// carrying one needs no loop and works from an agent.
     pub fn tools(mut self, tools: Vec<Tool>) -> Self {
         self.tools = Some(tools);
         self
     }
 
     /// Attach the tool choice this cache owns.
+    ///
+    /// Same reachability caveat as [`Self::tools`]: a request carrying its own
+    /// tool choice alongside the handle is refused, and rig's `Agent` sends one
+    /// whenever it is configured with one — even a tool-less agent — so this is
+    /// for callers driving [`super::completion::CompletionModel`] directly. A
+    /// tool-less agent does at least lose nothing by dropping its tool choice,
+    /// which is not true of a tool set. Gemini accepts a
+    /// `toolConfig` with no `tools` (measured; see the create matrix), which is
+    /// why the two are separate builders rather than one.
     pub fn tool_config(mut self, tool_config: ToolConfig) -> Self {
         self.tool_config = Some(tool_config);
         self

@@ -297,6 +297,65 @@ fn every_create_combination_serializes_as_expected() {
     );
 }
 
+/// An `Agent` that owns tools can never read from a cache — and the error has
+/// to say why.
+///
+/// [`NewCachedContent::tools`] reads like it makes a cached tool set usable from
+/// an agent. It does not, and the reason is structural rather than a missing
+/// feature: rig's agent derives the declarations it sends and the handles it
+/// dispatches through from one registry snapshot, so a registered tool is always
+/// advertised and a call to an unadvertised tool is an invalid tool call, never
+/// a dispatch. Every agent turn with a tool therefore carries `tools`, and
+/// `cachedContent` alongside `tools` is refused. The unit tests in `rig-core`
+/// cannot see this: they can build a request without tools, whereas an agent
+/// holding a tool has no way not to send it.
+///
+/// The second assertion is the point of the finding this pins: the bare "move
+/// them into the cache" remedy is right for a system instruction and wrong here,
+/// because the cached declarations would be unreachable from the agent that was
+/// told to create them.
+///
+/// No cassette and no socket — the guard fires while the request is being built.
+/// The client still points at an unroutable address so that a regression fails
+/// as a local assertion instead of reaching the live API from a unit test.
+#[tokio::test]
+async fn an_agent_with_tools_cannot_read_from_a_cache() {
+    use rig::agent::AgentBuilder;
+    use rig::completion::Prompt as _;
+
+    use super::super::tools_support::CountingPing;
+
+    let client = gemini::Client::builder()
+        .api_key("not-a-real-key")
+        .base_url("http://127.0.0.1:1")
+        .build()
+        .expect("client should build");
+
+    let agent = AgentBuilder::new(
+        client
+            .completion_model(CACHE_MODEL)
+            .with_cached_content("cachedContents/agent-guard"),
+    )
+    .tool(CountingPing::default())
+    .build();
+
+    let message = agent
+        .prompt("hi")
+        .await
+        .expect_err("an agent that advertises tools cannot also read from a cache")
+        .to_string();
+
+    assert!(
+        message.contains("also set tools"),
+        "the failure should name the tool set as the conflict: {message}"
+    );
+    assert!(
+        message.contains("declarations only"),
+        "`move them into the cache` is not the remedy for tools — the message must say the \
+         cached declarations are unreachable from an agent: {message}"
+    );
+}
+
 #[tokio::test]
 async fn sys_notools_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -656,10 +715,10 @@ async fn deleting_twice_reports_the_second_as_expired() {
             };
             assert_eq!(*name, created.name);
             assert!(
-                !message.is_empty(),
+                message.contains("not found") || message.contains("permission"),
                 "Expired should carry the provider's own message — a 403 also covers a disabled \
                  key or a project without the API enabled, and the message is the only text that \
-                 says which"
+                 says which: {message}"
             );
         },
     )

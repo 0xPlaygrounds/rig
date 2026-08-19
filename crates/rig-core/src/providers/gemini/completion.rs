@@ -98,9 +98,44 @@ impl<T> CompletionModel<T> {
     /// [`crate::providers::gemini::cached_content::CachedContentClient`], and
     /// delete it when you are done — storage bills until you do.
     ///
-    /// The cache owns the system instruction and tool set, so a request built
-    /// from this model must not carry either. Rig rejects that before the
-    /// request goes out rather than letting Gemini answer 400.
+    /// # What can actually use the handle
+    ///
+    /// The cache owns the system instruction, the tool set *and* the tool
+    /// choice, so a request built from this model must carry none of the three;
+    /// rig rejects that before the request goes out rather than letting Gemini
+    /// answer 400.
+    ///
+    /// That is a tighter constraint than it looks for rig's `Agent`, because an
+    /// agent does not choose what to send — it sends what it holds:
+    ///
+    /// * a preamble becomes `systemInstruction`, so an agent reading from a
+    ///   cache must have no preamble and put those instructions in the cache;
+    /// * every always-exposed tool is advertised on every turn, and the agent
+    ///   can only dispatch what it advertised, so an agent reading from a cache
+    ///   must have no tools — and a function tool set moved into the cache is
+    ///   declarations the agent could never execute (see
+    ///   [`crate::providers::gemini::cached_content::NewCachedContent::tools`]);
+    /// * a configured `tool_choice` becomes `toolConfig` even on a tool-less
+    ///   agent, so it has to go too — though dropping it costs a tool-less agent
+    ///   nothing;
+    /// * `output_schema` is fine under the default `OutputMode::Auto`, which for
+    ///   a tool-less agent resolves to `Native` and sends the schema as a
+    ///   `generationConfig` constraint with no tool. It is not fine in `Tool`
+    ///   mode, which advertises a synthetic output tool *and* appends an
+    ///   instruction to the preamble — and `Extractor` pins `Tool` mode, so
+    ///   extractors cannot read from a cache at all. `Prompted` is out for the
+    ///   same reason: it writes the schema into the preamble, so even a
+    ///   preamble-less agent ends up sending a `systemInstruction`.
+    ///
+    /// Context documents are fine either way: they are appended to the chat
+    /// history as user content, never to the system instruction.
+    ///
+    /// So there are two supported shapes: an agent with no preamble, no tools
+    /// and no `tool_choice` (with or without native structured output), or this
+    /// model driven directly
+    /// through
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion)
+    /// or [`Self::raw_completion`] with a tool loop you run yourself.
     pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
         self.cached_content = Some(name.into());
         self
@@ -2419,11 +2454,45 @@ impl gemini_api_types::GenerateContentRequest {
             conflicts.push("a tool choice");
         }
         if !conflicts.is_empty() {
+            // "Move them into the cache" is the right remedy for a system
+            // instruction — that is the feature. It is the wrong remedy for
+            // tools, and the difference is structural rather than a gap rig
+            // could close: rig's `Agent` derives the declarations it sends and
+            // the handles it dispatches through from one tool-registry snapshot,
+            // so it can only dispatch a tool it advertised, and a call to
+            // something it never advertised is always an invalid tool call. An
+            // agent therefore cannot execute a function tool set that lives in
+            // the cache, and the message must not send the reader after a
+            // configuration that does not exist.
+            //
+            // Gated on *function* declarations rather than on the field: a
+            // provider-hosted tool (`additional_params.tools = [{"codeExecution":
+            // {}}]`, lifted onto the request by
+            // `extract_tools_from_additional_params`) runs on Gemini's side and
+            // needs no loop, so moving one into the cache does work — and
+            // telling that caller to go write a tool loop would be nonsense.
+            let declares_functions = self.tools.as_ref().is_some_and(|tools| {
+                tools.iter().any(|tool| {
+                    tool.get("functionDeclarations")
+                        .and_then(Value::as_array)
+                        .is_some_and(|declarations| !declarations.is_empty())
+                })
+            });
+            let tool_caveat = if declares_functions {
+                " Note that function declarations in a cache are declarations only — rig's \
+                 `Agent` can only dispatch tools it advertised, so a cached function tool set is \
+                 never executable from an agent; it is usable only when you drive \
+                 `CompletionModel` yourself and run the tool loop. (Provider-hosted tools such \
+                 as `codeExecution` run on Gemini's side and are fine to keep in the cache.)"
+            } else {
+                ""
+            };
             return Err(CompletionError::RequestError(
                 format!(
                     "a Gemini request using cached content `{name}` also set {}. The cached \
                      content already owns the system instruction, tools and tool choice for every \
-                     request that uses it — move them into the cache, or drop the cache handle.",
+                     request that uses it — move them into the cache, or drop the cache \
+                     handle.{tool_caveat}",
                     conflicts.join(" and ")
                 )
                 .into(),
@@ -4214,6 +4283,46 @@ mod cached_content_request_tests {
         assert!(error.to_string().contains("tools"), "{error}");
     }
 
+    /// The remedy differs per conflict, and only the tools arm may say so.
+    ///
+    /// "Move them into the cache" is exactly right for a system instruction —
+    /// that is what explicit caching is for. It is wrong for tools: a cache's
+    /// tool set is declarations, and rig's `Agent` derives the declarations it
+    /// sends from the same registry it dispatches through, so it can neither
+    /// advertise nothing while executing something nor execute a tool that lives
+    /// only in the cache. A reader who follows the bare remedy ends up with a
+    /// cache no agent can use, so the caveat must appear for tools and must not
+    /// appear when only the system instruction conflicted.
+    #[test]
+    fn the_tools_conflict_says_a_cached_tool_set_is_declarations_only() {
+        let mut with_tools = request_with(None, true);
+        let tools_error = with_tools
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("tools conflict with cached content");
+        let tools_message = tools_error.to_string();
+        assert!(
+            tools_message.contains("declarations only"),
+            "the tools conflict must correct the `move them into the cache` remedy: \
+             {tools_message}"
+        );
+        assert!(
+            tools_message.contains("CompletionModel"),
+            "the tools conflict must name the surface that can actually use a cached tool set: \
+             {tools_message}"
+        );
+
+        let mut with_preamble = request_with(Some("you are terse"), false);
+        let preamble_message = with_preamble
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("a system instruction conflicts with cached content")
+            .to_string();
+        assert!(
+            !preamble_message.contains("declarations only"),
+            "moving a system instruction into the cache IS the remedy; the tools caveat must not \
+             leak onto it: {preamble_message}"
+        );
+    }
+
     #[test]
     fn a_clean_request_accepts_the_handle_and_puts_it_on_the_wire() {
         let mut request = request_with(None, false);
@@ -4439,16 +4548,29 @@ mod cached_content_conflict_matrix {
                             "{label}: the cache owns these fields, so this must be refused"
                         ));
                         let message = error.to_string();
-                        // The message must name every conflict, which is the
-                        // whole advantage over the provider's own 400.
+                        // Assert against the conflict clause, not the whole
+                        // message: the sentence that follows it names all three
+                        // fields unconditionally ("already owns the system
+                        // instruction, tools and tool choice"), so a naive
+                        // `message.contains("tools")` passed for every cell in
+                        // the matrix, including the ones that set no tools. The
+                        // clause is the only part that varies per cell, which is
+                        // the whole advantage over the provider's own 400.
+                        let clause = message
+                            .split_once(". The cached content")
+                            .map(|(head, _)| head)
+                            .unwrap_or(message.as_str());
                         if system {
-                            assert!(message.contains("system instruction"), "{label}: {message}");
+                            assert!(clause.contains("system instruction"), "{label}: {message}");
                         }
-                        if tools {
-                            assert!(message.contains("tools"), "{label}: {message}");
-                        }
+                        assert_eq!(
+                            clause.contains("tools"),
+                            tools,
+                            "{label}: the clause must name the tool set only when it conflicted: \
+                             {message}"
+                        );
                         if tool_choice {
-                            assert!(message.contains("tool choice"), "{label}: {message}");
+                            assert!(clause.contains("tool choice"), "{label}: {message}");
                         }
                         assert!(message.contains(HANDLE), "{label}: {message}");
                     }
