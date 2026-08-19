@@ -2,8 +2,8 @@
 //!
 //! `llama-server` serves one rerank handler behind four aliases (`/rerank`,
 //! `/reranking`, `/v1/rerank`, `/v1/reranking`) and answers the Jina-shaped
-//! body rig's [`JinaCompatibleRerank`](crate::providers::internal::rerank)
-//! driver speaks.
+//! body rig's shared `JinaCompatibleRerank` driver
+//! (`providers::internal::rerank`) speaks.
 //!
 //! Two server-side preconditions decide whether this works at all, and both
 //! fail loudly rather than silently:

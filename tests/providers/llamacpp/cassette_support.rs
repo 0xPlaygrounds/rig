@@ -323,6 +323,28 @@ pub(super) async fn with_llamacpp_prompt_caching_cassette<F, Fut>(
     with_llamacpp_cassette(spec, test_body).await;
 }
 
+/// Drive a scenario that speaks to the server **without a rig client at all**,
+/// handing the body the cassette's base URL.
+///
+/// One cell needs this: the transcription route is a `multipart/form-data`
+/// upload for a capability this provider deliberately does not declare, so
+/// there is no rig type that can address it. Reaching it directly is the point
+/// — the recorded 501 is what makes the exclusion a measurement rather than an
+/// assertion — and routing it through a named wrapper keeps the fixture
+/// visible to the cassette-safety registry.
+pub(super) async fn with_llamacpp_raw_http_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("llamacpp", spec, &record_upstream()).await;
+    let base_url = cassette.base_url();
+    let result = AssertUnwindSafe(test_body(base_url)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
 /// Drive a scenario through a **bare `openai::Client`** pointed at the local
 /// server, which is what a caller does with any OpenAI-compatible server rig
 /// has no provider for.
@@ -344,7 +366,7 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
         // Note the `/v1`: a bare `openai::Client` composes paths straight onto
         // its base URL, so the caller supplies the prefix that
         // `llamacpp::Client` supplies for them.
-        .base_url(&format!("{}/v1", cassette.base_url().trim_end_matches('/')))
+        .base_url(format!("{}/v1", cassette.base_url().trim_end_matches('/')))
         .build()
         .expect("client should build");
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;

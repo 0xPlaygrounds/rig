@@ -261,48 +261,49 @@ async fn transcription_is_a_501_unless_the_loaded_model_hears() {
     // Reached directly rather than through a capability, because the whole
     // point is that this provider declares none. The request is the minimal
     // multipart body llama.cpp's handler reads before it checks the model.
-    let upstream = std::env::var("LLAMACPP_CASSETTE_UPSTREAM")
-        .unwrap_or_else(|_| "http://localhost:8080".to_string());
-    let cassette = crate::cassettes::ProviderCassette::start(
-        "llamacpp",
+    with_llamacpp_raw_http_cassette(
         "unmapped_surface/transcription_not_supported",
-        &upstream,
+        |base_url| async move {
+            let body = "--rigboundary\r\n\
+                Content-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\n\
+                Content-Type: audio/wav\r\n\r\nRIFF\r\n\
+                --rigboundary--\r\n";
+            let response = reqwest::Client::new()
+                .post(format!(
+                    "{}/v1/audio/transcriptions",
+                    base_url.trim_end_matches('/')
+                ))
+                .header("content-type", "multipart/form-data; boundary=rigboundary")
+                .body(body)
+                .send()
+                .await
+                .expect("the route exists");
+            let status = response.status();
+            let text = response.text().await.expect("a body");
+
+            assert_eq!(
+                status.as_u16(),
+                501,
+                "a text-only model cannot transcribe: {text}"
+            );
+            let json: Value = serde_json::from_str(&text).expect("the 501 body should be JSON");
+            assert_eq!(
+                json["error"]["type"],
+                serde_json::json!("not_supported_error")
+            );
+            assert!(
+                json["error"]["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("audio")),
+                "{json}"
+            );
+        },
     )
     .await;
 
-    let base = cassette.base_url();
-    let body = "--rigboundary\r\n\
-        Content-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\n\
-        Content-Type: audio/wav\r\n\r\nRIFF\r\n\
-        --rigboundary--\r\n";
-    let response = reqwest::Client::new()
-        .post(format!(
-            "{}/v1/audio/transcriptions",
-            base.trim_end_matches('/')
-        ))
-        .header("content-type", "multipart/form-data; boundary=rigboundary")
-        .body(body)
-        .send()
-        .await
-        .expect("the route exists");
-    let status = response.status();
-    let text = response.text().await.expect("a body");
-    cassette.finish().await;
-
-    assert_eq!(
-        status.as_u16(),
-        501,
-        "a text-only model cannot transcribe: {text}"
-    );
-    let json: Value = serde_json::from_str(&text).expect("the 501 body should be JSON");
-    assert_eq!(
-        json["error"]["type"],
-        serde_json::json!("not_supported_error")
-    );
-    assert!(
-        json["error"]["message"]
-            .as_str()
-            .is_some_and(|message| message.contains("audio")),
-        "{json}"
-    );
+    // And the exclusion rests on the recorded bytes, not on the assertion
+    // above alone.
+    let recorded =
+        recorded_statuses_and_bodies("llamacpp", "unmapped_surface/transcription_not_supported");
+    assert_eq!(recorded[0].0, 501);
 }

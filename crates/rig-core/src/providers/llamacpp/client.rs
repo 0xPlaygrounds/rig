@@ -106,7 +106,8 @@ impl Provider for LlamacppExt {
 
     /// Compose the request URI, adding the `/v1` prefix the OpenAI-compatible
     /// routes live under **unless** the base URL already carries it or the
-    /// path is one of llama.cpp's own [unversioned routes](UNVERSIONED_ROUTES).
+    /// path is one of llama.cpp's own unversioned routes (see
+    /// `UNVERSIONED_ROUTES` above).
     ///
     /// `llama-server`'s own banner prints `http://localhost:8080`, while the
     /// OpenAI ecosystem conventionally writes a base URL with the `/v1` on it,
@@ -196,7 +197,7 @@ impl openai::completion::OpenAICompatibleProvider for LlamacppExt {
     ///
     /// Sending it anyway means a caller who asked for one tool silently gets
     /// another, or none — the same class of silent loss
-    /// [`SUPPORTS_IMAGE_TOOL_RESULTS`](Self::SUPPORTS_IMAGE_TOOL_RESULTS)
+    /// [`SUPPORTS_IMAGE_TOOL_RESULTS`](openai::completion::OpenAICompatibleProvider::SUPPORTS_IMAGE_TOOL_RESULTS)
     /// exists to prevent, and rig's rule there is the rule here: refuse
     /// locally rather than send something the server mishandles quietly. The
     /// error names the substitute (`ToolChoice::Required`) that llama.cpp does
