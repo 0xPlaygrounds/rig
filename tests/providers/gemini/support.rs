@@ -77,12 +77,20 @@ pub(super) fn recorded_request_bodies(scenario: &str) -> Vec<serde_json::Value> 
 /// The cassette's own body matching would fail a request that changed, but only
 /// as an opaque "no recorded interaction matched" — this states the guarantee,
 /// so a cell about reading from a cache cannot quietly become a cell about
-/// something else. `cachedContents` lifecycle calls (create/delete) are skipped:
-/// they carry no `contents`.
+/// something else.
+///
+/// `cachedContents` lifecycle calls are skipped, and a top-level `model` is what
+/// identifies them rather than the absence of `contents`: a cache created with
+/// `NewCachedContent::content(..)` carries `contents` too, and would otherwise
+/// be held to a rule written for completions — failing for want of a handle it
+/// is in the middle of minting. `generateContent` never carries `model` in the
+/// body; the model is in the path.
 pub(super) fn assert_recorded_requests_read_from_a_cache(scenario: &str) {
     let mut generate_requests = 0;
     for (turn, body) in recorded_request_bodies(scenario).iter().enumerate() {
-        if body.get("contents").is_none_or(serde_json::Value::is_null) {
+        let is_completion = body.get("contents").is_some_and(|c| !c.is_null())
+            && body.get("model").is_none_or(serde_json::Value::is_null);
+        if !is_completion {
             continue;
         }
         generate_requests += 1;

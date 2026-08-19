@@ -74,8 +74,8 @@
 //! which is why a tool set that lives in the cache stays out of an agent's
 //! hands.
 //!
-//! An agent can therefore read from a cache only when it has no preamble, no
-//! tools and no tool choice. Native structured output is fine — the schema
+//! Leaving the allow-list aside, then, an agent reads from a cache when it has
+//! no preamble, no tools and no tool choice. Native structured output is fine — the schema
 //! rides in `generationConfig`, and the default `OutputMode::Auto` resolves
 //! there for a tool-less agent. `OutputMode::Tool` is not, because it advertises
 //! that synthetic tool *and* extends the preamble; `Extractor` pins that mode,

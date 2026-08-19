@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(gemini)* lift `systemInstruction` and `toolConfig` out of `additional_params`, so they reach the typed field instead of being serialized twice and walking past validation (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* see `systemInstruction` and `toolConfig` set through `additional_params` when validating a cached-content request, under either proto-JSON spelling; setting one of them *and* its typed counterpart is now refused rather than resolved by serialization order (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(gemini)* triage `cachedContents` failures by status, so `Expired` is reachable on every transport, and refuse a cache handle that would retarget the request path (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(gemini)* bound the `cachedContents` listing loop, and report when a listing was truncated (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(gemini)* stop dropping thinking, cached and tool-use tokens on the Interactions surface ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))

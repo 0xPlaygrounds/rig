@@ -299,16 +299,22 @@ pub(crate) fn create_request_body(
             )),
         })
         .transpose()?;
-    // `systemInstruction` and `toolConfig` are lifted for the same two reasons,
-    // and closing this for `cachedContent` alone left both of them open. They
-    // are the *other* two fields a cached content owns, so a request smuggling
-    // one past the conflict check is exactly the case the check exists for —
-    // and, cache or no cache, a flattened copy serialized beside the typed
-    // field emits the key twice, since neither carries `skip_serializing_if`.
-    let smuggled_system_instruction: Option<Content> =
-        take_typed_from_additional_params(&mut additional_params_payload, "systemInstruction")?;
-    let smuggled_tool_config: Option<ToolConfig> =
-        take_typed_from_additional_params(&mut additional_params_payload, "toolConfig")?;
+    // The other two fields a cached content owns are *detected* here and left
+    // exactly where the caller put them.
+    //
+    // Deserializing them into the typed fields was tried and reverted: rig's
+    // `ToolConfig`/`FunctionCallingMode` model `mode` and a snake_case
+    // `allowed_function_names` only, so round-tripping a caller's config
+    // through them silently dropped `allowedFunctionNames` — turning a request
+    // restricted to one function into one free to call any — and hard-failed
+    // every `mode` rig does not model (`MODE_UNSPECIFIED`, `VALIDATED`, and
+    // whatever Google adds next). `Content` is narrower than the wire the same
+    // way. An `additional_params` blob is a deliberate escape hatch for shapes
+    // rig has no type for; narrowing it through a type is the one thing it must
+    // not do.
+    let smuggled_system_instruction =
+        smuggled_field(&additional_params_payload, &SYSTEM_INSTRUCTION);
+    let smuggled_tool_config = smuggled_field(&additional_params_payload, &TOOL_CONFIG);
 
     let AdditionalParameters {
         mut generation_config,
@@ -366,20 +372,18 @@ pub(crate) fn create_request_body(
     // the last, so the preamble the caller wrote was silently discarded; now the
     // ambiguity is reported, matching how a doubly-set `cachedContent` is
     // treated.
-    let system_instruction = match (system_instruction, smuggled_system_instruction) {
-        (Some(typed), Some(_)) => {
-            return Err(CompletionError::RequestError(
-                format!(
-                    "a Gemini request set the system instruction twice — once as a preamble or \
-                     system message ({} part(s)) and once through \
-                     `additional_params.systemInstruction`. Set it one way or the other",
-                    typed.parts.len()
-                )
-                .into(),
-            ));
-        }
-        (typed, smuggled) => typed.or(smuggled),
-    };
+    if let (Some(typed), Some(spelling)) = (&system_instruction, smuggled_system_instruction) {
+        return Err(CompletionError::RequestError(
+            format!(
+                "a Gemini request set the system instruction twice — once as a preamble or \
+                 system message ({} part(s)) and once through `additional_params.{spelling}`. \
+                 Both reach the wire, the provider takes the last, and the preamble is the one \
+                 discarded. Set it one way or the other",
+                typed.parts.len()
+            )
+            .into(),
+        ));
+    }
 
     let mut tools = if function_tools.is_empty() {
         Vec::new()
@@ -398,16 +402,18 @@ pub(crate) fn create_request_body(
     };
     // Same rule as the system instruction above: `tool_choice` and
     // `additional_params.toolConfig` are one field reached two ways.
-    let tool_config = match (tool_config, smuggled_tool_config) {
-        (Some(_), Some(_)) => {
-            return Err(CompletionError::RequestError(
+    if tool_config.is_some()
+        && let Some(spelling) = smuggled_tool_config
+    {
+        return Err(CompletionError::RequestError(
+            format!(
                 "a Gemini request set the tool choice twice — once as `tool_choice` and once \
-                 through `additional_params.toolConfig`. Set it one way or the other"
-                    .into(),
-            ));
-        }
-        (typed, smuggled) => typed.or(smuggled),
-    };
+                 through `additional_params.{spelling}`. Both reach the wire and the provider \
+                 takes the last. Set it one way or the other"
+            )
+            .into(),
+        ));
+    }
 
     let mut request = GenerateContentRequest {
         contents: full_history
@@ -451,36 +457,32 @@ pub fn split_system_messages_from_history(
     (system, remaining)
 }
 
-/// Remove `key` from an `additional_params` object and deserialize it into the
-/// typed field it belongs in.
+/// Both spellings Gemini accepts for `systemInstruction`.
 ///
-/// Every field of `GenerateContentRequest` that a caller can also reach through
-/// `additional_params` has to come through here, because `additional_params` is
-/// `#[serde(flatten)]` and serde emits flattened entries *after* the named
-/// ones. A copy left in the blob therefore wins on the wire while the typed
-/// field — the one every validation in this module inspects — stays empty. That
-/// is how a `cachedContent` used to overwrite the handle a caller asked for, and
-/// how a `systemInstruction` or `toolConfig` used to walk past the cached
-/// content conflict check.
+/// The API speaks proto3 JSON, which accepts a field under its lowerCamelCase
+/// alias *and* its original proto name. A check that knows only one of them is
+/// a check with a documented bypass.
+const SYSTEM_INSTRUCTION: [&str; 2] = ["systemInstruction", "system_instruction"];
+
+/// Both spellings Gemini accepts for `toolConfig`. See [`SYSTEM_INSTRUCTION`].
+const TOOL_CONFIG: [&str; 2] = ["toolConfig", "tool_config"];
+
+/// The spelling under which one of `spellings` appears in an `additional_params`
+/// blob, if any of them does.
 ///
-/// Deserializing rather than moving the raw `Value` is what makes the lift
-/// worth doing: a malformed field is now reported here, naming the field, in
-/// place of a provider 400 that quotes a JSON path.
-fn take_typed_from_additional_params<T: serde::de::DeserializeOwned>(
-    payload: &mut Value,
-    key: &str,
-) -> Result<Option<T>, CompletionError> {
-    let Some(value) = payload
-        .as_object_mut()
-        .and_then(|object| object.remove(key))
-    else {
-        return Ok(None);
-    };
-    serde_json::from_value(value).map(Some).map_err(|error| {
-        CompletionError::RequestError(
-            format!("additional_params.{key} is not a valid Gemini {key}: {error}").into(),
-        )
-    })
+/// Presence, never the value. `additional_params` is the escape hatch for wire
+/// shapes rig has no type for, so nothing on this path may narrow it by parsing:
+/// deserializing a caller's `toolConfig` into rig's own type drops every field
+/// that type does not model — `allowedFunctionNames` among them, which turns a
+/// request restricted to one function into one free to call any — and rejects
+/// every `mode` rig has not enumerated. An explicit `null` counts as absent,
+/// matching how serde treats a missing field.
+fn smuggled_field<'a>(payload: &Value, spellings: &[&'a str]) -> Option<&'a str> {
+    let object = payload.as_object()?;
+    spellings
+        .iter()
+        .find(|spelling| object.get(**spelling).is_some_and(|value| !value.is_null()))
+        .copied()
 }
 
 fn extract_tools_from_additional_params(
@@ -2520,14 +2522,27 @@ impl gemini_api_types::GenerateContentRequest {
             ));
         }
 
+        // Read `additional_params` as well as the typed fields. It is
+        // `#[serde(flatten)]`, so anything left in it reaches the wire beside
+        // the typed field — a conflict the provider will reject just the same,
+        // and one that used to walk straight past this check because the check
+        // only looked at the typed side. `tools` needs no such lookup:
+        // `extract_tools_from_additional_params` has already moved it onto
+        // `self.tools` by the time any of this runs.
+        let blob = self.additional_params.as_ref();
+        let smuggled = |spellings: &[&str]| {
+            blob.and_then(|payload| smuggled_field(payload, spellings))
+                .is_some()
+        };
+
         let mut conflicts = Vec::new();
-        if self.system_instruction.is_some() {
+        if self.system_instruction.is_some() || smuggled(&SYSTEM_INSTRUCTION) {
             conflicts.push("a system instruction (preamble)");
         }
         if self.tools.is_some() {
             conflicts.push("tools");
         }
-        if self.tool_config.is_some() {
+        if self.tool_config.is_some() || smuggled(&TOOL_CONFIG) {
             conflicts.push("a tool choice");
         }
         if !conflicts.is_empty() {
@@ -4694,60 +4709,93 @@ mod cached_content_request_tests {
         assert!(message.contains("set the tool choice twice"), "{message}");
     }
 
-    /// A lifted field lands in the typed slot rather than beside it.
+    /// Whatever the caller put in `additional_params` reaches the wire byte for
+    /// byte — including everything rig has no type for.
     ///
-    /// The duplicate key is the part that is a bug on its own terms: neither
-    /// `systemInstruction` nor `toolConfig` carries `skip_serializing_if`, so
-    /// before the lift both were emitted twice — once as the typed `null` and
-    /// once from the flattened blob — in every request that used them, cache or
-    /// no cache.
+    /// This is the cell that forbids the obvious implementation. Detecting
+    /// these fields by deserializing them into rig's own `ToolConfig` was tried,
+    /// and it silently dropped `allowedFunctionNames`: a request restricted to
+    /// one function became a request free to call any, with no error anywhere.
+    /// `additional_params` exists precisely for shapes rig does not model, so
+    /// the one thing this path must never do is narrow it.
     #[test]
-    fn a_lifted_field_is_serialized_once_in_the_typed_slot() {
-        let request = build_with(
-            None,
-            Some(serde_json::json!({
-                "systemInstruction": {"parts": [{"text": "you are terse"}], "role": "model"},
-                "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
-            })),
-        )
-        .expect("request should build");
+    fn a_smuggled_field_reaches_the_wire_exactly_as_the_caller_wrote_it() {
+        for smuggled in [
+            // The lossy case: `allowedFunctionNames` is not a field of rig's
+            // `FunctionCallingMode` (which spells it `allowed_function_names`).
+            serde_json::json!({
+                "toolConfig": {
+                    "functionCallingConfig": {
+                        "mode": "ANY",
+                        "allowedFunctionNames": ["get_weather"]
+                    }
+                }
+            }),
+            // Modes rig does not enumerate. `MODE_UNSPECIFIED` is the proto
+            // default and `VALIDATED` was added after rig's enum was written;
+            // the next one Google adds must not need a rig release either.
+            serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "MODE_UNSPECIFIED"}}}),
+            serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "VALIDATED"}}}),
+            // The proto-original spelling, which proto3 JSON accepts alongside
+            // the lowerCamelCase alias.
+            serde_json::json!({"tool_config": {"function_calling_config": {"mode": "ANY"}}}),
+            // A system instruction carrying a part kind rig has no variant for.
+            serde_json::json!({
+                "systemInstruction": {"parts": [{"inlineData": {"mimeType": "text/plain", "data": "aGk="}}]}
+            }),
+        ] {
+            let request = build_with(None, Some(smuggled.clone()))
+                .unwrap_or_else(|error| panic!("{smuggled} should build, got {error}"));
+            let body = serde_json::to_value(&request).expect("serialize");
 
-        let body = serde_json::to_string(&request).expect("serialize");
-        for key in ["systemInstruction", "toolConfig"] {
-            assert_eq!(
-                body.matches(&format!("\"{key}\"")).count(),
-                1,
-                "{key} should be emitted exactly once, got {body}"
+            for (key, expected) in smuggled.as_object().expect("object") {
+                assert_eq!(
+                    body.get(key),
+                    Some(expected),
+                    "additional_params must pass through untouched; {key} was rewritten"
+                );
+            }
+        }
+    }
+
+    /// The conflict check has to know both spellings, or it documents its own
+    /// bypass.
+    #[test]
+    fn the_proto_original_spelling_conflicts_too() {
+        for (spelling, expected) in [
+            ("system_instruction", "a system instruction"),
+            ("tool_config", "a tool choice"),
+        ] {
+            let mut request = build_with(
+                None,
+                Some(serde_json::json!({ spelling: {"parts": [{"text": "x"}]} })),
+            )
+            .expect("request should build");
+            let message = request
+                .with_cached_content("cachedContents/abc123")
+                .expect_err("the proto spelling is the same field")
+                .to_string();
+            assert!(
+                message.contains(expected),
+                "`{spelling}` must reach the same conflict as its camelCase alias: {message}"
             );
         }
-        let body: serde_json::Value = serde_json::from_str(&body).expect("valid json");
-        assert_eq!(
-            body["systemInstruction"]["parts"][0]["text"].as_str(),
-            Some("you are terse")
-        );
-        assert_eq!(
-            body["toolConfig"]["functionCallingConfig"]["mode"].as_str(),
-            Some("ANY")
-        );
     }
 
-    /// A malformed lifted field is now reported by name here rather than as a
-    /// provider 400 quoting a JSON path.
+    /// An explicit `null` is how serde spells "unset", so it must not be
+    /// mistaken for a value the caller set.
     #[test]
-    fn a_malformed_lifted_field_names_itself() {
-        let message = build_with(
+    fn an_explicit_null_is_not_a_conflict() {
+        let mut request = build_with(
             None,
-            Some(serde_json::json!({"systemInstruction": "just a string"})),
+            Some(serde_json::json!({"systemInstruction": null, "toolConfig": null})),
         )
-        .expect_err("a string is not a Content")
-        .to_string();
-        assert!(
-            message.contains("additional_params.systemInstruction"),
-            "{message}"
-        );
+        .expect("request should build");
+        request
+            .with_cached_content("cachedContents/abc123")
+            .expect("a null is not a value the caller set");
     }
 }
-
 #[cfg(test)]
 mod cached_content_conflict_matrix {
     //! All 2^3 combinations of the fields a cached content owns.
