@@ -17,6 +17,7 @@
 //! - Ollama
 //! - OpenAI
 //! - OpenRouter
+//! - OrcaRouter
 //! - Perplexity
 //! - Together
 //! - Venice
@@ -127,6 +128,7 @@ pub mod moonshot;
 pub mod ollama;
 pub mod openai;
 pub mod openrouter;
+pub mod orcarouter;
 pub mod perplexity;
 pub mod together;
 pub mod venice;
