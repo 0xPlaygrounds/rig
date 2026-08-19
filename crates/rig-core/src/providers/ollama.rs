@@ -275,7 +275,8 @@ where
         }
 
         let bytes: Vec<u8> = response.into_body().await?;
-        Ok(serde_json::from_slice(&bytes)?)
+        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
+        Ok(api_resp)
     }
 }
 
