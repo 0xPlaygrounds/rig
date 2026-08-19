@@ -65,18 +65,48 @@ pub struct LlamacppExt;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LlamacppBuilder;
 
+/// `llama-server` routes that live **outside** the `/v1` namespace.
+///
+/// llama.cpp serves two namespaces from one process. The OpenAI-compatible
+/// surface (`/v1/chat/completions`, `/v1/embeddings`, `/v1/rerank`,
+/// `/v1/models`, …) is versioned; its own operational surface is not, and
+/// `GET /v1/props` is a 404 rather than an alias. Several of these *are* also
+/// served unversioned in an OpenAI spelling, but the two spellings are
+/// different handlers with different response shapes (`POST /embeddings`
+/// returns llama.cpp's native payload, `POST /v1/embeddings` the OpenAI one),
+/// so the prefix is load-bearing everywhere else and is suppressed only here.
+///
+/// The list is the route table of `llama-server` b10499 (`tools/server/server.cpp`),
+/// restricted to routes rig can address; anything rig does not ask for costs
+/// nothing to name and documents the namespace.
+const UNVERSIONED_ROUTES: &[&str] = &[
+    "/props",
+    "/health",
+    "/slots",
+    "/metrics",
+    "/tokenize",
+    "/detokenize",
+    "/apply-template",
+    "/infill",
+    "/lora-adapters",
+];
+
 impl Provider for LlamacppExt {
     type Builder = LlamacppBuilder;
 
     // `/v1/models` and `/health` are the only two routes `llama-server`
     // serves without an API-key check, so neither can distinguish a good
-    // credential from a bad one. `/props` is behind the check and is served
-    // by every configuration, which makes it the only route where
-    // `verify()` means what it says.
+    // credential from a bad one — verifying against `/models`, as the
+    // provider this replaces did, returns 200 for every key including a wrong
+    // one. `/props` is behind the check, is served by every configuration,
+    // and is a GET, which is what `VerifyClient` issues. It is also the route
+    // that reports `build_info` and `modalities`, so a successful
+    // verification is additionally a useful thing to have asked for.
     const VERIFY_PATH: &'static str = "/props";
 
     /// Compose the request URI, adding the `/v1` prefix the OpenAI-compatible
-    /// routes live under **unless the base URL already carries it**.
+    /// routes live under **unless** the base URL already carries it or the
+    /// path is one of llama.cpp's own [unversioned routes](UNVERSIONED_ROUTES).
     ///
     /// `llama-server`'s own banner prints `http://localhost:8080`, while the
     /// OpenAI ecosystem conventionally writes a base URL with the `/v1` on it,
@@ -91,11 +121,21 @@ impl Provider for LlamacppExt {
     /// point rather than to the segment that happens to appear inside it.
     fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
         let base_url = base_url.trim_end_matches('/');
-        let path = path.trim_start_matches('/');
+        let trimmed = path.trim_start_matches('/');
+
+        // An unversioned route is relative to the *server root*, so a base URL
+        // that carries `/v1` has to have it taken back off — otherwise a
+        // caller who wrote the OpenAI-style base URL cannot reach `/props` at
+        // all, which is the route `verify()` uses.
+        if UNVERSIONED_ROUTES.contains(&format!("/{trimmed}").as_str()) {
+            let root = base_url.strip_suffix("/v1").unwrap_or(base_url);
+            return format!("{root}/{trimmed}");
+        }
+
         if base_url.ends_with("/v1") {
-            format!("{base_url}/{path}")
+            format!("{base_url}/{trimmed}")
         } else {
-            format!("{base_url}/v1/{path}")
+            format!("{base_url}/v1/{trimmed}")
         }
     }
 }
@@ -292,13 +332,35 @@ mod tests {
             ext.build_uri("http://localhost:8080", "/models", Transport::Http),
             "http://localhost:8080/v1/models"
         );
+    }
+
+    /// llama.cpp's operational routes are relative to the server root, not to
+    /// `/v1` — `GET /v1/props` is a 404 — and that has to hold whichever of
+    /// the two accepted base-URL spellings the caller used.
+    #[test]
+    fn build_uri_keeps_the_unversioned_routes_off_the_v1_namespace() {
+        let ext = LlamacppExt;
+        for base in [
+            "http://localhost:8080",
+            "http://localhost:8080/",
+            "http://localhost:8080/v1",
+            "http://localhost:8080/v1/",
+        ] {
+            assert_eq!(
+                ext.build_uri(base, LlamacppExt::VERIFY_PATH, Transport::Http),
+                "http://localhost:8080/props",
+                "the verify path must reach the server root from base URL `{base}`"
+            );
+        }
         assert_eq!(
-            ext.build_uri(
-                "http://localhost:8080",
-                LlamacppExt::VERIFY_PATH,
-                Transport::Http
-            ),
-            "http://localhost:8080/v1/props"
+            ext.build_uri("http://localhost:8080/v1", "/health", Transport::Http),
+            "http://localhost:8080/health"
+        );
+        // Only the routes llama.cpp actually serves unversioned are exempt; an
+        // OpenAI route that merely looks operational is not.
+        assert_eq!(
+            ext.build_uri("http://localhost:8080", "/models", Transport::Http),
+            "http://localhost:8080/v1/models"
         );
     }
 

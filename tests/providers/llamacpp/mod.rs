@@ -5,6 +5,7 @@ mod cassette {
     mod bare_openai_client;
     mod context;
     mod embeddings;
+    mod error_matrix;
     mod extractor;
     mod extractor_usage;
     mod image_tool_result;
