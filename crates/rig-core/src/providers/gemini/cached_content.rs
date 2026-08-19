@@ -88,6 +88,7 @@ use serde::{Deserialize, Serialize};
 use super::client::Client;
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::internal::model_listing::MAX_LISTING_PAGES;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// The `cachedContents` collection path.
@@ -379,8 +380,14 @@ where
     ) -> Result<Vec<CachedContent>, CachedContentError> {
         let mut all = Vec::new();
         let mut page_token: Option<String> = None;
+        // Only the loop running out of iterations is a ceiling. Every `break`
+        // below is Gemini ending the listing, which is the normal path and must
+        // stay silent — inferring the ceiling from `page_token` instead would
+        // report one on any listing that fetched more than a single page, since
+        // the cursor of the *previous* page is still held when the loop breaks.
+        let mut exhausted_page_budget = true;
 
-        loop {
+        for _ in 0..MAX_LISTING_PAGES {
             // Percent-encoded through the same helper `list_models_path` uses
             // (`internal::model_listing::with_query_pairs`), which has a test
             // pinning `pageToken=weird+token%26x%3D1`. Concatenating the cursor
@@ -402,13 +409,34 @@ where
             // An empty cursor counts as absent, matching how every other
             // provider-reported cursor in rig is read: re-sending an empty
             // `pageToken` returns the same page forever.
-            let next = page.next_page_token.filter(|token| !token.is_empty());
-            match next {
-                // A cursor that does not advance is a server bug that would
-                // otherwise spin here until the process dies.
-                Some(token) if Some(&token) != page_token.as_ref() => page_token = Some(token),
-                _ => break,
+            let Some(token) = page.next_page_token.filter(|token| !token.is_empty()) else {
+                exhausted_page_budget = false;
+                break;
+            };
+            // A cursor that does not advance is a server bug: the next request
+            // would be byte-identical to the one just answered, so the same
+            // page would come back forever.
+            if page_token.as_deref() == Some(token.as_str()) {
+                tracing::warn!(
+                    provider = "Gemini",
+                    cached_contents = all.len(),
+                    "cachedContents listing repeated its pagination cursor; returning the \
+                     pages fetched so far"
+                );
+                exhausted_page_budget = false;
+                break;
             }
+            page_token = Some(token);
+        }
+
+        if exhausted_page_budget {
+            tracing::warn!(
+                provider = "Gemini",
+                cached_contents = all.len(),
+                pages = MAX_LISTING_PAGES,
+                "cachedContents listing hit its page ceiling with a cursor still advancing; \
+                 returning the pages fetched so far"
+            );
         }
 
         Ok(all)
@@ -820,6 +848,173 @@ mod tests {
         assert_eq!(
             object.get("model").and_then(|m| m.as_str()),
             Some("models/gemini-2.5-flash")
+        );
+    }
+
+    // The pagination loop, and every way its cursor can fail to advance:
+    // absent, empty, repeated, and alternating — the last of which only the
+    // page ceiling catches. `paginate_models` carries the same three rules for
+    // model listings, but this resource cannot call it (it is typed on
+    // `Model`/`ModelListingError` and fetches through `get_bytes`, which
+    // collapses the 403/404 triage `CachedContentError::Expired` exists for),
+    // so the rules are restated in `list_with_page_size` and pinned here.
+    //
+    // Only the malformed-cursor cells are unrecordable: no live response
+    // carries an empty, repeated or alternating cursor, and no live cursor
+    // carries URL-significant characters. Ordinary and multi-page listings are
+    // recorded — `prompt_caching/explicit_cache_lifecycle` for a single page,
+    // `cached_content_matrix/edge_list_pagination` for three pages at
+    // `pageSize=1`. These cells exist to pin the three termination guards,
+    // which a recording cannot exercise.
+
+    /// One page of Gemini's `cachedContents` list envelope.
+    fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpResponse {
+        let cached_contents: Vec<_> = names
+            .iter()
+            .map(|name| serde_json::json!({ "name": format!("cachedContents/{name}") }))
+            .collect();
+        MockHttpResponse::success(
+            serde_json::json!({
+                "cachedContents": cached_contents,
+                "nextPageToken": next_page_token,
+            })
+            .to_string(),
+        )
+    }
+
+    /// A `cachedContents` client whose transport answers the scripted pages in
+    /// order and `NOT_IMPLEMENTED` once they run out — so a loop that fails to
+    /// terminate ends its test with an error rather than hanging the suite.
+    fn caches(
+        pages: Vec<MockHttpResponse>,
+    ) -> (
+        CachedContentClient<SequencedHttpClient>,
+        SequencedHttpClient,
+    ) {
+        let http_client = SequencedHttpClient::new(pages);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
+        (client.cached_contents(), http_client)
+    }
+
+    /// The ordinary single-page listing — what `list()`'s default page size
+    /// returns for any realistic collection — is unchanged by the termination
+    /// guards. Recorded live in `prompt_caching/explicit_cache_lifecycle`;
+    /// repeated here so the guards have a no-cursor baseline on the same mock
+    /// transport as the cells below.
+    #[tokio::test]
+    async fn single_page_listing_is_unchanged() {
+        let (caches, http_client) = caches(vec![cached_page(&["a", "b"], None)]);
+
+        let listed = caches.list().await.expect("listing should succeed");
+
+        let names: Vec<_> = listed.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(names, ["cachedContents/a", "cachedContents/b"]);
+        assert_eq!(http_client.remaining_responses(), 0);
+    }
+
+    /// An empty `nextPageToken` is as unusable as an absent one: re-sending an
+    /// empty `pageToken` returns the same page forever.
+    #[tokio::test]
+    async fn pagination_stops_on_an_empty_cursor() {
+        let (caches, http_client) = caches(vec![
+            cached_page(&["a"], Some("")),
+            cached_page(&["b"], None),
+        ]);
+
+        let listed = caches
+            .list_with_page_size(1)
+            .await
+            .expect("listing should terminate");
+
+        let names: Vec<_> = listed.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(names, ["cachedContents/a"]);
+        assert_eq!(http_client.remaining_responses(), 1);
+    }
+
+    /// A server that keeps echoing the same cursor cannot advance the listing
+    /// either — the next request would be byte-identical to the one just
+    /// answered, so the same page would come back forever.
+    #[tokio::test]
+    async fn pagination_stops_on_a_cursor_that_does_not_advance() {
+        let (caches, http_client) = caches(vec![
+            cached_page(&["a"], Some("stuck")),
+            cached_page(&["b"], Some("stuck")),
+            cached_page(&["c"], Some("stuck")),
+        ]);
+
+        let listed = caches
+            .list_with_page_size(1)
+            .await
+            .expect("listing should terminate");
+
+        let names: Vec<_> = listed.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["cachedContents/a", "cachedContents/b"],
+            "the repeat is only detectable on the second page, so both are kept",
+        );
+        assert_eq!(http_client.remaining_responses(), 1);
+    }
+
+    /// A cursor that keeps *changing* without making progress — a gateway
+    /// alternating between two values, or minting a fresh one per request —
+    /// defeats the repeat check, which only remembers the previous cursor. Only
+    /// the page ceiling stops it, and without one `list` never returns while
+    /// `all` grows without bound (rig#2334).
+    #[tokio::test]
+    async fn pagination_stops_at_the_page_ceiling_on_an_alternating_cursor() {
+        // Two cursors that alternate forever: every request differs from the
+        // one before, so no repeat is ever observed.
+        let pages: Vec<_> = (0..MAX_LISTING_PAGES + 10)
+            .map(|i| cached_page(&["a"], Some(if i % 2 == 0 { "ping" } else { "pong" })))
+            .collect();
+        let (caches, http_client) = caches(pages);
+
+        let listed = caches
+            .list_with_page_size(1)
+            .await
+            .expect("the ceiling ends the listing instead of looping");
+
+        assert_eq!(
+            listed.len(),
+            MAX_LISTING_PAGES,
+            "exactly the ceiling's worth of pages is fetched",
+        );
+        assert_eq!(
+            http_client.remaining_responses(),
+            10,
+            "the loop stops at the ceiling rather than draining every page",
+        );
+    }
+
+    /// A cursor carrying URL-significant characters is percent-encoded rather
+    /// than interpolated, so it cannot truncate the path or inject a query
+    /// parameter — Gemini appends `key=` to every URI, so a raw `&` in the
+    /// cursor would sit next to the credential.
+    #[tokio::test]
+    async fn pagination_percent_encodes_the_cursor() {
+        let (caches, http_client) = caches(vec![
+            cached_page(&["a"], Some("weird token&x=1")),
+            cached_page(&["b"], None),
+        ]);
+
+        caches
+            .list_with_page_size(1)
+            .await
+            .expect("listing should succeed");
+
+        let uris: Vec<_> = http_client
+            .requests()
+            .into_iter()
+            .map(|request| request.uri)
+            .collect();
+        assert!(
+            uris[1].contains("pageSize=1&pageToken=weird+token%26x%3D1&key="),
+            "the cursor must be percent-encoded: {uris:?}",
         );
     }
 }
