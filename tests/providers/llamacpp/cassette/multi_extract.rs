@@ -30,7 +30,7 @@ struct Sentiment {
 
 #[tokio::test]
 async fn batch_multi_extract_chain() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         // Unordered: this cell drives the batch extractor, which issues its
         // requests concurrently, so the order they reach the mock varies
         // between runs. Under ordered matching an early request consumes an

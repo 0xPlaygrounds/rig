@@ -55,7 +55,7 @@ fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) -> Res
 
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
             let model = CASSETTE_MODEL;
@@ -81,7 +81,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 
 #[tokio::test]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
             let model = CASSETTE_MODEL;
@@ -110,7 +110,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 
 #[tokio::test]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "extractor_usage/extract_with_chat_history_with_usage_works",
         |client| async move {
             use rig::message::Message;
@@ -148,7 +148,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 
 #[tokio::test]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
             let model = CASSETTE_MODEL;
@@ -180,7 +180,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 
 #[tokio::test]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    with_llamacpp_completions_cassette_result(
+    with_llamacpp_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
             let model = CASSETTE_MODEL;

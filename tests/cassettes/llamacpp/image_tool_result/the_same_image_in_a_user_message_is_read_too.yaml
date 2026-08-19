@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":30,"messages":[{"content":[{"text":"Reply with ONLY the dominant colour name.","type":"text"},{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGP4z/CfJMQwqmFUw/DVAAAg0/4QF5nKuAAAAABJRU5ErkJggg=="},"type":"image_url"}],"role":"user"}],"model":"Qwen3-VL-2B-Instruct-Q8_0","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Pink","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-VL-2B-Instruct-Q8_0.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":26,"predicted_ms":8.414,"predicted_n":2,"predicted_per_second":118.84953648680771,"predicted_per_token_ms":8.414,"prompt_ms":8.942,"prompt_n":1,"prompt_per_second":111.83180496533214,"prompt_per_token_ms":8.942},"usage":{"completion_tokens":2,"prompt_tokens":27,"prompt_tokens_details":{"cached_tokens":26},"total_tokens":29}}'

@@ -147,7 +147,7 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ("groq", Exempt(OPENAI_CHAT_GATEWAY)),
     ("huggingface", Exempt(OPENAI_CHAT_GATEWAY)),
     ("hyperbolic", Exempt(OPENAI_CHAT_GATEWAY)),
-    ("llamafile", Exempt(OPENAI_CHAT_GATEWAY)),
+    ("llamacpp", Exempt(OPENAI_CHAT_GATEWAY)),
     ("minimax", Exempt(OPENAI_CHAT_GATEWAY)),
     ("mira", Exempt(OPENAI_CHAT_GATEWAY)),
     ("mistral", Exempt(OPENAI_CHAT_GATEWAY)),

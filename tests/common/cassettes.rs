@@ -1621,6 +1621,82 @@ pub(crate) fn recorded_json_response(provider: &str, scenario: &str) -> Value {
     })
 }
 
+/// Request headers recorded for one provider scenario, lowercased, in wire
+/// order.
+///
+/// Only the names on `RECORDED_REQUEST_HEADERS` are ever written, so this is
+/// the way to assert that a *sensitive* header never reaches a fixture —
+/// which is a claim about the recorder, not about the provider.
+pub(crate) fn recorded_request_header_pairs(
+    provider: &str,
+    scenario: &str,
+) -> Vec<Vec<(String, String)>> {
+    let path = cassette_path(provider, scenario);
+    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "provider cassette {} should be readable: {error}",
+            path.display()
+        )
+    });
+
+    parse_cassette_interactions(&path, &contents)
+        .into_iter()
+        .map(|interaction| {
+            interaction
+                .when
+                .header
+                .into_iter()
+                .map(|header| (header.name.to_ascii_lowercase(), header.value))
+                .collect()
+        })
+        .collect()
+}
+
+/// Request paths recorded for one provider scenario, in wire order.
+///
+/// The path is the half of a request that no assertion on the *body* can
+/// reach, and it is exactly what a base-URL composition bug corrupts: a
+/// doubled `/v1`, a missing one, or a capability routed at the wrong endpoint
+/// all leave the body untouched.
+pub(crate) fn recorded_request_paths(provider: &str, scenario: &str) -> Vec<String> {
+    let path = cassette_path(provider, scenario);
+    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "provider cassette {} should be readable: {error}",
+            path.display()
+        )
+    });
+
+    parse_cassette_interactions(&path, &contents)
+        .into_iter()
+        .map(|interaction| interaction.when.path)
+        .collect()
+}
+
+/// Recorded `(status, body)` pairs for one provider scenario, in wire order.
+///
+/// Error matrices assert on the status *class* and on the preserved envelope;
+/// both live here rather than in whatever the client turned them into.
+pub(crate) fn recorded_statuses_and_bodies(provider: &str, scenario: &str) -> Vec<(u16, String)> {
+    let path = cassette_path(provider, scenario);
+    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "provider cassette {} should be readable: {error}",
+            path.display()
+        )
+    });
+
+    parse_cassette_interactions(&path, &contents)
+        .into_iter()
+        .map(|interaction| {
+            (
+                interaction.then.status,
+                interaction.then.body.unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
 /// JSON `data:` frames from the first recorded SSE response, excluding
 /// `[DONE]`.
 pub(crate) fn recorded_sse_json_frames(provider: &str, scenario: &str) -> Vec<Value> {

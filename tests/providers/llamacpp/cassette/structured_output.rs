@@ -51,7 +51,7 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
 
 #[tokio::test]
 async fn structured_output_smoke() {
-    with_llamacpp_completions_cassette(
+    with_llamacpp_cassette(
         "structured_output/structured_output_smoke",
         |client| async move {
             let agent = client.agent(CASSETTE_MODEL).build();
@@ -69,7 +69,7 @@ async fn structured_output_smoke() {
 
 #[tokio::test]
 async fn prompt_typed_structured_output() {
-    with_llamacpp_completions_cassette("structured_output/prompt_typed_structured_output", |client| async move {
+    with_llamacpp_cassette("structured_output/prompt_typed_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
         let agent = client
             .agent(model)
@@ -90,7 +90,7 @@ async fn prompt_typed_structured_output() {
 
 #[tokio::test]
 async fn prompt_typed_extended_details_structured_output() {
-    with_llamacpp_completions_cassette("structured_output/prompt_typed_extended_details_structured_output", |client| async move {
+    with_llamacpp_cassette("structured_output/prompt_typed_extended_details_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
         let agent = client
             .agent(model)
@@ -113,7 +113,7 @@ async fn prompt_typed_extended_details_structured_output() {
 
 #[tokio::test]
 async fn output_schema_structured_output() {
-    with_llamacpp_completions_cassette("structured_output/output_schema_structured_output", |client| async move {
+    with_llamacpp_cassette("structured_output/output_schema_structured_output", |client| async move {
         let model = CASSETTE_MODEL;
         let agent_with_schema = client
             .agent(model)

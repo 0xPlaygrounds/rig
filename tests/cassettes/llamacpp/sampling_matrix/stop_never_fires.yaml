@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"/no_think Write exactly this and nothing else: Alpha Bravo Charlie Delta","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","stop":["QQZZXX-never-emitted"]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Alpha Bravo Charlie Delta","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":21,"predicted_ms":47.427,"predicted_n":9,"predicted_per_second":168.68028759989036,"predicted_per_token_ms":5.928375,"prompt_ms":6.001,"prompt_n":1,"prompt_per_second":166.63889351774702,"prompt_per_token_ms":6.001},"usage":{"completion_tokens":9,"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":21},"total_tokens":31}}'

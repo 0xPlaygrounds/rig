@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Answer using only the tool result you were given. Repeat the codeword verbatim.","type":"text"}],"role":"system"},{"content":"What is the codeword?","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup"},"id":"call_REDACTED_1","type":"function"}]},{"content":"the codeword is heliotrope","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"the codeword is heliotrope","reasoning_content":"Okay, the user asked, \"What is the codeword?\" and I used the lookup tool. The response from the tool was that the codeword is \"heliotrope\". I need to make sure I answer using only the tool''s result and repeat the codeword verbatim.\n\nFirst, I''ll confirm that the tool''s answer is correct. The codeword provided by the tool is \"heliotrope\". Since there''s no conflicting information, I should just present that. The user might be testing if I follow the instructions to use only the tool''s result. I should avoid adding any extra explanations or information. Just state the codeword as given. Let me check again: the tool''s response was {\"name\": \"lookup\", \"arguments\": {}} and the answer was \"the codeword is heliotrope\". So the correct answer is to repeat \"heliotrope\" exactly. I need to make sure there are no typos. Alright, that''s straightforward.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":74,"predicted_ms":7591.186,"predicted_n":221,"predicted_per_second":28.980978729805855,"predicted_per_token_ms":34.505390909090906,"prompt_ms":30.831,"prompt_n":1,"prompt_per_second":32.43488696441893,"prompt_per_token_ms":30.831},"usage":{"completion_tokens":221,"prompt_tokens":75,"prompt_tokens_details":{"cached_tokens":74},"total_tokens":296}}'

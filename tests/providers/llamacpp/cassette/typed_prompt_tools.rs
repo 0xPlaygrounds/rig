@@ -16,6 +16,7 @@ use rig::prelude::*;
 use rig::tool::Tool;
 
 use super::super::cassette_support::*;
+use crate::support::assert_weather_tool_roundtrip_response;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct WeatherResponse {
@@ -165,7 +166,7 @@ impl Tool for WeatherTool {
 
 #[tokio::test]
 async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
-    with_llamacpp_completions_cassette_result("typed_prompt_tools/prompt_typed_with_tool_call_verbatim_roundtrip", |client| async move {
+    with_llamacpp_cassette_result("typed_prompt_tools/prompt_typed_with_tool_call_verbatim_roundtrip", |client| async move {
         let model = CASSETTE_MODEL;
         let hook = StepLogger::default();
 
@@ -201,6 +202,46 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
             &response.weather,
             "London",
         );
+
+        Ok(())
+    })
+    .await
+}
+
+#[tokio::test]
+async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
+    with_llamacpp_cassette_result("typed_prompt_tools/prompt_typed_with_tool_call_roundtrip", |client| async move {
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let agent = client
+            .agent(CASSETTE_MODEL)
+            .preamble(
+                "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
+                 The only valid tool name is `weather`; never invent or call any other tool. \
+                 After receiving the weather tool result, do not call any more tools. \
+                 Then respond with ONLY minified JSON matching exactly this schema: \
+                 {\"city\": string, \"weather\": string}. \
+                 The `city` field is required and must contain the requested city exactly. \
+                 The `weather` field is required and must contain the tool result verbatim. \
+                 For the prompt asking about London, a valid final answer looks like: \
+                 {\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}. \
+                 DO NOT wrap the JSON in markdown or add explanatory text.",
+            )
+            .tool(WeatherTool::new(call_count.clone()))
+            .build();
+
+        // The tool call needs a second turn to become an answer; the default
+        // is one, which is why this cell had never passed.
+        let response: WeatherResponse = agent
+            .prompt_typed("Hello, whats the weather in London?")
+            .max_turns(4)
+            .await?;
+
+        anyhow::ensure!(
+            call_count.load(Ordering::SeqCst) >= 1,
+            "expected the weather tool to be executed at least once"
+        );
+        assert_weather_tool_roundtrip_response(&response.city, &response.weather, "London");
 
         Ok(())
     })

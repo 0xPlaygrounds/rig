@@ -89,6 +89,24 @@ mod tests {
         "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3] }]
     }"#;
 
+    /// The same stub, widened to `width` values.
+    ///
+    /// A model handle built with an explicit width now requires the response
+    /// to have that width, so a cell that declares one has to hand back
+    /// vectors of it — a stub contradicting its own model was always an
+    /// inconsistency, and is now a caught one.
+    fn response_body(width: usize) -> String {
+        let embedding = (0..width)
+            .map(|index| format!("{}", index as f64 / 1000.0))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            r#"{{"id":"emb-1","object":"list","model":"mistral-embed",
+                 "usage":{{"prompt_tokens":5,"total_tokens":5}},
+                 "data":[{{"object":"embedding","index":0,"embedding":[{embedding}]}}]}}"#
+        )
+    }
+
     fn client(http_client: RecordingHttpClient) -> mistral::Client<RecordingHttpClient> {
         mistral::Client::builder()
             .api_key("dummy-key")
@@ -99,7 +117,7 @@ mod tests {
 
     #[tokio::test]
     async fn codestral_embeddings_map_dimensions_and_mistral_usage() {
-        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let http_client = RecordingHttpClient::new(response_body(512));
         let model = client(http_client.clone())
             .embedding_model_with_ndims(CODESTRAL_EMBED, 512)
             .encoding_format(EncodingFormat::Float);
@@ -109,7 +127,7 @@ mod tests {
             .await
             .expect("embedding request should succeed");
 
-        assert_eq!(response.embeddings[0].vec, vec![0.1, 0.2, 0.3]);
+        assert_eq!(response.embeddings[0].vec.len(), 512);
         assert_eq!(response.usage.input_tokens, 5);
         assert_eq!(response.usage.total_tokens, 5);
 

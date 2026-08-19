@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"Calculate 2 - 5 using the tool.","role":"user"}],"model":"gemma-3-12b-it-Q4_K_M","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"```tool_code\nprint(2 - 5)\n```","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/gemma-3-12b-it-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":14,"predicted_ms":391.738,"predicted_n":15,"predicted_per_second":35.73817194145066,"predicted_per_token_ms":27.981285714285715,"prompt_ms":130.848,"prompt_n":5,"prompt_per_second":38.21227684030325,"prompt_per_token_ms":26.169600000000003},"usage":{"completion_tokens":15,"prompt_tokens":19,"prompt_tokens_details":{"cached_tokens":14},"total_tokens":34}}'

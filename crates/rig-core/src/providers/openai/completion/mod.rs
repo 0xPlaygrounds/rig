@@ -4739,7 +4739,7 @@ mod image_tool_result_gate_tests {
     //! These are unit tests rather than cassettes because the behaviour under
     //! test is a *local* refusal — no request is made, so there is nothing to
     //! record. The provider-side facts they encode are pinned by recorded cells
-    //! in the llamafile and openai suites.
+    //! in the llamacpp and openai suites.
 
     use super::*;
     use crate::message;

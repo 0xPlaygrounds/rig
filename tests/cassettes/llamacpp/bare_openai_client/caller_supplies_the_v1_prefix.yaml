@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":[{"text":"You are a concise assistant.","type":"text"}],"role":"system"},{"content":"Say the single word: ok","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"ok","reasoning_content":"Okay, the user just said \"ok\". I need to respond with the single word \"ok\". Let me make sure I''m following the instructions correctly. The user wants me to say the word \"ok\" as a response. Since they asked for a single word, I should just output \"ok\" without any extra text. Let me check if there''s any other requirement, but the instructions say to be concise, so that''s all I need. Alright, I''ll just return \"ok\".\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":0,"predicted_ms":609.642,"predicted_n":106,"predicted_per_second":172.23222809452105,"predicted_per_token_ms":5.806114285714286,"prompt_ms":24.548,"prompt_n":25,"prompt_per_second":1018.4129053283364,"prompt_per_token_ms":0.9819199999999999},"usage":{"completion_tokens":106,"prompt_tokens":25,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":131}}'

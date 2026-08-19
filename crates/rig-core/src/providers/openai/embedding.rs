@@ -300,7 +300,7 @@ where
                         None => crate::completion::Usage::new(),
                     };
 
-                    let embeddings = response
+                    let embeddings: Vec<embeddings::Embedding> = response
                         .data
                         .into_iter()
                         .zip(documents.into_iter())
@@ -313,6 +313,43 @@ where
                                 .collect(),
                         })
                         .collect();
+
+                    // A width the caller *declared* must be the width they
+                    // got. Two carve-outs, and both matter:
+                    //
+                    // * the width must have been set explicitly — a handle
+                    //   built without one reports whatever the provider table
+                    //   says and has nothing to disagree with;
+                    // * and it must be non-zero. Zero is rig's sentinel for
+                    //   *unknown*, not a declaration: `default_ndims`
+                    //   returning `None` lands here through
+                    //   `unwrap_or_default()`, and
+                    //   `GenericEmbeddingModel::new(client, model, 0)` is the
+                    //   documented way to say "I do not know how wide this
+                    //   is". Treating it as a claim would turn every such
+                    //   handle into a hard error on its first request.
+                    //
+                    // The failure this catches is silent, because the
+                    // providers where it happens are the ones that *ignore*
+                    // `dimensions` rather than rejecting it — `llama-server`'s
+                    // embeddings handler reads no such field at all, so a
+                    // request for 128 answers 200 with 1024-wide vectors while
+                    // `ndims()` keeps reporting 128. A vector store sized from
+                    // `ndims()` then builds an index that cannot hold its own
+                    // vectors, and the first thing to notice is the store.
+                    if self.dimensions_were_explicitly_set
+                        && self.ndims > 0
+                        && let Some(returned) = embeddings
+                            .iter()
+                            .map(|embedding| embedding.vec.len())
+                            .find(|width| *width != self.ndims)
+                    {
+                        return Err(EmbeddingError::MismatchedDimensions {
+                            provider: Ext::PROVIDER_NAME,
+                            requested: self.ndims,
+                            returned,
+                        });
+                    }
 
                     Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
@@ -479,6 +516,43 @@ mod tests {
         assert_eq!(body["user"], serde_json::json!("user-123"));
     }
 
+    /// A width of zero is rig's "unknown", not a declaration.
+    ///
+    /// `default_ndims` returning `None` lands here through
+    /// `unwrap_or_default()`, and `GenericEmbeddingModel::new(client, model, 0)`
+    /// is how a caller says they do not know the width. Treating either as a
+    /// claim would make the width check turn every such handle into a hard
+    /// error on its first request.
+    #[tokio::test]
+    async fn a_zero_width_is_unknown_rather_than_a_claim() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        let embeddings = client
+            .embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, 0)
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect("a zero width must not be checked against the response");
+
+        assert_eq!(
+            embeddings[0].vec.len(),
+            2,
+            "the response's own width is what came back"
+        );
+    }
+
+    /// `ada-002` accepts no `dimensions`, so a width asked for is a width the
+    /// caller will not get — on the wire *and* in the answer.
+    ///
+    /// Both halves are asserted. The request never carries the field, which is
+    /// the older claim; and because ada cannot resize, the response comes back
+    /// at its own width and the declared one is refused rather than reported.
+    /// Silently keeping `ndims() == 512` beside 1,536-wide vectors is what
+    /// sizes a vector-store index that cannot hold them.
     #[tokio::test]
     async fn openai_ada_dimensions_remain_absent_from_the_wire() {
         let http_client = RecordingHttpClient::new(RESPONSE_BODY);
@@ -488,16 +562,28 @@ mod tests {
             .build()
             .expect("build client");
 
-        client
+        let error = client
             .embedding_model_with_ndims(TEXT_EMBEDDING_ADA_002, 512)
             .embed_texts(["hello".to_string()])
             .await
-            .expect("embedding should succeed");
+            .expect_err("ada cannot return the width the caller declared");
 
         let requests = http_client.requests();
         let body: serde_json::Value =
             serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
         assert!(body.get("dimensions").is_none());
+
+        assert!(
+            matches!(
+                error,
+                EmbeddingError::MismatchedDimensions {
+                    provider: "openai",
+                    requested: 512,
+                    ..
+                }
+            ),
+            "{error}"
+        );
     }
 
     #[tokio::test]

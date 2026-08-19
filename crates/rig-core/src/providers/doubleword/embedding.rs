@@ -141,8 +141,29 @@ mod tests {
 
     /// The `dimensions` value a request carried, or `None` when it carried the
     /// field not at all — the distinction the whole hook turns on.
+    /// The stub, widened to `width` values.
+    ///
+    /// A handle built with an explicit width now requires the response to
+    /// carry that width, so a request-shape cell has to hand back vectors of
+    /// it. The three-element body below stays for the cells that build a
+    /// handle without one.
+    fn response_body(width: usize) -> String {
+        let embedding = (0..width)
+            .map(|index| format!("{}", index as f64 / 10_000.0))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            r#"{{"object":"list","model":"Qwen/Qwen3-Embedding-8B",
+                 "usage":{{"prompt_tokens":2,"total_tokens":2}},
+                 "data":[{{"object":"embedding","index":0,"embedding":[{embedding}]}}]}}"#
+        )
+    }
+
     async fn sent_dimensions(model: &str, ndims: Option<usize>) -> Option<serde_json::Value> {
-        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let http_client = match ndims {
+            Some(width) => RecordingHttpClient::new(response_body(width)),
+            None => RecordingHttpClient::new(RESPONSE_BODY),
+        };
         let embedding_model = match ndims {
             Some(ndims) => client(http_client.clone()).embedding_model_with_ndims(model, ndims),
             None => client(http_client.clone()).embedding_model(model),

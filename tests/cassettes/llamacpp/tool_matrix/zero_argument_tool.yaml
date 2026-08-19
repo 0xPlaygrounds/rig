@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"/no_think Ping the service.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":134,"predicted_ms":446.878,"predicted_n":19,"predicted_per_second":40.27944987222463,"predicted_per_token_ms":24.826555555555554,"prompt_ms":135.806,"prompt_n":9,"prompt_per_second":66.27100422661738,"prompt_per_token_ms":15.089555555555556},"usage":{"completion_tokens":19,"prompt_tokens":143,"prompt_tokens_details":{"cached_tokens":134},"total_tokens":162}}'
