@@ -295,6 +295,16 @@ pub(crate) fn create_request_body(
             )),
         })
         .transpose()?;
+    // `systemInstruction` and `toolConfig` are lifted for the same two reasons,
+    // and closing this for `cachedContent` alone left both of them open. They
+    // are the *other* two fields a cached content owns, so a request smuggling
+    // one past the conflict check is exactly the case the check exists for —
+    // and, cache or no cache, a flattened copy serialized beside the typed
+    // field emits the key twice, since neither carries `skip_serializing_if`.
+    let smuggled_system_instruction: Option<Content> =
+        take_typed_from_additional_params(&mut additional_params_payload, "systemInstruction")?;
+    let smuggled_tool_config: Option<ToolConfig> =
+        take_typed_from_additional_params(&mut additional_params_payload, "toolConfig")?;
 
     let AdditionalParameters {
         mut generation_config,
@@ -347,6 +357,25 @@ pub(crate) fn create_request_body(
             role: Some(Role::Model),
         })
     };
+    // A preamble and an `additional_params.systemInstruction` are two answers to
+    // one question. Before this they were both put on the wire and Gemini took
+    // the last, so the preamble the caller wrote was silently discarded; now the
+    // ambiguity is reported, matching how a doubly-set `cachedContent` is
+    // treated.
+    let system_instruction = match (system_instruction, smuggled_system_instruction) {
+        (Some(typed), Some(_)) => {
+            return Err(CompletionError::RequestError(
+                format!(
+                    "a Gemini request set the system instruction twice — once as a preamble or \
+                     system message ({} part(s)) and once through \
+                     `additional_params.systemInstruction`. Set it one way or the other",
+                    typed.parts.len()
+                )
+                .into(),
+            ));
+        }
+        (typed, smuggled) => typed.or(smuggled),
+    };
 
     let mut tools = if function_tools.is_empty() {
         Vec::new()
@@ -362,6 +391,18 @@ pub(crate) fn create_request_body(
         })
     } else {
         None
+    };
+    // Same rule as the system instruction above: `tool_choice` and
+    // `additional_params.toolConfig` are one field reached two ways.
+    let tool_config = match (tool_config, smuggled_tool_config) {
+        (Some(_), Some(_)) => {
+            return Err(CompletionError::RequestError(
+                "a Gemini request set the tool choice twice — once as `tool_choice` and once \
+                 through `additional_params.toolConfig`. Set it one way or the other"
+                    .into(),
+            ));
+        }
+        (typed, smuggled) => typed.or(smuggled),
     };
 
     let mut request = GenerateContentRequest {
@@ -404,6 +445,38 @@ pub fn split_system_messages_from_history(
     }
 
     (system, remaining)
+}
+
+/// Remove `key` from an `additional_params` object and deserialize it into the
+/// typed field it belongs in.
+///
+/// Every field of `GenerateContentRequest` that a caller can also reach through
+/// `additional_params` has to come through here, because `additional_params` is
+/// `#[serde(flatten)]` and serde emits flattened entries *after* the named
+/// ones. A copy left in the blob therefore wins on the wire while the typed
+/// field — the one every validation in this module inspects — stays empty. That
+/// is how a `cachedContent` used to overwrite the handle a caller asked for, and
+/// how a `systemInstruction` or `toolConfig` used to walk past the cached
+/// content conflict check.
+///
+/// Deserializing rather than moving the raw `Value` is what makes the lift
+/// worth doing: a malformed field is now reported here, naming the field, in
+/// place of a provider 400 that quotes a JSON path.
+fn take_typed_from_additional_params<T: serde::de::DeserializeOwned>(
+    payload: &mut Value,
+    key: &str,
+) -> Result<Option<T>, CompletionError> {
+    let Some(value) = payload
+        .as_object_mut()
+        .and_then(|object| object.remove(key))
+    else {
+        return Ok(None);
+    };
+    serde_json::from_value(value).map(Some).map_err(|error| {
+        CompletionError::RequestError(
+            format!("additional_params.{key} is not a valid Gemini {key}: {error}").into(),
+        )
+    })
 }
 
 fn extract_tools_from_additional_params(
@@ -4477,6 +4550,140 @@ mod cached_content_request_tests {
             Some("cachedContents/typed")
         );
         assert_eq!(body.get("topK").and_then(|v| v.as_u64()), Some(5));
+    }
+
+    /// The other two fields a cached content owns, smuggled the same way the
+    /// handle was.
+    ///
+    /// Lifting `cachedContent` alone left this open: the conflict check reads
+    /// the typed fields, and a `systemInstruction` or `toolConfig` sitting in
+    /// the flattened blob is not one. The handle was accepted, the request went
+    /// out, and Gemini answered the 400 the check exists to pre-empt — while
+    /// the docs promised it would not.
+    #[test]
+    fn a_system_instruction_or_tool_choice_from_additional_params_still_conflicts() {
+        for (label, smuggled) in [
+            (
+                "systemInstruction",
+                serde_json::json!({
+                    "systemInstruction": {"parts": [{"text": "you are terse"}], "role": "model"}
+                }),
+            ),
+            (
+                "toolConfig",
+                serde_json::json!({
+                    "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
+                }),
+            ),
+        ] {
+            let mut request = build_with(None, Some(smuggled)).expect("request should build");
+            let message = request
+                .with_cached_content("cachedContents/abc123")
+                .expect_err(&format!("a smuggled {label} conflicts with a cache handle"))
+                .to_string();
+            let expected = if label == "systemInstruction" {
+                "a system instruction"
+            } else {
+                "a tool choice"
+            };
+            assert!(
+                message.contains(expected),
+                "the {label} route must reach the same conflict as the typed field: {message}"
+            );
+        }
+    }
+
+    /// Whether or not a cache is involved, one field reached two ways is
+    /// ambiguous — and used to be resolved silently, in favour of whichever
+    /// serde emitted last.
+    #[test]
+    fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order() {
+        let message = build_with(
+            Some("you are terse"),
+            Some(serde_json::json!({
+                "systemInstruction": {"parts": [{"text": "you are verbose"}], "role": "model"}
+            })),
+        )
+        .expect_err("a preamble and a smuggled system instruction are two answers")
+        .to_string();
+        assert!(
+            message.contains("set the system instruction twice"),
+            "{message}"
+        );
+
+        let message = super::create_request_body(CompletionRequest {
+            preamble: None,
+            chat_history: vec![Message::User {
+                content: vec![UserContent::text("hi")],
+            }],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(crate::message::ToolChoice::Auto),
+            additional_params: Some(serde_json::json!({
+                "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
+            })),
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect_err("a tool_choice and a smuggled toolConfig are two answers")
+        .to_string();
+        assert!(message.contains("set the tool choice twice"), "{message}");
+    }
+
+    /// A lifted field lands in the typed slot rather than beside it.
+    ///
+    /// The duplicate key is the part that is a bug on its own terms: neither
+    /// `systemInstruction` nor `toolConfig` carries `skip_serializing_if`, so
+    /// before the lift both were emitted twice — once as the typed `null` and
+    /// once from the flattened blob — in every request that used them, cache or
+    /// no cache.
+    #[test]
+    fn a_lifted_field_is_serialized_once_in_the_typed_slot() {
+        let request = build_with(
+            None,
+            Some(serde_json::json!({
+                "systemInstruction": {"parts": [{"text": "you are terse"}], "role": "model"},
+                "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
+            })),
+        )
+        .expect("request should build");
+
+        let body = serde_json::to_string(&request).expect("serialize");
+        for key in ["systemInstruction", "toolConfig"] {
+            assert_eq!(
+                body.matches(&format!("\"{key}\"")).count(),
+                1,
+                "{key} should be emitted exactly once, got {body}"
+            );
+        }
+        let body: serde_json::Value = serde_json::from_str(&body).expect("valid json");
+        assert_eq!(
+            body["systemInstruction"]["parts"][0]["text"].as_str(),
+            Some("you are terse")
+        );
+        assert_eq!(
+            body["toolConfig"]["functionCallingConfig"]["mode"].as_str(),
+            Some("ANY")
+        );
+    }
+
+    /// A malformed lifted field is now reported by name here rather than as a
+    /// provider 400 quoting a JSON path.
+    #[test]
+    fn a_malformed_lifted_field_names_itself() {
+        let message = build_with(
+            None,
+            Some(serde_json::json!({"systemInstruction": "just a string"})),
+        )
+        .expect_err("a string is not a Content")
+        .to_string();
+        assert!(
+            message.contains("additional_params.systemInstruction"),
+            "{message}"
+        );
     }
 }
 
