@@ -16,6 +16,7 @@
 //! | [`a_schema_and_a_grammar_together_are_rejected`] | top-level `json_schema` + `grammar` | — | 500, `Cannot use both json_schema and grammar` |
 //! | [`response_format_and_a_grammar_silently_let_the_schema_win`] | `response_format` + `grammar` | schema only | 200, the grammar is dropped with no diagnostic |
 //! | [`a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server`] | `json_schema` on the smoke tier | GBNF | the 1.7B cannot violate a grammar-enforced schema |
+//! | [`a_schema_alongside_tools_is_deferred_so_the_tool_stays_reachable`] | `output_schema` + `tools` | — | rig withholds `response_format` on turn 1; sending both makes the tool unreachable |
 //!
 //! # `json_object` is a no-op, and that is the finding
 //!
@@ -388,4 +389,75 @@ async fn a_schema_the_smoke_tier_cannot_hold_is_still_held_by_the_server() {
     let answer = recorded_answer("structured_output_matrix/smoke_tier_cannot_escape_the_grammar");
     serde_json::from_str::<CityFact>(answer.trim())
         .expect("the recorded answer must be schema-shaped JSON");
+}
+
+/// A schema alongside tools: rig withholds `response_format` until a tool
+/// result exists, and llama.cpp is why that matters.
+///
+/// Sending both at once is not an error here — it is worse. The schema
+/// compiles to a grammar applied during sampling, and that grammar admits only
+/// JSON matching the schema, so the model *cannot emit a tool call at all*:
+/// measured on b10499-6d05498, a request carrying both answers
+/// `finish_reason: "stop"` with `{"city": "Paris"}` and no `tool_calls`, even
+/// though the prompt asks for a lookup.
+///
+/// The shared OpenAI-compatible request builder already defers
+/// `response_format` while tools are present and no tool result has come back
+/// (`should_apply_response_format`). This cell is that deferral measured
+/// against a server where the consequence of *not* deferring is total rather
+/// than cosmetic: without it, `output_schema` silently disables tool calling.
+#[tokio::test]
+async fn a_schema_alongside_tools_is_deferred_so_the_tool_stays_reachable() {
+    with_llamacpp_competent_cassette(
+        "structured_output_matrix/schema_alongside_tools",
+        |client| async move {
+            let model = client.completion_model(CASSETTE_MODEL);
+            let response = model
+                .completion(
+                    model
+                        .completion_request(format!("{NO_THINK}Look up Paris."))
+                        .tool(rig::completion::ToolDefinition {
+                            name: "lookup".to_string(),
+                            description: "Look up a city.".to_string(),
+                            parameters: json!({
+                                "type": "object",
+                                "properties": { "city": { "type": "string" } },
+                                "required": ["city"],
+                            }),
+                        })
+                        .output_schema(schemars::schema_for!(CityFact))
+                        .max_tokens(256)
+                        .build(),
+                )
+                .await
+                .expect("a schema alongside tools should succeed");
+
+            assert!(
+                response
+                    .choice
+                    .iter()
+                    .any(|item| matches!(item, rig::message::AssistantContent::ToolCall(_))),
+                "the tool must still be reachable on turn 1 — if `response_format` \
+                 had gone out with it, the grammar would admit only schema-shaped \
+                 JSON and no tool call could be sampled: {:?}",
+                response.choice
+            );
+        },
+    )
+    .await;
+
+    // The premise: rig sent the tools and withheld the schema.
+    let request = recorded_json_request(
+        "llamacpp",
+        "structured_output_matrix/schema_alongside_tools",
+    );
+    assert_eq!(
+        request["tools"].as_array().map(Vec::len),
+        Some(1),
+        "the tool reached the wire: {request}"
+    );
+    assert!(
+        request.get("response_format").is_none(),
+        "and the schema did not, which is the deferral under test: {request}"
+    );
 }

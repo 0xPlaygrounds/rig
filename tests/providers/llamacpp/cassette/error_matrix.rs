@@ -21,6 +21,7 @@
 //! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
 //! | [`embeddings_with_pooling_none_are_a_400`] | `--pooling none` | 400 | `invalid_request_error` | not the 500 the README implies |
 //! | [`embeddings_on_a_causal_lm_return_pooled_numbers`] | causal LM + `--pooling mean` | 200 | — | the answer to "did the old embeddings cells mean anything" |
+//! | [`an_embeddings_input_past_the_batch_size_is_a_500`] | `--embeddings` | 500 | `server_error` | the *batch* size, not the context size — a different limit with a different message |
 //! | [`tools_without_jinja_are_a_500`] | `--no-jinja` | 500 | `server_error` | a *request* error reported as a server error |
 //! | [`a_malformed_body_keeps_its_parse_error`] | default | 400 | `invalid_request_error` | mistyped field, injected through `additional_params` |
 //! | [`an_oversized_output_cap_is_clamped_not_rejected`] | default | 200 | — | truncation, not an error |
@@ -750,5 +751,60 @@ async fn rerank_with_an_empty_document_list_is_a_400() {
         request["documents"],
         json!([]),
         "the empty list really was sent rather than short-circuited"
+    );
+}
+
+/// An embeddings input larger than the server's physical batch is a **500**.
+///
+/// A different limit from the context window, with a different message and a
+/// different remedy: `-c` governs the chat context, `-b`/`--ubatch-size` the
+/// embedding batch, and llama.cpp names the second one when it is the one that
+/// was hit. Recorded because a caller who reads "too large to process" and
+/// reaches for `-c` will not fix it — and because it is the fourth caller
+/// error in this corpus that arrives as a 5xx.
+#[tokio::test]
+async fn an_embeddings_input_past_the_batch_size_is_a_500() {
+    with_llamacpp_embeddings_cassette(
+        "error_matrix/embeddings_input_past_the_batch",
+        |client| async move {
+            // Well past the 512-token physical batch the recording server runs
+            // with, and deterministic.
+            let oversized = "word ".repeat(4_000);
+            let error = client
+                .embedding_model(CASSETTE_EMBEDDING_MODEL)
+                .embed_texts([oversized])
+                .await
+                .expect_err("an input past the physical batch must fail");
+
+            assert_eq!(
+                error
+                    .provider_response_status()
+                    .expect("the status must reach the caller")
+                    .as_u16(),
+                500,
+                "{error}"
+            );
+            let body = error
+                .provider_response_body()
+                .expect("the body must be preserved");
+            assert!(
+                body.contains("batch size"),
+                "the limit that was actually hit must survive — a caller who reads \
+                 this and reaches for `-c` is fixing the wrong thing: {body}"
+            );
+        },
+    )
+    .await;
+
+    let json = recorded_error(
+        "error_matrix/embeddings_input_past_the_batch",
+        500,
+        "server_error",
+    );
+    assert!(
+        json["error"]["message"].as_str().is_some_and(
+            |message| message.contains("batch size") && !message.contains("context size")
+        ),
+        "the message names the batch, and does not confuse it with the context: {json}"
     );
 }
