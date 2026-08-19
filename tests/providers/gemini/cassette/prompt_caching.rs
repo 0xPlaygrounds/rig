@@ -61,7 +61,7 @@ use crate::cache_conformance::{
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
-use super::super::support::with_gemini_prompt_caching_cassette;
+use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
 const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
@@ -236,6 +236,11 @@ async fn create_probe_cache(
 }
 
 /// The whole resource lifecycle, in one recording.
+///
+/// The delete is both the last step of the lifecycle and the cleanup that has
+/// to happen even when a step above it fails, so the guard owns it rather than
+/// the body — it still lands last on the success path, which is the order the
+/// fixture records.
 #[tokio::test]
 async fn explicit_cache_lifecycle() {
     with_gemini_prompt_caching_cassette(
@@ -244,49 +249,48 @@ async fn explicit_cache_lifecycle() {
             let caches = client.cached_contents();
             let created = create_probe_cache(&client, "rig-lifecycle").await;
 
-            assert!(
-                created.name.starts_with("cachedContents/"),
-                "a handle should be `cachedContents/<id>`, got {:?}",
-                created.name
-            );
-            assert_eq!(
-                created.model,
-                format!("models/{CACHE_MODEL}"),
-                "the cache is bound to the model it was created for"
-            );
-            let stored = created
-                .usage_metadata
-                .as_ref()
-                .map(|usage| usage.total_token_count)
-                .unwrap_or_default();
-            assert!(
-                stored >= GEMINI_CACHE_SUPPORT.min_cacheable_tokens as u64,
-                "a cache holding {stored} tokens is below the {}-token minimum and would cache \
-                 nothing",
-                GEMINI_CACHE_SUPPORT.min_cacheable_tokens
-            );
+            let handles = [created.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                assert!(
+                    created.name.starts_with("cachedContents/"),
+                    "a handle should be `cachedContents/<id>`, got {:?}",
+                    created.name
+                );
+                assert_eq!(
+                    created.model,
+                    format!("models/{CACHE_MODEL}"),
+                    "the cache is bound to the model it was created for"
+                );
+                let stored = created
+                    .usage_metadata
+                    .as_ref()
+                    .map(|usage| usage.total_token_count)
+                    .unwrap_or_default();
+                assert!(
+                    stored >= GEMINI_CACHE_SUPPORT.min_cacheable_tokens as u64,
+                    "a cache holding {stored} tokens is below the {}-token minimum and would \
+                     cache nothing",
+                    GEMINI_CACHE_SUPPORT.min_cacheable_tokens
+                );
 
-            let fetched = caches.get(&created.name).await.expect("get should succeed");
-            assert_eq!(fetched.name, created.name);
+                let fetched = caches.get(&created.name).await.expect("get should succeed");
+                assert_eq!(fetched.name, created.name);
 
-            let listed = caches.list().await.expect("list should succeed");
-            assert!(
-                listed.iter().any(|entry| entry.name == created.name),
-                "the cache just created should appear in the listing"
-            );
+                let listed = caches.list().await.expect("list should succeed");
+                assert!(
+                    listed.iter().any(|entry| entry.name == created.name),
+                    "the cache just created should appear in the listing"
+                );
 
-            // Expiry is the only mutable part of the resource.
-            let extended = caches
-                .update_expiry(&created.name, CacheExpiry::ttl(Duration::from_secs(900)))
-                .await
-                .expect("update should succeed");
-            assert_eq!(extended.name, created.name);
-            assert!(extended.expire_time.is_some());
-
-            caches
-                .delete(&created.name)
-                .await
-                .expect("delete should succeed — storage bills until it lands");
+                // Expiry is the only mutable part of the resource.
+                let extended = caches
+                    .update_expiry(&created.name, CacheExpiry::ttl(Duration::from_secs(900)))
+                    .await
+                    .expect("update should succeed");
+                assert_eq!(extended.name, created.name);
+                assert!(extended.expire_time.is_some());
+            })
+            .await;
         },
     )
     .await;
@@ -299,33 +303,32 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
         "prompt_caching/explicit_cache_hit_ratio",
         |client| async move {
             let cache = create_probe_cache(&client, "rig-hit-ratio").await;
-            let model = client
-                .completion_model(CACHE_MODEL)
-                .with_cached_content(cache.name.clone());
 
-            // `bare()`: the cache owns the system instruction and tools, and a
-            // request that also sends its own is rejected — by rig, before it
-            // reaches Gemini.
-            let observation = run_cache_probe(&model, &probe().bare()).await;
-            assert_cache_conformance(
-                &observation,
-                &GEMINI_EXPLICIT_SUPPORT,
-                "explicit cache probe",
-            );
+            let handles = [cache.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                let model = client
+                    .completion_model(CACHE_MODEL)
+                    .with_cached_content(cache.name.clone());
 
-            // Unlike implicit caching, turn 1 already hits — there is no warm-up.
-            assert!(
-                observation.turns[0].cached_input_tokens > 0,
-                "explicit caching should hit on the very first request; that is the property \
-                 implicit caching does not have.\n{}",
-                observation.report(&GEMINI_EXPLICIT_SUPPORT)
-            );
+                // `bare()`: the cache owns the system instruction and tools, and a
+                // request that also sends its own is rejected — by rig, before it
+                // reaches Gemini.
+                let observation = run_cache_probe(&model, &probe().bare()).await;
+                assert_cache_conformance(
+                    &observation,
+                    &GEMINI_EXPLICIT_SUPPORT,
+                    "explicit cache probe",
+                );
 
-            client
-                .cached_contents()
-                .delete(&cache.name)
-                .await
-                .expect("delete should succeed");
+                // Unlike implicit caching, turn 1 already hits — there is no warm-up.
+                assert!(
+                    observation.turns[0].cached_input_tokens > 0,
+                    "explicit caching should hit on the very first request; that is the property \
+                     implicit caching does not have.\n{}",
+                    observation.report(&GEMINI_EXPLICIT_SUPPORT)
+                );
+            })
+            .await;
         },
     )
     .await;
@@ -349,57 +352,56 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
         "prompt_caching/explicit_cache_across_conversations",
         |client| async move {
             let cache = create_probe_cache(&client, "rig-cross-conversation").await;
-            let model = client
-                .completion_model(CACHE_MODEL)
-                .with_cached_content(cache.name.clone());
 
-            let mut reads = Vec::new();
-            for prompt in [
-                "Reply with exactly: alpha",
-                "Say only the word beta, nothing else",
-            ] {
-                let request = rig::completion::CompletionRequest {
-                    preamble: None,
-                    chat_history: vec![rig::message::Message::User {
-                        content: vec![rig::message::UserContent::text(prompt)],
-                    }],
-                    documents: vec![],
-                    tools: vec![],
-                    temperature: Some(0.0),
-                    max_tokens: Some(16),
-                    tool_choice: None,
-                    additional_params: Some(serde_json::json!({
-                        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                    })),
-                    model: None,
-                    output_schema: None,
-                    record_telemetry_content: false,
-                };
-                let response = rig::completion::CompletionModel::completion(&model, request)
-                    .await
-                    .expect("a cached-content request should succeed");
-                reads.push((
-                    response.usage.input_tokens,
-                    response.usage.cached_input_tokens,
-                ));
-            }
+            let handles = [cache.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                let model = client
+                    .completion_model(CACHE_MODEL)
+                    .with_cached_content(cache.name.clone());
 
-            for (index, (prompt_tokens, cached)) in reads.iter().enumerate() {
-                let ratio = *cached as f64 / *prompt_tokens as f64;
-                assert!(
-                    ratio >= GEMINI_EXPLICIT_SUPPORT.hit_ratio_floor,
-                    "conversation {} read {cached} of {prompt_tokens} prompt tokens ({:.1}%); a \
-                     cache handle should not care that the conversations are unrelated",
-                    index + 1,
-                    ratio * 100.0
-                );
-            }
+                let mut reads = Vec::new();
+                for prompt in [
+                    "Reply with exactly: alpha",
+                    "Say only the word beta, nothing else",
+                ] {
+                    let request = rig::completion::CompletionRequest {
+                        preamble: None,
+                        chat_history: vec![rig::message::Message::User {
+                            content: vec![rig::message::UserContent::text(prompt)],
+                        }],
+                        documents: vec![],
+                        tools: vec![],
+                        temperature: Some(0.0),
+                        max_tokens: Some(16),
+                        tool_choice: None,
+                        additional_params: Some(serde_json::json!({
+                            "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+                        })),
+                        model: None,
+                        output_schema: None,
+                        record_telemetry_content: false,
+                    };
+                    let response = rig::completion::CompletionModel::completion(&model, request)
+                        .await
+                        .expect("a cached-content request should succeed");
+                    reads.push((
+                        response.usage.input_tokens,
+                        response.usage.cached_input_tokens,
+                    ));
+                }
 
-            client
-                .cached_contents()
-                .delete(&cache.name)
-                .await
-                .expect("delete should succeed");
+                for (index, (prompt_tokens, cached)) in reads.iter().enumerate() {
+                    let ratio = *cached as f64 / *prompt_tokens as f64;
+                    assert!(
+                        ratio >= GEMINI_EXPLICIT_SUPPORT.hit_ratio_floor,
+                        "conversation {} read {cached} of {prompt_tokens} prompt tokens ({:.1}%); \
+                         a cache handle should not care that the conversations are unrelated",
+                        index + 1,
+                        ratio * 100.0
+                    );
+                }
+            })
+            .await;
         },
     )
     .await;

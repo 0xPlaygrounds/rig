@@ -25,7 +25,11 @@
 //! That is 164 KB instead of 1.3 MB, for strictly more coverage.
 //!
 //! Every recorded cell deletes what it created, on the failure path too, because
-//! storage bills until it does.
+//! storage bills until it does. Cells whose checks panic run them inside
+//! `always_deleting_cached_contents` (`tests/providers/gemini/support.rs`),
+//! which issues the delete even when an assertion panics; the rest get the same
+//! guarantee by hand, returning a `Result` from their checks and deleting
+//! before they panic on it.
 //!
 //! Behaviours pinned here were measured against the live API first:
 //!
@@ -50,7 +54,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use std::time::Duration;
 
-use super::super::support::with_gemini_prompt_caching_cassette;
+use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
 
 /// Deterministic, committed timestamp for the absolute-expiry arm. A computed
 /// "now + 10 minutes" would churn the fixture on every re-record.
@@ -538,15 +542,25 @@ async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/edge_below_minimum",
         |client| async move {
-            let error = client
+            let refusal = client
                 .cached_contents()
                 .create(
                     NewCachedContent::new(CACHE_MODEL)
                         .system_instruction(crate::cache_conformance::cache_padding(4))
                         .expiry(CacheExpiry::ttl(Duration::from_secs(120))),
                 )
-                .await
-                .expect_err("a cache under the minimum should be refused");
+                .await;
+
+            // The day Gemini lowers the floor this cell fails — but it fails
+            // having deleted the cache it just paid to create, rather than
+            // leaking one out of an `expect_err`.
+            let error = match refusal {
+                Err(error) => error,
+                Ok(created) => {
+                    let _ = client.cached_contents().delete(&created.name).await;
+                    panic!("a cache under the minimum should be refused");
+                }
+            };
 
             let message = error.to_string();
             assert!(
@@ -610,26 +624,24 @@ async fn omitting_expiry_defaults_to_one_hour() {
                 .await
                 .expect("a cache with no expiry should be created");
 
-            let (create_time, expire_time) = (
-                created.create_time.as_deref().expect("create time"),
-                created.expire_time.as_deref().expect("expire time"),
-            );
-            // Compare the hour fields rather than parsing RFC 3339: the default
-            // is one hour, and both stamps are same-day UTC.
-            let hour = |stamp: &str| stamp[11..13].parse::<i32>().expect("hour");
-            let gap = (hour(expire_time) - hour(create_time)).rem_euclid(24);
-            let failure = (gap != 1).then(|| {
-                format!(
-                    "the documented default is one hour: created {create_time}, expires \
-                     {expire_time}"
-                )
-            });
-
-            // Delete before asserting, so a failure does not leak a billed cache.
-            let _ = client.cached_contents().delete(&created.name).await;
-            if let Some(failure) = failure {
-                panic!("{failure}");
-            }
+            let handles = [created.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                let (create_time, expire_time) = (
+                    created.create_time.as_deref().expect("create time"),
+                    created.expire_time.as_deref().expect("expire time"),
+                );
+                // Compare the hour fields rather than parsing RFC 3339: the default
+                // is one hour, and both stamps are same-day UTC.
+                let hour = |stamp: &str| stamp[11..13].parse::<i32>().expect("hour");
+                let gap = (hour(expire_time) - hour(create_time)).rem_euclid(24);
+                if gap != 1 {
+                    panic!(
+                        "the documented default is one hour: created {create_time}, expires \
+                         {expire_time}"
+                    );
+                }
+            })
+            .await;
         },
     )
     .await;
@@ -647,41 +659,51 @@ async fn list_follows_the_cursor_across_pages() {
         "cached_content_matrix/edge_list_pagination",
         |client| async move {
             let caches = client.cached_contents();
+            // The creates are collected rather than unwrapped: a second cache
+            // that fails to create still has to delete the first, or the very
+            // failure leaks three times the storage a passing run does.
             let mut created = Vec::new();
+            let mut create_failure = None;
             for index in 0..3 {
-                created.push(
-                    caches
-                        .create(
-                            NewCachedContent::new(CACHE_MODEL)
-                                .system_instruction(pad())
-                                .display_name(format!("rig-page-{index}"))
-                                .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
-                        )
-                        .await
-                        .expect("creating a page fixture should succeed")
-                        .name,
-                );
+                match caches
+                    .create(
+                        NewCachedContent::new(CACHE_MODEL)
+                            .system_instruction(pad())
+                            .display_name(format!("rig-page-{index}"))
+                            .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
+                    )
+                    .await
+                {
+                    Ok(cache) => created.push(cache.name),
+                    Err(error) => {
+                        create_failure = Some(error);
+                        break;
+                    }
+                }
             }
 
-            // Page size 1 with three caches means three pages and a cursor
-            // followed twice — the loop runs for real instead of returning
-            // everything in one response as pageSize=1000 does.
-            let listed = caches
-                .list_with_page_size(1)
-                .await
-                .expect("paginated list should succeed");
-            for name in &created {
-                assert!(
-                    listed.iter().any(|entry| entry.name == *name),
-                    "every created cache should appear in the listing: {name} missing from {} \
-                     entries",
-                    listed.len()
-                );
-            }
+            always_deleting_cached_contents(&client, &created, async {
+                if let Some(error) = create_failure {
+                    panic!("creating a page fixture should succeed: {error}");
+                }
 
-            for name in &created {
-                let _ = caches.delete(name).await;
-            }
+                // Page size 1 with three caches means three pages and a cursor
+                // followed twice — the loop runs for real instead of returning
+                // everything in one response as pageSize=1000 does.
+                let listed = caches
+                    .list_with_page_size(1)
+                    .await
+                    .expect("paginated list should succeed");
+                for name in &created {
+                    assert!(
+                        listed.iter().any(|entry| entry.name == *name),
+                        "every created cache should appear in the listing: {name} missing from \
+                         {} entries",
+                        listed.len()
+                    );
+                }
+            })
+            .await;
         },
     )
     .await;
@@ -742,15 +764,15 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
                 .await
                 .expect("create should succeed");
 
-            let updated = caches
-                .update_expiry(&created.name, CacheExpiry::expire_time(ABSOLUTE_EXPIRY))
-                .await
-                .expect("updating to an absolute expiry should succeed");
-            let observed = updated.expire_time.clone();
-
-            // Delete before asserting, so a failure does not leak a billed cache.
-            let _ = caches.delete(&created.name).await;
-            assert_eq!(observed.as_deref(), Some(ABSOLUTE_EXPIRY));
+            let handles = [created.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                let updated = caches
+                    .update_expiry(&created.name, CacheExpiry::expire_time(ABSOLUTE_EXPIRY))
+                    .await
+                    .expect("updating to an absolute expiry should succeed");
+                assert_eq!(updated.expire_time.as_deref(), Some(ABSOLUTE_EXPIRY));
+            })
+            .await;
         },
     )
     .await;
@@ -781,57 +803,59 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                 .await
                 .expect("create should succeed");
 
-            let model = client
-                .completion_model(CACHE_MODEL)
-                .with_cached_content(cache.name.clone());
+            let handles = [cache.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                let model = client
+                    .completion_model(CACHE_MODEL)
+                    .with_cached_content(cache.name.clone());
 
-            let request = rig::completion::CompletionRequest {
-                preamble: None,
-                chat_history: vec![rig::message::Message::User {
-                    content: vec![rig::message::UserContent::text(
-                        "Reply with exactly: streamed",
-                    )],
-                }],
-                documents: vec![],
-                tools: vec![],
-                temperature: Some(0.0),
-                max_tokens: Some(16),
-                tool_choice: None,
-                additional_params: Some(serde_json::json!({
-                    "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                })),
-                model: None,
-                output_schema: None,
-                record_telemetry_content: false,
-            };
+                let request = rig::completion::CompletionRequest {
+                    preamble: None,
+                    chat_history: vec![rig::message::Message::User {
+                        content: vec![rig::message::UserContent::text(
+                            "Reply with exactly: streamed",
+                        )],
+                    }],
+                    documents: vec![],
+                    tools: vec![],
+                    temperature: Some(0.0),
+                    max_tokens: Some(16),
+                    tool_choice: None,
+                    additional_params: Some(serde_json::json!({
+                        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+                    })),
+                    model: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                };
 
-            let mut stream = rig::completion::CompletionModel::stream(&model, request)
-                .await
-                .expect("streamed cached-content request should start");
-            let mut usage = None;
-            while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(response) =
-                    item.expect("stream item should succeed")
-                {
-                    usage = Some(response.usage);
+                let mut stream = rig::completion::CompletionModel::stream(&model, request)
+                    .await
+                    .expect("streamed cached-content request should start");
+                let mut usage = None;
+                while let Some(item) = stream.next().await {
+                    if let StreamedAssistantContent::Final(response) =
+                        item.expect("stream item should succeed")
+                    {
+                        usage = Some(response.usage);
+                    }
                 }
-            }
 
-            let usage = usage.expect(
-                "the stream should carry final usage; losing it on the streaming path is the \
-                 exact bug this cell exists to catch",
-            );
-            let ratio = usage.cached_input_tokens as f64 / usage.input_tokens as f64;
-            assert!(
-                ratio >= 0.95,
-                "a streamed request against a cache handle should read essentially the whole \
-                 prefix from cache, got {} of {} ({:.1}%)",
-                usage.cached_input_tokens,
-                usage.input_tokens,
-                ratio * 100.0
-            );
-
-            let _ = client.cached_contents().delete(&cache.name).await;
+                let usage = usage.expect(
+                    "the stream should carry final usage; losing it on the streaming path is the \
+                     exact bug this cell exists to catch",
+                );
+                let ratio = usage.cached_input_tokens as f64 / usage.input_tokens as f64;
+                assert!(
+                    ratio >= 0.95,
+                    "a streamed request against a cache handle should read essentially the whole \
+                     prefix from cache, got {} of {} ({:.1}%)",
+                    usage.cached_input_tokens,
+                    usage.input_tokens,
+                    ratio * 100.0
+                );
+            })
+            .await;
         },
     )
     .await;

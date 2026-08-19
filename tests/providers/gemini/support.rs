@@ -2,7 +2,7 @@ use futures::FutureExt;
 use rig::providers::gemini;
 use serde::Deserialize;
 use std::future::Future;
-use std::panic::AssertUnwindSafe;
+use std::panic::{AssertUnwindSafe, resume_unwind};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
@@ -346,4 +346,248 @@ pub(super) async fn with_gemini_prompt_caching_cassette<F, Fut>(
     Fut: Future<Output = ()>,
 {
     with_gemini_cassette(spec, test_body).await;
+}
+
+/// Run `body`, then delete `handles` — including when `body` panics.
+///
+/// Gemini bills `cachedContents` storage per token-hour from the moment
+/// `create` returns until the delete lands, so an assertion that takes a cell
+/// down between the two leaks a billed cache until its TTL lapses. That only
+/// costs money under `RIG_PROVIDER_TEST_MODE=record` — which is exactly when a
+/// newly written assertion is most likely to be the one that fails.
+///
+/// The failure is *caught* rather than threaded back as a `Result` because the
+/// checks these cells run are not all this suite's to reshape: `run_cache_probe`
+/// and `assert_cache_conformance` (`tests/common/cache_conformance.rs`) are
+/// shared by every provider's cache suite and panic from the inside, as does
+/// every `.expect()` on an intermediate `get`/`list`/`update_expiry`.
+///
+/// Delete failures are treated differently on the two paths, and the asymmetry
+/// is the point:
+///
+/// * the body panicked — the body's panic wins, because a cleanup that also
+///   failed must never overwrite the assertion actually under test;
+/// * the body passed — a delete that failed *is* the leak this exists to
+///   prevent, so it fails the cell.
+///
+/// Every handle is attempted regardless of the ones before it failing, so a
+/// cell holding three caches cannot leak two because the first delete 500'd.
+pub(super) async fn always_deleting_cached_contents<Fut>(
+    client: &gemini::Client,
+    handles: &[String],
+    body: Fut,
+) where
+    Fut: Future<Output = ()>,
+{
+    let outcome = AssertUnwindSafe(body).catch_unwind().await;
+
+    let caches = client.cached_contents();
+    let mut failures = Vec::new();
+    for handle in handles {
+        if let Err(error) = caches.delete(handle).await {
+            failures.push(format!("{handle}: {error}"));
+        }
+    }
+
+    if let Err(payload) = outcome {
+        if !failures.is_empty() {
+            // The body's panic wins the cell, but a cleanup that also failed
+            // leaves a billed cache behind, and this is the only place its
+            // handle is ever named — libtest prints captured stderr under the
+            // failing test, which is exactly when someone needs it.
+            eprintln!(
+                "WARNING: cached contents left billing after a failed cell — delete by hand: {}",
+                failures.join("; ")
+            );
+        }
+        resume_unwind(payload);
+    }
+    assert!(
+        failures.is_empty(),
+        "every cached content a cell creates must be deleted — storage bills until it lands: {}",
+        failures.join("; ")
+    );
+}
+
+#[cfg(test)]
+mod always_deleting_cached_contents_tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use std::sync::{Arc, Mutex};
+
+    /// A `cachedContents` endpoint that logs every request it sees and answers
+    /// `status` with `{}` — enough for `delete`, which discards its body.
+    ///
+    /// Local rather than a cassette because the behaviour under test is the
+    /// *failure* path, and a fixture only ever records a passing run.
+    async fn stub_cached_contents(
+        seen: Arc<Mutex<Vec<String>>>,
+        status: StatusCode,
+    ) -> (gemini::Client, tokio::task::JoinHandle<()>) {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    seen.lock()
+                        .expect("stub log should not be poisoned")
+                        .push(format!("{method} {}", uri.path()));
+                    (status, "{}")
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("stub should bind");
+        let addr = listener.local_addr().expect("stub should have an address");
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("stub should serve");
+        });
+        let client = gemini::Client::builder()
+            .api_key("stub-key")
+            .base_url(format!("http://{addr}"))
+            .build()
+            .expect("client should build");
+
+        (client, server)
+    }
+
+    /// The guard must issue the delete when the body panics, and must let the
+    /// *body's* panic be what the runner reports.
+    ///
+    /// This is the whole reason the guard exists and the one path no fixture
+    /// covers: a regression that dropped the cleanup would keep every recorded
+    /// cell green while leaking a billed cache on every failed recording run,
+    /// and one that reported the cleanup's failure instead would hide the
+    /// assertion the cell was written to make.
+    #[tokio::test]
+    async fn a_panicking_body_still_deletes_and_still_reports_its_own_failure() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (client, _stub) = stub_cached_contents(Arc::clone(&seen), StatusCode::OK).await;
+
+        let panicked = AssertUnwindSafe(always_deleting_cached_contents(
+            &client,
+            &["cachedContents/leaky".to_owned()],
+            async { panic!("the assertion under test failed") },
+        ))
+        .catch_unwind()
+        .await
+        .expect_err("the body's panic should propagate");
+
+        assert_eq!(
+            panicked.downcast_ref::<&str>().copied(),
+            Some("the assertion under test failed"),
+            "the guard must surface the body's failure, not the cleanup's"
+        );
+        assert_eq!(
+            seen.lock()
+                .expect("stub log should not be poisoned")
+                .as_slice(),
+            ["DELETE /v1beta/cachedContents/leaky"],
+            "the cache must be deleted even though the body panicked"
+        );
+    }
+
+    /// A cleanup delete that fails after a *passing* body is itself the leak,
+    /// so it has to fail the cell rather than pass quietly — and the failure has
+    /// to name the handle, because that is the string someone needs to delete
+    /// the cache by hand.
+    #[tokio::test]
+    async fn a_cleanup_delete_that_fails_after_a_passing_body_fails_the_cell() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (client, _stub) =
+            stub_cached_contents(Arc::clone(&seen), StatusCode::INTERNAL_SERVER_ERROR).await;
+
+        let panicked = AssertUnwindSafe(always_deleting_cached_contents(
+            &client,
+            &["cachedContents/undeletable".to_owned()],
+            async {},
+        ))
+        .catch_unwind()
+        .await
+        .expect_err("a cleanup delete that fails should fail the cell");
+
+        let message = panicked
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .unwrap_or_default();
+        assert!(
+            message.contains("cachedContents/undeletable"),
+            "the failure should name the handle that is still being billed: {message}"
+        );
+    }
+
+    /// One handle failing to delete must not strand the handles after it.
+    ///
+    /// The pagination cell creates three caches; an early 500 that aborted the
+    /// loop would leak two of them, which is the same bug as no cleanup at all
+    /// for two thirds of the cost.
+    #[tokio::test]
+    async fn every_handle_is_deleted_even_when_an_earlier_delete_fails() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (client, _stub) =
+            stub_cached_contents(Arc::clone(&seen), StatusCode::INTERNAL_SERVER_ERROR).await;
+
+        let _ = AssertUnwindSafe(always_deleting_cached_contents(
+            &client,
+            &[
+                "cachedContents/one".to_owned(),
+                "cachedContents/two".to_owned(),
+                "cachedContents/three".to_owned(),
+            ],
+            async {},
+        ))
+        .catch_unwind()
+        .await;
+
+        assert_eq!(
+            seen.lock()
+                .expect("stub log should not be poisoned")
+                .as_slice(),
+            [
+                "DELETE /v1beta/cachedContents/one",
+                "DELETE /v1beta/cachedContents/two",
+                "DELETE /v1beta/cachedContents/three",
+            ],
+            "a failed delete must not abandon the handles behind it"
+        );
+    }
+
+    /// The cell that decides the asymmetry: a body that panicked *and* a
+    /// cleanup that failed.
+    ///
+    /// Neither test above can see the ordering — the panicking-body case stubs
+    /// `OK`, so there is no cleanup failure to lose to, and the two 500 cases
+    /// pass a body that never panics. Swap the `resume_unwind` and the
+    /// `failures` assert and all three stay green while the assertion the cell
+    /// was written to make is replaced by the delete's 500. That is exactly
+    /// what a failed recording run looks like: the new assertion fails, and the
+    /// delete that follows it answers 403 because the cache is already gone.
+    #[tokio::test]
+    async fn a_failing_cleanup_never_overwrites_a_panicking_body() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (client, _stub) =
+            stub_cached_contents(Arc::clone(&seen), StatusCode::INTERNAL_SERVER_ERROR).await;
+
+        let panicked = AssertUnwindSafe(always_deleting_cached_contents(
+            &client,
+            &["cachedContents/leaky".to_owned()],
+            async { panic!("the assertion under test failed") },
+        ))
+        .catch_unwind()
+        .await
+        .expect_err("the body's panic should propagate");
+
+        assert_eq!(
+            panicked.downcast_ref::<&str>().copied(),
+            Some("the assertion under test failed"),
+            "a cleanup that also failed must not overwrite the assertion under test"
+        );
+        assert_eq!(
+            seen.lock()
+                .expect("stub log should not be poisoned")
+                .as_slice(),
+            ["DELETE /v1beta/cachedContents/leaky"],
+            "the delete must still be attempted, even though its failure is discarded"
+        );
+    }
 }
