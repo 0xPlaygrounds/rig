@@ -114,7 +114,11 @@ impl<T> CompletionModel<T> {
     ///   can only dispatch what it advertised, so an agent reading from a cache
     ///   must have no tools — and a function tool set moved into the cache is
     ///   declarations the agent could never execute (see
-    ///   [`crate::providers::gemini::cached_content::NewCachedContent::tools`]);
+    ///   [`crate::providers::gemini::cached_content::NewCachedContent::tools`]).
+    ///   An empty `RequestPatch::active_tools` allow-list does suppress the
+    ///   `tools` field for a turn, so a tool-holding agent *can* be made to pass
+    ///   this check — but it gains a request, not a dispatch: neither its own
+    ///   suppressed tools nor the cache's are callable on that turn;
     /// * a configured `tool_choice` becomes `toolConfig` even on a tool-less
     ///   agent, so it has to go too — though dropping it costs a tool-less agent
     ///   nothing;
@@ -4394,6 +4398,63 @@ mod cached_content_request_tests {
             "moving a system instruction into the cache IS the remedy; the tools caveat must not \
              leak onto it: {preamble_message}"
         );
+    }
+
+    /// The branch the `declares_functions` gate exists for, and the one neither
+    /// cell above reaches: `tools` is present but carries no function
+    /// declarations.
+    ///
+    /// A provider-hosted tool runs on Gemini's side and needs no loop, so
+    /// "you must run the tool loop yourself" is nonsense advice for it — the
+    /// code comment says as much. Without this cell the gate is free to
+    /// collapse to `self.tools.is_some()`: that mutation leaves every other
+    /// test in the workspace green, and hands a `codeExecution` caller a
+    /// paragraph about dispatching declarations they never wrote.
+    #[test]
+    fn a_provider_hosted_tool_conflicts_without_the_function_declaration_caveat() {
+        for (label, tools) in [
+            ("codeExecution", serde_json::json!([{"codeExecution": {}}])),
+            ("googleSearch", serde_json::json!([{"googleSearch": {}}])),
+            (
+                "an empty functionDeclarations list",
+                serde_json::json!([{"functionDeclarations": []}]),
+            ),
+        ] {
+            let mut request = build_with(None, Some(serde_json::json!({ "tools": tools })))
+                .expect("request should build");
+            let message = request
+                .with_cached_content("cachedContents/abc123")
+                .expect_err("tools conflict with a cache handle however they are declared")
+                .to_string();
+
+            assert!(
+                message.contains("also set tools"),
+                "{label}: the conflict must still name the tool set: {message}"
+            );
+            assert!(
+                !message.contains("declarations only"),
+                "{label}: a cache carrying a provider-hosted tool is usable from an agent, so \
+                 the function-declaration caveat must not appear: {message}"
+            );
+        }
+    }
+
+    /// The other side of the gate, through the same route: function
+    /// declarations arriving in `additional_params.tools` do earn the caveat.
+    #[test]
+    fn a_smuggled_function_declaration_still_earns_the_caveat() {
+        let mut request = build_with(
+            None,
+            Some(serde_json::json!({
+                "tools": [{"functionDeclarations": [{"name": "probe", "description": "probe"}]}]
+            })),
+        )
+        .expect("request should build");
+        let message = request
+            .with_cached_content("cachedContents/abc123")
+            .expect_err("tools conflict with a cache handle")
+            .to_string();
+        assert!(message.contains("declarations only"), "{message}");
     }
 
     #[test]

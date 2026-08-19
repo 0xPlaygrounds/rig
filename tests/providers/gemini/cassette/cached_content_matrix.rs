@@ -301,18 +301,24 @@ fn every_create_combination_serializes_as_expected() {
     );
 }
 
-/// An `Agent` that owns tools can never read from a cache — and the error has
-/// to say why.
+/// An `Agent` that owns tools does not get to read from a cache by default —
+/// and the error has to say why.
 ///
 /// [`NewCachedContent::tools`] reads like it makes a cached tool set usable from
 /// an agent. It does not, and the reason is structural rather than a missing
 /// feature: rig's agent derives the declarations it sends and the handles it
 /// dispatches through from one registry snapshot, so a registered tool is always
 /// advertised and a call to an unadvertised tool is an invalid tool call, never
-/// a dispatch. Every agent turn with a tool therefore carries `tools`, and
+/// a dispatch. An ordinary agent turn with a tool therefore carries `tools`, and
 /// `cachedContent` alongside `tools` is refused. The unit tests in `rig-core`
-/// cannot see this: they can build a request without tools, whereas an agent
-/// holding a tool has no way not to send it.
+/// cannot see this: they build a request directly, and so can simply leave the
+/// tools out.
+///
+/// "By default" is load-bearing. An empty `RequestPatch::active_tools`
+/// allow-list empties the snapshot for a turn, and such a request *is* accepted
+/// — see `an_agent_that_suppresses_its_tools_may_read_from_a_cache`. What it
+/// does not do is make anything callable, which is why the remedy in the message
+/// still cannot be "move them into the cache".
 ///
 /// The second assertion is the point of the finding this pins: the bare "move
 /// them into the cache" remedy is right for a system instruction and wrong here,
@@ -358,6 +364,143 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
         "`move them into the cache` is not the remedy for tools — the message must say the \
          cached declarations are unreachable from an agent: {message}"
     );
+}
+
+/// The carve-out the `declares_functions` gate exists for, measured rather than
+/// assumed: a cache carrying a **provider-hosted** tool is usable from an agent
+/// that declares nothing itself.
+///
+/// This is the claim that makes the tools caveat conditional — "provider-hosted
+/// tools such as `codeExecution` run on Gemini's side and are fine to keep in
+/// the cache". `codeExecution` needs no tool loop, so unlike a function
+/// declaration it loses nothing by living somewhere the agent cannot dispatch
+/// from. The unit test pins that the caveat is *withheld* for this shape; only a
+/// recording can say whether the underlying claim is true, i.e. that Gemini
+/// accepts the tool in a cache and still runs it for a request that declares
+/// nothing.
+#[tokio::test]
+async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
+    use rig::agent::AgentBuilder;
+    use rig::completion::Prompt as _;
+    use rig::providers::gemini::completion::gemini_api_types::{CodeExecution, Tool};
+
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_cached_code_execution",
+        |client| async move {
+            let cache = client
+                .cached_contents()
+                .create(
+                    NewCachedContent::new(CACHE_MODEL)
+                        .system_instruction(pad())
+                        .tools(vec![Tool {
+                            function_declarations: Vec::new(),
+                            code_execution: Some(CodeExecution {}),
+                        }])
+                        .display_name("rig-cached-code-execution")
+                        .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
+                )
+                .await
+                .expect("a cache carrying only a provider-hosted tool should be created");
+
+            let handles = [cache.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                let agent = AgentBuilder::new(
+                    client
+                        .completion_model(CACHE_MODEL)
+                        .with_cached_content(cache.name.clone()),
+                )
+                .build();
+
+                let answer = agent
+                    .prompt(
+                        "Use the code execution tool to compute 7919 * 6841. Reply with only the \
+                         number.",
+                    )
+                    .max_turns(3)
+                    .await
+                    .expect(
+                        "an agent declaring nothing may read from a cache carrying a \
+                         provider-hosted tool",
+                    );
+
+                assert!(
+                    answer.contains("54173879"),
+                    "the cached codeExecution tool should have run on Gemini's side: {answer:?}"
+                );
+            })
+            .await;
+        },
+    )
+    .await;
+}
+
+/// The exception to the cell above, recorded because it is the one that would
+/// otherwise be an unchecked claim in the docs.
+///
+/// An empty `RequestPatch::active_tools` allow-list empties the tool snapshot
+/// for a turn, so a tool-holding agent builds a request with no `tools` and the
+/// handle is accepted — by rig, and, as this recording shows, by Gemini. The
+/// docs say so; without a cell they would be asserting a behaviour nothing
+/// exercises, and the neighbouring cell's "an agent with tools is refused"
+/// would read as absolute when it is not.
+///
+/// What it does *not* buy is dispatch: the suppressed tools are gone for the
+/// turn and the cache's are unreachable regardless, which is why the remedy in
+/// the conflict message still cannot be "move them into the cache".
+#[tokio::test]
+async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
+    use rig::agent::{AgentBuilder, RequestPatch};
+    use rig::completion::Prompt as _;
+
+    use super::super::hook_stress_support::ApplyPatch;
+    use super::super::tools_support::CountingPing;
+
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_agent_active_tools_suppressed",
+        |client| async move {
+            let cache = client
+                .cached_contents()
+                .create(
+                    NewCachedContent::new(CACHE_MODEL)
+                        .system_instruction(pad())
+                        .display_name("rig-active-tools")
+                        .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
+                )
+                .await
+                .expect("create should succeed");
+
+            let handles = [cache.name.clone()];
+            always_deleting_cached_contents(&client, &handles, async {
+                let agent = AgentBuilder::new(
+                    client
+                        .completion_model(CACHE_MODEL)
+                        .with_cached_content(cache.name.clone()),
+                )
+                .tool(CountingPing::default())
+                .build();
+
+                let answer = agent
+                    .prompt("Reply with exactly: suppressed")
+                    .add_hook(ApplyPatch(
+                        RequestPatch::new()
+                            .active_tools(Vec::<String>::new())
+                            .temperature(0.0),
+                    ))
+                    .await
+                    .expect(
+                        "an empty active_tools allow-list drops the tool set, so the handle is \
+                         accepted — this is the documented exception",
+                    );
+
+                assert!(
+                    answer.to_lowercase().contains("suppressed"),
+                    "the turn should have run against the cache: {answer:?}"
+                );
+            })
+            .await;
+        },
+    )
+    .await;
 }
 
 #[tokio::test]

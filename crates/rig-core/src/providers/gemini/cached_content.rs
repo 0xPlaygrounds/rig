@@ -50,12 +50,20 @@
 //!
 //! ## What that means for an `Agent`
 //!
-//! An agent does not choose which of the three it sends — it sends what it
-//! holds. A preamble becomes `systemInstruction`; every always-exposed tool is
-//! advertised on every turn (one registered through `retrieved_tools` is
+//! An agent mostly does not choose which of the three it sends — it sends what
+//! it holds. A preamble becomes `systemInstruction`; every always-exposed tool
+//! is advertised on every turn (one registered through `retrieved_tools` is
 //! advertised on the turns retrieval selects it, so such an agent is refused
 //! intermittently rather than not at all); and a configured tool choice becomes
 //! `toolConfig` whether or not the agent has any tools.
+//!
+//! The one lever that does exist is a per-turn `RequestPatch::active_tools`
+//! allow-list: an empty one empties the tool snapshot, so a tool-holding agent
+//! builds a request with no `tools` and the handle is accepted. That is a
+//! supported configuration, not a loophole — but it buys only the *request*,
+//! never the dispatch. The tools it suppressed are still the agent's, and the
+//! ones in the cache are still unreachable, so an agent that has to empty its
+//! allow-list to use a cache is an agent whose tools do nothing on that turn.
 //!
 //! The agent derives the declarations it sends and the handles it dispatches
 //! through from a single registry snapshot, so it can only ever dispatch a tool
