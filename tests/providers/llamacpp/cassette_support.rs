@@ -297,6 +297,47 @@ pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
+/// Every recorded response's headers, lowercased, in wire order.
+///
+/// The cassette policy keeps only an allowlist of response headers, and the
+/// transport request-id names (`request-id`, `x-request-id`,
+/// `mistral-correlation-id`) are on it — so a fixture that carries none really
+/// did come from a server that sent none, rather than from a scrubber that
+/// removed one. That distinction is the whole content of
+/// `response_identity_matrix`.
+pub(super) fn recorded_response_headers(scenario: &str) -> Vec<Vec<(String, String)>> {
+    use serde::Deserialize as _;
+
+    let path = crate::cassettes::cassette_path("llamacpp", scenario);
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
+
+    serde_yaml::Deserializer::from_str(&contents)
+        .map(|document| {
+            let interaction = serde_yaml::Value::deserialize(document).unwrap_or_else(|error| {
+                panic!("cassette {} should deserialize: {error}", path.display())
+            });
+            interaction["then"]["header"]
+                .as_sequence()
+                .map(|headers| {
+                    headers
+                        .iter()
+                        .map(|header| {
+                            (
+                                header["name"]
+                                    .as_str()
+                                    .expect("header name")
+                                    .to_ascii_lowercase(),
+                                header["value"].as_str().expect("header value").to_owned(),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
 /// The key the `--api-key` recording server was started with.
 pub(super) const CASSETTE_API_KEY: &str = "llamacpp-local-test-key";
 

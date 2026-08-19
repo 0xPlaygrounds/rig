@@ -65,6 +65,7 @@
 //! | caching — cold/warm/grown, `cache_prompt`, agent loop | `prompt_caching` | 8080 |
 //! | provider-only fields — `timings` | `raw_capture_matrix`, `raw_stream_capture_matrix` | 8080 |
 //! | response shape — reasoning, `n > 1`, `logprobs`, finish reasons | `response_shape_matrix` | 8080 |
+//! | response identity + typed-route parity | `response_identity_matrix` | 8080 |
 //! | output-budget truncation of a tool call | `truncation_matrix` | 8088 |
 //! | model-turn termination metadata (rig#2184) | `turn_termination_matrix` | 8088 |
 //! | reranking | `rerank_matrix` | 8085 |
@@ -153,6 +154,7 @@ mod cassette {
     mod raw_stream_capture_matrix;
     mod request_hook;
     mod rerank_matrix;
+    mod response_identity_matrix;
     mod response_shape_matrix;
     mod sampling_matrix;
     mod streaming;
