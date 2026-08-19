@@ -467,8 +467,8 @@ impl ToolResultContentValue {
     ///
     /// Lossy by construction: an image part has no textual rendering, so a
     /// caller flattening a result that carries one loses it. That is why
-    /// [`Self::normalize_for_wire`] refuses rather than flattens when a provider
-    /// cannot carry the image.
+    /// the per-provider normalization in `TryFrom<OpenAIRequestParams>` refuses
+    /// rather than flattens when a provider cannot carry the image.
     pub fn as_text(&self) -> String {
         match self {
             ToolResultContentValue::Array(arr) => arr
@@ -477,6 +477,39 @@ impl ToolResultContentValue {
                 .collect::<Vec<_>>()
                 .join("\n"),
             ToolResultContentValue::String(s) => s.clone(),
+        }
+    }
+
+    /// Convert into rig's tool-result content blocks, preserving image parts.
+    ///
+    /// The counterpart of the outbound conversion. A round trip through the
+    /// wire and back must not quietly become text-only, or a replayed history
+    /// says less than the one that produced it.
+    pub fn into_message_content(self) -> Vec<message::ToolResultContent> {
+        match self {
+            ToolResultContentValue::String(text) => vec![message::ToolResultContent::text(text)],
+            ToolResultContentValue::Array(parts) => parts
+                .into_iter()
+                .map(|part| match part {
+                    ToolResultContent::Text { text } => message::ToolResultContent::text(text),
+                    ToolResultContent::Image { image_url } => {
+                        // A base64 data URI round-trips back to its parts;
+                        // anything else stays a URL reference.
+                        match parse_image_data_uri(&image_url.url) {
+                            Some((mime, data)) => message::ToolResultContent::image_base64(
+                                data,
+                                message::ImageMediaType::from_mime_type(mime),
+                                image_url.detail,
+                            ),
+                            None => message::ToolResultContent::image_url(
+                                image_url.url,
+                                None,
+                                image_url.detail,
+                            ),
+                        }
+                    }
+                })
+                .collect(),
         }
     }
 
@@ -494,6 +527,16 @@ impl ToolResultContentValue {
             }
         }
     }
+}
+
+/// Split a base64 data URI into `(mime, base64)`, or `None` for a plain URL.
+///
+/// `rsplit_once` on the marker rather than `split_once`, so a URL that happens
+/// to contain `;base64,` earlier does not truncate the payload.
+fn parse_image_data_uri(url: &str) -> Option<(&str, &str)> {
+    let rest = url.strip_prefix("data:")?;
+    let (mime, data) = rest.rsplit_once(";base64,")?;
+    (!data.is_empty()).then_some((mime, data))
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -693,11 +736,31 @@ impl TryFrom<message::ToolResult> for Message {
                             })?;
                             format!("data:{};base64,{}", media_type.to_mime_type(), data)
                         }
-                        other => {
-                            return Err(message::MessageError::ConversionError(format!(
-                                "unsupported image source in a tool result: {other:?}; use a URL \
-                                 or base64"
-                            )));
+                        // Deliberately payload-free: `DocumentSourceKind::Raw`
+                        // Debug-formats as the entire byte vector, so `{other:?}`
+                        // would dump a whole image into an error string. The
+                        // user-image path one screen away avoids this the same way.
+                        DocumentSourceKind::Raw(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "raw image bytes are not supported in a tool result; encode as \
+                                 base64 first"
+                                    .into(),
+                            ));
+                        }
+                        // Named, never Debug-printed: `FileId` and `String`
+                        // carry caller data and `Unknown` carries nothing worth
+                        // quoting.
+                        DocumentSourceKind::FileId(_) => {
+                            return Err(message::MessageError::ConversionError(
+                                "a provider-side file id is not supported in a tool result on \
+                                 this surface; use a URL or base64"
+                                    .into(),
+                            ));
+                        }
+                        DocumentSourceKind::String(_) | DocumentSourceKind::Unknown => {
+                            return Err(message::MessageError::ConversionError(
+                                "this image carries no usable source; use a URL or base64".into(),
+                            ));
                         }
                     };
                     Ok(ToolResultContent::Image {
@@ -1100,10 +1163,16 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 // OpenAI chat tool messages carry no tool name; this
                 // conversion is lossy for name-keyed wires.
+                // Every part is carried back, images included. Flattening with
+                // `as_text()` would drop an image silently — the same loss the
+                // outbound gate refuses to commit, and worse here because it
+                // used to be impossible: before `ToolResultContent` grew an
+                // image variant, such a body failed to deserialize at all, so
+                // the loss was at least visible.
                 content: vec![message::UserContent::tool_result_from_wire(
                     tool_call_id,
                     "",
-                    vec![message::ToolResultContent::text(content.as_text())],
+                    content.into_message_content(),
                 )],
             },
 
@@ -2151,8 +2220,15 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                         // GPT-5 family, a 200 with the image discarded — so a
                         // local error naming the constraint beats both.
                         return Err(CompletionError::RequestError(
-                            "this provider does not accept an image in a tool result. Official                              OpenAI refuses it on Chat Completions (and the GPT-5 family accepts                              the request while ignoring the image); use the Responses API, which                              carries images in `function_call_output`, or a server that sets                              `SUPPORTS_IMAGE_TOOL_RESULTS` (llama.cpp does)"
-                                .into(),
+                            concat!(
+                                "this provider does not accept an image in a tool result. ",
+                                "Official OpenAI refuses it on Chat Completions (and the GPT-5 ",
+                                "family accepts the request while ignoring the image); use the ",
+                                "Responses API, which carries images in `function_call_output`, ",
+                                "or a server that sets `SUPPORTS_IMAGE_TOOL_RESULTS` ",
+                                "(llama.cpp does)",
+                            )
+                            .into(),
                         ));
                     }
                     // An image cannot be flattened to a string, so array form is
@@ -4804,6 +4880,63 @@ mod image_tool_result_gate_tests {
             panic!("expected a tool result");
         };
         assert_eq!(content.as_text(), "ok");
+    }
+
+    /// A wire tool result carrying an image converts back into rig's types with
+    /// the image intact.
+    ///
+    /// The inbound counterpart of the gate. Flattening with `as_text()` turned
+    /// this into `Text("")` — a silent drop, and one that used to be impossible:
+    /// before the image variant existed such a body failed to deserialize, so
+    /// the loss was at least loud.
+    #[test]
+    fn an_inbound_tool_result_image_is_not_flattened_away() {
+        let wire: Message = serde_json::from_str(
+            r#"{"role":"tool","tool_call_id":"c1","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgo="}}]}"#,
+        )
+        .expect("deserialize");
+
+        let converted = message::Message::try_from(wire).expect("convert back");
+        let message::Message::User { content } = converted else {
+            panic!("a tool result converts to a user message");
+        };
+        let message::UserContent::ToolResult(result) = &content[0] else {
+            panic!("expected a tool result");
+        };
+        assert!(
+            matches!(
+                result.content.first(),
+                Some(message::ToolResultContent::Image(_))
+            ),
+            "the image must survive the round trip, got {:?}",
+            result.content
+        );
+    }
+
+    /// A mixed result keeps both halves, in order.
+    #[test]
+    fn an_inbound_mixed_tool_result_keeps_text_and_image() {
+        let wire: Message = serde_json::from_str(
+            r#"{"role":"tool","tool_call_id":"c1","content":[{"type":"text","text":"here"},{"type":"image_url","image_url":{"url":"https://example.com/x.png"}}]}"#,
+        )
+        .expect("deserialize");
+
+        let converted = message::Message::try_from(wire).expect("convert back");
+        let message::Message::User { content } = converted else {
+            panic!("user message")
+        };
+        let message::UserContent::ToolResult(result) = &content[0] else {
+            panic!("tool result")
+        };
+        assert_eq!(result.content.len(), 2, "{:?}", result.content);
+        assert!(matches!(
+            result.content[0],
+            message::ToolResultContent::Text(_)
+        ));
+        assert!(matches!(
+            result.content[1],
+            message::ToolResultContent::Image(_)
+        ));
     }
 
     /// And the image shape round-trips.

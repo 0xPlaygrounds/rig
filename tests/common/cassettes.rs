@@ -1374,11 +1374,14 @@ fn scrub_local_filesystem_paths(text: &str) -> String {
 
         output.push_str(&rest[..at]);
         let path = &rest[at..];
-        // A path ends at the first character that cannot appear in one. Quotes
-        // and whitespace are the practical terminators inside a JSON string.
-        let end = path
-            .find(|c: char| c == '"' || c == '\\' || c.is_whitespace())
-            .unwrap_or(path.len());
+        // A path ends at the closing quote of its JSON string, and at nothing
+        // else. Whitespace is emphatically *not* a terminator: macOS home
+        // directories created from a full account name routinely contain a
+        // space, and ending the path at it would keep the first word as the
+        // "basename" and copy `Smith/models/m.gguf` through verbatim — writing
+        // the operator's name into the fixture while leaving output the rule
+        // considers already-scrubbed, so nothing downstream would notice.
+        let end = path.find(['"', '\\', '\n', '\r']).unwrap_or(path.len());
         let (path, tail) = path.split_at(end);
 
         // Keep the basename; replace everything before it.
@@ -4119,6 +4122,21 @@ mod local_path_scrub_tests {
             scrubbed.contains("one.gguf") && scrubbed.contains("two.gguf"),
             "{scrubbed}"
         );
+    }
+
+    /// A home directory containing a space is the case that makes whitespace a
+    /// forbidden terminator.
+    ///
+    /// macOS creates `/Users/John Smith` from a full account name. Ending the
+    /// path at the space kept `John` as the basename and copied `Smith/...`
+    /// through untouched — the operator's name in the fixture, in output the
+    /// rule then considers already-scrubbed, so the safety scan reports nothing.
+    #[test]
+    fn a_home_directory_containing_a_space_is_fully_replaced() {
+        let scrubbed = scrub(r#"{"model":"/Users/John Smith/models/m.gguf"}"#);
+        assert_eq!(scrubbed, r#"{"model":"/REDACTED_PATH/m.gguf"}"#);
+        assert!(!scrubbed.contains("John"), "{scrubbed}");
+        assert!(!scrubbed.contains("Smith"), "{scrubbed}");
     }
 
     /// Re-scrubbing scrubbed output must not change it — the cassette safety

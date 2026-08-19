@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(openai-compatible)* [**breaking**] `openai::completion::ToolResultContent` is now an enum (`Text`/`Image`) rather than a struct with a public `text` field, `ToolResultContentType` is gone, and `OpenAIRequestParams` gained a `supports_image_tool_results` field — struct-literal construction of any of these needs updating (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(openai-compatible)* `OpenAICompatibleProvider::SUPPORTS_IMAGE_TOOL_RESULTS`, letting a server that honours an image inside a `role:"tool"` message receive one; enabled for llamafile/llama.cpp, off everywhere else because official OpenAI refuses it on Chat Completions (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(gemini)* explicit context caching (`cachedContents`) — create, reuse and delete a server-side cache that hits from the first request ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 
