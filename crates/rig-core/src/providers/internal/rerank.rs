@@ -16,15 +16,19 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::Client;
-use crate::http_client::{self, HttpClientExt};
-use crate::rerank::{RerankError, RerankResponse, RerankResult};
+use crate::http_client::HttpClientExt;
+use crate::rerank::{NormalizeRerankResponse, RerankError, RerankResponse, RerankResult};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// Contract for provider extensions that speak the Jina-shaped rerank wire
 /// through [`GenericRerankModel`].
-pub(crate) trait JinaCompatibleRerank: crate::client::Provider {
+#[doc(hidden)]
+pub trait JinaCompatibleRerank: crate::client::Provider {
     /// Provider name used in rerank request and response errors.
     const PROVIDER_NAME: &'static str;
+
+    /// The provider's transport request-id response header, when it has one.
+    const REQUEST_ID_HEADER: Option<&'static str> = None;
 
     /// Most documents the provider accepts in one rerank request.
     const MAX_DOCUMENTS: usize;
@@ -54,32 +58,59 @@ struct JinaRerankRequest<'a> {
 /// `score` on the text-embeddings-inference path that the same llama.cpp
 /// handler switches to; both are accepted so a server answering either shape
 /// decodes rather than silently scoring every document zero.
-#[derive(Debug, Deserialize)]
-struct JinaRerankResult {
-    index: usize,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JinaRerankResult {
+    pub index: usize,
     #[serde(alias = "score")]
-    relevance_score: f64,
+    pub relevance_score: f64,
     /// Present only on servers that echo the document back. llama.cpp does
     /// not on this path, so this is normally absent.
     #[serde(default, alias = "text")]
-    document: Option<String>,
+    pub document: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
-struct JinaRerankUsage {
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct JinaRerankUsage {
     #[serde(default)]
-    prompt_tokens: u64,
+    pub prompt_tokens: u64,
     #[serde(default)]
-    total_tokens: u64,
+    pub total_tokens: u64,
 }
 
-#[derive(Debug, Deserialize)]
-struct JinaRerankResponse {
+/// The Jina-shaped rerank wire response: what
+/// [`GenericRerankModel::raw_rerank`] returns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JinaRerankResponse {
     #[serde(default)]
-    model: Option<String>,
-    results: Vec<JinaRerankResult>,
+    pub model: Option<String>,
+    pub results: Vec<JinaRerankResult>,
     #[serde(default)]
-    usage: Option<JinaRerankUsage>,
+    pub usage: Option<JinaRerankUsage>,
+}
+
+impl NormalizeRerankResponse for JinaRerankResponse {
+    fn normalize(self, provider: &str) -> Result<RerankResponse, RerankError> {
+        let usage = self.usage.unwrap_or_default();
+        Ok(RerankResponse::new(
+            self.results
+                .into_iter()
+                .map(|result| RerankResult {
+                    index: result.index,
+                    document: result.document,
+                    relevance_score: result.relevance_score,
+                })
+                .collect(),
+            provider,
+        )
+        // A server that omits `model` still produced a ranking; `None` is
+        // the honest report.
+        .with_optional_model(self.model)
+        .with_usage(crate::completion::Usage {
+            input_tokens: usage.prompt_tokens,
+            total_tokens: usage.total_tokens,
+            ..crate::completion::Usage::new()
+        }))
+    }
 }
 
 /// A rerank model on a Jina-shaped `/rerank` endpoint.
@@ -112,19 +143,33 @@ impl<Ext, H> GenericRerankModel<Ext, H> {
     }
 }
 
-impl<Ext, H> crate::rerank::RerankModel for GenericRerankModel<Ext, H>
+impl<Ext, H> GenericRerankModel<Ext, H>
 where
     Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: JinaCompatibleRerank + Clone + WasmCompatSend + WasmCompatSync + 'static,
     H: WasmCompatSend + WasmCompatSync,
 {
-    const MAX_DOCUMENTS: usize = Ext::MAX_DOCUMENTS;
-
-    async fn rerank(
+    /// Perform the request and return the provider's native Jina-shaped
+    /// response instead of the normalized [`RerankResponse`]. Same request,
+    /// transport, parser, and error path as
+    /// [`crate::rerank::RerankModel::rerank`].
+    pub async fn raw_rerank(
         &self,
         query: &str,
         documents: Vec<String>,
-    ) -> Result<RerankResponse, RerankError> {
+    ) -> Result<JinaRerankResponse, RerankError> {
+        self.raw_rerank_with_request_id(query, documents)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// [`Self::raw_rerank`] plus the transport request id from the provider's
+    /// request-id response header, when it carries one.
+    pub async fn raw_rerank_with_request_id(
+        &self,
+        query: &str,
+        documents: Vec<String>,
+    ) -> Result<(JinaRerankResponse, Option<String>), RerankError> {
         let body = serde_json::to_vec(&JinaRerankRequest {
             model: Ext::SENDS_MODEL_FIELD.then_some(self.model.as_str()),
             query,
@@ -139,13 +184,19 @@ where
             .map_err(|error| RerankError::HttpError(error.into()))?;
 
         let response = self.client.send(req).await?;
-        let status = response.status();
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let provider_request_id =
+            super::transcription::request_id_from_headers(&parts.headers, Ext::REQUEST_ID_HEADER);
+        let response_body: Vec<u8> = body.await?;
         if !status.is_success() {
-            let text = http_client::text(response).await?;
-            return Err(RerankError::from_http_response(status, text));
+            return Err(RerankError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body).into_owned(),
+            )
+            .with_response_headers(Some(Box::new(parts.headers))));
         }
 
-        let response_body: Vec<u8> = response.into_body().await?;
         // Named rather than bare `?`: a 200 whose body is not a rerank
         // payload is indistinguishable from a serde bug without knowing which
         // server produced it, and this driver is shared.
@@ -157,30 +208,32 @@ where
                 ))
             })?;
 
-        let usage = parsed.usage.unwrap_or_default();
-        Ok(RerankResponse {
-            results: parsed
-                .results
-                .into_iter()
-                .map(|result| RerankResult {
-                    index: result.index,
-                    document: result.document,
-                    relevance_score: result.relevance_score,
-                })
-                .collect(),
-            // A server that omits `model` still produced a ranking; report
-            // the identifier the request asked for rather than failing.
-            model: parsed.model.unwrap_or_else(|| self.model.clone()),
-            usage: crate::completion::Usage {
-                input_tokens: usage.prompt_tokens,
-                output_tokens: 0,
-                total_tokens: usage.total_tokens,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                reasoning_tokens: 0,
-                tool_use_prompt_tokens: 0,
-            },
-        })
+        Ok((parsed, provider_request_id))
+    }
+}
+
+impl<Ext, H> crate::rerank::RerankModel for GenericRerankModel<Ext, H>
+where
+    Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: JinaCompatibleRerank + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: WasmCompatSend + WasmCompatSync,
+{
+    fn max_documents(&self) -> usize {
+        Ext::MAX_DOCUMENTS
+    }
+
+    async fn rerank(
+        &self,
+        query: &str,
+        documents: Vec<String>,
+    ) -> Result<RerankResponse, RerankError> {
+        let (response, provider_request_id) =
+            self.raw_rerank_with_request_id(query, documents).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response
+            .normalize(Ext::PROVIDER_NAME)?
+            .with_optional_provider_request_id(provider_request_id)
+            .with_raw(captured))
     }
 }
 

@@ -30,7 +30,7 @@ impl JinaCompatibleRerank for super::client::LlamacppExt {
     // `llama-server` posts one task per document and waits for all of them,
     // bounded only by memory and the client's patience — there is no
     // documented cap. This is the batching hint
-    // [`RerankModel::MAX_DOCUMENTS`](crate::rerank::RerankModel::MAX_DOCUMENTS)
+    // [`RerankModel::max_documents`](crate::rerank::RerankModel::max_documents)
     // exposes, set to the same 1024 the shared embeddings driver defaults to
     // rather than to a number the server does not actually enforce.
     const MAX_DOCUMENTS: usize = 1024;

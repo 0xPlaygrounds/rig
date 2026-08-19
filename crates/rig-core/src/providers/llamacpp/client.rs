@@ -602,7 +602,7 @@ mod tests {
             "no top_n unless the caller set one"
         );
 
-        assert_eq!(reranked.model, "reranker");
+        assert_eq!(reranked.model.as_deref(), Some("reranker"));
         assert_eq!(reranked.usage.input_tokens, 42);
         assert_eq!(reranked.usage.total_tokens, 42);
         assert_eq!(

@@ -346,19 +346,41 @@ pub const RERANK_1: &str = "rerank-1";
 /// `rerank-lite-1` reranker model (Voyage AI)
 pub const RERANK_LITE_1: &str = "rerank-lite-1";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiResponse {
     pub data: Vec<RerankApiData>,
     pub model: String,
     pub usage: RerankApiUsage,
 }
 
-#[derive(Debug, Deserialize)]
+impl rerank::NormalizeRerankResponse for RerankApiResponse {
+    fn normalize(self, provider: &str) -> Result<rerank::RerankResponse, RerankError> {
+        let usage = crate::completion::Usage {
+            input_tokens: self.usage.total_tokens as u64,
+            total_tokens: self.usage.total_tokens as u64,
+            ..crate::completion::Usage::new()
+        };
+        let results = self
+            .data
+            .into_iter()
+            .map(|d| rerank::RerankResult {
+                index: d.index,
+                document: d.document,
+                relevance_score: d.relevance_score,
+            })
+            .collect();
+        Ok(rerank::RerankResponse::new(results, provider)
+            .with_model(self.model)
+            .with_usage(usage))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiUsage {
     pub total_tokens: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiData {
     pub index: usize,
     pub relevance_score: f64,
@@ -402,17 +424,18 @@ impl<T> RerankModel<T> {
     }
 }
 
-impl<T> rerank::RerankModel for RerankModel<T>
+impl<T> RerankModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1000;
-
-    async fn rerank(
+    /// Perform the request and return Voyage AI's native response instead of
+    /// the normalized [`rerank::RerankResponse`]. Same request, transport,
+    /// parser, and error path as [`rerank::RerankModel::rerank`].
+    pub async fn raw_rerank(
         &self,
         query: &str,
         documents: Vec<String>,
-    ) -> Result<rerank::RerankResponse, RerankError> {
+    ) -> Result<RerankApiResponse, RerankError> {
         let mut body = json!({
             "query": query,
             "documents": documents,
@@ -452,32 +475,7 @@ where
                         "VoyageAI rerank token usage: {}",
                         response.usage.total_tokens
                     );
-
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.total_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        reasoning_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                    };
-
-                    let results = response
-                        .data
-                        .into_iter()
-                        .map(|d| rerank::RerankResult {
-                            index: d.index,
-                            document: d.document,
-                            relevance_score: d.relevance_score,
-                        })
-                        .collect();
-
-                    Ok(rerank::RerankResponse {
-                        results,
-                        model: response.model,
-                        usage,
-                    })
+                    Ok(response)
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
@@ -493,6 +491,28 @@ where
                 String::from_utf8_lossy(&response_body),
             ))
         }
+    }
+}
+
+impl<T> rerank::RerankModel for RerankModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1000
+    }
+
+    async fn rerank(
+        &self,
+        query: &str,
+        documents: Vec<String>,
+    ) -> Result<rerank::RerankResponse, RerankError> {
+        use rerank::NormalizeRerankResponse as _;
+
+        // Voyage AI reports no transport request-id header.
+        let response = self.raw_rerank(query, documents).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response.normalize("voyageai")?.with_raw(captured))
     }
 }
 

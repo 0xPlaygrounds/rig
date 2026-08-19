@@ -1321,7 +1321,9 @@ mod external_modality_extension_probe {
     where
         H: Send + Sync + 'static,
     {
-        const MAX_DOCUMENTS: usize = 1;
+        fn max_documents(&self) -> usize {
+            1
+        }
 
         async fn rerank(
             &self,
