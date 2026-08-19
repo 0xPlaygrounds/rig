@@ -951,12 +951,18 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
     ),
     (
         "llamafile",
-        "same as ollama: the local llama.cpp-compatible wire reports no cached-token field, so \
-         rig has no cache mapping for it",
+        "records against a local llama.cpp server that is not running in this environment. NOT \
+         the ollama reason: llama.cpp does report caching — measured against `llama-server` \
+         b1-6d05498, a repeated prefix comes back with `usage.prompt_tokens_details.cached_tokens` \
+         28 of 29 and `timings.cache_n` to match — and rig does map it, through \
+         `openai::Usage::to_normalized`. So this suite is worth building the day a server is \
+         available; it is absent for want of one, not for want of a field",
     ),
     (
         "llamacpp",
-        "same as ollama and llamafile: the local llama.cpp wire reports no cached-token field",
+        "same as llamafile: a local llama.cpp server is not running in this environment. The wire \
+         does report cached tokens and rig does map them, so this exemption is about the server, \
+         not the capability",
     ),
     (
         "voyageai",

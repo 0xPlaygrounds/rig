@@ -431,6 +431,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: DeepSeekExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");

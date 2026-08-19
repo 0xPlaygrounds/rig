@@ -738,6 +738,7 @@ where
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
     }
