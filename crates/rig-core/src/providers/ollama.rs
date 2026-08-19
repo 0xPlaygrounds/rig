@@ -1069,12 +1069,6 @@ impl<H> ModelLister<H> for OllamaModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         let api_resp: ListModelsResponse = crate::providers::internal::model_listing::get_json(
             &self.client,
@@ -1085,6 +1079,16 @@ where
         let models = api_resp.models.into_iter().map(Model::from).collect();
 
         Ok(ModelList::new(models))
+    }
+}
+
+impl<H> crate::client::ConstructModelLister<Client<H>> for OllamaModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
+{
+    fn construct(client: &Client<H>) -> Self {
+        let client = client.clone();
+        Self { client }
     }
 }
 

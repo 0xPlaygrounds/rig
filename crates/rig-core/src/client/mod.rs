@@ -14,7 +14,7 @@ use bytes::Bytes;
 pub use completion::{CompletionClient, ConstructCompletionModel};
 pub use embeddings::{ConstructEmbeddingModel, EmbeddingsClient};
 use http::{HeaderMap, HeaderName, HeaderValue};
-pub use model_listing::{ModelLister, ModelListingClient};
+pub use model_listing::{ConstructModelLister, ModelLister, ModelListingClient};
 pub use rerank::{ConstructRerankModel, RerankingClient};
 use std::{env::VarError, fmt::Debug, marker::PhantomData, sync::Arc};
 use thiserror::Error;
@@ -1058,16 +1058,16 @@ impl_capability_client!(
 
 impl<M, Ext, H> ModelListingClient for Client<Ext, H>
 where
-    Ext: Capabilities<H, ModelListing = Capable<M>> + Clone,
-    M: ModelLister<H, Client = Self> + WasmCompatSend + WasmCompatSync + Clone + 'static,
-    H: WasmCompatSend + WasmCompatSync + Clone,
+    Ext: Capabilities<H, ModelListing = Capable<M>>,
+    M: ModelLister<H> + ConstructModelLister<Self> + 'static,
+    H: WasmCompatSend + WasmCompatSync,
 {
     fn list_models(
         &self,
     ) -> impl std::future::Future<
         Output = Result<crate::model::ModelList, crate::model::ModelListingError>,
     > + WasmCompatSend {
-        let lister = M::new(self.clone());
+        let lister = M::construct(self);
         async move { lister.list_all().await }
     }
 }
@@ -1241,7 +1241,7 @@ mod external_modality_extension_probe {
         type Completion = Nothing;
         type Embeddings = Capable<ExternalModel<H>>;
         type Transcription = Capable<ExternalModel<H>>;
-        type ModelListing = Nothing;
+        type ModelListing = Capable<ExternalModel<H>>;
         #[cfg(feature = "image")]
         type ImageGeneration = Capable<ExternalModel<H>>;
         #[cfg(feature = "audio")]
@@ -1404,11 +1404,38 @@ mod external_modality_extension_probe {
         }
     }
 
+    impl<H> ModelLister<H> for ExternalModel<H>
+    where
+        H: Send + Sync + 'static,
+    {
+        async fn list_all(
+            &self,
+        ) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+            Err(crate::model::ModelListingError::ParseError {
+                message: self.model.clone(),
+            })
+        }
+    }
+
+    impl<H> ConstructModelLister<Client<ExternalExt, H>> for ExternalModel<H>
+    where
+        H: Clone,
+    {
+        fn construct(client: &Client<ExternalExt, H>) -> Self {
+            Self {
+                _client: client.clone(),
+                model: "lister".to_owned(),
+                ndims: None,
+            }
+        }
+    }
+
     #[test]
     fn external_extension_reaches_every_blanket_capability_client_impl() {
         fn assert_transcription<C: TranscriptionClient>() {}
         fn assert_embeddings<C: EmbeddingsClient>() {}
         fn assert_rerank<C: RerankingClient>() {}
+        fn assert_listing<C: ModelListingClient>() {}
         #[cfg(feature = "image")]
         fn assert_image<C: ImageGenerationClient>() {}
         #[cfg(feature = "audio")]
@@ -1418,6 +1445,7 @@ mod external_modality_extension_probe {
         assert_transcription::<ExternalClient>();
         assert_embeddings::<ExternalClient>();
         assert_rerank::<ExternalClient>();
+        assert_listing::<ExternalClient>();
         #[cfg(feature = "image")]
         assert_image::<ExternalClient>();
         #[cfg(feature = "audio")]

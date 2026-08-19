@@ -1374,12 +1374,6 @@ impl<H> ModelLister<H> for CopilotModelLister<H>
 where
     H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         let auth = self.client.ext().auth.auth_context().await.map_err(|err| {
             ModelListingError::AuthError {
@@ -1412,6 +1406,16 @@ where
         let models = api_resp.data.into_iter().map(Model::from).collect();
 
         Ok(ModelList::new(models))
+    }
+}
+
+impl<H> crate::client::ConstructModelLister<Client<H>> for CopilotModelLister<H>
+where
+    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn construct(client: &Client<H>) -> Self {
+        let client = client.clone();
+        Self { client }
     }
 }
 

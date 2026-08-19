@@ -62,12 +62,6 @@ macro_rules! impl_model_lister {
                 + $crate::wasm_compat::WasmCompatSync
                 + 'static,
         {
-            type Client = $client;
-
-            fn new(client: Self::Client) -> Self {
-                Self { client }
-            }
-
             async fn list_all(
                 &self,
             ) -> Result<$crate::model::ModelList, $crate::model::ModelListingError> {
@@ -77,6 +71,21 @@ macro_rules! impl_model_lister {
                     $path,
                 )
                 .await
+            }
+        }
+
+        impl<H> $crate::client::ConstructModelLister<$client> for $name<H>
+        where
+            H: $crate::http_client::HttpClientExt
+                + $crate::wasm_compat::WasmCompatSend
+                + $crate::wasm_compat::WasmCompatSync
+                + Clone
+                + 'static,
+        {
+            fn construct(client: &$client) -> Self {
+                Self {
+                    client: client.clone(),
+                }
             }
         }
     };
