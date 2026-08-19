@@ -4,14 +4,14 @@
 //! (*"Image URLs are only allowed for messages with role 'user'"*) and the
 //! GPT-5 family answers 200 with the image discarded, the model then describing
 //! what it never received. llama.cpp does honour it, which is why
-//! `LlamafileExt::SUPPORTS_IMAGE_TOOL_RESULTS` is `true` and the shared
+//! `LlamacppExt::SUPPORTS_IMAGE_TOOL_RESULTS` is `true` and the shared
 //! conversion is gated rather than hard-coded.
 //!
-//! Recorded against `llama-server` built from source at commit `6d05498`
-//! (`build_info` `b1-6d05498`) running `ggml-org/Qwen3-VL-2B-Instruct-GGUF`
-//! Q8_0 with its `mmproj`, `--jinja --seed 42 --temp 0 -c 4096`. The subject
-//! and its control were recorded in one run so the negative half cannot be
-//! explained away by a bad image or a blind model.
+//! **Server**: the `--mmproj` vision configuration —
+//! `ggml-org/Qwen3-VL-2B-Instruct-GGUF` Q8_0 with its `mmproj`,
+//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498. The
+//! subject and its control were recorded in one run so the negative half
+//! cannot be explained away by a bad image or a blind model.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against a local llama.cpp server.
@@ -20,7 +20,7 @@ use rig::client::CompletionClient as _;
 use rig::completion::CompletionModel as _;
 use rig::message::{ImageMediaType, ProviderCallId, ToolCallId, ToolResult, ToolResultContent};
 
-use super::super::cassette_support::with_llamacpp_cassette;
+use super::super::cassette_support::*;
 
 /// 16x16 solid magenta. Distinctive on purpose: "red" and "blue" are plausible
 /// blind guesses for "what colour is this image", so a cell using them could
@@ -75,7 +75,7 @@ fn assistant_text(response: &rig::completion::CompletionResponse) -> String {
 /// catching.
 #[tokio::test]
 async fn a_tool_result_image_is_read_by_the_model() {
-    with_llamacpp_cassette(
+    with_llamacpp_vision_cassette(
         "image_tool_result/a_tool_result_image_is_read_by_the_model",
         |client| async move {
             let model = client.completion_model(VISION_MODEL);
@@ -115,7 +115,7 @@ async fn a_tool_result_image_is_read_by_the_model() {
 /// the only variable is the message role.
 #[tokio::test]
 async fn the_same_image_in_a_user_message_is_read_too() {
-    with_llamacpp_cassette(
+    with_llamacpp_vision_cassette(
         "image_tool_result/the_same_image_in_a_user_message_is_read_too",
         |client| async move {
             let model = client.completion_model(VISION_MODEL);

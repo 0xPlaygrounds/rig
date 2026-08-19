@@ -1,7 +1,12 @@
-//! llama.cpp embeddings smoke test.
+//! llama.cpp embeddings smoke coverage.
 //!
-//! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
-//! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
+//! **Server**: the `--embeddings --pooling mean` configuration, loading
+//! `Qwen/Qwen3-Embedding-0.6B-GGUF` Q8_0 — a real embedding model rather than
+//! a causal LM pooled into one. The pre-merge fixtures for these two cells
+//! were recorded against Ollama's `all-minilm`; what a causal LM under
+//! `--pooling mean` actually returns is now its own cell in
+//! `embedding_matrix.rs`, and the difference is why this suite states its
+//! model.
 
 use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
@@ -20,7 +25,7 @@ struct Greetings {
 
 #[tokio::test]
 async fn embeddings_smoke() {
-    with_llamacpp_cassette("embeddings/embeddings_smoke", |client| async move {
+    with_llamacpp_embeddings_cassette("embeddings/embeddings_smoke", |client| async move {
         let model = client.embedding_model(CASSETTE_EMBEDDING_MODEL);
 
         let embeddings = model
@@ -35,11 +40,11 @@ async fn embeddings_smoke() {
 
 #[tokio::test]
 async fn derive_document_embeddings() {
-    with_llamacpp_cassette(
+    with_llamacpp_embeddings_cassette(
         "embeddings/derive_document_embeddings",
         |client| async move {
             let embeddings = client
-                .embeddings(CASSETTE_MODEL)
+                .embeddings(CASSETTE_EMBEDDING_MODEL)
                 .document(Greetings {
                     message: "Hello, world!".to_string(),
                 })

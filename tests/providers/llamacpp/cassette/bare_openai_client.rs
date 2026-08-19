@@ -45,27 +45,34 @@ use super::super::cassette_support::*;
 /// local-server user who followed rig's own OpenAI-compatible instructions.
 #[tokio::test]
 async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
-    const SCENARIO: &str = "bare_openai_client/caller_supplies_the_v1_prefix";
+    // The scenario string is repeated as a literal at every call site on
+    // purpose: the cassette-safety scan reads them off the AST, and a `const`
+    // registers nothing.
+    with_llamacpp_bare_openai_cassette(
+        "bare_openai_client/caller_supplies_the_v1_prefix",
+        |client| async move {
+            let agent = client
+                .completions_api()
+                .agent(CASSETTE_MODEL)
+                .preamble("You are a concise assistant.")
+                .max_tokens(256)
+                .build();
 
-    with_llamacpp_bare_openai_cassette(SCENARIO, |client| async move {
-        let agent = client
-            .completions_api()
-            .agent(CASSETTE_MODEL)
-            .preamble("You are a concise assistant.")
-            .max_tokens(24)
-            .build();
-
-        let response = agent
-            .prompt("Say the single word: ok")
-            .await
-            .expect("a bare openai client should reach the local server");
-        assert_nonempty_response(&response);
-    })
+            let response = agent
+                .prompt("Say the single word: ok")
+                .await
+                .expect("a bare openai client should reach the local server");
+            assert_nonempty_response(&response);
+        },
+    )
     .await;
 
     // The premise, read back off the cassette's own bytes: the request landed
     // on `/v1/chat/completions` and nothing doubled the prefix.
-    let recorded = crate::cassettes::recorded_request_paths("llamacpp", SCENARIO);
+    let recorded = crate::cassettes::recorded_request_paths(
+        "llamacpp",
+        "bare_openai_client/caller_supplies_the_v1_prefix",
+    );
     assert_eq!(
         recorded,
         vec!["/v1/chat/completions".to_string()],
@@ -83,21 +90,22 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
 /// is why a server started *with* `--api-key` was unreachable before this PR.
 #[tokio::test]
 async fn bare_openai_client_always_sends_an_authorization_header() {
-    const SCENARIO: &str = "bare_openai_client/authorization_header_is_always_sent";
-
-    with_llamacpp_bare_openai_cassette(SCENARIO, |client| async move {
-        let model = client.completions_api().completion_model(CASSETTE_MODEL);
-        let response = model
-            .completion(
-                model
-                    .completion_request("Reply with the single word: ok")
-                    .max_tokens(16)
-                    .build(),
-            )
-            .await
-            .expect("an unauthenticated local server accepts any bearer token");
-        assert!(!response.choice.is_empty());
-    })
+    with_llamacpp_bare_openai_cassette(
+        "bare_openai_client/authorization_header_is_always_sent",
+        |client| async move {
+            let model = client.completions_api().completion_model(CASSETTE_MODEL);
+            let response = model
+                .completion(
+                    model
+                        .completion_request("Reply with the single word: ok")
+                        .max_tokens(256)
+                        .build(),
+                )
+                .await
+                .expect("an unauthenticated local server accepts any bearer token");
+            assert!(!response.choice.is_empty());
+        },
+    )
     .await;
 
     // `authorization` is a sensitive header and is scrubbed out of every
@@ -106,7 +114,10 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     // rode on was accepted, which is the behavioral half. The header itself is
     // pinned in-process by `providers::llamacpp::client`'s unit tests, which
     // read it off a recording HTTP client rather than off a fixture.
-    let request = recorded_json_request("llamacpp", SCENARIO);
+    let request = recorded_json_request(
+        "llamacpp",
+        "bare_openai_client/authorization_header_is_always_sent",
+    );
     assert_eq!(request["model"], serde_json::json!(CASSETTE_MODEL));
 }
 

@@ -302,11 +302,18 @@ async fn normalized_fields_equal_raw_renormalized() {
     let mut from_wire = normalized_without_raw(from_wire);
     // The response id is a generated per-call id the scrubber placeholders
     // on disk; only a replay compares it exactly. Live, it must still be
-    // present on both sides with the wire's shape.
-    assert_wire_value_matches(&live, &from_wire, "response_id");
-    if matches!(CassetteMode::current(), CassetteMode::Record) {
-        live["response_id"] = Value::Null;
-        from_wire["response_id"] = Value::Null;
+    // present on both sides with the wire's shape. `model` is the same
+    // situation for a different reason: llama.cpp echoes the *filesystem
+    // path* of the loaded GGUF, and `scrub_local_filesystem_paths` rewrites
+    // it to `/REDACTED_PATH/<basename>` on the way to disk — so the live
+    // value and the recorded value cannot be equal on a recording pass, and
+    // demanding it would make this cell unrecordable rather than correct.
+    for field in ["response_id", "model"] {
+        assert_wire_value_matches(&live, &from_wire, field);
+        if matches!(CassetteMode::current(), CassetteMode::Record) {
+            live[field] = Value::Null;
+            from_wire[field] = Value::Null;
+        }
     }
     assert_eq!(
         live, from_wire,
