@@ -65,6 +65,7 @@
 //! | caching — cold/warm/grown, `cache_prompt`, agent loop | `prompt_caching` | 8080 |
 //! | provider-only fields — `timings` | `raw_capture_matrix`, `raw_stream_capture_matrix` | 8080 |
 //! | response shape — reasoning, `n > 1`, `logprobs`, finish reasons | `response_shape_matrix` | 8080 |
+//! | output-budget truncation of a tool call | `truncation_matrix` | 8088 |
 //! | reranking | `rerank_matrix` | 8085 |
 //! | multimodal | `multimodal_matrix`, `image_tool_result` | 8080, 8082, 8093 |
 //! | unmapped surface — decisions | `unmapped_surface` | 8080, 8082 |
@@ -159,6 +160,7 @@ mod cassette {
     mod structured_output_matrix;
     mod tool_matrix;
     mod tools;
+    mod truncation_matrix;
     mod typed_prompt_tools;
     mod unmapped_surface;
 }
