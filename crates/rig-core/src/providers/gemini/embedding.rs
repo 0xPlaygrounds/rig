@@ -53,23 +53,20 @@ impl<T> EmbeddingModel<T> {
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: Clone + HttpClientExt + 'static,
 {
-    fn max_documents(&self) -> usize {
-        1024
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
+    /// Perform the request and return Gemini's native `batchEmbedContents`
+    /// response instead of the normalized [`embeddings::EmbeddingResponse`].
+    /// Same request, transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    ///
     /// <https://ai.google.dev/api/embeddings#batch_embed_contents-SHELL>
-    async fn embed_texts(
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<gemini_api_types::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
 
         // Google batch embed requests. See docstrings for API ref link.
@@ -119,22 +116,7 @@ where
         }
 
         match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {
-            ApiResponse::Ok(response) => {
-                let docs = documents
-                    .into_iter()
-                    .zip(response.embeddings)
-                    .map(|(document, embedding)| embeddings::Embedding {
-                        document,
-                        vec: embedding
-                            .values
-                            .into_iter()
-                            .filter_map(|n| n.as_f64())
-                            .collect(),
-                    })
-                    .collect();
-
-                Ok(docs)
-            }
+            ApiResponse::Ok(response) => Ok(response),
             ApiResponse::Err(err) => {
                 tracing::warn!(message = %err.error.message, "provider returned an error response");
                 Err(EmbeddingError::from_http_response(
@@ -143,6 +125,34 @@ where
                 ))
             }
         }
+    }
+}
+
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: Clone + HttpClientExt + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1024
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String> + WasmCompatSend,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        use embeddings::NormalizeEmbeddingResponse as _;
+
+        let documents: Vec<String> = documents.into_iter().collect();
+        // Gemini sends no transport request-id header.
+        let response = self.raw_embed_texts(documents.clone()).await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response
+            .normalize(super::completion::PROVIDER_NAME, documents)?
+            .with_raw(captured))
     }
 }
 
@@ -160,18 +170,48 @@ where
 // Gemini API Types
 // =================================================================
 /// Rust Implementation of the Gemini Types from [Gemini API Reference](https://ai.google.dev/api/embeddings)
-mod gemini_api_types {
-    use serde::Deserialize;
+pub mod gemini_api_types {
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Deserialize)]
+    use crate::embeddings::{self, EmbeddingError, NormalizeEmbeddingResponse};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingResponse {
         pub embeddings: Vec<EmbeddingValues>,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingValues {
         #[serde(default)]
         pub values: Vec<serde_json::Number>,
+    }
+
+    impl NormalizeEmbeddingResponse for EmbeddingResponse {
+        fn normalize(
+            self,
+            provider: &str,
+            documents: Vec<String>,
+        ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+            if self.embeddings.len() != documents.len() {
+                return Err(EmbeddingError::ResponseError(
+                    "Number of returned embeddings does not match input".into(),
+                ));
+            }
+            let docs = documents
+                .into_iter()
+                .zip(self.embeddings)
+                .map(|(document, embedding)| embeddings::Embedding {
+                    document,
+                    vec: embedding
+                        .values
+                        .into_iter()
+                        .filter_map(|n| n.as_f64())
+                        .collect(),
+                })
+                .collect();
+            // batchEmbedContents reports neither usage nor a response id.
+            Ok(embeddings::EmbeddingResponse::new(docs, provider))
+        }
     }
 }
 

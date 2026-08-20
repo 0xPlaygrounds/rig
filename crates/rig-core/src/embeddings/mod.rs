@@ -15,5 +15,5 @@ pub mod distance;
 pub use builder::EmbeddingsBuilder;
 pub use embed::{Embed, EmbedError, TextEmbedder, to_texts};
 pub use embedding::*;
-pub use handle::EmbeddingModelHandle;
+pub use handle::{EmbeddingModelHandle, ImageEmbeddingModelHandle};
 pub use tool::ToolSchema;

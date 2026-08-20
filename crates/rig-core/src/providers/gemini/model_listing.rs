@@ -146,14 +146,18 @@ impl<H> ModelLister<H> for GeminiModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         list_all_models(&self.client).await
+    }
+}
+
+impl<H> crate::client::ConstructModelLister<Client<H>> for GeminiModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
+{
+    fn construct(client: &Client<H>) -> Self {
+        let client = client.clone();
+        Self { client }
     }
 }
 
@@ -251,10 +255,11 @@ mod tests {
             .build()
             .expect("client should build");
 
-        let models = GeminiModelLister::new(client)
-            .list_all()
-            .await
-            .expect("listing should terminate");
+        let models =
+            <GeminiModelLister<_> as crate::client::ConstructModelLister<_>>::construct(&client)
+                .list_all()
+                .await
+                .expect("listing should terminate");
 
         assert_eq!(
             models.data.len(),
@@ -368,13 +373,18 @@ impl<H> ModelLister<H> for GeminiInteractionsModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = InteractionsClient<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         list_all_models(&self.client).await
+    }
+}
+
+impl<H> crate::client::ConstructModelLister<InteractionsClient<H>>
+    for GeminiInteractionsModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
+{
+    fn construct(client: &InteractionsClient<H>) -> Self {
+        let client = client.clone();
+        Self { client }
     }
 }

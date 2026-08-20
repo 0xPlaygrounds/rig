@@ -61,7 +61,7 @@ mod tests {
         let model = client(http_client.clone()).embedding_model_with_ndims(BGE_BASE_EN_V1_5, 3);
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding request should succeed");
 

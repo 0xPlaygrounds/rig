@@ -74,10 +74,7 @@ async fn embed_image_smoke() {
     with_cohere_cassette("embeddings/embed_image_smoke", |client| async move {
         let model = client.image_embedding_model();
         assert_eq!(ImageEmbeddingModelTrait::ndims(&model), 1024);
-        assert_eq!(
-            <cohere::ImageEmbeddingModel as ImageEmbeddingModelTrait>::MAX_DOCUMENTS,
-            1
-        );
+        assert_eq!(ImageEmbeddingModelTrait::max_documents(&model), 1);
 
         let embedding = model
             .embed_image(&decode_image(PNG_2X2))

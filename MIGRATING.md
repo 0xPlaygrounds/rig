@@ -2240,8 +2240,9 @@ report none on these endpoints; `None` is the documented outcome.
 and `AudioGenerationModel` lose `type Client` and `fn make`, matching
 `CompletionModel`. Delete both from your impls. `EmbeddingModel::MAX_DOCUMENTS`
 is now `fn max_documents(&self) -> usize` (a constant cannot survive type
-erasure — see the next section); `RerankModel::MAX_DOCUMENTS` and
-`ImageEmbeddingModel::MAX_DOCUMENTS` are unchanged.
+erasure — see the next section). `RerankModel::MAX_DOCUMENTS` and
+`ImageEmbeddingModel::MAX_DOCUMENTS` follow in the "Embedding and rerank
+responses" section below.
 
 The capability client traits construct models themselves:
 `EmbeddingsClient::embedding_model` / `embedding_model_with_ndims`,
@@ -2302,6 +2303,133 @@ model, so the handle a store holds is fixed for its lifetime. The payoff is
 type ergonomics and dyn-storability, nothing more. `EmbeddingsBuilder<M, T>`
 keeps its parameter: it is transient and dropped at `build()`, like
 `CompletionRequestBuilder`.
+
+### Embedding and rerank responses are concrete and normalized; `embed_texts_with_usage` is `embed_texts_response`
+
+The two response types #2385 left alone get the same treatment as every
+other modality. `EmbeddingResponse` and `RerankResponse` now carry the full
+normalized metadata:
+
+```rust
+pub struct EmbeddingResponse {           // RerankResponse: results: Vec<RerankResult>
+    pub embeddings: Vec<Embedding>,
+    pub usage: Usage,                    // zero when the provider reports none
+    pub provider: String,                // stable descriptor name, always set
+    pub model: Option<String>,           // provider-reported model, when any
+    pub response_id: Option<String>,
+    pub provider_request_id: Option<String>,
+    pub raw: serde_json::Value,          // the provider's own payload, serialized
+}
+```
+
+plus `identity() -> ResponseIdentity`, and a new `ImageEmbeddingResponse` of
+the same shape for `ImageEmbeddingModel`. Both types derive `Serialize` /
+`Deserialize`; construct with `EmbeddingResponse::new(embeddings, provider)`
+and the `with_*` setters.
+
+**`EmbeddingModel::embed_texts_with_usage` is renamed `embed_texts_response`**
+(and `embed_text_with_usage` → `embed_text_response`): it now returns identity
+and the raw payload, not only usage, so the old name would lie. It is also now
+the **required** method — `embed_texts`, `embed_text` and
+`embed_text_response` are defaults derived from it. Custom models flip what
+they implement:
+
+```rust
+// 0.42
+impl EmbeddingModel for MyModel {
+    const MAX_DOCUMENTS: usize = 100;
+    fn ndims(&self) -> usize { 768 }
+    async fn embed_texts(&self, texts: impl IntoIterator<Item = String> + Send)
+        -> Result<Vec<Embedding>, EmbeddingError> { /* ... */ }
+}
+// now
+impl EmbeddingModel for MyModel {
+    fn max_documents(&self) -> usize { 100 }
+    fn ndims(&self) -> usize { 768 }
+    async fn embed_texts_response(&self, texts: impl IntoIterator<Item = String> + Send)
+        -> Result<EmbeddingResponse, EmbeddingError> {
+        Ok(EmbeddingResponse::new(/* embeddings */ vec![], "my-provider"))
+    }
+}
+```
+
+(The other direction is impossible: a defaulted full method forwarding to
+`embed_texts` would have to invent the provider name.) `ImageEmbeddingModel`
+likewise: `embed_images_response` is required, `embed_images` / `embed_image`
+derive from it, and `MAX_DOCUMENTS` is `fn max_documents()`.
+
+**`RerankModel::MAX_DOCUMENTS` is `fn max_documents(&self) -> usize`** (a
+constant cannot survive erasure), and **`RerankResponse::model` is now
+`Option<String>`** — a server that omits `model` still produced a ranking,
+and `None` is the honest report where the shared Jina-shaped driver used to
+substitute the requested name. Replace `response.model == "x"` with
+`response.model.as_deref() == Some("x")`.
+
+Normalization is a trait, implementable out of tree: `NormalizeEmbeddingResponse`
+(`normalize(self, provider: &str, documents: Vec<String>)` — the request's
+inputs, in order, for `Embedding::document`), `NormalizeImageEmbeddingResponse`,
+`NormalizeRerankResponse` (`normalize(self, provider: &str)`). Every concrete
+provider model gains inherent `raw_embed_texts` / `raw_embed_images` /
+`raw_rerank` returning the provider's native type from the same request,
+transport, parser and error path, and the normalized response carries that
+value serialized in `raw`. Where the provider answers one request per input
+(Cohere images, Bedrock embeddings, Gemini gRPC) the raw route returns a
+`Vec` of answers; where there is no JSON payload at all (FastEmbed in-process,
+Gemini gRPC's prost messages) `raw` stays `Null` and `raw_*` is the typed
+route. Provider wire types that were private are now public where they are
+the raw route's return type (`openai::CompatibleEmbeddingResponse`,
+`copilot::CopilotEmbeddingResponse`, `cohere::{ImageEmbeddingResponse,
+FloatEmbeddings}`, the Jina rerank types in `providers::internal::rerank`,
+`gemini::embedding::gemini_api_types`), and gain `Serialize`.
+
+The shared OpenAI-compatible embeddings driver reads `x-request-id` onto
+`provider_request_id` for OpenAI (and Copilot does for its route); the other
+embedding and rerank endpoints report no transport id, and `None` is the
+documented outcome.
+
+`EmbeddingsBuilder::build`'s result is **unchanged**: the builder aggregates
+many model calls, so there is no single response identity. Identity is
+per-call — call `embed_texts_response` on the model directly when you need
+it.
+
+### `RerankModelHandle` and `ImageEmbeddingModelHandle`
+
+`rig::rerank::RerankModelHandle` and `rig::embeddings::ImageEmbeddingModelHandle`
+erase any `RerankModel + 'static` / `ImageEmbeddingModel + 'static`, exactly
+as `EmbeddingModelHandle` does for `EmbeddingModel`: cloneable, themselves
+implementing the trait, `max_documents` / `ndims` captured by value at
+erasure, the model never cloned, no `set_model`. No in-tree type held a
+`RerankModel` or `ImageEmbeddingModel` generically, so nothing lost a
+parameter; the handles exist for dyn-storability and parity.
+
+Image embedding deliberately gets **no** capability client (`ImageEmbeddingsClient`)
+or `Construct*` hook: one provider (Cohere) offers it, through the inherent
+`cohere::Client::image_embedding_model()`, which is unchanged.
+
+### `ModelLister` construction moved to `ConstructModelLister`
+
+`ModelLister<H>` loses `type Client` and `fn new` — the last construction
+associated type on any trait in `rig-core`. Delete both from your impls and
+add the public hook beside them:
+
+```rust
+impl<H> ConstructModelLister<Client<MyExt, H>> for MyLister<H>
+where
+    H: Clone,
+{
+    fn construct(client: &Client<MyExt, H>) -> Self {
+        Self { client: client.clone() }
+    }
+}
+```
+
+The blanket `ModelListingClient` impl over `Client<Ext, H>` bounds on it, so
+an out-of-tree extension reaches `list_models` through public API only (the
+`client::external_modality_extension_probe` test asserts it). `construct`
+takes `&C`, like every other `Construct*` hook. `ModelLister` keeps its `H`
+parameter — the transport, not a provider leak. Call sites
+(`client.list_models()`) are unchanged; code that called `MyLister::new(client)`
+directly calls `MyLister::construct(&client)`.
 
 ### Assistant content is tagged and provider extras are a named field
 

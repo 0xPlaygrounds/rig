@@ -96,24 +96,27 @@ pub trait ModelListingClient {
 /// where
 ///     H: HttpClientExt + WasmCompatSend + WasmCompatSync,
 /// {
-///     type Client = Client<MyProviderExt, H>;
-///
-///     fn new(client: Self::Client) -> Self {
-///         Self { client }
-///     }
-///
 ///     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
 ///         // Fetch all models (handle pagination internally if needed)
 ///         todo!()
 ///     }
 /// }
+///
+/// // Construction is separate: the public hook the blanket
+/// // `ModelListingClient` impl over `Client<Ext, H>` calls.
+/// impl<H> ConstructModelLister<Client<MyProviderExt, H>> for MyProviderModelLister<H>
+/// where
+///     H: Clone,
+/// {
+///     fn construct(client: &Client<MyProviderExt, H>) -> Self {
+///         Self { client: client.clone() }
+///     }
+/// }
 /// ```
+///
+/// `H` stays a parameter of this trait: it is the transport, not a provider
+/// leak, and the listing request is written against it.
 pub trait ModelLister<H = reqwest::Client>: WasmCompatSend + WasmCompatSync {
-    /// The client type associated with this lister
-    type Client;
-
-    /// Create a new instance of the lister with the given client
-    fn new(client: Self::Client) -> Self;
     /// List all available models from the provider.
     ///
     /// This implementation should handle fetching all pages if the provider
@@ -125,6 +128,22 @@ pub trait ModelLister<H = reqwest::Client>: WasmCompatSend + WasmCompatSync {
     fn list_all(
         &self,
     ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend;
+}
+
+/// Construction hook for the blanket [`ModelListingClient`] implementation
+/// over [`crate::client::Client`] — the model-listing twin of
+/// [`crate::client::ConstructCompletionModel`], and the last construction
+/// associated type to leave a trait in this crate.
+///
+/// Public for the same reason as the others: an out-of-tree provider extension
+/// built on the generic `Client<Ext, H>` cannot implement
+/// [`ModelListingClient`] for that foreign type (orphan rule), so it
+/// implements this trait on its own lister type and the blanket
+/// implementation supplies `list_models`. Takes `&C`, like every other
+/// `Construct*` hook; every implementation clones the client anyway.
+pub trait ConstructModelLister<C>: Sized {
+    /// Build this lister from its provider client.
+    fn construct(client: &C) -> Self;
 }
 
 #[cfg(test)]

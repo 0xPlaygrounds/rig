@@ -2,6 +2,7 @@ use aws_smithy_types::Blob;
 use rig_core::embeddings::{self, Embedding, EmbeddingError};
 use serde::{Deserialize, Serialize};
 
+use crate::types::assistant_content::PROVIDER_NAME;
 use crate::{client::Client, types::errors::AwsSdkInvokeModelError};
 
 #[derive(Serialize)]
@@ -12,7 +13,7 @@ pub struct EmbeddingRequest {
     pub normalize: bool,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddingResponse {
     pub embedding: Vec<f64>,
@@ -86,15 +87,17 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         self.ndims.unwrap_or_default()
     }
 
-    async fn embed_texts(
+    async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + Send,
-    ) -> Result<Vec<Embedding>, EmbeddingError> {
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
 
         // Deliberately sequential: issuing the requests one at a time keeps
         // Bedrock's per-account throttling behavior unchanged.
         let mut results = Vec::new();
+        let mut raw = Vec::new();
+        let mut usage = rig_core::completion::Usage::new();
         let mut first_error = None;
         for doc in documents {
             let request = EmbeddingRequest {
@@ -103,10 +106,15 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 normalize: true,
             };
             match self.document_to_embeddings(request).await {
-                Ok(embeddings) => results.push(Embedding {
-                    document: doc,
-                    vec: embeddings.embedding,
-                }),
+                Ok(response) => {
+                    usage.input_tokens += response.input_text_token_count as u64;
+                    usage.total_tokens += response.input_text_token_count as u64;
+                    raw.push(serde_json::to_value(&response)?);
+                    results.push(Embedding {
+                        document: doc,
+                        vec: response.embedding,
+                    });
+                }
                 Err(err) => {
                     first_error.get_or_insert(err);
                 }
@@ -114,7 +122,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         }
 
         match first_error {
-            None => Ok(results),
+            // One Bedrock answer per document: `raw` is the array of them.
+            None => Ok(embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
+                .with_usage(usage)
+                .with_raw(serde_json::Value::Array(raw))),
             Some(err) => Err(EmbeddingError::ResponseError(err.to_string())),
         }
     }

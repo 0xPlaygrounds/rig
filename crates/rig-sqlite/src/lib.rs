@@ -2064,7 +2064,7 @@ impl_column_value! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::embeddings::EmbeddingError;
+    use rig_core::embeddings::{EmbeddingError, EmbeddingResponse};
     use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
     use sqlite_vec::sqlite3_vec_init;
     use std::cmp::Ordering;
@@ -5009,17 +5009,20 @@ mod tests {
             2
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             texts: impl IntoIterator<Item = String> + WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
-            Ok(texts
-                .into_iter()
-                .map(|text| Embedding {
-                    document: text,
-                    vec: vec![1.0, 0.0],
-                })
-                .collect())
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
+            Ok(EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|text| Embedding {
+                        document: text,
+                        vec: vec![1.0, 0.0],
+                    })
+                    .collect(),
+                "mock",
+            ))
         }
     }
 

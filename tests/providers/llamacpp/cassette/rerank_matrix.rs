@@ -112,7 +112,8 @@ async fn multiple_documents_come_back_ranked() {
             "the server bills the ranking: {:?}",
             reranked.usage
         );
-        assert_eq!(reranked.model, CASSETTE_RERANK_MODEL);
+        assert_eq!(reranked.model.as_deref(), Some(CASSETTE_RERANK_MODEL));
+        assert_eq!(reranked.provider, "llamacpp");
     })
     .await;
 

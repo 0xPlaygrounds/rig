@@ -373,7 +373,7 @@ mod tests {
     use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
     use rig_core::{
         client::Nothing,
-        embeddings::{Embedding, EmbeddingError, EmbeddingModel},
+        embeddings::{Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse},
         vector_store::{VectorStoreIndexDyn, request::Filter},
     };
     use serde_json::json;
@@ -391,17 +391,20 @@ mod tests {
             3
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             texts: impl IntoIterator<Item = String> + Send,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
-            Ok(texts
-                .into_iter()
-                .map(|text| Embedding {
-                    document: text,
-                    vec: vec![0.0, 0.0, 0.0],
-                })
-                .collect())
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
+            Ok(EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|text| Embedding {
+                        document: text,
+                        vec: vec![0.0, 0.0, 0.0],
+                    })
+                    .collect(),
+                "mock",
+            ))
         }
     }
 

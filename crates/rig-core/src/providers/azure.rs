@@ -835,7 +835,7 @@ mod azure_tests {
         let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
 
         let response = model
-            .embed_texts_with_usage(vec!["Hello, world!".to_string()])
+            .embed_texts_response(vec!["Hello, world!".to_string()])
             .await
             .expect("embedding should succeed");
 
