@@ -213,6 +213,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         provider: "mistral",
         source_dir: "tests/providers/mistral",
         wrapper_names: &[
+            "with_mistral_embedding_cassette",
             "with_mistral_prompt_caching_cassette",
             "with_mistral_cassette_result",
             "with_mistral_multimodal_cassette",
