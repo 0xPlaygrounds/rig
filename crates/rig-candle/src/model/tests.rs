@@ -988,12 +988,8 @@ fn inference_clamps_context_and_uses_fresh_generation_state()
     let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
     loaded.profile.context_limit = prompt_tokens + 2;
 
-    let first = infer(
-        &loaded,
-        completion_request.clone(),
-        &CancellationSignal::default(),
-    )?;
-    let second = infer(&loaded, completion_request, &CancellationSignal::default())?;
+    let first = infer(&loaded, &completion_request, &CancellationSignal::default())?;
+    let second = infer(&loaded, &completion_request, &CancellationSignal::default())?;
     let (first, second) = (first.response, second.response);
     assert_eq!(first.text, second.text);
     assert_eq!(first.generated_tokens, 2);
@@ -1012,7 +1008,7 @@ fn eos_is_counted_but_excluded_from_decoded_text()
     loaded.profile.stop_tokens.insert(0);
     let mut completion_request = request(vec![Message::user("hello")]);
     completion_request.temperature = Some(0.0);
-    let response = infer(&loaded, completion_request, &CancellationSignal::default())?.response;
+    let response = infer(&loaded, &completion_request, &CancellationSignal::default())?.response;
     assert_eq!(response.finish_reason, FinishReason::Eos);
     assert_eq!(response.generated_tokens, 1);
     assert_eq!(
@@ -1120,7 +1116,7 @@ fn concurrency_limit_and_cancellation_are_deterministic()
     let signal = CancellationSignal::default();
     signal.cancel();
     assert!(matches!(
-        infer(&loaded, request(vec![Message::user("hello")]), &signal),
+        infer(&loaded, &request(vec![Message::user("hello")]), &signal),
         Err(CandleError::Cancelled)
     ));
     Ok(())

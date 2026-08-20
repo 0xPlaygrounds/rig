@@ -97,7 +97,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
 
     fn try_from(value: AwsConverseOutput) -> Result<Self, Self::Error> {
         let message: RigMessage = value
-            .to_owned()
+            .clone()
             .0
             .output
             .ok_or(CompletionError::ProviderError(

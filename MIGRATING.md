@@ -2146,6 +2146,36 @@ merged `RequestPatch` and the previous model, and may pick a different handle
 per model call). `CompletionModel::capabilities()` is captured by value when
 the handle is created.
 
+### Borrow-shaped signatures: filter builders, rmcp registration, streaming prompt construction
+
+An ownership audit converted signatures that took owned values they never
+consumed into borrows, removing the caller-side clones they forced. Call
+sites passing string literals compile unchanged; sites that built an owned
+`String`/`Value`/`Vec` just to hand it over now pass a reference (and can
+usually stop building the owned value at all).
+
+- Vector-store filter builders take `&str` keys (and, where the value was
+  only serialized, borrowed values): `rig_qdrant::QdrantFilter`
+  (`exists`/`is_null`/`is_empty`/the four `range_*`, values now
+  `&serde_json::Value`), `rig_milvus::Filter` (`gte`/`lte`/`in_values`/
+  `not_in`/`like`/`array_*`), `rig_surrealdb::SurrealSearchFilter`
+  (`contains`/`all`/`any`/`member`/geometry ops, values now `&Value`),
+  `rig_lancedb::LanceDBFilter`, `rig_neo4j::Neo4jSearchFilter`,
+  `rig_postgres::PgSearchFilter`, and `rig_vectorize::VectorizeFilter`
+  (`ne`/`gte`/`lte` take `&Value`; `in_values`/`nin` take `&[Value]`).
+- `MilvusVectorStore::auth(&str, &str)` (was `String, String`).
+- `SqliteVectorStore::add_rows_with_txn` takes `&[(T, Vec<Embedding>)]`.
+- `StreamingPromptRequest::new(&Agent, …)` (was `Arc<Agent>`) — it only ever
+  read through the `Arc`; callers holding an `Arc` pass `&arc`.
+- `ToolServer::rmcp_tools` / `rmcp_tools_with_timeout` and the corresponding
+  `AgentBuilder` wrappers take `client: &ServerSink` (each registered tool
+  clones it anyway); the single-tool `rmcp_tool_with_timeout` still consumes
+  the sink it stores. Callers drop their `peer.clone()`.
+- `rig_vertexai::types::completion_response::map_finish_reason(&FinishReason)`.
+- `VectorStoreIndex::top_n`'s bound is spelled `DeserializeOwned` instead of
+  `for<'a> Deserialize<'a>` — the same bound, so implementations and callers
+  are unaffected; only the spelling changed.
+
 ### Transcription, image-generation and audio-generation responses are concrete and normalized
 
 The same argument #2257 applied to completions now applies to the three

@@ -112,11 +112,11 @@ impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
-        Some(self.id.to_owned())
+        Some(self.id.clone())
     }
 
     fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.to_owned())
+        Some(self.model.clone())
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -271,6 +271,9 @@ pub struct ToolDefinition {
     pub cache_control: Option<CacheControl>,
 }
 
+// `skip_serializing_if` requires a `fn(&bool) -> bool`, so the trivially-copy
+// lint does not apply here.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(value: &bool) -> bool {
     !value
 }
@@ -1046,9 +1049,9 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
             message::ImageMediaType::GIF => ImageFormat::GIF,
             message::ImageMediaType::WEBP => ImageFormat::WEBP,
             _ => {
-                return Err(MessageError::ConversionError(
-                    format!("Unsupported image media type: {media_type:?}").to_owned(),
-                ));
+                return Err(MessageError::ConversionError(format!(
+                    "Unsupported image media type: {media_type:?}"
+                )));
             }
         })
     }
@@ -2705,7 +2708,7 @@ pub(super) fn extract_top_level_cache_control(
 
 pub(super) fn resolve_top_level_cache_control(
     automatic_caching: bool,
-    automatic_caching_ttl: Option<CacheTtl>,
+    automatic_caching_ttl: &Option<CacheTtl>,
     additional_params: &mut serde_json::Value,
 ) -> Result<Option<CacheControl>, CompletionError> {
     let raw_cache_control = extract_top_level_cache_control(additional_params)?;
@@ -2733,7 +2736,7 @@ pub(super) fn resolve_top_level_cache_control(
 }
 
 pub(super) fn split_system_messages_from_history(
-    history: Vec<message::Message>,
+    history: &[message::Message],
     preserve_mid_conversation_system_messages: bool,
 ) -> (Vec<SystemContent>, Vec<message::Message>) {
     let mut system = Vec::new();
@@ -2744,7 +2747,7 @@ pub(super) fn split_system_messages_from_history(
             message::Message::System { content } => {
                 if !content.is_empty() {
                     if preserve_mid_conversation_system_messages
-                        && is_valid_mid_conversation_system_message(&history, index)
+                        && is_valid_mid_conversation_system_message(history, index)
                     {
                         remaining.push(message.clone());
                     } else {
@@ -2839,7 +2842,7 @@ impl AnthropicCompletionRequest {
         };
 
         let (history_system, chat_history) = split_system_messages_from_history(
-            chat_history,
+            &chat_history,
             supports_mid_conversation_system_messages(model),
         );
         let mut full_history = vec![];
@@ -2856,7 +2859,7 @@ impl AnthropicCompletionRequest {
             .unwrap_or(serde_json::Value::Null);
         let top_level_cache_control = resolve_top_level_cache_control(
             automatic_caching,
-            automatic_caching_ttl,
+            &automatic_caching_ttl,
             &mut additional_params_payload,
         )?;
         let mut tools =

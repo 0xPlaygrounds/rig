@@ -218,7 +218,7 @@ fn audio_part_to_mistral_chunk(
 /// Dispatched on the `type` tag, which the shared OpenAI-compatible conversion
 /// always emits, so a part naming a chunk kind is converted as that kind
 /// regardless of what other keys it carries.
-fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+fn into_mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
     /// Text and refusal parts are both re-tagged as `text`: Mistral's chunk
     /// schema has no `refusal` field, and every chunk forbids unknown keys.
     fn text_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
@@ -228,7 +228,7 @@ fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, Comp
     }
 
     match part.get("type").and_then(serde_json::Value::as_str) {
-        Some(TEXT_CHUNK | REFUSAL_TYPE) => text_chunk(&part),
+        Some(TEXT_CHUNK | REFUSAL_TYPE) => text_chunk(part),
         // The payload needs no reshaping — Mistral's image chunk takes the
         // `{url, detail}` object rig sends as readily as a bare URL string, and
         // reads a base64 `data:` URI in either, with `detail` accepting exactly
@@ -242,8 +242,8 @@ fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, Comp
             })?;
             Ok(serde_json::json!({"type": IMAGE_CHUNK, IMAGE_CHUNK: image}))
         }
-        Some(AUDIO_CHUNK) => audio_part_to_mistral_chunk(&part),
-        Some(FILE_CHUNK) => file_part_to_mistral_chunk(&part),
+        Some(AUDIO_CHUNK) => audio_part_to_mistral_chunk(part),
+        Some(FILE_CHUNK) => file_part_to_mistral_chunk(part),
         // Already a Mistral document chunk — see `file_part_to_mistral_chunk`
         // on why an already-converted part passes through.
         Some(DOCUMENT_CHUNK) => {
@@ -262,7 +262,7 @@ fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, Comp
         ))),
         // Untagged, but textual: the shared flattening would have taken it, so
         // it converts rather than failing.
-        None if part_text(&part).is_some() => text_chunk(&part),
+        None if part_text(part).is_some() => text_chunk(part),
         None => Err(unsupported_content_error("untyped message content")),
     }
 }
@@ -308,7 +308,7 @@ pub(super) fn normalize_request_content(
     // unreachable — expressed as a no-op instead of an unwrap.
     if let Some(parts) = content.as_array_mut() {
         for part in parts {
-            *part = into_mistral_chunk(part.take())?;
+            *part = into_mistral_chunk(part)?;
         }
     }
 
@@ -412,7 +412,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
                     if content.is_empty() {
                         None
                     } else {
-                        Some(content.to_string())
+                        Some(content.clone())
                     }
                 }
                 _ => None,

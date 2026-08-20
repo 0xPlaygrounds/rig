@@ -146,16 +146,16 @@ impl Filter {
         Self(format!("NOT ({})", self.0))
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} >= {}", value.escaped()))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} <= {}", value.escaped()))
     }
 
     /// IN operator
-    pub fn in_values(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn in_values(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())
@@ -165,7 +165,7 @@ impl Filter {
     }
 
     /// NOT IN operator
-    pub fn not_in(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn not_in(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())
@@ -175,17 +175,17 @@ impl Filter {
     }
 
     /// LIKE operator (string pattern matching)
-    pub fn like(key: String, pattern: String) -> Self {
+    pub fn like(key: &str, pattern: &str) -> Self {
         Self(format!("{} like '{}'", key, pattern))
     }
 
     /// Array contains
-    pub fn array_contains(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn array_contains(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("array_contains({}, {})", key, value.escaped()))
     }
 
     /// Array contains all
-    pub fn array_contains_all(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_contains_all(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())
@@ -195,7 +195,7 @@ impl Filter {
     }
 
     /// Array contains any
-    pub fn array_contains_any(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_contains_any(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())
@@ -205,7 +205,7 @@ impl Filter {
     }
 
     /// Array length comparison
-    pub fn array_length_eq(key: String, length: i32) -> Self {
+    pub fn array_length_eq(key: &str, length: i32) -> Self {
         Self(format!("array_length({}) == {}", key, length))
     }
 

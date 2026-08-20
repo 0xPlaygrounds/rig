@@ -79,27 +79,27 @@ impl SearchFilter for VectorizeFilter {
 
 impl VectorizeFilter {
     /// Creates a "not equal" filter.
-    pub fn ne(key: impl AsRef<str>, value: Value) -> Self {
+    pub fn ne(key: impl AsRef<str>, value: &Value) -> Self {
         Self(json!({ key.as_ref(): { "$ne": value } }))
     }
 
     /// Creates a "greater than or equal" filter.
-    pub fn gte(key: impl AsRef<str>, value: Value) -> Self {
+    pub fn gte(key: impl AsRef<str>, value: &Value) -> Self {
         Self(json!({ key.as_ref(): { "$gte": value } }))
     }
 
     /// Creates a "less than or equal" filter.
-    pub fn lte(key: impl AsRef<str>, value: Value) -> Self {
+    pub fn lte(key: impl AsRef<str>, value: &Value) -> Self {
         Self(json!({ key.as_ref(): { "$lte": value } }))
     }
 
     /// Creates an "in" filter (value must be one of the provided values).
-    pub fn in_values(key: impl AsRef<str>, values: Vec<Value>) -> Self {
+    pub fn in_values(key: impl AsRef<str>, values: &[Value]) -> Self {
         Self(json!({ key.as_ref(): { "$in": values } }))
     }
 
     /// Creates a "not in" filter (value must not be any of the provided values).
-    pub fn nin(key: impl AsRef<str>, values: Vec<Value>) -> Self {
+    pub fn nin(key: impl AsRef<str>, values: &[Value]) -> Self {
         Self(json!({ key.as_ref(): { "$nin": values } }))
     }
 
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_ne_filter() {
-        let filter = VectorizeFilter::ne("status", json!("deleted"));
+        let filter = VectorizeFilter::ne("status", &json!("deleted"));
         assert_eq!(
             filter.into_inner(),
             json!({ "status": { "$ne": "deleted" } })
@@ -155,20 +155,19 @@ mod tests {
 
     #[test]
     fn test_gte_filter() {
-        let filter = VectorizeFilter::gte("count", json!(10));
+        let filter = VectorizeFilter::gte("count", &json!(10));
         assert_eq!(filter.into_inner(), json!({ "count": { "$gte": 10 } }));
     }
 
     #[test]
     fn test_lte_filter() {
-        let filter = VectorizeFilter::lte("age", json!(65));
+        let filter = VectorizeFilter::lte("age", &json!(65));
         assert_eq!(filter.into_inner(), json!({ "age": { "$lte": 65 } }));
     }
 
     #[test]
     fn test_in_filter() {
-        let filter =
-            VectorizeFilter::in_values("category", vec![json!("a"), json!("b"), json!("c")]);
+        let filter = VectorizeFilter::in_values("category", &[json!("a"), json!("b"), json!("c")]);
         assert_eq!(
             filter.into_inner(),
             json!({ "category": { "$in": ["a", "b", "c"] } })
@@ -177,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_nin_filter() {
-        let filter = VectorizeFilter::nin("status", vec![json!("deleted"), json!("archived")]);
+        let filter = VectorizeFilter::nin("status", &[json!("deleted"), json!("archived")]);
         assert_eq!(
             filter.into_inner(),
             json!({ "status": { "$nin": ["deleted", "archived"] } })

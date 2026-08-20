@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let vector_store =
         rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)
-            .auth(milvus_user, milvus_password);
+            .auth(&milvus_user, &milvus_password);
 
     // create test documents with mocked embeddings
     let words = vec![

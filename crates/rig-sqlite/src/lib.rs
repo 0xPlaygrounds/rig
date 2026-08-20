@@ -367,10 +367,11 @@ impl<T> SqliteVectorStore<T>
 where
     T: SqliteVectorStoreTable + 'static,
 {
-    async fn candidate_limit(&self, samples: u64, exhaustive: bool) -> Result<u64, VectorStoreError>
-    where
-        Self: 'static,
-    {
+    async fn candidate_limit(
+        &self,
+        samples: u64,
+        exhaustive: bool,
+    ) -> Result<u64, VectorStoreError> {
         if samples == 0 {
             return Ok(0);
         }
@@ -571,7 +572,7 @@ where
     pub fn add_rows_with_txn(
         &self,
         txn: &rusqlite::Transaction<'_>,
-        documents: Vec<(T, Vec<Embedding>)>,
+        documents: &[(T, Vec<Embedding>)],
     ) -> Result<i64, tokio_rusqlite::Error> {
         info!("Adding {} documents to store", documents.len());
         let table_name = T::name();
@@ -600,7 +601,7 @@ where
             format!("DELETE FROM {embedding_map_table_name} WHERE document_rowid = ?1");
         let delete_embeddings_sql = format!("DELETE FROM {embeddings_table_name} WHERE rowid = ?1");
 
-        for (doc, embeddings) in &documents {
+        for (doc, embeddings) in documents {
             debug!("Storing document with id {}", doc.id());
 
             let values = doc.column_values();
@@ -675,17 +676,13 @@ where
     pub async fn add_rows(
         &self,
         documents: Vec<(T, Vec<Embedding>)>,
-    ) -> Result<i64, VectorStoreError>
-    where
-        T: 'static,
-        Self: 'static,
-    {
+    ) -> Result<i64, VectorStoreError> {
         let cloned = self.clone();
 
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                let result = cloned.add_rows_with_txn(&tx, documents)?;
+                let result = cloned.add_rows_with_txn(&tx, &documents)?;
                 tx.commit()?;
 
                 Ok(result)

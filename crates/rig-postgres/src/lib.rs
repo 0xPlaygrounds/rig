@@ -115,15 +115,15 @@ impl PgSearchFilter {
         Self(SqlCondition::binary(key, "<=", PLACEHOLDER, value))
     }
 
-    pub fn is_null(key: String) -> Self {
+    pub fn is_null(key: &str) -> Self {
         Self(SqlCondition::raw(format!("{key} is null")))
     }
 
-    pub fn is_not_null(key: String) -> Self {
+    pub fn is_not_null(key: &str) -> Self {
         Self(SqlCondition::raw(format!("{key} is not null")))
     }
 
-    pub fn between<T>(key: String, range: RangeInclusive<T>) -> Self
+    pub fn between<T>(key: &str, range: RangeInclusive<T>) -> Self
     where
         T: std::fmt::Display + Into<serde_json::Number> + Copy,
     {
@@ -133,7 +133,7 @@ impl PgSearchFilter {
         Self(SqlCondition::raw(format!("{key} between {lo} and {hi}")))
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         Self(SqlCondition::list(key, "is in", PLACEHOLDER, values))
     }
 
@@ -141,13 +141,13 @@ impl PgSearchFilter {
 
     /// Tests whether the value at `key` matches the (case-sensitive) pattern
     /// `pattern` should be a valid SQL string pattern, with '%' and '_' as wildcards
-    pub fn like(key: String, pattern: &'static str) -> Self {
+    pub fn like(key: &str, pattern: &'static str) -> Self {
         Self(SqlCondition::raw(format!("{key} like {pattern}")))
     }
 
     /// Tests whether the value at `key` matches the SQL regex pattern
     /// `pattern` should be a valid regex
-    pub fn similar_to(key: String, pattern: &'static str) -> Self {
+    pub fn similar_to(key: &str, pattern: &'static str) -> Self {
         Self(SqlCondition::raw(format!("{key} similar to {pattern}")))
     }
 }
@@ -416,7 +416,7 @@ mod tests {
         assert!(!cond.contains('?'));
         assert_eq!(cond.matches('$').count(), values.len());
 
-        let member = PgSearchFilter::member("id".into(), vec![json!(1), json!(2)]);
+        let member = PgSearchFilter::member("id", vec![json!(1), json!(2)]);
         let (cond, values) = PgSearchFilter::eq("kind", json!("fruit"))
             .and(member)
             .into_clause();

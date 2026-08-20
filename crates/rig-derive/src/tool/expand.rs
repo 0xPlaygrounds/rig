@@ -106,7 +106,10 @@ struct ModelParam<'a> {
     optional: bool,
 }
 
-pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Result<TokenStream> {
+pub(crate) fn expand_rig_tool(
+    args: &MacroArgs,
+    input_fn: &syn::ItemFn,
+) -> syn::Result<TokenStream> {
     let refs = CrateRefs::resolve();
     let core = &refs.core;
 

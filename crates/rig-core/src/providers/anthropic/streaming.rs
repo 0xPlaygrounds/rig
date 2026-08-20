@@ -360,7 +360,8 @@ impl WireAdapter for AnthropicAdapter {
                 // body is a no-op, not an error.
                 let Some(message) = message else { return };
                 self.input_tokens = message.usage.input_tokens;
-                self.cache_creation = message.usage.cache_creation.clone();
+                self.cache_creation
+                    .clone_from(&message.usage.cache_creation);
                 self.message_id = Some(message.id.clone());
                 self.response_model = Some(message.model.clone());
 
@@ -1174,7 +1175,7 @@ mod tests {
             "cache_control": {"type": "ephemeral", "ttl": "1h"}
         });
         let top_level_cache_control =
-            resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
+            resolve_top_level_cache_control(false, &None, &mut additional_params).unwrap();
         let mut tools =
             build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
                 vec![crate::completion::ToolDefinition {

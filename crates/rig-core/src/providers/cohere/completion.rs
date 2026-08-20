@@ -67,7 +67,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
             .iter()
             .filter_map(|x| {
                 if let AssistantContent::Text { text } = x {
-                    Some(text.to_string())
+                    Some(text.clone())
                 } else {
                     None
                 }
@@ -669,8 +669,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+                .flatten(),
         );
 
         let tool_choice = req
@@ -694,7 +693,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         }
 
         Ok(Self {
-            model: model.to_string(),
+            model,
             messages: full_history,
             documents,
             temperature: req.temperature,

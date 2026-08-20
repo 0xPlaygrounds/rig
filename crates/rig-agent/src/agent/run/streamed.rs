@@ -549,7 +549,7 @@ impl StreamedTurnAssembler {
             });
         if let Some(part) = replace_at.and_then(|index| self.reasoning_parts.get_mut(index)) {
             if reasoning.id.is_some() {
-                part.provider_id = reasoning.id.clone();
+                part.provider_id.clone_from(&reasoning.id);
             }
             part.state = ReasoningPartState::Completed(reasoning.clone());
             return;
@@ -660,7 +660,7 @@ impl StreamedTurnAssembler {
                         text.push_str(reasoning);
                     }
                     if part.provider_id.is_none() {
-                        part.provider_id = provider_id.clone();
+                        part.provider_id.clone_from(provider_id);
                     }
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
@@ -740,7 +740,7 @@ impl StreamedTurnAssembler {
                 // tool calls actually seen (see `StreamFinal::finish_reason`),
                 // so it is consumed as-is and never re-reconciled here.
                 let finish_reason = final_response.finish_reason.clone();
-                self.finish_reason = finish_reason.clone();
+                self.finish_reason.clone_from(&finish_reason);
                 Ok(vec![StreamedTurnEvent::Completed {
                     usage,
                     emit_final,
@@ -792,7 +792,7 @@ impl StreamedTurnAssembler {
                     internal_call_id,
                 },
             ) => {
-                tool_call.function.name = tool_name.clone();
+                tool_call.function.name.clone_from(tool_name);
                 self.pending_tool_calls.push((*tool_call, internal_call_id));
                 Vec::new()
             }

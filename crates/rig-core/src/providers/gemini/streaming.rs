@@ -49,7 +49,7 @@ pub(crate) mod shared_parts {
         // *name* is never an identity — two calls to the same tool in one
         // turn must stay distinct, correlated by order and by the
         // rig-internal call id.
-        let tool_id = wire_id.clone().and_then(crate::streaming::WireId::new);
+        let tool_id = wire_id.and_then(crate::streaming::WireId::new);
         let id = tool_id
             .as_ref()
             .map(|id| StreamPartId::wire(id.as_str()))

@@ -223,7 +223,7 @@ impl LanceDBFilter {
     }
 
     /// IN operator
-    pub fn in_values(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn in_values(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         Self(
             values
                 .into_iter()
@@ -235,7 +235,7 @@ impl LanceDBFilter {
     }
 
     /// LIKE operator (string pattern matching)
-    pub fn like<S>(key: String, pattern: S) -> Self
+    pub fn like<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -246,7 +246,7 @@ impl LanceDBFilter {
     }
 
     /// ILIKE operator (case-insensitive pattern matching)
-    pub fn ilike<S>(key: String, pattern: S) -> Self
+    pub fn ilike<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -257,17 +257,17 @@ impl LanceDBFilter {
     }
 
     /// IS NULL check
-    pub fn is_null(key: String) -> Self {
+    pub fn is_null(key: &str) -> Self {
         Self(Ok(format!("{key} IS NULL")))
     }
 
     /// IS NOT NULL check
-    pub fn is_not_null(key: String) -> Self {
+    pub fn is_not_null(key: &str) -> Self {
         Self(Ok(format!("{key} IS NOT NULL")))
     }
 
     /// Array has any (for LIST columns with scalar index)
-    pub fn array_has_any(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_has_any(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         Self(
             values
                 .into_iter()
@@ -279,7 +279,7 @@ impl LanceDBFilter {
     }
 
     /// Array has all (for LIST columns with scalar index)
-    pub fn array_has_all(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_has_all(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         Self(
             values
                 .into_iter()
@@ -291,12 +291,12 @@ impl LanceDBFilter {
     }
 
     /// Array length comparison
-    pub fn array_length(key: String, length: i32) -> Self {
+    pub fn array_length(key: &str, length: i32) -> Self {
         Self(Ok(format!("array_length({key}) = {length}")))
     }
 
     /// BETWEEN operator
-    pub fn between<T>(key: String, Range { start, end }: Range<T>) -> Self
+    pub fn between<T>(key: &str, Range { start, end }: Range<T>) -> Self
     where
         T: PartialOrd + std::fmt::Display + Into<serde_json::Number>,
     {
@@ -426,7 +426,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
                         _ => 0.0,
                     },
                     match value.get(self.id_field.clone()) {
-                        Some(Value::String(id)) => id.to_string(),
+                        Some(Value::String(id)) => id.clone(),
                         _ => format!("unknown{i}"),
                     },
                     serde_json::from_value(value).map_err(VectorStoreError::JsonError)?,
@@ -483,7 +483,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
                         _ => 0.0,
                     },
                     match value.get(self.id_field.clone()) {
-                        Some(Value::String(id)) => id.to_string(),
+                        Some(Value::String(id)) => id.clone(),
                         _ => "".to_string(),
                     },
                 ))

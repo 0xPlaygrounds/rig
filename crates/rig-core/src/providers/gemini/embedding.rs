@@ -77,7 +77,7 @@ where
                     "model": format!("models/{}", self.model),
                     "content": json!({
                         "parts": [json!({
-                            "text": doc.to_string()
+                            "text": doc.clone()
                         })]
                     }),
                     "output_dimensionality": self.ndims,

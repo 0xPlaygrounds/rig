@@ -12,7 +12,7 @@
 
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 use crate::{
@@ -131,7 +131,7 @@ pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
     type Filter: SearchFilter + WasmCompatSend + WasmCompatSync;
 
     /// Returns the top N most similar documents as `(score, id, document)` tuples.
-    fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>>
@@ -328,7 +328,7 @@ mod tests {
     impl VectorStoreIndex for NativeIndex {
         type Filter = NativeFilter;
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+        async fn top_n<T: DeserializeOwned + WasmCompatSend>(
             &self,
             _req: VectorSearchRequest<Self::Filter>,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -347,7 +347,7 @@ mod tests {
     impl VectorStoreIndex for TestIndex {
         type Filter = Filter<serde_json::Value>;
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+        async fn top_n<T: DeserializeOwned + WasmCompatSend>(
             &self,
             req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

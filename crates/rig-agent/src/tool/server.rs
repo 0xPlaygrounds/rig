@@ -207,7 +207,7 @@ impl ToolServer {
     pub fn rmcp_tools(
         self,
         tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
+        client: &rmcp::service::ServerSink,
     ) -> Self {
         self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
@@ -222,7 +222,7 @@ impl ToolServer {
     pub fn rmcp_tools_with_timeout(
         self,
         tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
+        client: &rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
         let timeout = timeout.into();
@@ -486,7 +486,7 @@ impl ToolServerHandle {
         &self,
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        Ok(self.snapshot_tool_defs(prompt).await?.definitions.clone())
+        Ok(self.snapshot_tool_defs(prompt).await?.definitions)
     }
 
     /// Resolve one ordered provider/dispatch snapshot for an agent turn.
@@ -543,7 +543,7 @@ impl ToolServerHandle {
         };
 
         let tools = self
-            .with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids))
+            .with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids))
             .await;
 
         Ok(ToolRegistrySnapshot::new(tools))
@@ -552,7 +552,7 @@ impl ToolServerHandle {
 
 fn snapshot_registered_tools(
     state: &ToolServerState,
-    dynamic_tool_ids: Vec<String>,
+    dynamic_tool_ids: &[String],
 ) -> IndexMap<String, RegisteredTool> {
     let mut tools = IndexMap::new();
     let insert = |tools: &mut IndexMap<String, RegisteredTool>, name: &str, warn_missing| {
@@ -578,7 +578,7 @@ fn snapshot_registered_tools(
 
     // Retrieved tools remain first, in index/result order. Duplicate IDs and
     // dynamic/static overlap retain the first provider declaration.
-    for name in &dynamic_tool_ids {
+    for name in dynamic_tool_ids {
         insert(&mut tools, name, true);
     }
     for name in state.toolset.always_exposed_names() {
