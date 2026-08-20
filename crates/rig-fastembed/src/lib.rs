@@ -185,36 +185,44 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        let Some(embedder) = &self.embedder else {
-            let message = self
-                .init_error
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "FastEmbed model initialization failed".to_string());
-            return Err(EmbeddingError::ProviderError(message));
-        };
+        rig_core::telemetry::instrument_modality(
+            "fastembed",
+            &format!("{:?}", self.model),
+            rig_core::telemetry::ModalityOperation::Embeddings,
+            async {
+                let Some(embedder) = &self.embedder else {
+                    let message = self
+                        .init_error
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| "FastEmbed model initialization failed".to_string());
+                    return Err(EmbeddingError::ProviderError(message));
+                };
 
-        let documents_as_strings: Vec<String> = documents.into_iter().collect();
+                let documents_as_strings: Vec<String> = documents.into_iter().collect();
 
-        let documents_as_vec = embedder
-            .embed(
-                documents_as_strings.iter().map(String::as_str).collect(),
-                None,
-            )
-            .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
+                let documents_as_vec = embedder
+                    .embed(
+                        documents_as_strings.iter().map(String::as_str).collect(),
+                        None,
+                    )
+                    .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
-        let docs = documents_as_strings
-            .into_iter()
-            .zip(documents_as_vec)
-            .map(|(document, embedding)| embeddings::Embedding {
-                document,
-                vec: embedding.into_iter().map(|f| f as f64).collect(),
-            })
-            .collect::<Vec<embeddings::Embedding>>();
+                let docs = documents_as_strings
+                    .into_iter()
+                    .zip(documents_as_vec)
+                    .map(|(document, embedding)| embeddings::Embedding {
+                        document,
+                        vec: embedding.into_iter().map(|f| f as f64).collect(),
+                    })
+                    .collect::<Vec<embeddings::Embedding>>();
 
-        // FastEmbed runs in-process: there is no provider payload, no usage,
-        // and no request id. `raw` stays `Null`.
-        Ok(embeddings::EmbeddingResponse::new(docs, "fastembed"))
+                // FastEmbed runs in-process: there is no provider payload, no usage,
+                // and no request id. `raw` stays `Null`.
+                Ok(embeddings::EmbeddingResponse::new(docs, "fastembed"))
+            },
+        )
+        .await
     }
 }
 

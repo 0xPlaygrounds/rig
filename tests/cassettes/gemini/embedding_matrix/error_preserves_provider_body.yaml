@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/no-such-embedding-model:batchEmbedContents
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"requests":[{"content":{"parts":[{"text":"Rust values memory safety and predictable performance."}]},"model":"models/no-such-embedding-model","output_dimensionality":768},{"content":{"parts":[{"text":"Streaming responses arrive incrementally instead of all at once."}]},"model":"models/no-such-embedding-model","output_dimensionality":768},{"content":{"parts":[{"text":"Embeddings turn text into numeric vectors for similarity search."}]},"model":"models/no-such-embedding-model","output_dimensionality":768}]}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"error":{"code":404,"message":"models/no-such-embedding-model is not found for API version v1beta, or is not supported for embedContent. Call ModelService.ListModels to see the list of available models and their supported methods.","status":"NOT_FOUND"}}'

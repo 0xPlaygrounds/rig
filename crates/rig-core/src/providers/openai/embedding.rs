@@ -363,63 +363,71 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        use embeddings::NormalizeEmbeddingResponse as _;
+        crate::telemetry::instrument_modality(
+            Ext::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
 
-        let documents: Vec<String> = documents.into_iter().collect();
-        let (response, provider_request_id) = self
-            .raw_embed_texts_with_request_id(documents.clone())
-            .await?;
+                let documents: Vec<String> = documents.into_iter().collect();
+                let (response, provider_request_id) = self
+                    .raw_embed_texts_with_request_id(documents.clone())
+                    .await?;
 
-        if response.usage.is_none() && Ext::REQUIRES_USAGE {
-            return Err(EmbeddingError::MissingUsage {
-                provider: Ext::PROVIDER_NAME,
-            });
-        }
+                if response.usage.is_none() && Ext::REQUIRES_USAGE {
+                    return Err(EmbeddingError::MissingUsage {
+                        provider: Ext::PROVIDER_NAME,
+                    });
+                }
 
-        let captured = serde_json::to_value(&response)?;
-        let normalized = response.normalize(Ext::PROVIDER_NAME, documents)?;
-        let embeddings = &normalized.embeddings;
+                let captured = serde_json::to_value(&response)?;
+                let normalized = response.normalize(Ext::PROVIDER_NAME, documents)?;
+                let embeddings = &normalized.embeddings;
 
-        // A width the caller *declared* must be the width they
-        // got. Two carve-outs, and both matter:
-        //
-        // * the width must have been set explicitly — a handle
-        //   built without one reports whatever the provider table
-        //   says and has nothing to disagree with;
-        // * and it must be non-zero. Zero is rig's sentinel for
-        //   *unknown*, not a declaration: `default_ndims`
-        //   returning `None` lands here through
-        //   `unwrap_or_default()`, and
-        //   `GenericEmbeddingModel::new(client, model, 0)` is the
-        //   documented way to say "I do not know how wide this
-        //   is". Treating it as a claim would turn every such
-        //   handle into a hard error on its first request.
-        //
-        // The failure this catches is silent, because the
-        // providers where it happens are the ones that *ignore*
-        // `dimensions` rather than rejecting it — `llama-server`'s
-        // embeddings handler reads no such field at all, so a
-        // request for 128 answers 200 with 1024-wide vectors while
-        // `ndims()` keeps reporting 128. A vector store sized from
-        // `ndims()` then builds an index that cannot hold its own
-        // vectors, and the first thing to notice is the store.
-        if self.dimensions_were_explicitly_set
-            && self.ndims > 0
-            && let Some(returned) = embeddings
-                .iter()
-                .map(|embedding| embedding.vec.len())
-                .find(|width| *width != self.ndims)
-        {
-            return Err(EmbeddingError::MismatchedDimensions {
-                provider: Ext::PROVIDER_NAME,
-                requested: self.ndims,
-                returned,
-            });
-        }
+                // A width the caller *declared* must be the width they
+                // got. Two carve-outs, and both matter:
+                //
+                // * the width must have been set explicitly — a handle
+                //   built without one reports whatever the provider table
+                //   says and has nothing to disagree with;
+                // * and it must be non-zero. Zero is rig's sentinel for
+                //   *unknown*, not a declaration: `default_ndims`
+                //   returning `None` lands here through
+                //   `unwrap_or_default()`, and
+                //   `GenericEmbeddingModel::new(client, model, 0)` is the
+                //   documented way to say "I do not know how wide this
+                //   is". Treating it as a claim would turn every such
+                //   handle into a hard error on its first request.
+                //
+                // The failure this catches is silent, because the
+                // providers where it happens are the ones that *ignore*
+                // `dimensions` rather than rejecting it — `llama-server`'s
+                // embeddings handler reads no such field at all, so a
+                // request for 128 answers 200 with 1024-wide vectors while
+                // `ndims()` keeps reporting 128. A vector store sized from
+                // `ndims()` then builds an index that cannot hold its own
+                // vectors, and the first thing to notice is the store.
+                if self.dimensions_were_explicitly_set
+                    && self.ndims > 0
+                    && let Some(returned) = embeddings
+                        .iter()
+                        .map(|embedding| embedding.vec.len())
+                        .find(|width| *width != self.ndims)
+                {
+                    return Err(EmbeddingError::MismatchedDimensions {
+                        provider: Ext::PROVIDER_NAME,
+                        requested: self.ndims,
+                        returned,
+                    });
+                }
 
-        Ok(normalized
-            .with_optional_provider_request_id(provider_request_id)
-            .with_raw(captured))
+                Ok(normalized
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

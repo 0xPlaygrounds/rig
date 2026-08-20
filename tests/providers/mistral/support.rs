@@ -19,6 +19,20 @@ async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, m
     (cassette, client)
 }
 
+/// Unit-body wrapper for the recorded embedding matrix
+/// (`tests/cassettes/mistral/embedding_matrix/`).
+pub(super) async fn with_mistral_embedding_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
 pub(super) async fn with_mistral_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

@@ -283,15 +283,23 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        use embeddings::NormalizeEmbeddingResponse as _;
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
 
-        let documents = documents.into_iter().collect::<Vec<_>>();
-        // Cohere reports no transport request-id header on this endpoint.
-        let response = self.raw_embed_texts(documents.clone()).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize(super::completion::PROVIDER_NAME, documents)?
-            .with_raw(captured))
+                let documents = documents.into_iter().collect::<Vec<_>>();
+                // Cohere reports no transport request-id header on this endpoint.
+                let response = self.raw_embed_texts(documents.clone()).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(super::completion::PROVIDER_NAME, documents)?
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 
@@ -324,23 +332,32 @@ where
         &self,
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
     ) -> Result<embeddings::ImageEmbeddingResponse, EmbeddingError> {
-        let (responses, documents) = self.raw_embed_images_with_documents(images).await?;
-        let captured = serde_json::to_value(&responses)?;
-        let mut embeddings = Vec::with_capacity(responses.len());
-        let mut usage = crate::completion::Usage::new();
-        for (response, document) in responses.into_iter().zip(documents) {
-            if let Some(meta) = &response.meta {
-                usage += meta.billed_units.to_usage();
-            }
-            embeddings.push(response.into_embedding(document)?);
-        }
-        // One Cohere answer per image: a batch has no single response id, so
-        // identity is reachable per answer through `raw` / `raw_embed_images`.
-        Ok(
-            embeddings::ImageEmbeddingResponse::new(embeddings, super::completion::PROVIDER_NAME)
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            super::EMBED_ENGLISH_V3,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                let (responses, documents) = self.raw_embed_images_with_documents(images).await?;
+                let captured = serde_json::to_value(&responses)?;
+                let mut embeddings = Vec::with_capacity(responses.len());
+                let mut usage = crate::completion::Usage::new();
+                for (response, document) in responses.into_iter().zip(documents) {
+                    if let Some(meta) = &response.meta {
+                        usage += meta.billed_units.to_usage();
+                    }
+                    embeddings.push(response.into_embedding(document)?);
+                }
+                // One Cohere answer per image: a batch has no single response id, so
+                // identity is reachable per answer through `raw` / `raw_embed_images`.
+                Ok(embeddings::ImageEmbeddingResponse::new(
+                    embeddings,
+                    super::completion::PROVIDER_NAME,
+                )
                 .with_usage(usage)
-                .with_raw(captured),
+                .with_raw(captured))
+            },
         )
+        .await
     }
 }
 

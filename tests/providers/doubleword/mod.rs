@@ -7,6 +7,7 @@ mod cassette {
     mod agent;
     mod conformance;
     mod embedding_dimensions;
+    mod embedding_matrix;
     mod embeddings;
     mod error_matrix;
     mod extractor;

@@ -1291,3 +1291,67 @@ pub(crate) fn assert_transport_request_id(id: Option<&str>, context: &str) {
         "{context}: provider_request_id must be populated"
     );
 }
+
+/// Per-provider expectations for the recorded embedding matrix
+/// (`tests/providers/<provider>/cassette/embedding_matrix.rs`). The cells are
+/// shared; what a provider's wire actually reports — usage, a model echo, a
+/// transport request id — is data, asserted from the recordings.
+pub(crate) struct EmbeddingMatrixExpectations {
+    /// Stable descriptor name stamped on `EmbeddingResponse::provider`.
+    pub provider: &'static str,
+    /// Whether the recorded wire reports non-zero token usage.
+    pub reports_usage: bool,
+    /// Whether the recorded wire echoes a model identifier.
+    pub reports_model: bool,
+    /// Whether the provider has a transport request-id header contract on
+    /// this endpoint.
+    pub reports_request_id: bool,
+}
+
+/// The shared "normalized response is complete" cell: embeddings in input
+/// order, provider attribution, and each metadata axis present exactly when
+/// the provider's wire reports it — `None`/zero is the documented outcome on
+/// the axes it does not.
+pub(crate) fn assert_normalized_embedding_response(
+    response: &rig::embeddings::EmbeddingResponse,
+    inputs: &[&str],
+    expectations: &EmbeddingMatrixExpectations,
+) {
+    assert_embeddings_nonempty_and_consistent(&response.embeddings, inputs.len());
+    for (embedding, input) in response.embeddings.iter().zip(inputs) {
+        assert_eq!(
+            embedding.document, *input,
+            "embeddings must preserve input order"
+        );
+    }
+    assert_eq!(response.provider, expectations.provider);
+    assert_eq!(
+        response.usage.has_values(),
+        expectations.reports_usage,
+        "usage mismatch for {}: got {:?}",
+        expectations.provider,
+        response.usage
+    );
+    assert_eq!(
+        response.model.is_some(),
+        expectations.reports_model,
+        "model echo mismatch for {}: got {:?}",
+        expectations.provider,
+        response.model
+    );
+    assert_eq!(
+        response.provider_request_id.is_some(),
+        expectations.reports_request_id,
+        "request-id mismatch for {}: got {:?}",
+        expectations.provider,
+        response.provider_request_id
+    );
+    assert_eq!(
+        response.identity().provider_request_id,
+        response.provider_request_id
+    );
+    assert!(
+        !response.raw.is_null(),
+        "every HTTP provider seam populates `raw`"
+    );
+}

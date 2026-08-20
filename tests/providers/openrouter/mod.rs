@@ -5,6 +5,7 @@ mod cassette {
     mod agent_tool_sessions;
     mod document_file_data;
     mod document_ordering;
+    mod embedding_matrix;
     mod extractor;
     mod extractor_usage;
     mod history_roundtrip_matrix;

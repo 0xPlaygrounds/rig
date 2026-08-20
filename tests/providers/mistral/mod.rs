@@ -1,6 +1,7 @@
 mod agent;
 mod agent_tool_sessions;
 mod capability_edges;
+mod embedding_matrix;
 #[cfg(feature = "derive")]
 mod embeddings;
 mod extractor;

@@ -15,6 +15,7 @@ mod cassette {
     mod chat_tool_truncation_matrix;
     mod completions_api;
     mod document_ordering;
+    mod embedding_matrix;
     mod error_envelope;
     mod error_identity_edge;
     mod extractor;

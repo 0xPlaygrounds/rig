@@ -108,11 +108,19 @@ where
         &self,
         request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
-        // The native response is bytes, not JSON: `raw` stays `Null` and the
-        // typed route is `raw_image_generation`.
-        self.raw_image_generation(request)
-            .await?
-            .normalize("huggingface")
+        crate::telemetry::instrument_modality(
+            "huggingface",
+            &self.model,
+            crate::telemetry::ModalityOperation::ImageGeneration,
+            async {
+                // The native response is bytes, not JSON: `raw` stays `Null` and the
+                // typed route is `raw_image_generation`.
+                self.raw_image_generation(request)
+                    .await?
+                    .normalize("huggingface")
+            },
+        )
+        .await
     }
 }
 

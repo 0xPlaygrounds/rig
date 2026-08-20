@@ -227,13 +227,21 @@ where
         query: &str,
         documents: Vec<String>,
     ) -> Result<RerankResponse, RerankError> {
-        let (response, provider_request_id) =
-            self.raw_rerank_with_request_id(query, documents).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize(Ext::PROVIDER_NAME)?
-            .with_optional_provider_request_id(provider_request_id)
-            .with_raw(captured))
+        crate::telemetry::instrument_modality(
+            Ext::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Rerank,
+            async {
+                let (response, provider_request_id) =
+                    self.raw_rerank_with_request_id(query, documents).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(Ext::PROVIDER_NAME)?
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 
