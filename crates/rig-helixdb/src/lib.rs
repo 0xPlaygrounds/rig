@@ -175,10 +175,7 @@ struct VecResult {
     vec_docs: Vec<QueryResult>,
 }
 
-impl<C> HelixDBVectorStore<C>
-where
-    C: HelixDBClient + WasmCompatSend,
-{
+impl<C> HelixDBVectorStore<C> {
     /// Creates a new HelixDB vector store.
     pub fn new(client: C, model: impl EmbeddingModel + 'static) -> Self {
         Self {
@@ -196,7 +193,7 @@ where
 impl<C> HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
+    C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Embeds the query and runs the `VectorSearch` HelixDB query.
     async fn vector_search(
@@ -221,7 +218,7 @@ where
 impl<C> InsertDocuments for HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
+    C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn insert_documents<Doc: Serialize + rig_core::Embed + WasmCompatSend>(
         &self,
@@ -261,7 +258,7 @@ where
 impl<C> VectorStoreIndex for HelixDBVectorStore<C>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
+    C::Err: WasmCompatSend + WasmCompatSync + 'static,
 {
     type Filter = HelixDBFilter;
 

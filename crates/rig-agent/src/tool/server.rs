@@ -45,6 +45,13 @@ impl ToolRegistrySnapshot {
         &self.definitions
     }
 
+    /// Moves the definitions out of the snapshot. The per-turn request
+    /// assembly is the sole consumer and never reads them again, so it takes
+    /// them instead of deep-cloning every tool's JSON schema each turn.
+    pub(crate) fn take_definitions(&mut self) -> Vec<ToolDefinition> {
+        std::mem::take(&mut self.definitions)
+    }
+
     /// Narrow both provider exposure and dispatch to one per-turn allow-list.
     pub(crate) fn retain_names(&mut self, names: &BTreeSet<String>) {
         self.definitions

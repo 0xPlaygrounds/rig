@@ -152,16 +152,16 @@ pub type CompletionModel<H = reqwest::Client> =
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         match self {
-            Self::Structured { id, .. } => Some(id.clone()),
+            Self::Structured { id, .. } => Some(id.as_str()),
             Self::Simple(_) => None,
         }
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn get_response_model_name(&self) -> Option<&str> {
         match self {
-            Self::Structured { model, .. } => Some(model.clone()),
+            Self::Structured { model, .. } => Some(model.as_str()),
             Self::Simple(_) => None,
         }
     }

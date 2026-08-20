@@ -74,11 +74,11 @@ impl CompletionModel {
 
         let vertex_request = VertexCompletionRequest(request);
 
-        let contents = vertex_request.contents()?;
         let generation_config = vertex_request.generation_config()?;
         let system_instruction = vertex_request.system_instruction();
         let tools = vertex_request.tools();
         let tool_config = vertex_request.tool_config();
+        let contents = vertex_request.contents()?;
         let model_path = self.model_path();
 
         let mut request_builder = self

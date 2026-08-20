@@ -430,13 +430,16 @@ impl CompletionModel {
             .model_id(request_model);
 
         let tool_config = request.tools_config()?;
-        let prompt_with_history = request.messages()?;
         let output_config = request.output_config()?;
+        let additional_params = request.additional_params();
+        let inference_config = request.inference_config();
+        let system_prompt = request.system_prompt()?;
+        let prompt_with_history = request.messages()?;
         converse_builder = converse_builder
-            .set_additional_model_request_fields(request.additional_params())
-            .set_inference_config(request.inference_config())
+            .set_additional_model_request_fields(additional_params)
+            .set_inference_config(inference_config)
             .set_tool_config(tool_config)
-            .set_system(request.system_prompt()?)
+            .set_system(system_prompt)
             .set_messages(Some(prompt_with_history))
             .set_output_config(output_config);
 

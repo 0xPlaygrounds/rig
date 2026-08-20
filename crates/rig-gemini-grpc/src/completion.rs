@@ -563,19 +563,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 impl ProviderResponseExt for GenerateContentResponse {
     type Usage = proto::UsageMetadata;
 
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         if self.response_id.is_empty() {
             None
         } else {
-            Some(self.response_id.clone())
+            Some(self.response_id.as_str())
         }
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn get_response_model_name(&self) -> Option<&str> {
         if self.model_version.is_empty() {
             None
         } else {
-            Some(self.model_version.clone())
+            Some(self.model_version.as_str())
         }
     }
 

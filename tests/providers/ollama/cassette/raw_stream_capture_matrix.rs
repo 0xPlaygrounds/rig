@@ -201,7 +201,7 @@ async fn stream_raw_exposes_terminal_durations() {
                 );
             }
 
-            let raw = terminal.raw.clone();
+            let raw = terminal.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

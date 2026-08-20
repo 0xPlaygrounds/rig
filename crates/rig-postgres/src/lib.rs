@@ -107,11 +107,13 @@ impl PgSearchFilter {
         Self(self.0.not())
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(SqlCondition::binary(key, ">=", PLACEHOLDER, value))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(SqlCondition::binary(key, "<=", PLACEHOLDER, value))
     }
 
@@ -408,8 +410,8 @@ mod tests {
     /// any `?` would reach Postgres verbatim and break the query.
     #[test]
     fn every_parameterised_operator_uses_dollar_placeholders() {
-        let gte = PgSearchFilter::gte("price".into(), json!(5));
-        let lte = PgSearchFilter::lte("price".into(), json!(10));
+        let gte = PgSearchFilter::gte("price", json!(5));
+        let lte = PgSearchFilter::lte("price", json!(10));
 
         let (cond, values) = gte.and(lte).into_clause();
         assert_eq!(cond, "(price >= $) AND (price <= $)");

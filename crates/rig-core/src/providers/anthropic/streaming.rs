@@ -424,10 +424,7 @@ impl WireAdapter for AnthropicAdapter {
                         .filter(|tokens| *tokens > 0)
                         .or_else(|| usize::try_from(self.input_tokens).ok()),
                     cache_creation_input_tokens: usage.cache_creation_input_tokens,
-                    cache_creation: usage
-                        .cache_creation
-                        .clone()
-                        .or_else(|| self.cache_creation.clone()),
+                    cache_creation: usage.cache_creation.or(self.cache_creation),
                     cache_read_input_tokens: usage.cache_read_input_tokens,
                     // Taken from this frame alone, with no `message_start`
                     // fallback: unlike `cache_creation`, Anthropic reports the
@@ -551,7 +548,7 @@ impl From<(&str, StreamingCompletionResponse)> for StreamFinal {
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
 where
-    T: HttpClientExt + Clone + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Open a stream whose terminal record stays Anthropic-native.

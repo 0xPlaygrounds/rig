@@ -257,7 +257,17 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<(CompatibleEmbeddingResponse, Option<String>), EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
+        self.raw_embed_texts_slice(&documents).await
+    }
 
+    /// Borrow-shaped twin of [`Self::raw_embed_texts_with_request_id`]: the
+    /// batch is only serialized into the request body, so callers that keep
+    /// their documents (the normalize path) can lend them instead of cloning
+    /// the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        documents: &[String],
+    ) -> Result<(CompatibleEmbeddingResponse, Option<String>), EmbeddingError> {
         if self.encoding_format == Some(EncodingFormat::Base64) {
             return Err(EmbeddingError::UnsupportedResponseEncoding {
                 provider: Ext::PROVIDER_NAME,
@@ -293,7 +303,7 @@ where
 
         let body = serde_json::to_vec(&CompatibleEmbeddingRequest {
             model: Ext::SENDS_MODEL_FIELD.then_some(self.model.as_str()),
-            input: &documents,
+            input: documents,
             dimensions,
             output_dimension,
             encoding_format: self.encoding_format,
@@ -371,9 +381,8 @@ where
                 use embeddings::NormalizeEmbeddingResponse as _;
 
                 let documents: Vec<String> = documents.into_iter().collect();
-                let (response, provider_request_id) = self
-                    .raw_embed_texts_with_request_id(documents.clone())
-                    .await?;
+                let (response, provider_request_id) =
+                    self.raw_embed_texts_slice(&documents).await?;
 
                 if response.usage.is_none() && Ext::REQUIRES_USAGE {
                     return Err(EmbeddingError::MissingUsage {

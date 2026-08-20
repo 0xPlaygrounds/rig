@@ -251,13 +251,7 @@ impl<H> ResponsesWebSocketSessionBuilder<H> {
 
 impl<H> ResponsesWebSocketSessionBuilder<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Opens the websocket session using the configured builder options.
     pub async fn connect(self) -> Result<ResponsesWebSocketSession<H>, CompletionError> {
@@ -291,13 +285,7 @@ pub struct ResponsesWebSocketSession<H = reqwest::Client> {
 
 impl<H> ResponsesWebSocketSession<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn connect_with_timeouts(
         model: ResponsesCompletionModel<H>,

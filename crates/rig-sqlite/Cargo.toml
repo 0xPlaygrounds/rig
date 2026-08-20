@@ -22,7 +22,6 @@ sqlite-vec = { workspace = true }
 thiserror = { workspace = true }
 tokio-rusqlite = { workspace = true, features = ["bundled"] }
 tracing = { workspace = true }
-zerocopy = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]

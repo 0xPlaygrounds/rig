@@ -5822,10 +5822,7 @@ mod migrated_tests {
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("1}".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
     }
@@ -6211,10 +6208,7 @@ mod migrated_tests {
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("1}".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
     }
@@ -6279,10 +6273,7 @@ mod migrated_tests {
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("1}".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
     }

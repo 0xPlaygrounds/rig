@@ -254,7 +254,16 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<EmbeddingResponse, EmbeddingError> {
         let docs: Vec<String> = documents.into_iter().collect();
+        self.raw_embed_texts_slice(&docs).await
+    }
 
+    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
+    /// serialized into the request body, so callers that keep their documents
+    /// (the normalize path) can lend them instead of cloning the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        docs: &[String],
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let body = serde_json::to_vec(&json!({
             "model": self.model,
             "input": docs
@@ -304,7 +313,7 @@ where
 
                 let docs: Vec<String> = documents.into_iter().collect();
                 // Ollama reports no transport request-id header.
-                let response = self.raw_embed_texts(docs.clone()).await?;
+                let response = self.raw_embed_texts_slice(&docs).await?;
                 let captured = serde_json::to_value(&response)?;
                 Ok(response.normalize(PROVIDER_NAME, docs)?.with_raw(captured))
             },
@@ -382,12 +391,12 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
     /// Ollama's chat API carries no response ID.
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         None
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.clone())
+    fn get_response_model_name(&self) -> Option<&str> {
+        Some(self.model.as_str())
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -739,7 +748,7 @@ impl NdjsonBuffer {
 
 impl<T> CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Send + 'static,
 {
     /// Execute a completion and return Ollama's own wire response.
     ///
@@ -1018,7 +1027,7 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
 
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Send + 'static,
 {
     async fn completion(
         &self,

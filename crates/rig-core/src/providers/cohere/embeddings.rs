@@ -208,9 +208,18 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<EmbeddingResponse, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
+        self.raw_embed_texts_slice(&documents).await
+    }
 
+    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
+    /// serialized into the request body, so callers that keep their documents
+    /// (the normalize path) can lend them instead of cloning the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        documents: &[String],
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let body = json!({
-            "model": self.model.clone(),
+            "model": self.model,
             "texts": documents,
             "input_type": self.input_type
         });
@@ -292,7 +301,7 @@ where
 
                 let documents = documents.into_iter().collect::<Vec<_>>();
                 // Cohere reports no transport request-id header on this endpoint.
-                let response = self.raw_embed_texts(documents.clone()).await?;
+                let response = self.raw_embed_texts_slice(&documents).await?;
                 let captured = serde_json::to_value(&response)?;
                 Ok(response
                     .normalize(super::completion::PROVIDER_NAME, documents)?

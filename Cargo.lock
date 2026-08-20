@@ -10208,7 +10208,6 @@ dependencies = [
  "tokio-rusqlite",
  "tracing",
  "tracing-subscriber",
- "zerocopy",
 ]
 
 [[package]]

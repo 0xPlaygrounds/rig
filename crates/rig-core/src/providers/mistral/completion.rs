@@ -395,12 +395,12 @@ pub struct CompletionResponse {
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<String> {
-        Some(self.id.clone())
+    fn get_response_id(&self) -> Option<&str> {
+        Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.clone())
+    fn get_response_model_name(&self) -> Option<&str> {
+        Some(self.model.as_str())
     }
 
     fn get_text_response(&self) -> Option<String> {

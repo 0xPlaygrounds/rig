@@ -183,7 +183,7 @@ async fn raw_exposes_ollama_durations() {
                 );
             }
 
-            let raw = response.raw.clone();
+            let raw = response.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

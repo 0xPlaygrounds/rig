@@ -68,7 +68,16 @@ where
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<gemini_api_types::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
+        self.raw_embed_texts_slice(&documents).await
+    }
 
+    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
+    /// serialized into the request body, so callers that keep their documents
+    /// (the normalize path) can lend them instead of cloning the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        documents: &[String],
+    ) -> Result<gemini_api_types::EmbeddingResponse, EmbeddingError> {
         // Google batch embed requests. See docstrings for API ref link.
         let requests: Vec<_> = documents
             .iter()
@@ -77,7 +86,7 @@ where
                     "model": format!("models/{}", self.model),
                     "content": json!({
                         "parts": [json!({
-                            "text": doc.clone()
+                            "text": doc
                         })]
                     }),
                     "output_dimensionality": self.ndims,
@@ -153,7 +162,7 @@ where
 
                 let documents: Vec<String> = documents.into_iter().collect();
                 // Gemini sends no transport request-id header.
-                let response = self.raw_embed_texts(documents.clone()).await?;
+                let response = self.raw_embed_texts_slice(&documents).await?;
                 let captured = serde_json::to_value(&response)?;
                 Ok(response
                     .normalize(super::completion::PROVIDER_NAME, documents)?
@@ -166,7 +175,7 @@ where
 
 impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
 where
-    T: Clone + HttpClientExt + 'static,
+    T: Clone + HttpClientExt,
 {
     fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
         let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);

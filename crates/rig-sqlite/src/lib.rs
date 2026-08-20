@@ -19,7 +19,6 @@ use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use tokio_rusqlite::Connection;
 use tracing::{debug, info};
-use zerocopy::IntoBytes;
 
 /// Maximum `k` accepted by a `sqlite-vec` `vec0` KNN query (`embedding MATCH ?
 /// AND k = ?`). `sqlite-vec` enforces this as a hard `#define
@@ -353,10 +352,7 @@ fn sqlite_metadata_value(
 /// [`SqliteVectorStore::index`] holds the model behind an erased
 /// [`EmbeddingModelHandle`].
 #[derive(Clone)]
-pub struct SqliteVectorStore<T>
-where
-    T: SqliteVectorStoreTable + 'static,
-{
+pub struct SqliteVectorStore<T> {
     conn: Connection,
     distance_metric: SqliteDistanceMetric,
     metadata_columns: Vec<SqliteMetadataColumn>,
@@ -365,7 +361,7 @@ where
 
 impl<T> SqliteVectorStore<T>
 where
-    T: SqliteVectorStoreTable + 'static,
+    T: SqliteVectorStoreTable,
 {
     async fn candidate_limit(
         &self,
@@ -658,13 +654,13 @@ where
                     "Storing embedding {} of {} (size: {} bytes)",
                     i + 1,
                     embeddings.len(),
-                    vec.len() * 4
+                    vec.len()
                 );
                 txn.execute(&insert_embedding_map_sql, [last_id])?;
                 let embedding_rowid = txn.last_insert_rowid();
                 let mut params = Vec::with_capacity(2 + metadata_values.len());
                 params.push(Value::Integer(embedding_rowid));
-                params.push(Value::Blob(vec.as_bytes().to_vec()));
+                params.push(Value::Blob(vec));
                 params.extend(metadata_values.iter().cloned());
                 stmt.execute(rusqlite::params_from_iter(params))?;
             }
@@ -695,7 +691,7 @@ where
 impl<T> InsertDocuments for SqliteVectorStore<T>
 where
     T: SqliteVectorStoreTable
-        + for<'de> Deserialize<'de>
+        + serde::de::DeserializeOwned
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
@@ -952,10 +948,11 @@ impl SqliteSearchFilter {
     /// Non-boolean indexed metadata ranges are applied during sqlite-vec
     /// candidate search. Document-table ranges are applied after candidate
     /// search and may require exhaustive candidate retrieval.
-    pub fn between<N>(key: String, range: RangeInclusive<N>) -> Self
+    pub fn between<N>(key: impl Into<String>, range: RangeInclusive<N>) -> Self
     where
         N: Into<serde_json::Value>,
     {
+        let key = key.into();
         let (lo, hi) = range.into_inner();
 
         Self {
@@ -968,11 +965,13 @@ impl SqliteSearchFilter {
     }
 
     // Null checks
-    pub fn is_null(key: String) -> Self {
+    pub fn is_null(key: impl Into<String>) -> Self {
+        let key = key.into();
         Self::null_check(key, false)
     }
 
-    pub fn is_not_null(key: String) -> Self {
+    pub fn is_not_null(key: impl Into<String>) -> Self {
+        let key = key.into();
         Self::null_check(key, true)
     }
 
@@ -980,7 +979,8 @@ impl SqliteSearchFilter {
     ///
     /// sqlite-vec cannot enforce `GLOB` during candidate search, so this is
     /// applied as a document-table post-filter.
-    pub fn glob(key: String, pattern: impl Into<String>) -> Self {
+    pub fn glob(key: impl Into<String>, pattern: impl Into<String>) -> Self {
+        let key = key.into();
         Self::pattern(key, SqlitePatternOp::Glob, pattern)
     }
 
@@ -988,7 +988,8 @@ impl SqliteSearchFilter {
     ///
     /// sqlite-vec cannot enforce `LIKE` during candidate search, so this is
     /// applied as a document-table post-filter.
-    pub fn like(key: String, pattern: impl Into<String>) -> Self {
+    pub fn like(key: impl Into<String>, pattern: impl Into<String>) -> Self {
+        let key = key.into();
         Self::pattern(key, SqlitePatternOp::Like, pattern)
     }
 }
@@ -1552,10 +1553,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// The embedding model's concrete type is erased at construction into an
 /// [`EmbeddingModelHandle`], which is fixed for the index's lifetime: an index
 /// populated under one model is only meaningful when queried under that model.
-pub struct SqliteVectorIndex<T>
-where
-    T: SqliteVectorStoreTable + 'static,
-{
+pub struct SqliteVectorIndex<T> {
     store: SqliteVectorStore<T>,
     embedding_model: EmbeddingModelHandle,
 }
@@ -1577,7 +1575,7 @@ where
 
 impl<T> SqliteVectorIndex<T>
 where
-    T: SqliteVectorStoreTable + 'static,
+    T: SqliteVectorStoreTable,
 {
     /// Runs the shared candidate search for `top_n`/`top_n_ids`.
     ///
@@ -1595,7 +1593,7 @@ where
         F: Fn(&rusqlite::Row<'_>) -> rusqlite::Result<R> + Send + 'static,
     {
         let embedding = self.embedding_model.embed_text(req.query()).await?;
-        let query_vec: Vec<f32> = serialize_embedding(&embedding);
+        let query_vec: Vec<u8> = serialize_embedding(&embedding);
         let table_name = T::name();
         let embedding_map_table_name = format!("{table_name}_embedding_map");
 
@@ -1705,7 +1703,7 @@ fn render_search_filters(
 }
 
 fn build_search_query(
-    query_vec: Vec<f32>,
+    query_vec: Vec<u8>,
     filters: SqliteRenderedFilters,
     candidate_limit: u64,
 ) -> Result<SqliteSearchQuery, FilterError> {
@@ -1750,7 +1748,6 @@ fn build_search_query(
         )
     };
 
-    let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
     let query_vec = Value::Blob(query_vec);
 
     // Parameter binding is positional. The score expression uses the explicit
@@ -1779,7 +1776,7 @@ fn build_search_query(
 #[cfg(test)]
 fn build_where_clause(
     req: &VectorSearchRequest<SqliteSearchFilter>,
-    query_vec: Vec<f32>,
+    query_vec: Vec<u8>,
     distance_metric: SqliteDistanceMetric,
     metadata_columns: &[SqliteMetadataColumn],
     candidate_limit: u64,
@@ -1947,7 +1944,7 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
         req: VectorSearchRequest<SqliteSearchFilter>,
     ) -> Result<Vec<(f64, String, D)>, VectorStoreError>
     where
-        D: for<'de> Deserialize<'de>,
+        D: serde::de::DeserializeOwned,
     {
         tracing::debug!("Finding top {} matches for query", req.samples() as usize);
         if req.samples() == 0 {
@@ -2029,8 +2026,15 @@ impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     }
 }
 
-fn serialize_embedding(embedding: &Embedding) -> Vec<f32> {
-    embedding.vec.iter().map(|x| *x as f32).collect()
+/// Serializes an embedding straight to the little-endian f32 blob SQLite
+/// stores, so neither the insert nor the query path needs an intermediate
+/// `Vec<f32>`.
+fn serialize_embedding(embedding: &Embedding) -> Vec<u8> {
+    embedding
+        .vec
+        .iter()
+        .flat_map(|x| (*x as f32).to_le_bytes())
+        .collect()
 }
 
 macro_rules! impl_column_value {
@@ -2060,6 +2064,11 @@ impl_column_value! {
 
 #[cfg(test)]
 mod tests {
+
+    /// f32 slice -> the little-endian blob `build_search_query` now takes.
+    fn query_blob(values: &[f32]) -> Vec<u8> {
+        values.iter().flat_map(|x| x.to_le_bytes()).collect()
+    }
     use super::*;
     use rig_core::embeddings::{EmbeddingError, EmbeddingResponse};
     use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
@@ -2213,8 +2222,13 @@ mod tests {
             .threshold(0.95)
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_blob(&[1.0, 0.0]),
+            SqliteDistanceMetric::Cosine,
+            &[],
+            5,
+        )?;
 
         anyhow::ensure!(
             where_clause.contains("e.embedding MATCH ?"),
@@ -2245,8 +2259,13 @@ mod tests {
             .threshold(-1.5)
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2, &[], 5)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_blob(&[1.0, 0.0]),
+            SqliteDistanceMetric::L2,
+            &[],
+            5,
+        )?;
 
         anyhow::ensure!(
             where_clause.contains("(-vec_distance_l2(?1, e.embedding)) >= ?"),
@@ -2268,8 +2287,13 @@ mod tests {
             .samples(5)
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_blob(&[1.0, 0.0]),
+            SqliteDistanceMetric::Cosine,
+            &[],
+            5,
+        )?;
 
         anyhow::ensure!(
             where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2289,7 +2313,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &[],
             SQLITE_VEC_MAX_K,
@@ -2318,7 +2342,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &[],
             SQLITE_VEC_MAX_K + 1,
@@ -2356,7 +2380,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &[],
             SQLITE_VEC_MAX_K + 1,
@@ -2396,7 +2420,7 @@ mod tests {
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
         anyhow::ensure!(
             query.document_filter_clause == "AND ((1 = 1) OR (d.category = ?))",
             "default() under OR should render as a tautology: {}",
@@ -2424,7 +2448,7 @@ mod tests {
             filters.has_post_filters(),
             "OR filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2459,7 +2483,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &test_metadata_columns(),
             5,
@@ -2488,7 +2512,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &test_metadata_columns(),
             5,
@@ -2517,7 +2541,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &typed_metadata_columns(),
             5,
@@ -2546,7 +2570,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &typed_metadata_columns(),
             5,
@@ -2582,7 +2606,7 @@ mod tests {
             filters.has_post_filters(),
             "negated range filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2618,7 +2642,7 @@ mod tests {
         let err = filter_error(
             build_where_clause(
                 &req,
-                vec![1.0, 0.0],
+                query_blob(&[1.0, 0.0]),
                 SqliteDistanceMetric::Cosine,
                 &typed_metadata_columns(),
                 5,
@@ -2645,7 +2669,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &typed_metadata_columns(),
             5,
@@ -2699,7 +2723,7 @@ mod tests {
             let err = filter_error(
                 build_where_clause(
                     &req,
-                    vec![1.0, 0.0],
+                    query_blob(&[1.0, 0.0]),
                     SqliteDistanceMetric::Cosine,
                     &typed_metadata_columns()
                         .into_iter()
@@ -2738,7 +2762,7 @@ mod tests {
             filters.has_post_filters(),
             "pattern and null filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2775,7 +2799,7 @@ mod tests {
             filters.has_post_filters(),
             "non-indexed filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2813,7 +2837,7 @@ mod tests {
             filters.has_post_filters(),
             "JSON metadata expressions should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2847,7 +2871,7 @@ mod tests {
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.document_filter_clause == "AND (d.metadata->'$.xxx' = ?)",
@@ -2876,7 +2900,7 @@ mod tests {
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.document_filter_clause == "AND (d.metadata->'$.nested'->>'$.xxx' = ?)",
@@ -4387,7 +4411,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.name.clone(),
+                document: document.name,
                 vec,
             }],
         )
@@ -4410,7 +4434,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )
@@ -4431,7 +4455,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )
@@ -4452,7 +4476,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )
@@ -4475,7 +4499,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )

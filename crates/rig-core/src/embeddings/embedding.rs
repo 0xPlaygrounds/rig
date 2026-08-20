@@ -372,9 +372,9 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     }
 
     /// Embed a single image from its encoded file bytes.
-    fn embed_image<'a>(
-        &'a self,
-        bytes: &'a [u8],
+    fn embed_image(
+        &self,
+        bytes: &[u8],
     ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
         async move {
             let mut embeddings = self.embed_images(vec![bytes.to_owned()]).await?;

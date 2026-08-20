@@ -161,7 +161,7 @@ async fn repair_renames_tool_call_and_executes_it() {
 
             // The repaired name is what history records; the original name
             // never reaches the conversation.
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             let recorded: Vec<String> = messages
                 .iter()
                 .flat_map(assistant_tool_call_names)

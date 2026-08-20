@@ -6,10 +6,7 @@ use crate::embeddings::Embedding;
 use super::{IndexStrategy, in_memory_store::InMemoryVectorStore};
 
 /// Builder for creating an [`InMemoryVectorStore`] with custom configuration.
-pub struct InMemoryVectorStoreBuilder<D>
-where
-    D: Serialize,
-{
+pub struct InMemoryVectorStoreBuilder<D> {
     /// Embeddings of the documents.
     embeddings: HashMap<String, (D, Vec<Embedding>)>,
 

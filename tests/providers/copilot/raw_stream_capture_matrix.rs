@@ -209,7 +209,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
                     "normalized StreamFinal must not grow a `{field}` field"
                 );
             }
-            let raw = terminal.raw.clone();
+            let raw = terminal.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -344,7 +344,7 @@ async fn responses_stream_raw_exposes_terminal_status() {
             let normalized =
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             assert!(normalized.get("status").is_none());
-            let raw = terminal.raw.clone();
+            let raw = terminal.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

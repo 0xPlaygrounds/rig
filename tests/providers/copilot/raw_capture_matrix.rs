@@ -229,7 +229,7 @@ async fn chat_raw_exposes_system_fingerprint() {
                 normalized.get("system_fingerprint").is_none(),
                 "normalized CompletionResponse must not grow a `system_fingerprint` field"
             );
-            let raw = response.raw.clone();
+            let raw = response.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -378,7 +378,7 @@ async fn responses_raw_exposes_envelope() {
                     "normalized CompletionResponse must not grow a `{field}` field"
                 );
             }
-            let raw = response.raw.clone();
+            let raw = response.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

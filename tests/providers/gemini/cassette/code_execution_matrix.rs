@@ -1025,7 +1025,7 @@ mod unit {
             vec![
                 executable_code_part(),
                 code_result_part(),
-                text.clone(),
+                text,
                 executable_code_part(),
                 code_result_part(),
             ],

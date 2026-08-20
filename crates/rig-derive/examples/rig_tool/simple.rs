@@ -67,10 +67,7 @@ fn how_many_rs(
     /// The string to search
     s: String,
 ) -> Result<usize, rig_core::tool::ToolExecutionError> {
-    Ok(s.chars()
-        .filter(|c| *c == 'r' || *c == 'R')
-        .collect::<Vec<_>>()
-        .len())
+    Ok(s.chars().filter(|c| *c == 'r' || *c == 'R').count())
 }
 
 /// Sum a list of numbers

@@ -832,7 +832,10 @@ impl UnaryTurnSource {
     fn chain_span(&self, span: tracing::Span) -> tracing::Span {
         let span = match self.current_span_id.load(Ordering::Relaxed) {
             0 => span,
-            id => span.follows_from(Id::from_u64(id)).to_owned(),
+            id => {
+                span.follows_from(Id::from_u64(id));
+                span
+            }
         };
         if let Some(id) = span.id() {
             self.current_span_id.store(id.into_u64(), Ordering::Relaxed);

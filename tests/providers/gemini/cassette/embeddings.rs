@@ -33,7 +33,7 @@ async fn embeddings_smoke() {
             // `raw_embed_texts` returns.
             assert_eq!(response.provider, "gcp.gemini");
             let raw: gemini::embedding::gemini_api_types::EmbeddingResponse =
-                serde_json::from_value(response.raw.clone())
+                serde_json::from_value(response.raw)
                     .expect("raw payload should round-trip to Gemini's own type");
             assert_eq!(raw.embeddings.len(), EMBEDDING_INPUTS.len());
         },

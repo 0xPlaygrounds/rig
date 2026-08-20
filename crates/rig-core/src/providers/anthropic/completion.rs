@@ -111,12 +111,12 @@ pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<String> {
-        Some(self.id.clone())
+    fn get_response_id(&self) -> Option<&str> {
+        Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.clone())
+    fn get_response_model_name(&self) -> Option<&str> {
+        Some(self.model.as_str())
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -136,11 +136,11 @@ impl ProviderResponseExt for CompletionResponse {
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        Some(self.usage.clone())
+        Some(self.usage)
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
@@ -176,7 +176,7 @@ pub struct OutputTokensDetails {
 /// 5-minute writes (~1.25x), which is what makes a mixed-TTL configuration
 /// (see [`CompletionModel::with_static_prefix_cache_ttl`]) observable.
 /// Unknown buckets a provider may add later are ignored on deserialization.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct CacheCreation {
     /// Tokens written to the 5-minute cache on this turn.
     #[serde(default)]
@@ -342,11 +342,10 @@ pub enum SystemContent {
 /// to forget.
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        let response = self;
-        let content = response
-            .content
-            .iter()
-            .map(|content| content.clone().try_into())
+        let mut response = self;
+        let content = std::mem::take(&mut response.content)
+            .into_iter()
+            .map(TryInto::try_into)
             .collect::<Result<Vec<_>, _>>()?;
 
         // Anthropic has two ways to end a turn that genuinely carried no
@@ -396,7 +395,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             provider,
         )
         .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
-        .with_optional_provider_request_id(response.provider_request_id.clone())
+        .with_optional_provider_request_id(response.provider_request_id)
         .with_model(response.model.as_str())
         .with_optional_finish_reason(finish_reason))
     }
@@ -796,7 +795,7 @@ pub fn anthropic_citations(text: &message::Text) -> Result<Vec<Citation>, serde_
         .as_ref()
         .and_then(|v| v.get("citations"))
     {
-        Some(c) => serde_json::from_value::<Vec<Citation>>(c.clone()),
+        Some(c) => <Vec<Citation> as serde::Deserialize>::deserialize(c),
         None => Ok(Vec::new()),
     }
 }
@@ -837,7 +836,7 @@ fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>
         return Ok(None);
     };
 
-    let content = serde_json::from_value::<Content>(raw_content.clone()).map_err(|err| {
+    let content = <Content as serde::Deserialize>::deserialize(raw_content).map_err(|err| {
         MessageError::ConversionError(format!(
             "Text `{ANTHROPIC_RAW_CONTENT_KEY}` metadata is not valid Anthropic content: {err}"
         ))
@@ -2981,7 +2980,7 @@ where
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
 where
-    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Execute a completion and return Anthropic's own wire response.
@@ -3034,7 +3033,7 @@ where
 
 impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
 where
-    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     // Anthropic's native structured outputs (constrained decoding) are designed
@@ -5933,7 +5932,7 @@ mod tests {
         };
 
         let converted: Message = msg.try_into().expect("convert assistant message");
-        let converted_content = converted.content.clone();
+        let converted_content = converted.content;
 
         assert_eq!(converted_content.len(), 1);
         assert!(matches!(
@@ -6553,7 +6552,7 @@ mod tests {
                 "input_tokens": 10,
                 "output_tokens": 20
             },
-            "content": [raw_block.clone()]
+            "content": [raw_block]
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
