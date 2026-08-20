@@ -12,7 +12,15 @@ use crate::{
 // Main Anthropic Client
 // ================================================================
 #[derive(Debug, Default, Clone)]
-pub struct AnthropicExt;
+pub struct AnthropicExt {
+    /// Set when the client was built with [`AnthropicKey::sigv4`]. Carries the AWS region to sign
+    /// for. `None` means header-based auth (`x-api-key`), which is the default and unchanged.
+    ///
+    /// This lives on the extension rather than being inferred from the base URL so that the choice
+    /// is explicit: a blank API key against an AWS host would otherwise silently become a signed
+    /// request, and the resulting 403 would look nothing like a missing credential.
+    pub(crate) sigv4_region: Option<String>,
+}
 
 impl Provider for AnthropicExt {
     type Builder = AnthropicBuilder;
@@ -32,24 +40,51 @@ pub struct AnthropicBuilder {
 }
 
 #[derive(Debug, Clone)]
-pub struct AnthropicKey(String);
+pub enum AnthropicKey {
+    /// Header-based auth. Sent as `x-api-key`. The default, and what `From<S: Into<String>>` builds,
+    /// so existing callers are unaffected.
+    ApiKey(String),
+    /// AWS SigV4 request signing, for Anthropic-compatible endpoints fronted by AWS (the
+    /// `bedrock-mantle` endpoint accepts either a Bedrock API key or SigV4 credentials).
+    ///
+    /// No static header is produced; signing is per-request because the signature covers the body
+    /// and the current time. Credentials come from the standard AWS provider chain.
+    SigV4 { region: String },
+}
+
+impl AnthropicKey {
+    /// Sign requests with AWS SigV4 for `region` instead of sending an API key.
+    ///
+    /// Requires the `sigv4` cargo feature. Without it the client still builds, and the first request
+    /// fails with a message naming the missing feature rather than sending an unsigned request.
+    pub fn sigv4(region: impl Into<String>) -> Self {
+        Self::SigV4 {
+            region: region.into(),
+        }
+    }
+}
 
 impl<S> From<S> for AnthropicKey
 where
     S: Into<String>,
 {
     fn from(value: S) -> Self {
-        Self(value.into())
+        Self::ApiKey(value.into())
     }
 }
 
 impl ApiKey for AnthropicKey {
     fn into_header(self) -> Option<http_client::Result<(http::HeaderName, HeaderValue)>> {
-        Some(
-            HeaderValue::from_str(&self.0)
-                .map(|val| (HeaderName::from_static("x-api-key"), val))
-                .map_err(Into::into),
-        )
+        match self {
+            Self::ApiKey(key) => Some(
+                HeaderValue::from_str(&key)
+                    .map(|val| (HeaderName::from_static("x-api-key"), val))
+                    .map_err(Into::into),
+            ),
+            // Deliberately no header: a SigV4 request must not also carry x-api-key, and the
+            // signature cannot be computed here because the body does not exist yet.
+            Self::SigV4 { .. } => None,
+        }
     }
 }
 
@@ -76,12 +111,18 @@ impl ProviderBuilder for AnthropicBuilder {
     const BASE_URL: &'static str = "https://api.anthropic.com";
 
     fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
+        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
     ) -> http_client::Result<Self::Extension<H>>
     where
         H: HttpClientExt,
     {
-        Ok(AnthropicExt)
+        // Carry the signing region from the key onto the extension, which is the only part of the
+        // builder the request path can still see. `into_header()` discards the key itself.
+        let sigv4_region = match builder.get_api_key() {
+            AnthropicKey::SigV4 { region } => Some(region.clone()),
+            AnthropicKey::ApiKey(_) => None,
+        };
+        Ok(AnthropicExt { sigv4_region })
     }
 
     fn finish<H>(

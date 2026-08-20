@@ -56,10 +56,26 @@ pub trait AnthropicCompatibleProvider: Provider {
     /// constrained tool schemas, so the default deliberately leaves tools
     /// unchanged.
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
+
+    /// AWS region to sign requests for, when this provider fronts an
+    /// Anthropic-compatible endpoint behind AWS SigV4.
+    ///
+    /// `None` — the default — means the provider authenticates some other way
+    /// and no signing is attempted, so existing implementors are unaffected.
+    /// Signing itself is behind the `sigv4` cargo feature; a provider that
+    /// returns `Some` in a build without the feature gets a hard error rather
+    /// than an unsigned request.
+    fn sigv4_region(&self) -> Option<&str> {
+        None
+    }
 }
 
 impl AnthropicCompatibleProvider for super::client::AnthropicExt {
     const PROVIDER_NAME: &'static str = "anthropic";
+
+    fn sigv4_region(&self) -> Option<&str> {
+        self.sigv4_region.as_deref()
+    }
 
     fn default_max_tokens(model: &str) -> Option<u64> {
         default_max_tokens_for_model(model)
@@ -2343,7 +2359,21 @@ enum OutputFormat {
 /// Configuration for the model's output format.
 #[derive(Debug, Deserialize, Serialize)]
 struct OutputConfig {
-    format: OutputFormat,
+    /// Optional so that `effort` can be sent without a structured-output schema. Agent prompts have
+    /// no schema but may still want an effort level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<OutputFormat>,
+    /// Anthropic's adaptive-thinking effort level: `max`, `xhigh`, `high`, `medium`, `low`.
+    ///
+    /// Kept as a String rather than an enum so a newly-added level does not become a deserialize
+    /// error in this crate before it can be used.
+    ///
+    /// This must be a sibling of `format` in one `output_config` object. It cannot be supplied via
+    /// `additional_params`, because that field is `#[serde(flatten)]` and would emit a SECOND
+    /// `output_config` key alongside this one whenever a schema is also set. `try_from` below lifts
+    /// any caller-supplied `output_config` into this struct for exactly that reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2889,13 +2919,32 @@ impl AnthropicCompletionRequest {
             top_level_cache_control.as_ref(),
         )?;
 
-        let output_config = if let Some(schema) = req.output_schema {
+        // Lift any caller-supplied `output_config` OUT of additional_params and into the typed
+        // field. Without this, `additional_params` being `#[serde(flatten)]` emits a second
+        // `output_config` key next to the typed one, and a duplicate JSON key means one of the two
+        // is silently discarded by whatever parses it -- losing either the structured-output schema
+        // or the effort level, depending on order. Removing it here is what makes the two coexist.
+        let supplied_output_config = additional_params_payload
+            .as_object_mut()
+            .and_then(|obj| obj.remove("output_config"));
+        let supplied_effort = supplied_output_config
+            .as_ref()
+            .and_then(|oc| oc.get("effort"))
+            .and_then(|e| e.as_str())
+            .map(str::to_owned);
+
+        let format = req.output_schema.map(|schema| {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
+            OutputFormat::JsonSchema {
+                schema: schema_value,
+            }
+        });
+
+        let output_config = if format.is_some() || supplied_effort.is_some() {
             Some(OutputConfig {
-                format: OutputFormat::JsonSchema {
-                    schema: schema_value,
-                },
+                format,
+                effort: supplied_effort,
             })
         } else {
             None
@@ -3007,9 +3056,35 @@ where
 
         let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-        let req = self
-            .client
-            .post("/v1/messages")?
+        // `mut` is only needed when signing is compiled in; without the feature nothing
+        // reassigns it, and an unconditional `mut` would add a warning to every build.
+        #[cfg_attr(not(feature = "sigv4"), allow(unused_mut))]
+        let mut builder = self.client.post("/v1/messages")?;
+
+        // SigV4, when the client was built with AnthropicKey::sigv4. Signed HERE and not
+        // earlier: the payload hash covers these exact bytes, so signing must follow every
+        // change to the body.
+        #[cfg(feature = "sigv4")]
+        if let Some(region) = self.client.ext().sigv4_region() {
+            let uri = builder
+                .uri_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            for (name, value) in super::sigv4::signed_headers("POST", &uri, &request, region).await?
+            {
+                builder = builder.header(name, value);
+            }
+        }
+        // Without the feature, selecting SigV4 must fail loudly rather than send an unsigned
+        // request that 401s with a message about a missing API key.
+        #[cfg(not(feature = "sigv4"))]
+        if self.client.ext().sigv4_region().is_some() {
+            return Err(CompletionError::RequestError(
+                "SigV4 auth was selected but rig-core was built without the `sigv4` feature".into(),
+            ));
+        }
+
+        let req = builder
             .body(request)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
