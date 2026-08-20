@@ -21,6 +21,11 @@ const MISTRAL_EMBED_NDIMS: usize = 1024;
 
 impl OpenAIEmbeddingsCompatible for MistralExt {
     const PROVIDER_NAME: &'static str = "mistral";
+    // Mistral reports its transport id on every response, embeddings
+    // included; inheriting the trait's `None` default silently dropped it
+    // (latent since the id capture landed for completions in #2313's wake).
+    // Pinned by `embedding_matrix/bug_mistral_request_id_dropped`.
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("mistral-correlation-id");
     const SUPPORTS_USER: bool = false;
     const MAX_DOCUMENTS: usize = MAX_DOCUMENTS;
 
