@@ -53,9 +53,9 @@ impl ImageGenerationModel {
         &self,
         generation_request: ImageGenerationRequest,
     ) -> Result<(TextToImageResponse, Option<String>), ImageGenerationError> {
-        let mut request = TextToImageGeneration::new(generation_request.prompt);
-        request.width(generation_request.width);
-        request.height(generation_request.height);
+        let request = TextToImageGeneration::new(generation_request.prompt)
+            .width(generation_request.width)
+            .height(generation_request.height);
 
         let body = serde_json::to_string(&request)?;
         let model_response = self

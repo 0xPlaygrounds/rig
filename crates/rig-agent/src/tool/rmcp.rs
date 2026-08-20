@@ -56,7 +56,6 @@
 //! `event.tool_context.result::<T>()`. These values are host-only; only the
 //! response's ordered presentation content is sent to the model.
 
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{
     Arc,
@@ -448,14 +447,14 @@ fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutio
     }
 }
 
-fn preserve_mcp_result(context: &mut ToolContext, result: &CallToolResult) {
+fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
     if let Some(structured) = result.structured_content.clone() {
         context.insert_result(structured);
     }
     if let Some(meta) = result.meta.clone() {
         context.insert_result(meta);
     }
-    context.insert_result(result.clone());
+    context.insert_result(result);
 }
 
 impl ErasedTool for McpTool {
@@ -466,8 +465,8 @@ impl ErasedTool for McpTool {
     fn description(&self) -> String {
         self.definition
             .description
-            .clone()
-            .unwrap_or(Cow::from(""))
+            .as_deref()
+            .unwrap_or("")
             .to_string()
     }
 
@@ -489,8 +488,9 @@ impl ErasedTool for McpTool {
             match self.execute_mcp(args, meta).await {
                 Ok(result) => {
                     let is_error = result.is_error == Some(true);
-                    preserve_mcp_result(context, &result);
-                    let output = match mcp_result_output(&result) {
+                    let output = mcp_result_output(&result);
+                    preserve_mcp_result(context, result);
+                    let output = match output {
                         Ok(output) => output,
                         Err(error) => return ToolResult::failed(error),
                     };

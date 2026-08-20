@@ -240,7 +240,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                 "cassette-recorded usage should be non-zero"
             );
 
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             assert!(history_has_assistant_tool_call(&messages, "add"));
             assert!(history_has_assistant_tool_call(&messages, "subtract"));
             // The assembler records streamed turns in canonical replay order.
@@ -367,7 +367,7 @@ async fn streamed_repair_continues_the_same_stream() {
 
             assert!(repaired, "the model should call a tool that gets repaired");
             assert_mentions_expected_number(&response.output, 5);
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             let recorded: Vec<String> = messages
                 .iter()
                 .flat_map(assistant_tool_call_names)

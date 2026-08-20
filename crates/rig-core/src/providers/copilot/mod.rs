@@ -365,7 +365,7 @@ where
 
 impl<H> Client<H>
 where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
         self.ext().auth.auth_context().await.map(|_| ())
@@ -677,7 +677,7 @@ pub struct CompletionModel<H = reqwest::Client> {
 impl<H> CompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
         Self {
@@ -1054,7 +1054,7 @@ where
 impl<H> crate::client::ConstructCompletionModel<Client<H>> for CompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn construct(client: &Client<H>, model: String) -> Self {
         Self::new(client.clone(), model)
@@ -1064,7 +1064,7 @@ where
 impl<H> completion::CompletionModel for CompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn completion(
         &self,
@@ -1154,7 +1154,7 @@ impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
 impl<H> EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + 'static,
+    H: Clone + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>, ndims: usize) -> Self {
         Self {
@@ -1170,7 +1170,7 @@ where
 impl<H> EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Perform the request and return Copilot's native response instead of
     /// the normalized [`embeddings::EmbeddingResponse`]. Same request,
@@ -1192,6 +1192,17 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<(CopilotEmbeddingResponse, Option<String>), EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
+        self.raw_embed_texts_slice(&documents).await
+    }
+
+    /// Borrow-shaped twin of [`Self::raw_embed_texts_with_request_id`]: the
+    /// batch is only serialized into the request body, so callers that keep
+    /// their documents (the normalize path) can lend them instead of cloning
+    /// the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        documents: &[String],
+    ) -> Result<(CopilotEmbeddingResponse, Option<String>), EmbeddingError> {
         let auth = self
             .client
             .ext()
@@ -1284,7 +1295,7 @@ where
 impl<H> embeddings::EmbeddingModel for EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn max_documents(&self) -> usize {
         1024
@@ -1306,9 +1317,8 @@ where
                 use embeddings::NormalizeEmbeddingResponse as _;
 
                 let documents = documents.into_iter().collect::<Vec<_>>();
-                let (response, provider_request_id) = self
-                    .raw_embed_texts_with_request_id(documents.clone())
-                    .await?;
+                let (response, provider_request_id) =
+                    self.raw_embed_texts_slice(&documents).await?;
                 let captured = serde_json::to_value(&response)?;
                 Ok(response
                     .normalize(PROVIDER_NAME, documents)?
@@ -1323,7 +1333,7 @@ where
 impl<H> crate::client::ConstructEmbeddingModel<Client<H>> for EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn construct(client: &Client<H>, model: String, ndims: Option<usize>) -> Self {
         let dims = ndims.unwrap_or(match model.as_str() {
@@ -1380,7 +1390,7 @@ pub struct CopilotModelLister<H = reqwest::Client> {
 
 impl<H> ModelLister<H> for CopilotModelLister<H>
 where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         let auth = self.client.ext().auth.auth_context().await.map_err(|err| {
@@ -1419,7 +1429,7 @@ where
 
 impl<H> crate::client::ConstructModelLister<Client<H>> for CopilotModelLister<H>
 where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn construct(client: &Client<H>) -> Self {
         let client = client.clone();

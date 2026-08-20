@@ -125,11 +125,11 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = openai::Usage;
 
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         self.openai.get_response_id()
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn get_response_model_name(&self) -> Option<&str> {
         self.openai.get_response_model_name()
     }
 
@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(response.predicted_tokens_per_second(), Some(118.3));
 
         // The OpenAI half is intact and normalizes exactly as before.
-        assert_eq!(response.get_response_id().as_deref(), Some("chatcmpl-abc"));
+        assert_eq!(response.get_response_id(), Some("chatcmpl-abc"));
         assert_eq!(
             response.openai.system_fingerprint.as_deref(),
             Some("b10499-6d05498")

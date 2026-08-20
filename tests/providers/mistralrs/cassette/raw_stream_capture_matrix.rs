@@ -197,7 +197,7 @@ async fn stream_raw_exposes_envelope_fields() {
                     "normalized StreamFinal must not grow a `{field}` field"
                 );
             }
-            let raw = terminal.raw.clone();
+            let raw = terminal.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

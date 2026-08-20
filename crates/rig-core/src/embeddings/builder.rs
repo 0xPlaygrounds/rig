@@ -48,11 +48,7 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-pub struct EmbeddingsBuilder<M, T>
-where
-    M: EmbeddingModel,
-    T: Embed,
-{
+pub struct EmbeddingsBuilder<M, T> {
     model: M,
     documents: Vec<(T, Vec<String>)>,
 }

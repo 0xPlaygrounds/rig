@@ -39,7 +39,7 @@ async fn image_generation_smoke() {
             );
             assert_eq!(response.provider, "venice");
             let raw: rig::providers::venice::ImageGenerationResponse =
-                serde_json::from_value(response.raw.clone())
+                serde_json::from_value(response.raw)
                     .expect("raw payload should round-trip to Venice's own type");
             assert!(
                 !raw.id.is_empty(),

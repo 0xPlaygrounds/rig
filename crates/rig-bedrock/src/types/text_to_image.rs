@@ -83,12 +83,12 @@ impl TextToImageGeneration {
         }
     }
 
-    pub fn height(&mut self, height: u32) -> &Self {
+    pub fn height(mut self, height: u32) -> Self {
         self.image_generation_config.height = Some(height);
         self
     }
 
-    pub fn width(&mut self, width: u32) -> &Self {
+    pub fn width(mut self, width: u32) -> Self {
         self.image_generation_config.width = Some(width);
         self
     }

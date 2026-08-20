@@ -48,7 +48,7 @@ client::impl_provider_client!(
     api_key_env = "OPENROUTER_API_KEY",
 );
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     #[serde(default)]
@@ -71,7 +71,7 @@ pub struct Usage {
 /// Prompt-token breakdown reported by OpenRouter for cached requests.
 // `usize` matches the parent `Usage` struct in this module; the streaming counterpart
 // in `streaming.rs` uses `u32` to match its own parent.
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
 pub struct PromptTokensDetails {
     /// Tokens served from cache (cache hit).
     #[serde(default)]
@@ -86,7 +86,7 @@ pub struct PromptTokensDetails {
 /// Only the reasoning share is modeled: it is the one entry rig's normalized
 /// [`crate::completion::Usage`] has a slot for, and OpenRouter documents usage
 /// accounting as always present (on the final SSE message when streaming).
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
 pub struct CompletionTokensDetails {
     /// Tokens the upstream spent on hidden reasoning, counted inside
     /// `completion_tokens`.

@@ -109,13 +109,7 @@ client::impl_default_provider_builder!(
 
 impl<H> Client<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Sets where Rig system instructions are placed in Responses requests for
     /// every completion model created from this client. Models capture the
@@ -179,13 +173,7 @@ impl Client<reqwest::Client> {
 
 impl<H> CompletionsClient<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API. A system-instructions

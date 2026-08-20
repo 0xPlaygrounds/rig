@@ -363,8 +363,8 @@ impl SearchParams {
     /// Sets the column of the search params.
     /// Only set this value if there is more than one column that contains lists of floats.
     /// If there is only one column of list of floats, this column will be chosen for the vector search automatically.
-    pub fn column(mut self, column: &str) -> Self {
-        self.column = Some(column.to_string());
+    pub fn column(mut self, column: impl Into<String>) -> Self {
+        self.column = Some(column.into());
         self
     }
 }

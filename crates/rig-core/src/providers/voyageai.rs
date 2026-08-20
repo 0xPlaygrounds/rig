@@ -220,7 +220,7 @@ pub struct EmbeddingModel<T> {
 
 impl<T> EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Perform the request and return Voyage AI's native response instead of
     /// the normalized [`embeddings::EmbeddingResponse`]. Same request,
@@ -231,6 +231,16 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
+        self.raw_embed_texts_slice(&documents).await
+    }
+
+    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
+    /// serialized into the request body, so callers that keep their documents
+    /// (the normalize path) can lend them instead of cloning the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        documents: &[String],
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let mut request = json!({
             "model": self.model,
             "input": documents,
@@ -290,7 +300,7 @@ where
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     fn max_documents(&self) -> usize {
         1024
@@ -313,7 +323,7 @@ where
 
                 let documents: Vec<String> = documents.into_iter().collect();
                 // Voyage AI reports no transport request-id header.
-                let response = self.raw_embed_texts(documents.clone()).await?;
+                let response = self.raw_embed_texts_slice(&documents).await?;
                 let captured = serde_json::to_value(&response)?;
                 Ok(response
                     .normalize("voyageai", documents)?
@@ -326,7 +336,7 @@ where
 
 impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
         let dims = dims
@@ -434,7 +444,7 @@ impl<T> RerankModel<T> {
 
 impl<T> RerankModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Perform the request and return Voyage AI's native response instead of
     /// the normalized [`rerank::RerankResponse`]. Same request, transport,
@@ -504,7 +514,7 @@ where
 
 impl<T> rerank::RerankModel for RerankModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     fn max_documents(&self) -> usize {
         1000
@@ -534,7 +544,7 @@ where
 
 impl<T> crate::client::ConstructRerankModel<Client<T>> for RerankModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     fn construct(client: &Client<T>, model: String) -> Self {
         Self::new(client.clone(), model)

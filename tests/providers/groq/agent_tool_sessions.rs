@@ -472,7 +472,7 @@ impl RawResponseMetadata {
                 .iter()
                 .map(|choice| choice.finish_reason.clone())
                 .collect(),
-            usage: raw.usage.clone(),
+            usage: raw.usage,
         }
     }
 }

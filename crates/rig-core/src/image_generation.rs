@@ -141,10 +141,7 @@ pub struct ImageGenerationRequest {
 
 /// A builder for `ImageGenerationRequest`.
 /// Can be sent to a model provider.
-pub struct ImageGenerationRequestBuilder<M, P = Missing>
-where
-    M: ImageGenerationModel,
-{
+pub struct ImageGenerationRequestBuilder<M, P = Missing> {
     model: M,
     prompt: P,
     width: u32,

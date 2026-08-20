@@ -187,7 +187,7 @@ async fn raw_exposes_response_envelope() {
                     "normalized CompletionResponse must not grow a `{field}` field"
                 );
             }
-            let raw = response.raw.clone();
+            let raw = response.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

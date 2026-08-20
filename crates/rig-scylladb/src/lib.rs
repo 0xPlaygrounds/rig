@@ -152,19 +152,23 @@ impl ScyllaSearchFilter {
         Self(self.0.not())
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(SqlCondition::binary(key, ">=", PLACEHOLDER, value))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(SqlCondition::binary(key, "<=", PLACEHOLDER, value))
     }
 
-    pub fn ne(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn ne(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(SqlCondition::binary(key, "!=", PLACEHOLDER, value))
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: impl Into<String>, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+        let key = key.into();
         Self(SqlCondition::list(key, "IN", PLACEHOLDER, values))
     }
 }
@@ -514,12 +518,12 @@ mod tests {
     /// `?` per parameter — including `IN`, which renders one per value.
     #[test]
     fn every_parameterised_operator_uses_question_mark_placeholders() {
-        let filter = ScyllaSearchFilter::gte("price".into(), CqlValue::BigInt(5))
+        let filter = ScyllaSearchFilter::gte("price", CqlValue::BigInt(5))
             .and(ScyllaSearchFilter::member(
-                "id".into(),
+                "id",
                 vec![CqlValue::BigInt(1), CqlValue::BigInt(2)],
             ))
-            .or(ScyllaSearchFilter::ne("kind".into(), CqlValue::Text("veg".into())).not());
+            .or(ScyllaSearchFilter::ne("kind", CqlValue::Text("veg".to_string())).not());
 
         assert_eq!(
             filter.condition(),

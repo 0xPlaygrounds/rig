@@ -134,7 +134,7 @@ mod tests {
             detail: None,
             additional_params: None,
         });
-        let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.clone().try_into();
+        let aws_image: Result<aws_bedrock::ImageBlock, _> = rig_image.try_into();
         assert_eq!(
             aws_image.err().unwrap().to_string(),
             CompletionError::ProviderError("Unsupported format image/heic".into()).to_string()

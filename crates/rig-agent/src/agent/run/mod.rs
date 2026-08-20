@@ -1008,12 +1008,13 @@ impl AgentRun {
         self.record_completion_call(
             turn.usage,
             ResponseIdentity {
+                // The message id is also written into run history below.
                 message_id: turn.message_id.clone(),
-                response_id: turn.response_id.clone(),
-                provider_request_id: turn.provider_request_id.clone(),
+                response_id: turn.response_id,
+                provider_request_id: turn.provider_request_id,
             },
-            turn.finish_reason.clone(),
-            turn.raw.clone(),
+            turn.finish_reason,
+            turn.raw,
         );
 
         let items: Vec<AssistantContent> = turn.choice.clone();
@@ -1597,7 +1598,7 @@ impl AgentRun {
                     message_id: turn.message_id.clone(),
                     ..ResponseIdentity::default()
                 },
-                turn.finish_reason.clone(),
+                turn.finish_reason,
                 // A streamed turn's raw lives on the terminal record, which
                 // this fallback never saw; the driver records it via
                 // `record_streamed_completion_call` when it has one.

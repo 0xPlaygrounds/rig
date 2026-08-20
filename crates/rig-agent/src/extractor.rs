@@ -33,7 +33,7 @@
 use std::marker::PhantomData;
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 
 use rig_core::{
     message::{Message, ToolChoice},
@@ -90,7 +90,7 @@ where
 #[must_use = "an extraction override does nothing until an extract method is awaited"]
 pub struct ExtractorRun<'a, T>
 where
-    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     extractor: &'a Extractor<T>,
     model: Option<ModelHandle>,
@@ -281,7 +281,7 @@ where
 
 impl<T> ExtractorRun<'_, T>
 where
-    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     /// Extract structured data with the run-local model.
     pub async fn extract(
@@ -447,6 +447,7 @@ mod tests {
     use rig_core::vector_store::{
         VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
     };
+    use serde::Deserialize;
 
     #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
     struct Person {

@@ -294,7 +294,7 @@ where
 
 impl<V> SearchFilter for Filter<V>
 where
-    V: std::fmt::Debug + Clone + Serialize + for<'de> Deserialize<'de>,
+    V: std::fmt::Debug + Clone + Serialize + serde::de::DeserializeOwned,
 {
     type Value = V;
 

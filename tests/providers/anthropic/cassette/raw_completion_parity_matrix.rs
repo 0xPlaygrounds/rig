@@ -114,7 +114,7 @@ impl Reported {
 /// (`second`), for the fields that do not depend on which HTTP exchange
 /// produced them.
 fn assert_route_parity(first: &Reported, second: &Reported, expected: FinishReason) {
-    assert_eq!(first.finish_reason, Some(expected.clone()));
+    assert_eq!(first.finish_reason, Some(expected));
     assert_eq!(
         second.finish_reason, first.finish_reason,
         "the typed route must map the stop reason exactly as `completion` does"

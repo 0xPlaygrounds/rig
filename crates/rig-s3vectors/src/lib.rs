@@ -102,15 +102,18 @@ impl S3SearchFilter {
         self.0
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(document_comparison(key, "$gte", value))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(document_comparison(key, "$lte", value))
     }
 
-    pub fn exists(key: String) -> Self {
+    pub fn exists(key: impl Into<String>) -> Self {
+        let key = key.into();
         Self(document_object([(
             "$exists",
             document_object([(key, Document::Bool(true))]),
@@ -152,16 +155,8 @@ impl S3VectorsVectorStore {
         &self.bucket_name
     }
 
-    pub fn set_bucket_name(&mut self, bucket_name: &str) {
-        self.bucket_name = bucket_name.to_string();
-    }
-
     pub fn index_name(&self) -> &str {
         &self.index_name
-    }
-
-    pub fn set_index_name(&mut self, index_name: &str) {
-        self.index_name = index_name.to_string();
     }
 
     pub fn client(&self) -> &Client {
@@ -398,9 +393,9 @@ mod tests {
     #[test]
     fn extension_operators_build_the_documented_filter_shapes() {
         let number = |n| Document::Number(aws_smithy_types::Number::PosInt(n));
-        let filter = S3SearchFilter::gte("score".into(), number(5))
-            .or(S3SearchFilter::lte("score".into(), number(1)))
-            .or(S3SearchFilter::exists("status".into()))
+        let filter = S3SearchFilter::gte("score", number(5))
+            .or(S3SearchFilter::lte("score", number(1)))
+            .or(S3SearchFilter::exists("status"))
             .not();
 
         assert_eq!(

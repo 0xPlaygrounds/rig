@@ -918,13 +918,8 @@ pub(crate) async fn completion_response_from_sse_body(
     body: &str,
     raw_response: CompletionResponse,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    let raw_choices = raw_choices_from_sse_body(
-        body,
-        raw_response
-            .usage
-            .clone()
-            .unwrap_or_else(ResponsesUsage::new),
-    )?;
+    let raw_choices =
+        raw_choices_from_sse_body(body, raw_response.usage.unwrap_or_else(ResponsesUsage::new))?;
     completion_response_from_raw_choices(provider, raw_choices, &raw_response)
         .await?
         .ok_or_else(|| CompletionError::ResponseError("Response contained no parts".to_owned()))
@@ -1221,7 +1216,7 @@ impl WireAdapter for ResponsesAdapter {
             &mut self.accumulator,
             RawChoiceAccumulator::new(ResponsesUsage::new()),
         );
-        let final_usage = accumulator.final_usage.clone();
+        let final_usage = accumulator.final_usage;
 
         // Flush buffered tool calls, then the terminal record when a genuine
         // terminal event arrived; EOF without one is truncation and the
@@ -2080,7 +2075,7 @@ mod tests {
         });
         assert_eq!(
             unknown,
-            Some(&item.clone().into()),
+            Some(&item.into()),
             "the raw web_search_call item should reach the consumer verbatim",
         );
     }

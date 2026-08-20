@@ -215,7 +215,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
                 Some(rig::completion::FinishReason::Stop)
             );
 
-            let raw = terminal.raw.clone();
+            let raw = terminal.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

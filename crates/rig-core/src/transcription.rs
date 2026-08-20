@@ -218,10 +218,7 @@ pub struct TranscriptionRequest {
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [TranscriptionModel::transcription_request] method.
-pub struct TranscriptionRequestBuilder<M, D>
-where
-    M: TranscriptionModel,
-{
+pub struct TranscriptionRequestBuilder<M, D> {
     model: M,
     data: D, // starts Missing, becomes Provided<Vec<u8>> after data is set or load_file is called
     filename: Option<String>,

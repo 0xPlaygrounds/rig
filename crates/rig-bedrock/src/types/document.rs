@@ -167,7 +167,7 @@ mod tests {
             media_type: Some(DocumentMediaType::Javascript),
             additional_params: None,
         });
-        let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.clone().try_into();
+        let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.try_into();
         assert_eq!(
             aws_document.err().unwrap().to_string(),
             CompletionError::ProviderError(

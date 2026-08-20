@@ -925,10 +925,10 @@ pub trait ProviderResponseExt {
     type Usage: Serialize;
 
     /// Returns the provider response ID, if supplied.
-    fn get_response_id(&self) -> Option<String>;
+    fn get_response_id(&self) -> Option<&str>;
 
     /// Returns the provider response model name, if supplied.
-    fn get_response_model_name(&self) -> Option<String>;
+    fn get_response_model_name(&self) -> Option<&str>;
 
     /// Returns the primary text response, when available.
     fn get_text_response(&self) -> Option<String>;

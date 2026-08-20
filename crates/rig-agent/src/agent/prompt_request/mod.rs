@@ -1144,7 +1144,7 @@ mod tests {
             AssistantContent::text("answer")
         ]));
         assert!(
-            !turn_delivered_no_answer(&[reasoning.clone(), image.clone()]),
+            !turn_delivered_no_answer(&[reasoning.clone(), image]),
             "a thinking image model that produced an image has answered"
         );
         assert!(turn_delivered_no_answer(&[

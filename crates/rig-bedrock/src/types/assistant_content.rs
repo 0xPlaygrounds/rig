@@ -38,11 +38,11 @@ pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
 impl ProviderResponseExt for AwsConverseOutput {
     type Usage = completion::Usage;
 
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         None // Bedrock Converse API doesn't return a response ID
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn get_response_model_name(&self) -> Option<&str> {
         None // Bedrock doesn't echo model name in response
     }
 

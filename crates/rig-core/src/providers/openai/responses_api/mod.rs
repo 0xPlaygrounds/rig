@@ -237,9 +237,9 @@ impl ReasoningSummary {
         }
     }
 
-    pub fn text(&self) -> String {
+    pub fn text(&self) -> &str {
         let ReasoningSummary::SummaryText { text } = self;
-        text.clone()
+        text
     }
 }
 
@@ -953,7 +953,7 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 
 /// Token usage.
 /// Token usage from the OpenAI Responses API generally shows the input tokens and output tokens (both with more in-depth details) as well as a total tokens field.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct ResponsesUsage {
     /// Input tokens
     pub input_tokens: u64,
@@ -1041,7 +1041,7 @@ impl Add for ResponsesUsage {
 }
 
 /// In-depth details on input tokens.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct InputTokensDetails {
     /// Cached tokens from OpenAI
     pub cached_tokens: u64,
@@ -1063,7 +1063,7 @@ impl Add for InputTokensDetails {
 }
 
 /// In-depth details on output tokens.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct OutputTokensDetails {
     /// Reasoning tokens
     pub reasoning_tokens: u64,
@@ -1307,7 +1307,8 @@ pub trait ResponsesProviderExt {
         if stream {
             request.stream = Some(true);
         }
-        Ok((request.model.clone(), serde_json::to_value(request)?))
+        let body = serde_json::to_value(&request)?;
+        Ok((request.model, body))
     }
 }
 
@@ -1642,7 +1643,7 @@ where
 
 impl<T> GenericResponsesCompletionModel<super::OpenAIResponsesExt, T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Use the Completions API instead of Responses.
     pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
@@ -2468,12 +2469,12 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
     /// The response ID (`resp_...`), which is deliberately *not* the assistant
     /// message ID (`msg_...`) that the normalized response carries.
-    fn get_response_id(&self) -> Option<String> {
-        Some(self.id.clone())
+    fn get_response_id(&self) -> Option<&str> {
+        Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.clone())
+    fn get_response_model_name(&self) -> Option<&str> {
+        Some(self.model.as_str())
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -2481,7 +2482,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        self.usage.clone()
+        self.usage
     }
 }
 
@@ -2521,7 +2522,7 @@ where
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Execute a completion and return the provider's own wire response.
     ///
@@ -2615,7 +2616,7 @@ where
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn capabilities(&self) -> completion::ProviderCapabilities {
         // The OpenAI Responses API constrains only the final assistant message via
@@ -3081,7 +3082,7 @@ mod tests {
             }
         }))
         .expect("object params");
-        let replayed = OutputText::from_message_text("real", hostile.clone());
+        let replayed = OutputText::from_message_text("real", hostile);
         assert_eq!(replayed.text, "real");
         assert!(replayed.extras.get("text").is_none());
         assert!(replayed.extras.get("type").is_none());
@@ -3352,7 +3353,7 @@ mod tests {
 
         let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
             id: None,
-            content: drained.choice.clone(),
+            content: drained.choice,
         })
         .expect("history should convert");
         assert!(
@@ -4729,7 +4730,7 @@ mod tests {
             "created_at": 0,
             "status": "completed",
             "model": "gpt-future",
-            "reasoning": metadata.clone(),
+            "reasoning": metadata,
             "output": [],
             "tools": []
         }))

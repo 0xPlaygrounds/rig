@@ -1952,7 +1952,7 @@ mod tests {
             encoded
         );
 
-        let wrapped = StreamedAssistantContent::Final(final_record.clone());
+        let wrapped = StreamedAssistantContent::Final(final_record);
         let encoded = serde_json::to_value(&wrapped).expect("serialize wrapped");
         let decoded = serde_json::from_value::<StreamedAssistantContent>(encoded)
             .expect("deserialize wrapped");

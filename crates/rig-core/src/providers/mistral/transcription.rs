@@ -106,7 +106,7 @@ pub type TranscriptionModel<T = reqwest::Client> =
 
 impl<T> TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     /// Perform the transcription and return Mistral's native response instead
     /// of the normalized [`transcription::TranscriptionResponse`]. Same
@@ -177,7 +177,7 @@ where
 
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     async fn transcription(
         &self,
@@ -203,7 +203,7 @@ where
 
 impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     fn construct(client: &Client<T>, model: String) -> Self {
         Self::new(client.clone(), model)

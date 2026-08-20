@@ -114,7 +114,7 @@ fn map_stream_final(
 
 impl<T> InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Open an Interactions stream whose terminal record stays provider-native.
     ///
@@ -412,7 +412,7 @@ impl WireAdapter for InteractionsAdapter {
                 let model_version = interaction.model.clone();
                 out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
                     StreamingCompletionResponse {
-                        usage: interaction.usage.clone(),
+                        usage: interaction.usage,
                         interaction: Some(interaction),
                         model_version,
                     },
@@ -456,7 +456,7 @@ pub(crate) fn stream_interaction_events<T>(
     request: Request<Vec<u8>>,
 ) -> InteractionEventStream
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     let mut event_source = GenericEventSource::new(client, request);
 

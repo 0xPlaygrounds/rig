@@ -796,6 +796,121 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Telemetry getters borrow: `ProviderResponseExt::get_response_id` / `get_response_model_name` return `Option<&str>`
+
+Both getters exist to hand a value to `tracing::Span::record`, which takes
+`&str`; the owning return forced every one of the sixteen provider impls to
+clone a `String` per completion turn just to have it read once and dropped.
+They now return `Option<&str>`. `get_text_response` and `get_usage` are
+unchanged.
+
+```rust
+// before
+fn get_response_id(&self) -> Option<String> { Some(self.id.clone()) }
+
+// after
+fn get_response_id(&self) -> Option<&str> { Some(self.id.as_str()) }
+```
+
+Callers that need an owned value add `.map(str::to_owned)`.
+
+### `ReasoningSummary::text()` returns `&str`
+
+The one-variant enum's accessor cloned the summary text; it now borrows.
+Callers that need ownership add `.to_owned()`.
+
+### Request assembly accessors that need the history by value now consume the request
+
+`rig_vertexai::types::completion_request::VertexCompletionRequest::contents`
+and `rig_bedrock::types::completion_request::AwsCompletionRequest::messages`
+took `&self` and cloned the entire chat history per request. Each now takes
+`self`. Every other accessor on both types still borrows — call the borrowing
+accessors first and the consuming one last, which is the order the completion
+paths already used.
+
+```rust
+// before
+let contents = vertex_request.contents()?;          // cloned the history
+let system_instruction = vertex_request.system_instruction();
+
+// after
+let system_instruction = vertex_request.system_instruction();
+let contents = vertex_request.contents()?;          // moves the history
+```
+
+### `TextToImageGeneration::width`/`height` are chainable builders
+
+The two setters took `&mut self` and returned `&Self`, which chained with
+nothing else in the tree; every other rig builder is `mut self -> Self`. They
+now follow the house idiom.
+
+```rust
+// before
+let mut request = TextToImageGeneration::new(prompt);
+request.width(1024);
+request.height(1024);
+
+// after
+let request = TextToImageGeneration::new(prompt).width(1024).height(1024);
+```
+
+### `rig-s3vectors`: `set_bucket_name` / `set_index_name` removed
+
+Both setters had zero callers anywhere in the workspace and re-allocated from
+`&str`. Construct the store with the right names instead; the read accessors
+(`bucket_name()`, `index_name()`) are unchanged.
+
+### Vector-store filter constructors take `impl Into<String>` keys
+
+`MongoDbSearchFilter`, `SqliteSearchFilter`, `ScyllaSearchFilter`,
+`S3VectorsSearchFilter`, and `PgSearchFilter` constructors that took
+`key: String` now take `key: impl Into<String>`, matching the rest of the
+workspace (and the other parameter of the same functions, which already did).
+`filter::gte("price".to_string(), v)` still compiles; `filter::gte("price", v)`
+now also does. The only source break is a caller passing `"key".into()`, which
+becomes ambiguous — pass the literal.
+
+### Loosened bounds (no action needed)
+
+These accept strictly more code than before:
+
+- Transport/HTTP-client generic chains across the providers no longer demand
+  `Default` or `Debug` (`mistral`/`openrouter` transcription, `hyperbolic`,
+  `voyageai`, `ollama`, `gemini` image-generation and Interactions API,
+  `anthropic`, `copilot`, `chatgpt`, `openai` completions/responses/websocket).
+  Nothing constructed or formatted the client; the minimal chain is
+  `HttpClientExt + Clone (+ WasmCompatSend/WasmCompatSync) + 'static`.
+- `GenericCompletionModel::new` (and `with_strict_tools`,
+  `with_tool_result_array_content`) no longer bound `Client<Ext, H>` or `Ext`
+  at all.
+- `TypeMap`/`ToolContext` read-side methods (`get`, `get_mut`, `remove`,
+  `contains`, `require`, `result`, `require_result`) need only `T: 'static`
+  (pure `Any` lookups); the write side keeps
+  `Clone + WasmCompatSend + WasmCompatSync + 'static`.
+- `SqliteVectorStore<T>`/`SqliteVectorIndex<T>` struct declarations no longer
+  carry `T: SqliteVectorStoreTable + 'static`; the `'static` survives only on
+  the impl blocks whose `conn.call` closures actually need it.
+  `EmbeddingsBuilder`, `InMemoryVectorStoreBuilder`,
+  `TranscriptionRequestBuilder`, and `ImageGenerationRequestBuilder` likewise
+  drop their struct-level where clauses.
+- `HelixDBVectorStore::new`/`client()` require no bounds; the store impls no
+  longer restate `C::Err: std::error::Error` (declared on the trait).
+- The `VectorStoreIndexDyn` blanket impl no longer restates `WasmCompatSend +
+  WasmCompatSync + 'static` on the filter type (implied by
+  `VectorStoreIndex::Filter`).
+- `ToolSchema::try_from` and gemini's `ConstructEmbeddingModel` impl drop a
+  `'static` neither uses.
+- Extractor/vector-store generics spell `DeserializeOwned` instead of the
+  equivalent `for<'de> Deserialize<'de>`.
+
+### Provider usage types are `Copy`
+
+The scalar-only usage payloads (`openai` chat + responses, `anthropic`,
+`deepseek`, `openrouter`, `cohere`, gemini `InteractionUsage`, and their
+detail structs) now derive `Copy`. Mistral's `Usage` is not `Copy` — it
+carries `service_tier: Option<String>`.
+
+
 ### `providers::llamafile` is now `providers::llamacpp`
 
 The provider named after Mozilla's single-file distribution is gone; the one

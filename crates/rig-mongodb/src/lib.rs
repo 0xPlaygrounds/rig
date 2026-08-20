@@ -145,7 +145,7 @@ where
 
         let thresh = req
             .threshold()
-            .map(|thresh| MongoDbSearchFilter::gte("score".into(), thresh.into()));
+            .map(|thresh| MongoDbSearchFilter::gte("score", thresh.into()));
 
         let filter = match (thresh, req.filter()) {
             (Some(thresh), Some(filt)) => thresh.and(filt.clone()).into_inner(),
@@ -347,11 +347,13 @@ impl MongoDbSearchFilter {
         self.0
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$gte": value } })
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$lte": value } })
     }
 
@@ -361,20 +363,24 @@ impl MongoDbSearchFilter {
     }
 
     /// Tests whether the value at `key` is the BSON type `typ`
-    pub fn is_type(key: String, typ: &'static str) -> Self {
+    pub fn is_type(key: impl Into<String>, typ: &'static str) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$type": typ } })
     }
 
-    pub fn size(key: String, size: i32) -> Self {
+    pub fn size(key: impl Into<String>, size: i32) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$size": size } })
     }
 
     // Array ops
-    pub fn all(key: String, values: Vec<Bson>) -> Self {
+    pub fn all(key: impl Into<String>, values: Vec<Bson>) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$all": values } })
     }
 
-    pub fn any(key: String, condition: Document) -> Self {
+    pub fn any(key: impl Into<String>, condition: Document) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$elemMatch": condition } })
     }
 }

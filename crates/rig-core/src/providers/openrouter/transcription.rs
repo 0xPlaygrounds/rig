@@ -96,7 +96,7 @@ fn infer_format_from_filename(filename: &str) -> String {
 
 impl<T> TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     /// Perform the transcription and return OpenRouter's native response
     /// instead of the normalized [`transcription::TranscriptionResponse`].
@@ -180,7 +180,7 @@ where
 
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     async fn transcription(
         &self,
@@ -206,7 +206,7 @@ where
 
 impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     fn construct(client: &Client<T>, model: String) -> Self {
         Self::new(client.clone(), model)
