@@ -65,7 +65,7 @@ impl EmbeddingModel {
             let response = grpc_client
                 .embed_content(request)
                 .await
-                .map_err(rpc_error)?
+                .map_err(|status| rpc_error(&status))?
                 .into_inner();
 
             responses.push(response);
@@ -135,7 +135,7 @@ impl rig_core::client::ConstructEmbeddingModel<super::Client> for EmbeddingModel
 // not distinguish a server-returned gRPC error from a transport/connection
 // failure, so a pure connection error is also preserved here rather than gated
 // out as a Rig diagnostic the way Bedrock's typed service errors are.
-fn rpc_error(status: tonic::Status) -> EmbeddingError {
+fn rpc_error(status: &tonic::Status) -> EmbeddingError {
     EmbeddingError::from_provider_body(status.to_string())
 }
 
@@ -149,7 +149,7 @@ mod tests {
         let status = tonic::Status::unavailable("boom");
         let expected = status.to_string();
 
-        let err = rpc_error(status);
+        let err = rpc_error(&status);
 
         // The raw provider error text is preserved verbatim, and there is no
         // HTTP status because gRPC is a non-HTTP transport.

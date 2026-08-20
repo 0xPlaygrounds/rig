@@ -246,7 +246,7 @@ impl InsertDocuments for S3VectorsVectorStore {
                 let document = json_value_to_document(&document);
                 let vec = y.vec.into_iter().map(|item| item as f32).collect();
                 PutInputVector::builder()
-                    .metadata(document.clone())
+                    .metadata(document)
                     .data(VectorData::Float32(vec))
                     .key(Uuid::new_v4())
                     .build()

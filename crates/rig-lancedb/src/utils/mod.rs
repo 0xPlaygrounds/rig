@@ -42,9 +42,9 @@ impl FilterTableColumns for Arc<Schema> {
             .filter_map(|field| match field.data_type() {
                 DataType::FixedSizeList(inner, ..) => match inner.data_type() {
                     DataType::Float64 => None,
-                    _ => Some(field.name().to_string()),
+                    _ => Some(field.name().clone()),
                 },
-                _ => Some(field.name().to_string()),
+                _ => Some(field.name().clone()),
             })
             .collect()
     }

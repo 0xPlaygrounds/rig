@@ -756,6 +756,9 @@ fn is_json_null(value: &Value) -> bool {
     value.is_null()
 }
 
+// `skip_serializing_if` requires a `fn(&bool) -> bool`, so the trivially-copy
+// lint does not apply here.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_false(value: &bool) -> bool {
     !value
 }

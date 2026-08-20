@@ -361,7 +361,7 @@ where
             self.client.clone(),
             self.model.clone(),
         );
-        model.tools = self.tools.clone();
+        model.tools.clone_from(&self.tools);
         model.strict_tools = self.strict_tools;
         model
     }

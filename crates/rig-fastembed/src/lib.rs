@@ -166,7 +166,7 @@ impl EmbeddingModel {
         Ok(Self {
             embedder: Some(embedder),
             init_error: None,
-            model: model_info.model.to_owned(),
+            model: model_info.model.clone(),
             ndims,
         })
     }

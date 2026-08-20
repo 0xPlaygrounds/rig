@@ -114,6 +114,7 @@ fn unknown_tool_call_error(
     }
 }
 
+#[derive(Clone, Copy)]
 struct InvalidToolCallDiagnostic<'a> {
     tool_call: &'a ToolCall,
     executable_tool_names: &'a BTreeSet<String>,
@@ -803,7 +804,7 @@ impl AgentRun {
                             missing.join(", ")
                         );
                         if let Some(user_message) =
-                            invalid_tool_retry_user_message(&items, &tool_call_id, feedback)
+                            invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                         {
                             self.new_messages.push(user_message);
                         }
@@ -1209,7 +1210,7 @@ impl AgentRun {
                 let Some(user_message) = invalid_tool_retry_user_message(
                     &resolving.original_choice,
                     &tool_call.id,
-                    feedback,
+                    &feedback,
                 ) else {
                     return Err(PromptError::prompt_cancelled(
                         diagnostic_history,

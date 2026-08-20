@@ -1358,7 +1358,7 @@ impl Stream for StreamingCompletionResponse {
                             // An explicit `MessageId` event keeps precedence; the
                             // terminal record only fills a gap.
                             if stream.message_id.is_none() {
-                                stream.message_id = response.message_id.clone();
+                                stream.message_id.clone_from(&response.message_id);
                             }
                             stream.response = Some(response.clone());
                             stream

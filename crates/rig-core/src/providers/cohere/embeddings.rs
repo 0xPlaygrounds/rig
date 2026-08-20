@@ -210,7 +210,7 @@ where
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let body = json!({
-            "model": self.model.to_string(),
+            "model": self.model.clone(),
             "texts": documents,
             "input_type": self.input_type
         });

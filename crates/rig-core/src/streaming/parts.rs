@@ -315,12 +315,14 @@ impl PartsAccumulator {
                 if restatement.id.is_none()
                     && let AssistantContent::Reasoning(open) = &*part
                 {
-                    restatement.id = open.id.clone();
+                    restatement.id.clone_from(&open.id);
                 }
                 *part = AssistantContent::Reasoning(restatement);
             }
-            if let Some(signature) = signature {
-                attach_signature(self.parts.get_mut(index), signature);
+            if let Some(signature) = signature
+                && let Some(part) = self.parts.get_mut(index)
+            {
+                attach_signature(part, signature);
             }
             self.finished_reasoning.insert(id.clone(), index);
             return self.reasoning_at(index);
@@ -350,7 +352,9 @@ impl PartsAccumulator {
                     if part_already_signed {
                         return self.finish_signature_only(id, signature);
                     }
-                    attach_signature(self.parts.get_mut(index), signature);
+                    if let Some(part) = self.parts.get_mut(index) {
+                        attach_signature(part, signature);
+                    }
                     return self.reasoning_at(index);
                 }
                 // A repeated end with no new payload is a no-op — the
@@ -830,8 +834,8 @@ fn json_subsumes(outer: &serde_json::Value, inner: &serde_json::Value) -> bool {
     }
 }
 
-fn attach_signature(part: Option<&mut AssistantContent>, signature: String) {
-    if let Some(AssistantContent::Reasoning(reasoning)) = part {
+fn attach_signature(part: &mut AssistantContent, signature: String) {
+    if let AssistantContent::Reasoning(reasoning) = part {
         attach_reasoning_signature(reasoning, signature);
     }
 }

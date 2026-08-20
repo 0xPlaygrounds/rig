@@ -377,7 +377,7 @@ where
                 stream_ended_is_error: false,
                 log_transport_errors: true,
             },
-            skip_blank_and_done,
+            |data: String| skip_blank_and_done(&data),
             CohereAdapter::default(),
             span,
         ))

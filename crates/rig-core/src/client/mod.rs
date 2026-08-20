@@ -839,7 +839,7 @@ where
             ext,
         } = self;
 
-        let new_ext = f(ext.clone());
+        let new_ext = f(ext);
 
         ClientBuilder {
             base_url,

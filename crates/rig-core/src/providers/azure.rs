@@ -308,7 +308,7 @@ impl ProviderClient for Client {
             header,
         }: Self::Input,
     ) -> Result<Self, Self::Error> {
-        let auth = AzureOpenAIAuth::ApiKey(api_key.to_string());
+        let auth = AzureOpenAIAuth::ApiKey(api_key);
 
         Self::builder()
             .api_key(auth)

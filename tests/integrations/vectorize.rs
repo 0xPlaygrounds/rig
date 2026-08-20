@@ -354,7 +354,7 @@ async fn test_query_with_combined_filters() {
 
     // category = "programming" AND id != "doc-rust"
     let filter = VectorizeFilter::eq("category", serde_json::json!("programming"))
-        .and(VectorizeFilter::ne("id", serde_json::json!("doc-rust")));
+        .and(VectorizeFilter::ne("id", &serde_json::json!("doc-rust")));
 
     let request = VectorSearchRequest::builder()
         .query("programming")
@@ -433,7 +433,7 @@ async fn test_query_with_in_filter() {
 
     let filter = VectorizeFilter::in_values(
         "category",
-        vec![
+        &[
             serde_json::json!("programming"),
             serde_json::json!("database"),
         ],

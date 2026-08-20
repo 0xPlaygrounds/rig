@@ -542,8 +542,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+                .flatten(),
         );
 
         let mut think: Option<Think> = None;
@@ -609,7 +608,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         };
 
         Ok(Self {
-            model: model.to_string(),
+            model,
             messages: full_history,
             stream: false,
             think,

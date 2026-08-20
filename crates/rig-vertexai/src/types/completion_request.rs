@@ -232,7 +232,7 @@ fn vertex_generation_config(
     if let Some(response_modalities) = config.response_modalities {
         let response_modalities = response_modalities
             .into_iter()
-            .map(vertex_response_modality)
+            .map(|modality| vertex_response_modality(&modality))
             .collect::<Result<Vec<_>, _>>()?;
         vertex_config = vertex_config.set_response_modalities(response_modalities);
     }
@@ -283,7 +283,7 @@ fn vertex_thinking_config(
 }
 
 fn vertex_response_modality(
-    modality: ResponseModality,
+    modality: &ResponseModality,
 ) -> Result<vertexai::model::generation_config::Modality, CompletionError> {
     match modality {
         ResponseModality::Text => Ok(vertexai::model::generation_config::Modality::Text),

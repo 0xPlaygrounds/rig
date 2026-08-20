@@ -24,7 +24,7 @@ impl AwsCompletionRequest {
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
         self.inner
             .additional_params
-            .to_owned()
+            .clone()
             .map(|params| params.into())
             .map(|doc: AwsDocument| doc.0)
     }
@@ -147,7 +147,7 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
         let mut system_blocks = Vec::new();
 
-        if let Some(system_prompt) = self.inner.preamble.to_owned()
+        if let Some(system_prompt) = self.inner.preamble.clone()
             && !system_prompt.is_empty()
         {
             system_blocks.push(SystemContentBlock::Text(system_prompt));

@@ -210,7 +210,7 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
                 .zip(values)
                 .map(|(k, v)| {
                     let mut map = serde_json::Map::new();
-                    map.insert(k.to_string(), v);
+                    map.insert(k.clone(), v);
                     map
                 })
                 .map(Value::Object)
@@ -218,7 +218,7 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
         }
         DataType::Union(..) => match column.as_any().downcast_ref::<UnionArray>() {
             Some(union_array) => (0..union_array.len())
-                .map(|i| union_array.value(i).clone())
+                .map(|i| union_array.value(i))
                 .collect::<Vec<_>>()
                 .iter()
                 .map(type_matcher)

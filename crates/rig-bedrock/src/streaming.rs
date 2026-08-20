@@ -166,7 +166,7 @@ fn process_event(
 
                         if !text.is_empty() {
                             items.push(Ok(RawStreamingChoice::ReasoningDelta {
-                                reasoning: text.clone(),
+                                reasoning: text,
                                 // Derive identity from `contentBlockIndex`
                                 // (no wire id on Converse reasoning blocks).
                                 id: block_id(event.content_block_index),
@@ -178,7 +178,7 @@ fn process_event(
                         state
                             .current_reasoning
                             .get_or_insert_with(ReasoningState::default)
-                            .signature = Some(signature.clone());
+                            .signature = Some(signature);
                     }
                     aws_bedrock::ReasoningContentBlockDelta::RedactedContent(blob) => {
                         // Opaque provider state the safety classifier
@@ -395,7 +395,7 @@ fn normalize_bedrock_stream(
         let usage = (&response).into();
         let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
         Ok(rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
-            .with_optional_provider_request_id(response.provider_request_id.clone())
+            .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_finish_reason(finish_reason))
     })
 }
@@ -478,7 +478,9 @@ impl CompletionModel {
         Ok(Box::pin(stream.map(move |item| {
             item.map(|choice| match choice {
                 RawStreamingChoice::FinalResponse(mut response) => {
-                    response.provider_request_id = provider_request_id.clone();
+                    response
+                        .provider_request_id
+                        .clone_from(&provider_request_id);
                     RawStreamingChoice::FinalResponse(response)
                 }
                 other => other,

@@ -20,7 +20,7 @@ pub const PROVIDER_NAME: &str = "vertexai";
 /// Unmapped values are carried verbatim in their wire SCREAMING_SNAKE spelling
 /// so a reason Vertex adds later surfaces instead of reading as a natural stop.
 pub fn map_finish_reason(
-    reason: vertexai::model::candidate::FinishReason,
+    reason: &vertexai::model::candidate::FinishReason,
 ) -> Option<rig_core::completion::FinishReason> {
     // `name()` yields the wire form (`MALFORMED_FUNCTION_CALL`) the shared
     // Google table keys on; a value the SDK does not model falls back to
@@ -163,7 +163,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             })
             .unwrap_or_default();
 
-        let finish_reason = map_finish_reason(candidate.finish_reason.clone());
+        let finish_reason = map_finish_reason(&candidate.finish_reason);
         let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
 
         Ok(CompletionResponse::new(choice, usage, PROVIDER_NAME)

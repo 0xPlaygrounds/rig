@@ -516,7 +516,10 @@ where
         request.additional_parameters.background = None;
 
         if request.additional_parameters.previous_response_id.is_none() {
-            request.additional_parameters.previous_response_id = self.previous_response_id.clone();
+            request
+                .additional_parameters
+                .previous_response_id
+                .clone_from(&self.previous_response_id);
         }
 
         Ok(request)
@@ -589,7 +592,7 @@ where
                     // (code + message + any extra fields) so provider_response_json()
                     // parses it, matching the response.failed path. No HTTP status on
                     // the websocket stream, so status: None.
-                    return Err(provider_error_from_event(error));
+                    return Err(provider_error_from_event(&error));
                 }
                 ResponsesWebSocketEvent::Item(chunk) => {
                     raw_choices.extend(
@@ -775,7 +778,7 @@ fn response_error_message(fallback: &str) -> String {
 /// HTTP status, so `status` is `None`. The body is the event re-serialized from
 /// the parsed representation (not byte-identical to the original wire bytes,
 /// which are not retained past parsing) — semantically the provider's payload.
-fn provider_error_from_event(error: ResponsesWebSocketErrorEvent) -> CompletionError {
+fn provider_error_from_event(error: &ResponsesWebSocketErrorEvent) -> CompletionError {
     CompletionError::from_provider_body(
         serde_json::to_string(&error).unwrap_or_else(|_| error.to_string()),
     )
@@ -1224,7 +1227,7 @@ mod tests {
             },
         };
 
-        let err = super::provider_error_from_event(event);
+        let err = super::provider_error_from_event(&event);
 
         // No HTTP status on the websocket stream, and the raw payload round-trips
         // through provider_response_json() (code + message + extra all preserved).

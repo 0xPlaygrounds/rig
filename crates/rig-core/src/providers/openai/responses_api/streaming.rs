@@ -200,7 +200,7 @@ pub struct ResponseChunk {
 
 /// Response chunk type.
 /// Renames are used to ensure that this type gets (de)serialized properly.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum ResponseChunkKind {
     #[serde(rename = "response.created")]
     ResponseCreated,
@@ -942,12 +942,7 @@ pub(crate) async fn completion_response_from_raw_choices(
     raw_choices: Vec<StreamingRawChoice>,
     raw_response: &CompletionResponse,
 ) -> Result<Option<completion::CompletionResponse>, CompletionError> {
-    let stream = futures::stream::iter(
-        raw_choices
-            .into_iter()
-            .map(Ok::<_, CompletionError>)
-            .collect::<Vec<_>>(),
-    );
+    let stream = futures::stream::iter(raw_choices.into_iter().map(Ok::<_, CompletionError>));
     let mut stream = normalize_responses_stream(provider, Box::pin(stream));
 
     while let Some(item) = stream.next().await {

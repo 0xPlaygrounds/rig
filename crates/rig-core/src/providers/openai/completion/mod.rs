@@ -1394,11 +1394,11 @@ impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
-        Some(self.id.to_owned())
+        Some(self.id.clone())
     }
 
     fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.to_owned())
+        Some(self.model.clone())
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -2192,8 +2192,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+                .flatten(),
         );
 
         if full_history.is_empty() {
@@ -2459,7 +2458,7 @@ where
             prompt_caching: self.prompt_caching,
         };
         let mut request = self.client.ext().build_completion_request(
-            self.model.to_owned(),
+            self.model.clone(),
             completion_request,
             options,
         )?;

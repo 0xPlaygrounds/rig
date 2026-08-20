@@ -160,7 +160,7 @@ impl InsertDocuments for QdrantVectorStore {
 fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
     match id.point_id_options {
         Some(PointIdOptions::Num(num)) => Ok(num.to_string()),
-        Some(PointIdOptions::Uuid(uuid)) => Ok(uuid.to_string()),
+        Some(PointIdOptions::Uuid(uuid)) => Ok(uuid),
         None => Err(VectorStoreError::DatastoreError(
             "Invalid point ID format".into(),
         )),

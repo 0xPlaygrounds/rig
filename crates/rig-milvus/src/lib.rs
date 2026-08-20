@@ -113,7 +113,7 @@ impl MilvusVectorStore {
     }
 
     /// Forms the auth token for Milvus from your username and password. Required if using a Milvus instance that requires authentication.
-    pub fn auth(mut self, username: String, password: String) -> Self {
+    pub fn auth(mut self, username: &str, password: &str) -> Self {
         let str = format!("{username}:{password}");
         self.token = Some(str);
 
@@ -147,7 +147,7 @@ impl MilvusVectorStore {
 
         let threshold = req
             .threshold()
-            .map(|thresh| Filter::gte("distance".into(), thresh.into()));
+            .map(|thresh| Filter::gte("distance", thresh.into()));
 
         let filter = match (threshold, req.filter()) {
             (Some(thresh), Some(filter)) => thresh.and(filter.clone()).into_inner(),

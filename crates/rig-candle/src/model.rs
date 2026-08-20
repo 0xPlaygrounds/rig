@@ -349,7 +349,7 @@ impl Drop for CandleReceiverStream {
 #[cfg(not(target_family = "wasm"))]
 fn stream_infer(
     loaded: &LoadedModel,
-    request: CompletionRequest,
+    request: &CompletionRequest,
     cancellation: &CancellationSignal,
     sender: &tokio::sync::mpsc::Sender<CandleStreamItem>,
 ) -> Result<(), CandleError> {
@@ -455,7 +455,7 @@ impl CandleModel {
                 let result = loaded
                     .runtime
                     .device()
-                    .with_context(|| infer(&loaded, request, &cancellation));
+                    .with_context(|| infer(&loaded, &request, &cancellation));
                 drop(permit);
                 result
             })
@@ -467,7 +467,7 @@ impl CandleModel {
 
         #[cfg(target_family = "wasm")]
         {
-            infer(loaded, request, &CancellationSignal).map_err(CompletionError::from)
+            infer(loaded, &request, &CancellationSignal).map_err(CompletionError::from)
         }
     }
 
@@ -490,7 +490,7 @@ impl CandleModel {
             let producer_cancellation = cancellation.clone();
             let task = tokio::task::spawn_blocking(move || {
                 let result = loaded.runtime.device().with_context(|| {
-                    stream_infer(&loaded, request, &producer_cancellation, &producer_sender)
+                    stream_infer(&loaded, &request, &producer_cancellation, &producer_sender)
                 });
                 if let Err(error) = result {
                     let _ = producer_sender.blocking_send(Err(error.into()));
@@ -521,7 +521,7 @@ impl CandleModel {
         #[cfg(target_family = "wasm")]
         {
             let mut events = Vec::new();
-            let response = stream_generate(loaded, request, &CancellationSignal, |choice| {
+            let response = stream_generate(loaded, &request, &CancellationSignal, |choice| {
                 events.push(Ok(choice));
                 Ok(())
             })?;

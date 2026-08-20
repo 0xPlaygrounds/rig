@@ -2018,8 +2018,8 @@ pub mod fixtures {
         }
 
         fn completed_response(
-            usage: Option<serde_json::Value>,
-            output: serde_json::Value,
+            usage: Option<&serde_json::Value>,
+            output: &serde_json::Value,
         ) -> serde_json::Value {
             json!({
                 "id": "resp_1",
@@ -2033,7 +2033,7 @@ pub mod fixtures {
             })
         }
 
-        fn terminal(usage: Option<serde_json::Value>, output: serde_json::Value) -> WireInput {
+        fn terminal(usage: Option<&serde_json::Value>, output: &serde_json::Value) -> WireInput {
             sse(&json!({
                 "type": "response.completed",
                 "sequence_number": 99,
@@ -2159,8 +2159,8 @@ pub mod fixtures {
 
         fn reasoning_done_item(
             id: &str,
-            summary: serde_json::Value,
-            content: serde_json::Value,
+            summary: &serde_json::Value,
+            content: &serde_json::Value,
             encrypted: Option<&str>,
         ) -> WireInput {
             let mut item = json!({
@@ -2211,10 +2211,10 @@ pub mod fixtures {
                         "delta": "{\"cit",
                     })),
                 ]),
-                terminal_frames: vec![terminal(Some(usage_json()), json!([]))],
+                terminal_frames: vec![terminal(Some(&usage_json()), &json!([]))],
                 expected_usage_total: 15,
                 expected_finish_reason: Some(FinishReason::Stop),
-                zero_usage_terminal_frames: Some(vec![terminal(None, json!([]))]),
+                zero_usage_terminal_frames: Some(vec![terminal(None, &json!([]))]),
                 bare_terminal_frames: None,
                 malformed_frame: Some(sse_raw("{not json")),
                 unknown_event_frame: Some(sse(&json!({
@@ -2288,14 +2288,14 @@ pub mod fixtures {
 
         /// A terminal whose body carries text never seen as a delta.
         pub fn terminal_body_only_sse_body(text: &str) -> String {
-            frame_text(&terminal(Some(usage_json()), message_output(text)))
+            frame_text(&terminal(Some(&usage_json()), &message_output(text)))
         }
 
         /// A streamed delta plus a terminal body restating the same text.
         pub fn terminal_body_and_delta_sse_body(text: &str) -> String {
             let frames = [
                 text_delta(text),
-                terminal(Some(usage_json()), message_output(text)),
+                terminal(Some(&usage_json()), &message_output(text)),
             ];
             frames.iter().map(frame_text).collect()
         }
@@ -2303,7 +2303,7 @@ pub mod fixtures {
         /// A streamed delta whose terminal body carries no output items — the
         /// gpt-5.x shape the buffered fallback exists for.
         pub fn delta_only_sse_body(text: &str) -> String {
-            let frames = [text_delta(text), terminal(Some(usage_json()), json!([]))];
+            let frames = [text_delta(text), terminal(Some(&usage_json()), &json!([]))];
             frames.iter().map(frame_text).collect()
         }
 
@@ -2322,11 +2322,11 @@ pub mod fixtures {
                 sse(&delta),
                 reasoning_done_item(
                     "rs_1",
-                    json!([{"type": "summary_text", "text": "step 1"}]),
-                    json!([]),
+                    &json!([{"type": "summary_text", "text": "step 1"}]),
+                    &json!([]),
                     None,
                 ),
-                terminal(Some(usage_json()), json!([])),
+                terminal(Some(&usage_json()), &json!([])),
             ];
             (frames.iter().map(frame_text).collect(), "step 1")
         }
@@ -2346,11 +2346,11 @@ pub mod fixtures {
                 })),
                 reasoning_done_item(
                     "rs_1",
-                    json!([{"type": "summary_text", "text": "step 1"}]),
-                    json!([]),
+                    &json!([{"type": "summary_text", "text": "step 1"}]),
+                    &json!([]),
                     None,
                 ),
-                terminal(Some(usage_json()), json!([])),
+                terminal(Some(&usage_json()), &json!([])),
             ];
             (frames, "step 1")
         }
@@ -2361,14 +2361,14 @@ pub mod fixtures {
             let frames = vec![
                 reasoning_done_item(
                     "rs_1",
-                    json!([
+                    &json!([
                         {"type": "summary_text", "text": "s1"},
                         {"type": "summary_text", "text": "s2"},
                     ]),
-                    json!([{"type": "reasoning_text", "text": "visible"}]),
+                    &json!([{"type": "reasoning_text", "text": "visible"}]),
                     Some("enc_blob"),
                 ),
-                terminal(Some(usage_json()), json!([])),
+                terminal(Some(&usage_json()), &json!([])),
             ];
             (frames, vec!["s1", "s2", "visible", "enc_blob"])
         }
@@ -2388,11 +2388,11 @@ pub mod fixtures {
                 tool_call_done(),
                 reasoning_done_item(
                     "rs_2",
-                    json!([]),
-                    json!([{"type": "reasoning_text", "text": "full reasoning"}]),
+                    &json!([]),
+                    &json!([{"type": "reasoning_text", "text": "full reasoning"}]),
                     None,
                 ),
-                terminal(Some(usage_json()), json!([])),
+                terminal(Some(&usage_json()), &json!([])),
             ];
             (frames, "full reasoning")
         }
@@ -2475,7 +2475,7 @@ pub mod fixtures {
             }
         }
 
-        fn chunk(parts: serde_json::Value) -> WireInput {
+        fn chunk(parts: &serde_json::Value) -> WireInput {
             sse(&json!({
                 "candidates": [{"content": {"parts": parts, "role": "model"}}],
                 "responseId": "resp-1",
@@ -2504,11 +2504,11 @@ pub mod fixtures {
         fn interleaved_thought_fixture() -> InterleavedReasoningFixture {
             InterleavedReasoningFixture {
                 frames: vec![
-                    chunk(json!([{"text": "before tool", "thought": true}])),
-                    chunk(json!([{
+                    chunk(&json!([{"text": "before tool", "thought": true}])),
+                    chunk(&json!([{
                         "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
                     }])),
-                    chunk(json!([{"text": "after tool", "thought": true}])),
+                    chunk(&json!([{"text": "after tool", "thought": true}])),
                     terminal_frame(),
                 ],
                 first_reasoning: "before tool",
@@ -2522,11 +2522,11 @@ pub mod fixtures {
         pub fn interleaved_signed_thought_frames()
         -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
             let frames = vec![
-                chunk(json!([{"text": "before tool", "thought": true}])),
-                chunk(json!([{
+                chunk(&json!([{"text": "before tool", "thought": true}])),
+                chunk(&json!([{
                     "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
                 }])),
-                chunk(json!([{
+                chunk(&json!([{
                     "text": "signed conclusion",
                     "thought": true,
                     "thoughtSignature": "sig-1",
