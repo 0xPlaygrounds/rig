@@ -88,29 +88,37 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        let documents_vec: Vec<String> = documents.into_iter().collect();
-        let responses = self.raw_embed_texts(documents_vec.clone()).await?;
-        let mut embeddings = Vec::with_capacity(responses.len());
-        for (response, doc) in responses.into_iter().zip(documents_vec) {
-            if let Some(embedding) = response.embedding {
-                embeddings.push(embeddings::Embedding {
-                    document: doc,
-                    vec: embedding.values.into_iter().map(|v| v as f64).collect(),
-                });
-            } else {
-                return Err(EmbeddingError::ResponseError(
-                    "No embedding in response".to_string(),
-                ));
-            }
-        }
-
-        // gRPC: the native answers are prost messages, not JSON, and
-        // `EmbedContent` reports no usage or response id. `raw` stays `Null`;
-        // `raw_embed_texts` is the typed route.
-        Ok(embeddings::EmbeddingResponse::new(
-            embeddings,
+        rig_core::telemetry::instrument_modality(
             super::completion::PROVIDER_NAME,
-        ))
+            &self.model,
+            rig_core::telemetry::ModalityOperation::Embeddings,
+            async {
+                let documents_vec: Vec<String> = documents.into_iter().collect();
+                let responses = self.raw_embed_texts(documents_vec.clone()).await?;
+                let mut embeddings = Vec::with_capacity(responses.len());
+                for (response, doc) in responses.into_iter().zip(documents_vec) {
+                    if let Some(embedding) = response.embedding {
+                        embeddings.push(embeddings::Embedding {
+                            document: doc,
+                            vec: embedding.values.into_iter().map(|v| v as f64).collect(),
+                        });
+                    } else {
+                        return Err(EmbeddingError::ResponseError(
+                            "No embedding in response".to_string(),
+                        ));
+                    }
+                }
+
+                // gRPC: the native answers are prost messages, not JSON, and
+                // `EmbedContent` reports no usage or response id. `raw` stays `Null`;
+                // `raw_embed_texts` is the typed route.
+                Ok(embeddings::EmbeddingResponse::new(
+                    embeddings,
+                    super::completion::PROVIDER_NAME,
+                ))
+            },
+        )
+        .await
     }
 }
 

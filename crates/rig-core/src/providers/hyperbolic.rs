@@ -329,9 +329,17 @@ mod audio_generation {
             &self,
             request: AudioGenerationRequest,
         ) -> Result<audio_generation::AudioGenerationResponse, AudioGenerationError> {
-            let response = self.raw_audio_generation(request).await?;
-            let captured = serde_json::to_value(&response)?;
-            Ok(response.normalize("hyperbolic")?.with_raw(captured))
+            crate::telemetry::instrument_modality(
+                "hyperbolic",
+                &self.language,
+                crate::telemetry::ModalityOperation::AudioGeneration,
+                async {
+                    let response = self.raw_audio_generation(request).await?;
+                    let captured = serde_json::to_value(&response)?;
+                    Ok(response.normalize("hyperbolic")?.with_raw(captured))
+                },
+            )
+            .await
         }
     }
 

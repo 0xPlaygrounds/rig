@@ -91,43 +91,51 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String> + Send,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
+        rig_core::telemetry::instrument_modality(
+            PROVIDER_NAME,
+            &self.model,
+            rig_core::telemetry::ModalityOperation::Embeddings,
+            async {
+                let documents: Vec<String> = documents.into_iter().collect();
 
-        // Deliberately sequential: issuing the requests one at a time keeps
-        // Bedrock's per-account throttling behavior unchanged.
-        let mut results = Vec::new();
-        let mut raw = Vec::new();
-        let mut usage = rig_core::completion::Usage::new();
-        let mut first_error = None;
-        for doc in documents {
-            let request = EmbeddingRequest {
-                input_text: doc.clone(),
-                dimensions: self.ndims(),
-                normalize: true,
-            };
-            match self.document_to_embeddings(request).await {
-                Ok(response) => {
-                    usage.input_tokens += response.input_text_token_count as u64;
-                    usage.total_tokens += response.input_text_token_count as u64;
-                    raw.push(serde_json::to_value(&response)?);
-                    results.push(Embedding {
-                        document: doc,
-                        vec: response.embedding,
-                    });
+                // Deliberately sequential: issuing the requests one at a time keeps
+                // Bedrock's per-account throttling behavior unchanged.
+                let mut results = Vec::new();
+                let mut raw = Vec::new();
+                let mut usage = rig_core::completion::Usage::new();
+                let mut first_error = None;
+                for doc in documents {
+                    let request = EmbeddingRequest {
+                        input_text: doc.clone(),
+                        dimensions: self.ndims(),
+                        normalize: true,
+                    };
+                    match self.document_to_embeddings(request).await {
+                        Ok(response) => {
+                            usage.input_tokens += response.input_text_token_count as u64;
+                            usage.total_tokens += response.input_text_token_count as u64;
+                            raw.push(serde_json::to_value(&response)?);
+                            results.push(Embedding {
+                                document: doc,
+                                vec: response.embedding,
+                            });
+                        }
+                        Err(err) => {
+                            first_error.get_or_insert(err);
+                        }
+                    }
                 }
-                Err(err) => {
-                    first_error.get_or_insert(err);
-                }
-            }
-        }
 
-        match first_error {
-            // One Bedrock answer per document: `raw` is the array of them.
-            None => Ok(embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
-                .with_usage(usage)
-                .with_raw(serde_json::Value::Array(raw))),
-            Some(err) => Err(EmbeddingError::ResponseError(err.to_string())),
-        }
+                match first_error {
+                    // One Bedrock answer per document: `raw` is the array of them.
+                    None => Ok(embeddings::EmbeddingResponse::new(results, PROVIDER_NAME)
+                        .with_usage(usage)
+                        .with_raw(serde_json::Value::Array(raw))),
+                    Some(err) => Err(EmbeddingError::ResponseError(err.to_string())),
+                }
+            },
+        )
+        .await
     }
 }
 

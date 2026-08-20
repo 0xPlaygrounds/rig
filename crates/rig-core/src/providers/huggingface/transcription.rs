@@ -90,9 +90,17 @@ where
         &self,
         request: transcription::TranscriptionRequest,
     ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
-        let response = self.raw_transcription(request).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response.normalize("huggingface")?.with_raw(captured))
+        crate::telemetry::instrument_modality(
+            "huggingface",
+            &self.model,
+            crate::telemetry::ModalityOperation::Transcription,
+            async {
+                let response = self.raw_transcription(request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response.normalize("huggingface")?.with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

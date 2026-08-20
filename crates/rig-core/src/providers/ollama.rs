@@ -295,13 +295,21 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        use embeddings::NormalizeEmbeddingResponse as _;
+        crate::telemetry::instrument_modality(
+            PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
 
-        let docs: Vec<String> = documents.into_iter().collect();
-        // Ollama reports no transport request-id header.
-        let response = self.raw_embed_texts(docs.clone()).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response.normalize(PROVIDER_NAME, docs)?.with_raw(captured))
+                let docs: Vec<String> = documents.into_iter().collect();
+                // Ollama reports no transport request-id header.
+                let response = self.raw_embed_texts(docs.clone()).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response.normalize(PROVIDER_NAME, docs)?.with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

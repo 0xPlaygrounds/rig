@@ -1298,17 +1298,25 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        use embeddings::NormalizeEmbeddingResponse as _;
+        crate::telemetry::instrument_modality(
+            PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
 
-        let documents = documents.into_iter().collect::<Vec<_>>();
-        let (response, provider_request_id) = self
-            .raw_embed_texts_with_request_id(documents.clone())
-            .await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize(PROVIDER_NAME, documents)?
-            .with_optional_provider_request_id(provider_request_id)
-            .with_raw(captured))
+                let documents = documents.into_iter().collect::<Vec<_>>();
+                let (response, provider_request_id) = self
+                    .raw_embed_texts_with_request_id(documents.clone())
+                    .await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(PROVIDER_NAME, documents)?
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

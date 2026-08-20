@@ -92,14 +92,22 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         &self,
         generation_request: ImageGenerationRequest,
     ) -> Result<ImageGenerationResponse, ImageGenerationError> {
-        let (response, provider_request_id) = self
-            .raw_image_generation_with_request_id(generation_request)
-            .await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize(PROVIDER_NAME)?
-            .with_optional_provider_request_id(provider_request_id)
-            .with_raw(captured))
+        rig_core::telemetry::instrument_modality(
+            PROVIDER_NAME,
+            &self.model,
+            rig_core::telemetry::ModalityOperation::ImageGeneration,
+            async {
+                let (response, provider_request_id) = self
+                    .raw_image_generation_with_request_id(generation_request)
+                    .await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(PROVIDER_NAME)?
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

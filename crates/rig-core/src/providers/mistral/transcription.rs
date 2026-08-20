@@ -183,13 +183,21 @@ where
         &self,
         request: transcription::TranscriptionRequest,
     ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
-        let (response, provider_request_id) =
-            self.raw_transcription_with_request_id(request).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize("mistral")?
-            .with_optional_provider_request_id(provider_request_id)
-            .with_raw(captured))
+        crate::telemetry::instrument_modality(
+            "mistral",
+            &self.model,
+            crate::telemetry::ModalityOperation::Transcription,
+            async {
+                let (response, provider_request_id) =
+                    self.raw_transcription_with_request_id(request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize("mistral")?
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

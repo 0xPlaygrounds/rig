@@ -304,15 +304,23 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        use embeddings::NormalizeEmbeddingResponse as _;
+        crate::telemetry::instrument_modality(
+            "voyageai",
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
 
-        let documents: Vec<String> = documents.into_iter().collect();
-        // Voyage AI reports no transport request-id header.
-        let response = self.raw_embed_texts(documents.clone()).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize("voyageai", documents)?
-            .with_raw(captured))
+                let documents: Vec<String> = documents.into_iter().collect();
+                // Voyage AI reports no transport request-id header.
+                let response = self.raw_embed_texts(documents.clone()).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize("voyageai", documents)?
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 
@@ -507,12 +515,20 @@ where
         query: &str,
         documents: Vec<String>,
     ) -> Result<rerank::RerankResponse, RerankError> {
-        use rerank::NormalizeRerankResponse as _;
+        crate::telemetry::instrument_modality(
+            "voyageai",
+            &self.model,
+            crate::telemetry::ModalityOperation::Rerank,
+            async {
+                use rerank::NormalizeRerankResponse as _;
 
-        // Voyage AI reports no transport request-id header.
-        let response = self.raw_rerank(query, documents).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response.normalize("voyageai")?.with_raw(captured))
+                // Voyage AI reports no transport request-id header.
+                let response = self.raw_rerank(query, documents).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response.normalize("voyageai")?.with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

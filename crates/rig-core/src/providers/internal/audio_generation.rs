@@ -129,14 +129,22 @@ where
         &self,
         request: AudioGenerationRequest,
     ) -> Result<AudioGenerationResponse, AudioGenerationError> {
-        let (bytes, provider_request_id) =
-            self.raw_audio_generation_with_request_id(request).await?;
-        // The native response is bytes, not JSON: `raw` stays `Null` and the
-        // typed route is `raw_audio_generation`.
-        Ok(
-            AudioGenerationResponse::new(bytes.to_vec(), Ext::PROVIDER_NAME)
-                .with_optional_provider_request_id(provider_request_id),
+        crate::telemetry::instrument_modality(
+            Ext::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::AudioGeneration,
+            async {
+                let (bytes, provider_request_id) =
+                    self.raw_audio_generation_with_request_id(request).await?;
+                // The native response is bytes, not JSON: `raw` stays `Null` and the
+                // typed route is `raw_audio_generation`.
+                Ok(
+                    AudioGenerationResponse::new(bytes.to_vec(), Ext::PROVIDER_NAME)
+                        .with_optional_provider_request_id(provider_request_id),
+                )
+            },
         )
+        .await
     }
 }
 

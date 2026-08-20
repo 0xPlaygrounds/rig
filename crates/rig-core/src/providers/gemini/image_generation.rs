@@ -104,11 +104,19 @@ where
         &self,
         generation_request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
-        let response = self.raw_image_generation(generation_request).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize(super::completion::PROVIDER_NAME)?
-            .with_raw(captured))
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::ImageGeneration,
+            async {
+                let response = self.raw_image_generation(generation_request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(super::completion::PROVIDER_NAME)?
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 

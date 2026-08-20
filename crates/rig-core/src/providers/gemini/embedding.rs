@@ -144,15 +144,23 @@ where
         &self,
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        use embeddings::NormalizeEmbeddingResponse as _;
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
 
-        let documents: Vec<String> = documents.into_iter().collect();
-        // Gemini sends no transport request-id header.
-        let response = self.raw_embed_texts(documents.clone()).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response
-            .normalize(super::completion::PROVIDER_NAME, documents)?
-            .with_raw(captured))
+                let documents: Vec<String> = documents.into_iter().collect();
+                // Gemini sends no transport request-id header.
+                let response = self.raw_embed_texts(documents.clone()).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(super::completion::PROVIDER_NAME, documents)?
+                    .with_raw(captured))
+            },
+        )
+        .await
     }
 }
 
