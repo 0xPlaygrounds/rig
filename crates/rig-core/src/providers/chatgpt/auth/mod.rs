@@ -1,9 +1,9 @@
 //! Shared ChatGPT authentication types and target-specific dispatch.
 
+use async_lock::Mutex;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use async_lock::Mutex;
 
 pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
 

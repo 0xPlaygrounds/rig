@@ -14,12 +14,12 @@ use crate::message::{
 };
 use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
+use futures::task::AtomicWaker;
 use futures::{Stream, StreamExt};
 pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
 use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
-use futures::task::AtomicWaker;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};

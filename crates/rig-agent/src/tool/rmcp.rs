@@ -1787,9 +1787,7 @@ mod migrated_tests {
         let handle = ToolServer::new().run();
         let (client, server_task) = connect(server, handle.clone()).await;
 
-        handle
-            .add_dynamic_tool(make_dynamic_tool("alpha", "Local alpha"))
-            ;
+        handle.add_dynamic_tool(make_dynamic_tool("alpha", "Local alpha"));
         server_control
             .set_tools(vec![make_tool("refresh_complete", "Refresh sentinel")])
             .await;

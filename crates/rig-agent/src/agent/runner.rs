@@ -7911,9 +7911,7 @@ mod migrated_tests {
         let run = runner.run();
         let replace = async {
             request_started.notified().await;
-            handle
-                .add_tool(SecondGenerationTool(second_calls.clone()))
-                ;
+            handle.add_tool(SecondGenerationTool(second_calls.clone()));
             release_response.notify_one();
         };
         let (response, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
@@ -7969,9 +7967,7 @@ mod migrated_tests {
         };
         let replace = async {
             request_started.notified().await;
-            handle
-                .add_tool(SecondGenerationTool(second_calls.clone()))
-                ;
+            handle.add_tool(SecondGenerationTool(second_calls.clone()));
             release_response.notify_one();
         };
         let (final_output, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {

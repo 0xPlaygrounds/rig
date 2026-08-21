@@ -763,12 +763,10 @@ mod tests {
             .run();
         let snapshot = handle.snapshot_tool_defs(None).await.unwrap();
 
-        handle
-            .add_tool(ReplacementTool {
-                description: "second schema",
-                output: "second implementation",
-            })
-            ;
+        handle.add_tool(ReplacementTool {
+            description: "second schema",
+            output: "second implementation",
+        });
 
         assert_eq!(snapshot.definitions()[0].description, "first schema");
         let dispatch = snapshot
