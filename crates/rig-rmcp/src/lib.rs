@@ -1,10 +1,11 @@
 //! MCP (Model Context Protocol) tool support for Rig via the `rmcp` crate.
 //!
-//! With default features (`agent`) this crate provides [`McpClientHandler`], a client handler that reacts to
-//! `notifications/tools/list_changed` by re-fetching the tool list and updating
-//! rig-agent's `ToolServer`. Individual MCP tools are registered through the
-//! [`RmcpAgentBuilderExt`] / [`RmcpToolServerExt`] `rmcp_tool` builder methods
-//! (in [`prelude`]).
+//! With default features (`agent`) this crate provides `McpClientHandler`, a
+//! client handler that reacts to `notifications/tools/list_changed` by
+//! re-fetching the tool list and updating rig-agent's `ToolServer`. Individual
+//! MCP tools are registered through the `RmcpAgentBuilderExt` /
+//! `RmcpToolServerExt` `rmcp_tool` builder methods (in `prelude`). (Plain code
+//! spans, not links: these items exist only with the `agent` feature.)
 //!
 //! With `default-features = false` the crate depends on rig-core only: MCP
 //! tools are exposed as [`PortableDynamicTool`](rig_core::tool::PortableDynamicTool)s
