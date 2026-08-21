@@ -50,11 +50,11 @@ impl CompletionResponse {
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<String> {
-        Some(self.id.clone())
+    fn get_response_id(&self) -> Option<&str> {
+        Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn get_response_model_name(&self) -> Option<&str> {
         None
     }
 
@@ -67,7 +67,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
             .iter()
             .filter_map(|x| {
                 if let AssistantContent::Text { text } = x {
-                    Some(text.to_string())
+                    Some(text.clone())
                 } else {
                     None
                 }
@@ -79,7 +79,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        self.usage.clone()
+        self.usage
     }
 }
 
@@ -112,7 +112,7 @@ pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReas
     }
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Copy, Debug, Deserialize, Clone, Serialize)]
 pub struct Usage {
     #[serde(default)]
     pub billed_units: Option<BilledUnits>,
@@ -148,7 +148,7 @@ impl From<Usage> for crate::completion::Usage {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Copy, Debug, Deserialize, Clone, Serialize)]
 pub struct BilledUnits {
     #[serde(default)]
     pub output_tokens: Option<f64>,
@@ -160,7 +160,7 @@ pub struct BilledUnits {
     pub input_tokens: Option<f64>,
 }
 
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Copy, Debug, Deserialize, Clone, Serialize)]
 pub struct Tokens {
     #[serde(default)]
     pub input_tokens: Option<f64>,
@@ -669,8 +669,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+                .flatten(),
         );
 
         let tool_choice = req
@@ -694,7 +693,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         }
 
         Ok(Self {
-            model: model.to_string(),
+            model,
             messages: full_history,
             documents,
             temperature: req.temperature,
@@ -976,7 +975,7 @@ mod tests {
             )],
         };
 
-        let messages: Vec<Message> = completion_message.clone().try_into().unwrap();
+        let messages: Vec<Message> = completion_message.try_into().unwrap();
         let _converted_back: Vec<completion::Message> = messages
             .into_iter()
             .map(|msg| msg.try_into().unwrap())
@@ -991,7 +990,7 @@ mod tests {
             }],
         };
 
-        let completion_message: completion::Message = message.clone().try_into().unwrap();
+        let completion_message: completion::Message = message.try_into().unwrap();
         let _converted_back: Vec<Message> = completion_message.try_into().unwrap();
     }
 

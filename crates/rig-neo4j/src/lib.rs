@@ -137,15 +137,15 @@ impl Neo4jSearchFilter {
         Self(format!("NOT ({})", self.0))
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("n.{key} >= {}", serialize_cypher(value)))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("n.{key} <= {}", serialize_cypher(value)))
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         Self(format!(
             "n.{key} IN {}",
             serialize_cypher(serde_json::Value::Array(values))
@@ -155,7 +155,7 @@ impl Neo4jSearchFilter {
     // String matching
 
     /// Tests whether the value at `key` contains the pattern
-    pub fn contains<S>(key: String, pattern: S) -> Self
+    pub fn contains<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -166,7 +166,7 @@ impl Neo4jSearchFilter {
     }
 
     /// Tests whether the value at `key` starts with the pattern
-    pub fn starts_with<S>(key: String, pattern: S) -> Self
+    pub fn starts_with<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -177,7 +177,7 @@ impl Neo4jSearchFilter {
     }
 
     /// Tests whether the value at `key` ends with the pattern
-    pub fn ends_with<S>(key: String, pattern: S) -> Self
+    pub fn ends_with<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -187,7 +187,7 @@ impl Neo4jSearchFilter {
         ))
     }
 
-    pub fn matches<S>(key: String, pattern: S) -> Self
+    pub fn matches<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -322,11 +322,11 @@ impl Neo4jClient {
     /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
     ///
     /// ❗IMPORTANT: The index must be created with the same embedding model that will be used to query the index.
-    pub async fn get_index<M: EmbeddingModel>(
+    pub async fn get_index(
         &self,
-        model: M,
+        model: impl EmbeddingModel + 'static,
         index_name: &str,
-    ) -> Result<Neo4jVectorIndex<M>, VectorStoreError> {
+    ) -> Result<Neo4jVectorIndex, VectorStoreError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexInfo {

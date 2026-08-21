@@ -1,12 +1,13 @@
+use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::transcription::send_json_transcription;
 use crate::providers::openrouter::Client;
 use crate::transcription;
-use crate::transcription::TranscriptionError;
+use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
 use crate::wasm_compat::WasmCompatSend;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // ================================================================
 // Model constants
@@ -29,14 +30,14 @@ pub const CHIRP_3: &str = "google/chirp-3";
 // Request/Response types
 // ================================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResponse {
     pub text: String,
     #[serde(default)]
     pub usage: Option<TranscriptionUsage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionUsage {
     #[serde(default)]
     pub seconds: Option<f64>,
@@ -50,22 +51,24 @@ pub struct TranscriptionUsage {
     pub cost: Option<f64>,
 }
 
-impl TryFrom<TranscriptionResponse>
-    for transcription::TranscriptionResponse<TranscriptionResponse>
-{
-    type Error = TranscriptionError;
-
-    fn try_from(value: TranscriptionResponse) -> Result<Self, Self::Error> {
-        Ok(transcription::TranscriptionResponse {
-            text: value.text.clone(),
-            response: value,
-        })
+impl NormalizeTranscriptionResponse for TranscriptionResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        let usage = self
+            .usage
+            .as_ref()
+            .map(|usage| Usage {
+                input_tokens: usage.input_tokens.unwrap_or(0) as u64,
+                output_tokens: usage.output_tokens.unwrap_or(0) as u64,
+                total_tokens: usage.total_tokens.unwrap_or(0) as u64,
+                ..Usage::new()
+            })
+            .unwrap_or_default();
+        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
     }
 }
-
-// ================================================================
-// Model
-// ================================================================
 
 pub type TranscriptionModel<T = reqwest::Client> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
@@ -91,21 +94,29 @@ fn infer_format_from_filename(filename: &str) -> String {
         .to_string()
 }
 
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
-    type Response = TranscriptionResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    /// Perform the transcription and return OpenRouter's native response
+    /// instead of the normalized [`transcription::TranscriptionResponse`].
+    /// Same request, transport, parser, and error path as
+    /// [`transcription::TranscriptionModel::transcription`].
+    pub async fn raw_transcription(
         &self,
         request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
+    ) -> Result<TranscriptionResponse, TranscriptionError> {
+        self.raw_transcription_with_request_id(request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// [`Self::raw_transcription`] plus the transport request id, when the
+    /// response carried one.
+    pub async fn raw_transcription_with_request_id(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<(TranscriptionResponse, Option<String>), TranscriptionError> {
         if let Some(_prompt) = request.prompt {
             return Err(TranscriptionError::RequestError(Box::new(
                 std::io::Error::new(
@@ -160,12 +171,45 @@ where
                 .post("/audio/transcriptions")?
                 .header("Content-Type", "application/json"),
             body,
-            |_, body_bytes| {
-                let resp: TranscriptionResponse = serde_json::from_slice(body_bytes)?;
-                resp.try_into()
+            <super::client::OpenRouterExt as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+            |_, body_bytes| Ok(serde_json::from_slice::<TranscriptionResponse>(body_bytes)?),
+        )
+        .await
+    }
+}
+
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
+{
+    async fn transcription(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Transcription,
+            async {
+                let (response, provider_request_id) =
+                    self.raw_transcription_with_request_id(request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(super::completion::PROVIDER_NAME)?
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
             },
         )
         .await
+    }
+}
+
+impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -228,8 +272,7 @@ mod tests {
         let error = model
             .transcription(request)
             .await
-            .err()
-            .expect("should fail with non-success status");
+            .expect_err("should fail with non-success status");
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));
         assert_eq!(

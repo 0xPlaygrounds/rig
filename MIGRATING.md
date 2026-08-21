@@ -796,6 +796,121 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Telemetry getters borrow: `ProviderResponseExt::get_response_id` / `get_response_model_name` return `Option<&str>`
+
+Both getters exist to hand a value to `tracing::Span::record`, which takes
+`&str`; the owning return forced every one of the sixteen provider impls to
+clone a `String` per completion turn just to have it read once and dropped.
+They now return `Option<&str>`. `get_text_response` and `get_usage` are
+unchanged.
+
+```rust
+// before
+fn get_response_id(&self) -> Option<String> { Some(self.id.clone()) }
+
+// after
+fn get_response_id(&self) -> Option<&str> { Some(self.id.as_str()) }
+```
+
+Callers that need an owned value add `.map(str::to_owned)`.
+
+### `ReasoningSummary::text()` returns `&str`
+
+The one-variant enum's accessor cloned the summary text; it now borrows.
+Callers that need ownership add `.to_owned()`.
+
+### Request assembly accessors that need the history by value now consume the request
+
+`rig_vertexai::types::completion_request::VertexCompletionRequest::contents`
+and `rig_bedrock::types::completion_request::AwsCompletionRequest::messages`
+took `&self` and cloned the entire chat history per request. Each now takes
+`self`. Every other accessor on both types still borrows — call the borrowing
+accessors first and the consuming one last, which is the order the completion
+paths already used.
+
+```rust
+// before
+let contents = vertex_request.contents()?;          // cloned the history
+let system_instruction = vertex_request.system_instruction();
+
+// after
+let system_instruction = vertex_request.system_instruction();
+let contents = vertex_request.contents()?;          // moves the history
+```
+
+### `TextToImageGeneration::width`/`height` are chainable builders
+
+The two setters took `&mut self` and returned `&Self`, which chained with
+nothing else in the tree; every other rig builder is `mut self -> Self`. They
+now follow the house idiom.
+
+```rust
+// before
+let mut request = TextToImageGeneration::new(prompt);
+request.width(1024);
+request.height(1024);
+
+// after
+let request = TextToImageGeneration::new(prompt).width(1024).height(1024);
+```
+
+### `rig-s3vectors`: `set_bucket_name` / `set_index_name` removed
+
+Both setters had zero callers anywhere in the workspace and re-allocated from
+`&str`. Construct the store with the right names instead; the read accessors
+(`bucket_name()`, `index_name()`) are unchanged.
+
+### Vector-store filter constructors take `impl Into<String>` keys
+
+`MongoDbSearchFilter`, `SqliteSearchFilter`, `ScyllaSearchFilter`,
+`S3VectorsSearchFilter`, and `PgSearchFilter` constructors that took
+`key: String` now take `key: impl Into<String>`, matching the rest of the
+workspace (and the other parameter of the same functions, which already did).
+`filter::gte("price".to_string(), v)` still compiles; `filter::gte("price", v)`
+now also does. The only source break is a caller passing `"key".into()`, which
+becomes ambiguous — pass the literal.
+
+### Loosened bounds (no action needed)
+
+These accept strictly more code than before:
+
+- Transport/HTTP-client generic chains across the providers no longer demand
+  `Default` or `Debug` (`mistral`/`openrouter` transcription, `hyperbolic`,
+  `voyageai`, `ollama`, `gemini` image-generation and Interactions API,
+  `anthropic`, `copilot`, `chatgpt`, `openai` completions/responses/websocket).
+  Nothing constructed or formatted the client; the minimal chain is
+  `HttpClientExt + Clone (+ WasmCompatSend/WasmCompatSync) + 'static`.
+- `GenericCompletionModel::new` (and `with_strict_tools`,
+  `with_tool_result_array_content`) no longer bound `Client<Ext, H>` or `Ext`
+  at all.
+- `TypeMap`/`ToolContext` read-side methods (`get`, `get_mut`, `remove`,
+  `contains`, `require`, `result`, `require_result`) need only `T: 'static`
+  (pure `Any` lookups); the write side keeps
+  `Clone + WasmCompatSend + WasmCompatSync + 'static`.
+- `SqliteVectorStore<T>`/`SqliteVectorIndex<T>` struct declarations no longer
+  carry `T: SqliteVectorStoreTable + 'static`; the `'static` survives only on
+  the impl blocks whose `conn.call` closures actually need it.
+  `EmbeddingsBuilder`, `InMemoryVectorStoreBuilder`,
+  `TranscriptionRequestBuilder`, and `ImageGenerationRequestBuilder` likewise
+  drop their struct-level where clauses.
+- `HelixDBVectorStore::new`/`client()` require no bounds; the store impls no
+  longer restate `C::Err: std::error::Error` (declared on the trait).
+- The `VectorStoreIndexDyn` blanket impl no longer restates `WasmCompatSend +
+  WasmCompatSync + 'static` on the filter type (implied by
+  `VectorStoreIndex::Filter`).
+- `ToolSchema::try_from` and gemini's `ConstructEmbeddingModel` impl drop a
+  `'static` neither uses.
+- Extractor/vector-store generics spell `DeserializeOwned` instead of the
+  equivalent `for<'de> Deserialize<'de>`.
+
+### Provider usage types are `Copy`
+
+The scalar-only usage payloads (`openai` chat + responses, `anthropic`,
+`deepseek`, `openrouter`, `cohere`, gemini `InteractionUsage`, and their
+detail structs) now derive `Copy`. Mistral's `Usage` is not `Copy` — it
+carries `service_tier: Option<String>`.
+
+
 ### `providers::llamafile` is now `providers::llamacpp`
 
 The provider named after Mozilla's single-file distribution is gone; the one
@@ -2145,6 +2260,321 @@ Because the stored model is a handle, it can now change at runtime:
 merged `RequestPatch` and the previous model, and may pick a different handle
 per model call). `CompletionModel::capabilities()` is captured by value when
 the handle is created.
+
+### Borrow-shaped signatures: filter builders, rmcp registration, streaming prompt construction
+
+An ownership audit converted signatures that took owned values they never
+consumed into borrows, removing the caller-side clones they forced. Call
+sites passing string literals compile unchanged; sites that built an owned
+`String`/`Value`/`Vec` just to hand it over now pass a reference (and can
+usually stop building the owned value at all).
+
+- Vector-store filter builders take `&str` keys (and, where the value was
+  only serialized, borrowed values): `rig_qdrant::QdrantFilter`
+  (`exists`/`is_null`/`is_empty`/the four `range_*`, values now
+  `&serde_json::Value`), `rig_milvus::Filter` (`gte`/`lte`/`in_values`/
+  `not_in`/`like`/`array_*`), `rig_surrealdb::SurrealSearchFilter`
+  (`contains`/`all`/`any`/`member`/geometry ops, values now `&Value`),
+  `rig_lancedb::LanceDBFilter`, `rig_neo4j::Neo4jSearchFilter`,
+  `rig_postgres::PgSearchFilter`, and `rig_vectorize::VectorizeFilter`
+  (`ne`/`gte`/`lte` take `&Value`; `in_values`/`nin` take `&[Value]`).
+- `MilvusVectorStore::auth(&str, &str)` (was `String, String`).
+- `SqliteVectorStore::add_rows_with_txn` takes `&[(T, Vec<Embedding>)]`.
+- `StreamingPromptRequest::new(&Agent, …)` (was `Arc<Agent>`) — it only ever
+  read through the `Arc`; callers holding an `Arc` pass `&arc`.
+- `ToolServer::rmcp_tools` / `rmcp_tools_with_timeout` and the corresponding
+  `AgentBuilder` wrappers take `client: &ServerSink` (each registered tool
+  clones it anyway); the single-tool `rmcp_tool_with_timeout` still consumes
+  the sink it stores. Callers drop their `peer.clone()`.
+- `rig_vertexai::types::completion_response::map_finish_reason(&FinishReason)`.
+- `VectorStoreIndex::top_n`'s bound is spelled `DeserializeOwned` instead of
+  `for<'a> Deserialize<'a>` — the same bound, so implementations and callers
+  are unaffected; only the spelling changed.
+
+### Transcription, image-generation and audio-generation responses are concrete and normalized
+
+The same argument #2257 applied to completions now applies to the three
+remaining response-bearing model traits. `TranscriptionModel`,
+`ImageGenerationModel` and `AudioGenerationModel` lose `type Response`, and
+`TranscriptionResponse<T>`, `ImageGenerationResponse<T>` and
+`AudioGenerationResponse<T>` lose their parameter. Each is now a concrete
+struct carrying the payload plus the metadata every provider can report:
+
+```rust
+pub struct TranscriptionResponse {
+    pub text: String,                    // ImageGenerationResponse: image: Vec<u8>
+    pub usage: Usage,                    // AudioGenerationResponse: audio: Vec<u8>
+    pub provider: String,                // stable descriptor name, always set
+    pub model: Option<String>,           // provider-reported model, when any
+    pub response_id: Option<String>,
+    pub provider_request_id: Option<String>,
+    pub raw: serde_json::Value,          // the provider's own payload, serialized
+}
+```
+
+plus `identity() -> ResponseIdentity`. Delete the type argument from your
+annotations — `TranscriptionResponse<openai::TranscriptionResponse>` becomes
+`TranscriptionResponse` — and the parameter from
+`TranscriptionRequestBuilder<M, D>` / `ImageGenerationRequestBuilder<M, P>` /
+`AudioGenerationRequestBuilder<M, T, V>` callers, whose `send()` now returns
+the concrete type.
+
+**The `response` field is gone.** Everything a caller used to read off it has
+a named home or lives behind the raw route:
+
+| 0.42 read                                    | now                                                          |
+| -------------------------------------------- | ------------------------------------------------------------ |
+| `r.response.text` (OpenAI / OpenRouter)      | `r.text`                                                     |
+| `r.response.usage` token counts              | `r.usage` (`Usage`, zero when the provider reports none)     |
+| `r.response.usage` duration-billed seconds   | `raw_transcription(..)` / `r.raw["usage"]["seconds"]`        |
+| `r.response.model` (Mistral) / `model_version` (Gemini) | `r.model`                                         |
+| `r.response.response_id` (Gemini)            | `r.response_id`                                              |
+| `r.response.id` (Venice image)               | `r.raw["id"]`, or `raw_image_generation(..).id`              |
+| anything else provider-specific              | `r.raw` (deserialize it into the provider type), or `raw_*`  |
+
+Every concrete provider model gains inherent `raw_transcription`,
+`raw_image_generation` or `raw_audio_generation` returning the provider's
+native type from the same request, transport, parser and error path as the
+normalized call — the same escape hatch `raw_completion` is for completions,
+designed in up front this time rather than restored by a follow-up. For
+providers whose endpoint answers with bytes and no JSON envelope (Hugging Face
+images, every OpenAI-style text-to-speech endpoint) the native type is the
+bytes and `raw` on the normalized response stays `Null`; `raw_*` is the typed
+route.
+
+Normalization is a trait, implementable out of tree: replace
+`impl TryFrom<MyPayload> for TranscriptionResponse<MyPayload>` with
+
+```rust
+impl NormalizeTranscriptionResponse for MyPayload {
+    fn normalize(self, provider: &str) -> Result<TranscriptionResponse, TranscriptionError> {
+        Ok(TranscriptionResponse::new(self.text, provider).with_usage(..))
+    }
+}
+```
+
+(`NormalizeImageGenerationResponse` / `NormalizeAudioGenerationResponse`
+likewise). The provider name is an *input*: several providers share one wire
+shape, and a conversion that hardcoded a name would mislabel every provider
+but one. Custom models implement only the operation:
+
+```rust
+impl TranscriptionModel for MyModel {
+    async fn transcription(&self, req: TranscriptionRequest)
+        -> Result<TranscriptionResponse, TranscriptionError> { /* ... */ }
+}
+```
+
+The three traits also drop `Clone` from their supertraits (and
+`AudioGenerationModel` drops `Sized`), exactly as `CompletionModel` did:
+`transcription_request()` / `image_generation_request()` /
+`audio_generation_request()` gate on `where Self: Sized + Clone`, and each
+trait is implemented for `Arc<M>` by forwarding, so wrapping a non-`Clone`
+model in an `Arc` works through every generic API. Generic code that cloned a
+model through one of these traits must bound `M: …Model + Clone` explicitly.
+
+The shared OpenAI-style drivers now read the provider's transport request-id
+header onto `provider_request_id` where the provider has one (OpenAI, Groq:
+`x-request-id`; Mistral: `mistral-correlation-id`; Bedrock: the SDK's
+`x-amzn-RequestId`). Gemini, Hugging Face, Azure, Venice, xAI and OpenRouter
+report none on these endpoints; `None` is the documented outcome.
+
+### Construction moved off every model trait
+
+`EmbeddingModel`, `RerankModel`, `TranscriptionModel`, `ImageGenerationModel`
+and `AudioGenerationModel` lose `type Client` and `fn make`, matching
+`CompletionModel`. Delete both from your impls. `EmbeddingModel::MAX_DOCUMENTS`
+is now `fn max_documents(&self) -> usize` (a constant cannot survive type
+erasure — see the next section). `RerankModel::MAX_DOCUMENTS` and
+`ImageEmbeddingModel::MAX_DOCUMENTS` follow in the "Embedding and rerank
+responses" section below.
+
+The capability client traits construct models themselves:
+`EmbeddingsClient::embedding_model` / `embedding_model_with_ndims`,
+`RerankingClient::rerank_model`, `TranscriptionClient::transcription_model`,
+`ImageGenerationClient::image_generation_model` and
+`AudioGenerationClient::audio_generation_model` (which loses its default body)
+are required methods that call your model's own constructor. Call sites —
+`client.embedding_model(..)`, `client.transcription_model(..)` — are
+unchanged.
+
+A provider extension built on the generic `rig::client::Client<Ext, H>`
+implements the new public hooks instead: `ConstructEmbeddingModel<C>`
+(`construct(client, model, ndims: Option<usize>)`), `ConstructRerankModel<C>`,
+`ConstructTranscriptionModel<C>`, `ConstructImageGenerationModel<C>`,
+`ConstructAudioGenerationModel<C>` (`construct(client, model)`), all beside
+`ConstructCompletionModel`. The blanket capability-client impls over
+`Client<Ext, H>` bound on them, so an out-of-tree extension reaches
+`embedding_model`/`transcription_model`/… through public API only — the
+orphan rule that forced `ConstructCompletionModel` to be public applies to
+every modality, and this closes the hole. `rig-core` ships a compile probe of
+exactly that (`client::external_modality_extension_probe`).
+
+Tests that called `Model::make(&client, ..)` directly should go through the
+client: `client.embedding_model(..)`.
+
+`ImageEmbeddingModel` also drops `Clone` from its supertraits.
+
+### Vector stores erase the embedding model at construction
+
+Every vector store and index lost its embedding-model type parameter — the
+structural twin of `Agent<M>` losing its model:
+
+```rust
+// 0.42
+let index: QdrantVectorStore<openai::EmbeddingModel> = QdrantVectorStore::new(client, model, ..);
+let index: InMemoryVectorIndex<openai::EmbeddingModel, Doc> = store.index(model);
+// now
+let index: QdrantVectorStore = QdrantVectorStore::new(client, model, ..);
+let index: InMemoryVectorIndex<Doc> = store.index(model);
+```
+
+Constructors take `impl EmbeddingModel + 'static` and erase it once into
+`rig::embeddings::EmbeddingModelHandle`, a cloneable handle that itself
+implements `EmbeddingModel`; `ndims()` and `max_documents()` are captured by
+value at erasure. Affected: `InMemoryVectorIndex<M, D>` → `<D>`,
+`QdrantVectorStore<M>`, `LanceDbVectorIndex<M>`, `ScyllaDbVectorStore<M>`,
+`MongoDbVectorIndex<C, M>` → `<C>`, `MilvusVectorStore<M>`,
+`VectorizeVectorStore<M>`, `Neo4jVectorIndex<M>`, `S3VectorsVectorStore<M>`,
+`PostgresVectorStore<M>`, `SqliteVectorStore<E, T>` / `SqliteVectorIndex<E, T>`
+→ `<T>`, `SurrealVectorStore<C, M>` → `<C>`, `HelixDBVectorStore<C, E>` →
+`<C>`. Construction call sites are unchanged; delete the parameter from type
+annotations. Heterogeneous collections of indexes (`Vec<Box<dyn
+VectorStoreIndex<Filter = _>>>`) no longer need a provider name per element.
+
+Unlike `Agent`, this is **not** a swapping mechanism and there is no
+`set_model`: an index populated under one model is only meaningful under that
+model, so the handle a store holds is fixed for its lifetime. The payoff is
+type ergonomics and dyn-storability, nothing more. `EmbeddingsBuilder<M, T>`
+keeps its parameter: it is transient and dropped at `build()`, like
+`CompletionRequestBuilder`.
+
+### Embedding and rerank responses are concrete and normalized; `embed_texts_with_usage` is `embed_texts_response`
+
+The two response types #2385 left alone get the same treatment as every
+other modality. `EmbeddingResponse` and `RerankResponse` now carry the full
+normalized metadata:
+
+```rust
+pub struct EmbeddingResponse {           // RerankResponse: results: Vec<RerankResult>
+    pub embeddings: Vec<Embedding>,
+    pub usage: Usage,                    // zero when the provider reports none
+    pub provider: String,                // stable descriptor name, always set
+    pub model: Option<String>,           // provider-reported model, when any
+    pub response_id: Option<String>,
+    pub provider_request_id: Option<String>,
+    pub raw: serde_json::Value,          // the provider's own payload, serialized
+}
+```
+
+plus `identity() -> ResponseIdentity`, and a new `ImageEmbeddingResponse` of
+the same shape for `ImageEmbeddingModel`. Both types derive `Serialize` /
+`Deserialize`; construct with `EmbeddingResponse::new(embeddings, provider)`
+and the `with_*` setters.
+
+**`EmbeddingModel::embed_texts_with_usage` is renamed `embed_texts_response`**
+(and `embed_text_with_usage` → `embed_text_response`): it now returns identity
+and the raw payload, not only usage, so the old name would lie. It is also now
+the **required** method — `embed_texts`, `embed_text` and
+`embed_text_response` are defaults derived from it. Custom models flip what
+they implement:
+
+```rust
+// 0.42
+impl EmbeddingModel for MyModel {
+    const MAX_DOCUMENTS: usize = 100;
+    fn ndims(&self) -> usize { 768 }
+    async fn embed_texts(&self, texts: impl IntoIterator<Item = String> + Send)
+        -> Result<Vec<Embedding>, EmbeddingError> { /* ... */ }
+}
+// now
+impl EmbeddingModel for MyModel {
+    fn max_documents(&self) -> usize { 100 }
+    fn ndims(&self) -> usize { 768 }
+    async fn embed_texts_response(&self, texts: impl IntoIterator<Item = String> + Send)
+        -> Result<EmbeddingResponse, EmbeddingError> {
+        Ok(EmbeddingResponse::new(/* embeddings */ vec![], "my-provider"))
+    }
+}
+```
+
+(The other direction is impossible: a defaulted full method forwarding to
+`embed_texts` would have to invent the provider name.) `ImageEmbeddingModel`
+likewise: `embed_images_response` is required, `embed_images` / `embed_image`
+derive from it, and `MAX_DOCUMENTS` is `fn max_documents()`.
+
+**`RerankModel::MAX_DOCUMENTS` is `fn max_documents(&self) -> usize`** (a
+constant cannot survive erasure), and **`RerankResponse::model` is now
+`Option<String>`** — a server that omits `model` still produced a ranking,
+and `None` is the honest report where the shared Jina-shaped driver used to
+substitute the requested name. Replace `response.model == "x"` with
+`response.model.as_deref() == Some("x")`.
+
+Normalization is a trait, implementable out of tree: `NormalizeEmbeddingResponse`
+(`normalize(self, provider: &str, documents: Vec<String>)` — the request's
+inputs, in order, for `Embedding::document`), `NormalizeImageEmbeddingResponse`,
+`NormalizeRerankResponse` (`normalize(self, provider: &str)`). Every concrete
+provider model gains inherent `raw_embed_texts` / `raw_embed_images` /
+`raw_rerank` returning the provider's native type from the same request,
+transport, parser and error path, and the normalized response carries that
+value serialized in `raw`. Where the provider answers one request per input
+(Cohere images, Bedrock embeddings, Gemini gRPC) the raw route returns a
+`Vec` of answers; where there is no JSON payload at all (FastEmbed in-process,
+Gemini gRPC's prost messages) `raw` stays `Null` and `raw_*` is the typed
+route. Provider wire types that were private are now public where they are
+the raw route's return type (`openai::CompatibleEmbeddingResponse`,
+`copilot::CopilotEmbeddingResponse`, `cohere::{ImageEmbeddingResponse,
+FloatEmbeddings}`, the Jina rerank types in `providers::internal::rerank`,
+`gemini::embedding::gemini_api_types`), and gain `Serialize`.
+
+The shared OpenAI-compatible embeddings driver reads `x-request-id` onto
+`provider_request_id` for OpenAI (and Copilot does for its route); the other
+embedding and rerank endpoints report no transport id, and `None` is the
+documented outcome.
+
+`EmbeddingsBuilder::build`'s result is **unchanged**: the builder aggregates
+many model calls, so there is no single response identity. Identity is
+per-call — call `embed_texts_response` on the model directly when you need
+it.
+
+### `RerankModelHandle` and `ImageEmbeddingModelHandle`
+
+`rig::rerank::RerankModelHandle` and `rig::embeddings::ImageEmbeddingModelHandle`
+erase any `RerankModel + 'static` / `ImageEmbeddingModel + 'static`, exactly
+as `EmbeddingModelHandle` does for `EmbeddingModel`: cloneable, themselves
+implementing the trait, `max_documents` / `ndims` captured by value at
+erasure, the model never cloned, no `set_model`. No in-tree type held a
+`RerankModel` or `ImageEmbeddingModel` generically, so nothing lost a
+parameter; the handles exist for dyn-storability and parity.
+
+Image embedding deliberately gets **no** capability client (`ImageEmbeddingsClient`)
+or `Construct*` hook: one provider (Cohere) offers it, through the inherent
+`cohere::Client::image_embedding_model()`, which is unchanged.
+
+### `ModelLister` construction moved to `ConstructModelLister`
+
+`ModelLister<H>` loses `type Client` and `fn new` — the last construction
+associated type on any trait in `rig-core`. Delete both from your impls and
+add the public hook beside them:
+
+```rust
+impl<H> ConstructModelLister<Client<MyExt, H>> for MyLister<H>
+where
+    H: Clone,
+{
+    fn construct(client: &Client<MyExt, H>) -> Self {
+        Self { client: client.clone() }
+    }
+}
+```
+
+The blanket `ModelListingClient` impl over `Client<Ext, H>` bounds on it, so
+an out-of-tree extension reaches `list_models` through public API only (the
+`client::external_modality_extension_probe` test asserts it). `construct`
+takes `&C`, like every other `Construct*` hook. `ModelLister` keeps its `H`
+parameter — the transport, not a provider leak. Call sites
+(`client.list_models()`) are unchanged; code that called `MyLister::new(client)`
+directly calls `MyLister::construct(&client)`.
 
 ### Assistant content is tagged and provider extras are a named field
 

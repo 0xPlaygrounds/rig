@@ -95,9 +95,9 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
 /// the API has no `finishReason` field — and is absent when the stream ended
 /// without one.
 fn map_stream_final(
-    response: StreamingCompletionResponse,
+    response: &StreamingCompletionResponse,
 ) -> Result<streaming::StreamFinal, CompletionError> {
-    let usage = (&response).into();
+    let usage = response.into();
     let interaction = response.interaction.as_ref();
     let finish_reason = interaction
         .and_then(|interaction| interaction.status.as_ref())
@@ -114,7 +114,7 @@ fn map_stream_final(
 
 impl<T> InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Open an Interactions stream whose terminal record stays provider-native.
     ///
@@ -173,7 +173,7 @@ where
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            streaming::normalize_stream(inner, map_stream_final),
+            streaming::normalize_stream(inner, |response| map_stream_final(&response)),
         ))
     }
 }
@@ -372,7 +372,7 @@ impl WireAdapter for InteractionsAdapter {
                 // (`Error` policy), matching the other complete-block wires.
                 if let Some(slot) = self.open_function_steps.remove(index) {
                     out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
-                        function_step_end(slot),
+                        function_step_end(&slot),
                     )));
                 }
             }
@@ -401,7 +401,7 @@ impl WireAdapter for InteractionsAdapter {
                         "closing a function-call step left open at interaction.completed"
                     );
                     out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
-                        function_step_end(slot),
+                        function_step_end(&slot),
                     )));
                 }
 
@@ -412,7 +412,7 @@ impl WireAdapter for InteractionsAdapter {
                 let model_version = interaction.model.clone();
                 out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
                     StreamingCompletionResponse {
-                        usage: interaction.usage.clone(),
+                        usage: interaction.usage,
                         interaction: Some(interaction),
                         model_version,
                     },
@@ -456,9 +456,9 @@ pub(crate) fn stream_interaction_events<T>(
     request: Request<Vec<u8>>,
 ) -> InteractionEventStream
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
-    let mut event_source = GenericEventSource::new(client.clone(), request);
+    let mut event_source = GenericEventSource::new(client, request);
 
     let stream = stream! {
         while let Some(event_result) = event_source.next().await {
@@ -514,7 +514,7 @@ where
 /// Malformed accumulated input surfaces in-band (`Error` policy), matching
 /// the other complete-block wires.
 fn function_step_end(
-    slot: crate::providers::internal::tool_call_bridge::ToolCallSlot,
+    slot: &crate::providers::internal::tool_call_bridge::ToolCallSlot,
 ) -> streaming::ToolInputEnd {
     slot.end_event(streaming::UnparseableToolInput::Error)
 }

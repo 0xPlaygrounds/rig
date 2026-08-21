@@ -367,12 +367,12 @@ impl SessionWeights<'_> {
 impl<'a> GenerationSession<'a> {
     pub(crate) fn new(
         loaded: &'a LoadedModel,
-        request: CompletionRequest,
+        request: &CompletionRequest,
         cancellation: &'a CancellationSignal,
     ) -> Result<Self, CandleError> {
-        let prompt = crate::protocol::render_prompt(&request, loaded.profile.definition.protocol)?;
+        let prompt = crate::protocol::render_prompt(request, loaded.profile.definition.protocol)?;
         let generation =
-            effective_generation(&request, &loaded.generation, loaded.profile.vocab_size)?;
+            effective_generation(request, &loaded.generation, loaded.profile.vocab_size)?;
         let encoding = loaded
             .tokenizer
             .encode(prompt, false)
@@ -530,7 +530,7 @@ fn duration_millis(duration: Duration) -> u64 {
 
 pub(crate) fn generate(
     loaded: &LoadedModel,
-    request: CompletionRequest,
+    request: &CompletionRequest,
     cancellation: &CancellationSignal,
     mut emit: impl FnMut(String) -> Result<(), CandleError>,
 ) -> Result<CandleCompletionResponse, CandleError> {
@@ -555,14 +555,13 @@ pub(crate) fn generate(
 
 pub(crate) fn infer(
     loaded: &LoadedModel,
-    request: CompletionRequest,
+    request: &CompletionRequest,
     cancellation: &CancellationSignal,
 ) -> Result<InferredCompletion, CandleError> {
-    let parse_request = request.clone();
     let mut raw_response = generate(loaded, request, cancellation, |_| Ok(()))?;
     let parsed = crate::protocol::parse_assistant(
         &raw_response.text,
-        &parse_request,
+        request,
         loaded.profile.definition.protocol,
     )?;
     raw_response.text = parsed.visible_text;
@@ -605,7 +604,7 @@ impl InferredCompletion {
 
 pub(crate) fn stream_generate(
     loaded: &LoadedModel,
-    request: CompletionRequest,
+    request: &CompletionRequest,
     cancellation: &CancellationSignal,
     mut emit: impl FnMut(RawStreamingChoice<CandleCompletionResponse>) -> Result<(), CandleError>,
 ) -> Result<CandleCompletionResponse, CandleError> {
@@ -615,14 +614,13 @@ pub(crate) fn stream_generate(
         });
     }
 
-    let parse_request = request.clone();
     // Qwen tool syntax can straddle arbitrary token boundaries. Buffer one
     // model turn so control markup is never leaked as assistant text; complete
     // tool calls are still delivered through Rig's streaming agent driver.
     let mut response = generate(loaded, request, cancellation, |_| Ok(()))?;
     let parsed = crate::protocol::parse_assistant(
         &response.text,
-        &parse_request,
+        request,
         loaded.profile.definition.protocol,
     )?;
     response.text = parsed.visible_text;

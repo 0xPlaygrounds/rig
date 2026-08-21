@@ -1393,12 +1393,12 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<String> {
-        Some(self.id.to_owned())
+    fn get_response_id(&self) -> Option<&str> {
+        Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.to_owned())
+    fn get_response_model_name(&self) -> Option<&str> {
+        Some(self.model.as_str())
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -1417,7 +1417,7 @@ impl ProviderResponseExt for CompletionResponse {
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        self.usage.clone()
+        self.usage
     }
 }
 
@@ -1504,21 +1504,21 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
 pub struct PromptTokensDetails {
     /// Cached tokens from prompt caching
     #[serde(default)]
     pub cached_tokens: usize,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
 pub struct CompletionTokensDetails {
     /// Reasoning tokens reported by reasoning-capable providers.
     #[serde(default)]
     pub reasoning_tokens: usize,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1960,11 +1960,7 @@ pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest
 pub type CompletionModel<H = reqwest::Client> =
     GenericCompletionModel<super::OpenAICompletionsExt, H>;
 
-impl<Ext, H> GenericCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
-{
+impl<Ext, H> GenericCompletionModel<Ext, H> {
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
         Self {
             client,
@@ -2192,8 +2188,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+                .flatten(),
         );
 
         if full_history.is_empty() {
@@ -2411,7 +2406,7 @@ where
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Execute a chat completion and return the provider's own wire response.
     ///
@@ -2459,7 +2454,7 @@ where
             prompt_caching: self.prompt_caching,
         };
         let mut request = self.client.ext().build_completion_request(
-            self.model.to_owned(),
+            self.model.clone(),
             completion_request,
             options,
         )?;
@@ -2522,7 +2517,7 @@ where
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     // OpenAI Chat Completions *defers* `response_format` while tools are present
     // and no tool result exists yet (see `should_apply_response_format`), then

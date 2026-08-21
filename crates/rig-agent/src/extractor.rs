@@ -33,7 +33,7 @@
 use std::marker::PhantomData;
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use rig_core::{
     message::{Message, ToolChoice},
@@ -75,7 +75,7 @@ pub enum ExtractionError {
 /// Extractor for structured data from text
 pub struct Extractor<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     agent: Agent,
     _t: PhantomData<T>,
@@ -90,7 +90,7 @@ where
 #[must_use = "an extraction override does nothing until an extract method is awaited"]
 pub struct ExtractorRun<'a, T>
 where
-    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     extractor: &'a Extractor<T>,
     model: Option<ModelHandle>,
@@ -129,7 +129,7 @@ macro_rules! forward_default_run {
 
 impl<T> Extractor<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     /// Set a different default model for this extractor's subsequent attempts.
     pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
@@ -281,7 +281,7 @@ where
 
 impl<T> ExtractorRun<'_, T>
 where
-    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     /// Extract structured data with the run-local model.
     pub async fn extract(
@@ -329,7 +329,7 @@ where
 /// Builder for the Extractor
 pub struct ExtractorBuilder<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     agent_builder: AgentBuilder,
     _t: PhantomData<T>,
@@ -355,7 +355,7 @@ macro_rules! forward_agent_builder {
 
 impl<T> ExtractorBuilder<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new<M>(model: M) -> Self
     where
@@ -447,6 +447,7 @@ mod tests {
     use rig_core::vector_store::{
         VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
     };
+    use serde::Deserialize;
 
     #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
     struct Person {
@@ -563,7 +564,7 @@ mod tests {
     impl VectorStoreIndex for ExtractorContextIndex {
         type Filter = Filter<serde_json::Value>;
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+        async fn top_n<T: DeserializeOwned + WasmCompatSend>(
             &self,
             req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

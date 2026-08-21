@@ -494,16 +494,15 @@ impl StreamedTurnAssembler {
     /// ([`Self::assembled_reasoning`]) — agreement between the two is pinned
     /// by `canonical_choice_and_partial_turn_agree_on_multi_part_reasoning`.
     fn canonical_choice_with(
-        &self,
+        pending_tool_calls: Vec<(ToolCall, String)>,
         reasoning: Vec<Reasoning>,
         provider_choice: &[AssistantContent],
     ) -> Vec<AssistantContent> {
-        if !self.pending_tool_calls.is_empty() || !reasoning.is_empty() {
+        if !pending_tool_calls.is_empty() || !reasoning.is_empty() {
             let text_items = assistant_text_items_from_choice(provider_choice);
-            let tool_items = self
-                .pending_tool_calls
-                .iter()
-                .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
+            let tool_items = pending_tool_calls
+                .into_iter()
+                .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call))
                 .collect::<Vec<_>>();
             // Infallible on purpose: the enclosing guard makes at least one
             // input non-empty and the assembly maps its inputs 1:1, so there
@@ -549,7 +548,7 @@ impl StreamedTurnAssembler {
             });
         if let Some(part) = replace_at.and_then(|index| self.reasoning_parts.get_mut(index)) {
             if reasoning.id.is_some() {
-                part.provider_id = reasoning.id.clone();
+                part.provider_id.clone_from(&reasoning.id);
             }
             part.state = ReasoningPartState::Completed(reasoning.clone());
             return;
@@ -660,7 +659,7 @@ impl StreamedTurnAssembler {
                         text.push_str(reasoning);
                     }
                     if part.provider_id.is_none() {
-                        part.provider_id = provider_id.clone();
+                        part.provider_id.clone_from(provider_id);
                     }
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
@@ -740,7 +739,7 @@ impl StreamedTurnAssembler {
                 // tool calls actually seen (see `StreamFinal::finish_reason`),
                 // so it is consumed as-is and never re-reconciled here.
                 let finish_reason = final_response.finish_reason.clone();
-                self.finish_reason = finish_reason.clone();
+                self.finish_reason.clone_from(&finish_reason);
                 Ok(vec![StreamedTurnEvent::Completed {
                     usage,
                     emit_final,
@@ -792,7 +791,7 @@ impl StreamedTurnAssembler {
                     internal_call_id,
                 },
             ) => {
-                tool_call.function.name = tool_name.clone();
+                tool_call.function.name.clone_from(tool_name);
                 self.pending_tool_calls.push((*tool_call, internal_call_id));
                 Vec::new()
             }
@@ -854,14 +853,14 @@ impl StreamedTurnAssembler {
         final_choice: &[AssistantContent],
     ) -> StreamedTurn {
         let reasoning = self.drain_reasoning();
-        let choice = self.canonical_choice_with(reasoning, final_choice);
-        let internal_call_ids: Vec<(String, String)> = self
-            .pending_tool_calls
+        let pending_tool_calls = std::mem::take(&mut self.pending_tool_calls);
+        let internal_call_ids: Vec<(String, String)> = pending_tool_calls
             .iter()
             .map(|(tool_call, internal_call_id)| {
                 (tool_call.id.as_str().to_owned(), internal_call_id.clone())
             })
             .collect();
+        let choice = Self::canonical_choice_with(pending_tool_calls, reasoning, final_choice);
 
         StreamedTurn {
             message_id,

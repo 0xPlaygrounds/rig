@@ -213,7 +213,7 @@ async fn stream_raw_exposes_envelope_fields() {
                 );
             }
 
-            let raw = terminal.raw.clone();
+            let raw = terminal.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -286,7 +286,7 @@ async fn stream_raw_preserves_llamacpp_timings() {
                     .expect("stream should start"),
             )
             .await;
-            *sink.lock().expect("capture mutex") = Some(terminal.raw.clone());
+            *sink.lock().expect("capture mutex") = Some(terminal.raw);
         },
     )
     .await;

@@ -15,6 +15,7 @@ mod cassette {
     mod code_execution_matrix;
     mod document_ordering;
     mod dynamic_tools;
+    mod embedding_matrix;
     mod embeddings;
     mod error_envelope;
     mod extractor;

@@ -87,7 +87,7 @@ async fn hand_driven_single_turn_completes() {
                 "cassette-recorded usage should be non-zero"
             );
 
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             assert_eq!(messages.as_slice(), run.messages());
             assert_eq!(
                 messages.len(),
@@ -181,7 +181,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                 response.usage
             );
 
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             assert!(history_has_assistant_tool_call(&messages, "add"));
             assert!(history_has_assistant_tool_call(&messages, "subtract"));
             assert!(

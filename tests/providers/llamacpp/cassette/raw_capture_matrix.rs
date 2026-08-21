@@ -207,7 +207,7 @@ async fn raw_exposes_envelope_fields() {
                 );
             }
 
-            let raw = response.raw.clone();
+            let raw = response.raw;
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

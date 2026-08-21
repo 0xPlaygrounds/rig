@@ -105,7 +105,7 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<GenerateContentResponse, CompletionError> {
-        let request = create_grpc_request(self.model.clone(), completion_request)?;
+        let request = create_grpc_request(&self.model, completion_request)?;
 
         let mut grpc_client = self
             .client
@@ -115,7 +115,7 @@ impl CompletionModel {
         let response = grpc_client
             .generate_content(request)
             .await
-            .map_err(rpc_error)?
+            .map_err(|status| rpc_error(&status))?
             .into_inner();
 
         Ok(response)
@@ -176,13 +176,13 @@ pub(crate) fn text_part(text: String) -> proto::Part {
 // not distinguish a server-returned gRPC error from a transport/connection
 // failure, so a pure connection error is also preserved here rather than gated
 // out as a Rig diagnostic the way Bedrock's typed service errors are.
-pub(crate) fn rpc_error(status: tonic::Status) -> CompletionError {
+pub(crate) fn rpc_error(status: &tonic::Status) -> CompletionError {
     CompletionError::from_provider_body(status.to_string())
 }
 
 // Helper function to create gRPC request from Rig's CompletionRequest
 pub(crate) fn create_grpc_request(
-    model: String,
+    model: &str,
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
     let CompletionRequest {
@@ -563,19 +563,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 impl ProviderResponseExt for GenerateContentResponse {
     type Usage = proto::UsageMetadata;
 
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         if self.response_id.is_empty() {
             None
         } else {
-            Some(self.response_id.clone())
+            Some(self.response_id.as_str())
         }
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn get_response_model_name(&self) -> Option<&str> {
         if self.model_version.is_empty() {
             None
         } else {
-            Some(self.model_version.clone())
+            Some(self.model_version.as_str())
         }
     }
 
@@ -811,7 +811,7 @@ mod tests {
         let status = tonic::Status::unavailable("boom");
         let expected = status.to_string();
 
-        let err = rpc_error(status);
+        let err = rpc_error(&status);
 
         // The raw provider error text is preserved verbatim, and there is no
         // HTTP status because gRPC is a non-HTTP transport.
@@ -1059,7 +1059,7 @@ mod tests {
         };
 
         let req = create_grpc_request(
-            "gemini-2.5-flash".to_string(),
+            "gemini-2.5-flash",
             CompletionRequest {
                 model: None,
                 preamble: None,
@@ -1121,7 +1121,7 @@ mod tests {
         };
 
         let req = create_grpc_request(
-            "gemini-2.5-flash".to_string(),
+            "gemini-2.5-flash",
             CompletionRequest {
                 model: None,
                 preamble: None,

@@ -93,7 +93,7 @@ impl PlatformAuthenticator {
                 .or_else(|| extract_account_id(record.id_token.as_deref()))
                 .or_else(|| extract_account_id(Some(&access_token)));
             if account_id != record.account_id {
-                record.account_id = account_id.clone();
+                record.account_id.clone_from(&account_id);
                 write_json_record(self.auth_file.as_deref(), &record)?;
             }
             return Ok(AuthContext {

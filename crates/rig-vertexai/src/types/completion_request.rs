@@ -6,15 +6,16 @@ use rig_core::providers::gemini::completion::gemini_api_types::{
     ImageConfig as GeminiImageConfig, ResponseModality, ThinkingConfig as GeminiThinkingConfig,
     ThinkingLevel,
 };
-use serde_json::{Map, Value};
 
 pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
-    pub fn contents(&self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
+    pub fn contents(self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
         // Vertex's `functionResponse.name` is the *function name*, not a
         // call identifier — `ToolResult::name` carries it as required data.
-        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history.clone();
+        // Consumes the request: this is the one accessor that needs the
+        // history by value, so call it after the borrowing accessors.
+        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history;
         // Cross-provider ingested results arrive with an empty name and
         // their paired call carries it.
         rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);
@@ -106,14 +107,12 @@ impl VertexCompletionRequest {
     pub fn generation_config(
         &self,
     ) -> Result<Option<vertexai::model::GenerationConfig>, CompletionError> {
-        let additional_params = self
-            .0
-            .additional_params
-            .clone()
-            .unwrap_or_else(|| Value::Object(Map::new()));
         let AdditionalParameters {
             generation_config, ..
-        } = serde_json::from_value(additional_params)?;
+        } = match self.0.additional_params.as_ref() {
+            Some(params) => serde::Deserialize::deserialize(params)?,
+            None => AdditionalParameters::default(),
+        };
 
         let mut config = generation_config
             .map(|mut config| {
@@ -232,7 +231,7 @@ fn vertex_generation_config(
     if let Some(response_modalities) = config.response_modalities {
         let response_modalities = response_modalities
             .into_iter()
-            .map(vertex_response_modality)
+            .map(|modality| vertex_response_modality(&modality))
             .collect::<Result<Vec<_>, _>>()?;
         vertex_config = vertex_config.set_response_modalities(response_modalities);
     }
@@ -283,7 +282,7 @@ fn vertex_thinking_config(
 }
 
 fn vertex_response_modality(
-    modality: ResponseModality,
+    modality: &ResponseModality,
 ) -> Result<vertexai::model::generation_config::Modality, CompletionError> {
     match modality {
         ResponseModality::Text => Ok(vertexai::model::generation_config::Modality::Text),

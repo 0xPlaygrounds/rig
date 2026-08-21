@@ -345,7 +345,7 @@ async fn width_512_batch() {
 
 #[tokio::test]
 async fn usage_survives_a_requested_width() {
-    // `embed_texts_with_usage` is a second entry point into the same request
+    // `embed_texts_response` is a second entry point into the same request
     // builder; a width that reached the wire must not cost the usage the
     // caller came for.
     let calls = with_doubleword_embedding_cassette(
@@ -353,7 +353,7 @@ async fn usage_survives_a_requested_width() {
         |client| async move {
             let model = client.embedding_model_with_ndims(MODEL, 256);
             let response = model
-                .embed_texts_with_usage([PROBE.to_string()])
+                .embed_texts_response([PROBE.to_string()])
                 .await
                 .expect("embedding request should succeed");
 
@@ -380,7 +380,7 @@ async fn usage_at_the_default_width() {
         |client| async move {
             let model = client.embedding_model(MODEL);
             let response = model
-                .embed_texts_with_usage([PROBE.to_string()])
+                .embed_texts_response([PROBE.to_string()])
                 .await
                 .expect("embedding request should succeed");
 

@@ -174,7 +174,7 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     pub model: String,
     pub embeddings: Vec<Vec<f64>>,
@@ -184,6 +184,34 @@ pub struct EmbeddingResponse {
     pub load_duration: Option<u64>,
     #[serde(default)]
     pub prompt_eval_count: Option<u64>,
+}
+
+impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
+    fn normalize(
+        self,
+        provider: &str,
+        documents: Vec<String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        if self.embeddings.len() != documents.len() {
+            return Err(EmbeddingError::ResponseError(
+                "Number of returned embeddings does not match input".into(),
+            ));
+        }
+        let usage = crate::completion::Usage {
+            input_tokens: self.prompt_eval_count.unwrap_or(0),
+            total_tokens: self.prompt_eval_count.unwrap_or(0),
+            ..crate::completion::Usage::new()
+        };
+        let embeddings = self
+            .embeddings
+            .into_iter()
+            .zip(documents)
+            .map(|(vec, document)| embeddings::Embedding { document, vec })
+            .collect();
+        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
+            .with_model(self.model)
+            .with_usage(usage))
+    }
 }
 
 // ---------- Embedding Model ----------
@@ -213,31 +241,29 @@ impl<T> EmbeddingModel<T> {
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = dims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-        Self::new(client.clone(), model, dims)
-    }
-
-    const MAX_DOCUMENTS: usize = 1024;
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+    /// Perform the request and return Ollama's native `/api/embed` response
+    /// instead of the normalized [`embeddings::EmbeddingResponse`]. Same
+    /// request, transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let docs: Vec<String> = documents.into_iter().collect();
+        self.raw_embed_texts_slice(&docs).await
+    }
 
+    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
+    /// serialized into the request body, so callers that keep their documents
+    /// (the normalize path) can lend them instead of cloning the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        docs: &[String],
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let body = serde_json::to_vec(&json!({
             "model": self.model,
             "input": docs
@@ -258,20 +284,53 @@ where
         }
 
         let bytes: Vec<u8> = response.into_body().await?;
-
         let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
+        Ok(api_resp)
+    }
+}
 
-        if api_resp.embeddings.len() != docs.len() {
-            return Err(EmbeddingError::ResponseError(
-                "Number of returned embeddings does not match input".into(),
-            ));
-        }
-        Ok(api_resp
-            .embeddings
-            .into_iter()
-            .zip(docs)
-            .map(|(vec, document)| embeddings::Embedding { document, vec })
-            .collect())
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1024
+    }
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        crate::telemetry::instrument_modality(
+            PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
+
+                let docs: Vec<String> = documents.into_iter().collect();
+                // Ollama reports no transport request-id header.
+                let response = self.raw_embed_texts_slice(&docs).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response.normalize(PROVIDER_NAME, docs)?.with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+        let dims = dims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+        Self::new(client.clone(), model, dims)
     }
 }
 
@@ -332,12 +391,12 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
     /// Ollama's chat API carries no response ID.
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         None
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.clone())
+    fn get_response_model_name(&self) -> Option<&str> {
+        Some(self.model.as_str())
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -492,8 +551,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+                .flatten(),
         );
 
         let mut think: Option<Think> = None;
@@ -559,7 +617,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         };
 
         Ok(Self {
-            model: model.to_string(),
+            model,
             messages: full_history,
             stream: false,
             think,
@@ -690,7 +748,7 @@ impl NdjsonBuffer {
 
 impl<T> CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Send + 'static,
 {
     /// Execute a completion and return Ollama's own wire response.
     ///
@@ -969,7 +1027,7 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
 
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Send + 'static,
 {
     async fn completion(
         &self,
@@ -1028,12 +1086,6 @@ impl<H> ModelLister<H> for OllamaModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         let api_resp: ListModelsResponse = crate::providers::internal::model_listing::get_json(
             &self.client,
@@ -1044,6 +1096,16 @@ where
         let models = api_resp.models.into_iter().map(Model::from).collect();
 
         Ok(ModelList::new(models))
+    }
+}
+
+impl<H> crate::client::ConstructModelLister<Client<H>> for OllamaModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
+{
+    fn construct(client: &Client<H>) -> Self {
+        let client = client.clone();
+        Self { client }
     }
 }
 

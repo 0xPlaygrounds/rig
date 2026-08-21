@@ -264,7 +264,7 @@ async fn prompt_response_with_messages_builder() {
 
     let messages = vec![Message::user("hello"), Message::assistant("world")];
 
-    let resp = PromptResponse::new("output", Usage::new()).with_messages(messages.clone());
+    let resp = PromptResponse::new("output", Usage::new()).with_messages(messages);
 
     assert!(resp.messages.is_some());
     assert_eq!(resp.messages.as_ref().unwrap().len(), 2);

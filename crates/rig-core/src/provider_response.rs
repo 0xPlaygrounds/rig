@@ -423,6 +423,72 @@ macro_rules! response_metadata_setters {
 }
 
 pub(crate) use response_metadata_setters;
+/// Metadata setters for the normalized non-completion modality responses
+/// (transcription, image generation, audio generation). Same empty-string
+/// filtering rule as [`response_metadata_setters`]; these responses carry no
+/// message-scoped ID because nothing they produce is ever replayed as an
+/// assistant message.
+macro_rules! modality_response_metadata_setters {
+    ($ty:ty) => {
+        impl $ty {
+            /// Attach the provider-assigned response-scoped ID.
+            pub fn with_response_id(self, response_id: impl Into<String>) -> Self {
+                self.with_optional_response_id(Some(response_id.into()))
+            }
+
+            /// Attach the provider-assigned response-scoped ID when the
+            /// provider reported one. An empty string is treated as absent.
+            pub fn with_optional_response_id(
+                mut self,
+                response_id: Option<impl Into<String>>,
+            ) -> Self {
+                self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
+                self
+            }
+
+            /// Attach the provider's transport-level request identifier.
+            pub fn with_provider_request_id(self, request_id: impl Into<String>) -> Self {
+                self.with_optional_provider_request_id(Some(request_id.into()))
+            }
+
+            /// Attach the provider's transport-level request identifier when
+            /// the provider reported one. An empty string is treated as absent.
+            pub fn with_optional_provider_request_id(
+                mut self,
+                request_id: Option<impl Into<String>>,
+            ) -> Self {
+                self.provider_request_id = request_id.map(Into::into).filter(|id| !id.is_empty());
+                self
+            }
+
+            /// Attach the provider-reported model identifier.
+            pub fn with_model(self, model: impl Into<String>) -> Self {
+                self.with_optional_model(Some(model.into()))
+            }
+
+            /// Attach the provider-reported model identifier when the
+            /// response carried one. An empty string is treated as absent.
+            pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
+                self.model = model.map(Into::into).filter(|model| !model.is_empty());
+                self
+            }
+
+            /// Attach the usage the provider reported.
+            pub fn with_usage(mut self, usage: $crate::completion::Usage) -> Self {
+                self.usage = usage;
+                self
+            }
+
+            /// Attach the provider's own response, serialized — the value the
+            /// model's inherent raw method would have returned.
+            pub fn with_raw(mut self, raw: impl Into<serde_json::Value>) -> Self {
+                self.raw = raw.into();
+                self
+            }
+        }
+    };
+}
+pub(crate) use modality_response_metadata_setters;
 
 /// Declares a capability error enum with the shared core variants
 /// (`HttpError`, `JsonError`, `ResponseError`, `ProviderError`,

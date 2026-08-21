@@ -16,6 +16,7 @@ mod cassette {
     #[cfg(feature = "audio")]
     mod audio_generation;
     mod conformance;
+    mod embedding_matrix;
     mod embeddings;
     mod error_envelope;
     mod extractor;

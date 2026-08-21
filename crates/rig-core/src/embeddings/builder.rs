@@ -48,11 +48,7 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-pub struct EmbeddingsBuilder<M, T>
-where
-    M: EmbeddingModel,
-    T: Embed,
-{
+pub struct EmbeddingsBuilder<M, T> {
     model: M,
     documents: Vec<(T, Vec<String>)>,
 }
@@ -178,16 +174,17 @@ where
         }
 
         let total_texts = texts.len();
+        let max_documents = max(1, self.model.max_documents());
 
         // Compute the embeddings.
         let (slots, usage) = stream::iter(texts.into_iter().enumerate())
             // Chunk them into batches. Each batch size is at most the embedding API limit per request.
-            .chunks(M::MAX_DOCUMENTS)
+            .chunks(max_documents)
             // Generate the embeddings for each batch with usage tracking.
             .map(|chunk| async {
                 let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
 
-                let response: EmbeddingResponse = self.model.embed_texts_with_usage(batch).await?;
+                let response: EmbeddingResponse = self.model.embed_texts_response(batch).await?;
                 Ok::<_, EmbeddingError>((
                     slots
                         .into_iter()
@@ -197,7 +194,7 @@ where
                 ))
             })
             // Parallelize the embeddings generation over 10 concurrent requests
-            .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
+            .buffer_unordered(max(1, 1024 / max_documents))
             // Write each embedding into the slot its text came from, and
             // accumulate usage.
             .try_fold(
@@ -270,7 +267,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::embeddings::embed::{EmbedError, TextEmbedder};
-    use crate::embeddings::{Embed, Embedding, EmbeddingError, EmbeddingModel};
+    use crate::embeddings::{Embed, Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse};
     use crate::test_utils::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 
     use super::EmbeddingsBuilder;
@@ -487,33 +484,38 @@ mod tests {
     }
 
     impl EmbeddingModel for SlowFirstBatchModel {
-        const MAX_DOCUMENTS: usize = 5;
-
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self::new()
+        fn max_documents(&self) -> usize {
+            5
         }
 
         fn ndims(&self) -> usize {
             10
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             let nth = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if nth == 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
             }
-            Ok(documents
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0; 10],
-                })
-                .collect())
+            Ok(EmbeddingResponse::new(
+                documents
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0; 10],
+                    })
+                    .collect(),
+                "mock",
+            ))
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for SlowFirstBatchModel {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self::new()
         }
     }
 
@@ -537,22 +539,18 @@ mod tests {
     }
 
     impl EmbeddingModel for DescendingLatencyModel {
-        const MAX_DOCUMENTS: usize = 5;
-
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self::new()
+        fn max_documents(&self) -> usize {
+            5
         }
 
         fn ndims(&self) -> usize {
             10
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             let nth = self
                 .batches
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u64;
@@ -560,13 +558,22 @@ mod tests {
                 120u64.saturating_sub(nth * 40),
             ))
             .await;
-            Ok(documents
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0; 10],
-                })
-                .collect())
+            Ok(EmbeddingResponse::new(
+                documents
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0; 10],
+                    })
+                    .collect(),
+                "mock",
+            ))
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for DescendingLatencyModel {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self::new()
         }
     }
 
@@ -721,22 +728,18 @@ mod tests {
     struct OneAtATimeReversedLatency;
 
     impl EmbeddingModel for OneAtATimeReversedLatency {
-        const MAX_DOCUMENTS: usize = 1;
-
-        type Client = crate::client::Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
+        fn max_documents(&self) -> usize {
+            1
         }
 
         fn ndims(&self) -> usize {
             10
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
             let documents: Vec<String> = documents.into_iter().collect();
             // Earlier texts wait longer, so completion order is close to the
             // reverse of submission order. Texts are named `d{doc}t{i}`, so the
@@ -755,13 +758,22 @@ mod tests {
             );
             let delay = position.map_or(0, |n| 60u64.saturating_sub(n * 10));
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-            Ok(documents
-                .into_iter()
-                .map(|document| Embedding {
-                    document,
-                    vec: vec![0.0; 10],
-                })
-                .collect())
+            Ok(EmbeddingResponse::new(
+                documents
+                    .into_iter()
+                    .map(|document| Embedding {
+                        document,
+                        vec: vec![0.0; 10],
+                    })
+                    .collect(),
+                "mock",
+            ))
+        }
+    }
+
+    impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for OneAtATimeReversedLatency {
+        fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 

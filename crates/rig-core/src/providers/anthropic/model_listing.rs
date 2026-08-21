@@ -38,12 +38,6 @@ impl<H> ModelLister<H> for AnthropicModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         internal::model_listing::paginate_models(
             &self.client,
@@ -57,6 +51,16 @@ where
             parse_page,
         )
         .await
+    }
+}
+
+impl<H> crate::client::ConstructModelLister<Client<H>> for AnthropicModelLister<H>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
+{
+    fn construct(client: &Client<H>) -> Self {
+        let client = client.clone();
+        Self { client }
     }
 }
 
@@ -155,7 +159,10 @@ mod tests {
             .http_client(http_client.clone())
             .build()
             .expect("client should build");
-        (AnthropicModelLister::new(client), http_client)
+        (
+            <AnthropicModelLister<_> as crate::client::ConstructModelLister<_>>::construct(&client),
+            http_client,
+        )
     }
 
     /// The pagination loop follows the cursor across pages, sending `after_id`

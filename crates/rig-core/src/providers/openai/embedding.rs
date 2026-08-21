@@ -1,8 +1,10 @@
 use super::{client::ApiResponse, completion::Usage};
+use crate::embeddings;
 use crate::embeddings::EmbeddingError;
+#[cfg(test)]
+use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{embeddings, http_client};
 use serde::{Deserialize, Serialize};
 
 // ================================================================
@@ -23,15 +25,67 @@ pub struct EmbeddingResponse {
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize)]
-struct CompatibleEmbeddingResponse {
-    #[serde(rename = "object")]
-    _object: String,
+/// The OpenAI-compatible embeddings wire response as every provider on this
+/// wire answers it: what [`GenericEmbeddingModel::raw_embed_texts`] returns.
+/// `usage` is optional here because compatible providers may omit it; the
+/// strict [`EmbeddingResponse`] above is OpenAI's own contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompatibleEmbeddingResponse {
+    #[serde(default)]
+    pub object: String,
     pub data: Vec<EmbeddingData>,
-    #[serde(rename = "model")]
-    _model: String,
+    #[serde(default)]
+    pub model: String,
     #[serde(default)]
     pub usage: Option<Usage>,
+}
+
+impl embeddings::NormalizeEmbeddingResponse for CompatibleEmbeddingResponse {
+    fn normalize(
+        self,
+        provider: &str,
+        documents: Vec<String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        if self.data.len() != documents.len() {
+            return Err(EmbeddingError::ResponseError(
+                "Response data length does not match input length".into(),
+            ));
+        }
+
+        let usage = match &self.usage {
+            Some(usage) => crate::completion::Usage {
+                input_tokens: usage.prompt_tokens as u64,
+                output_tokens: 0,
+                total_tokens: usage.total_tokens as u64,
+                cached_input_tokens: usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .map_or(0, |details| details.cached_tokens as u64),
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            },
+            None => crate::completion::Usage::new(),
+        };
+
+        let embeddings: Vec<embeddings::Embedding> = self
+            .data
+            .into_iter()
+            .zip(documents)
+            .map(|(embedding, document)| embeddings::Embedding {
+                document,
+                vec: embedding
+                    .embedding
+                    .into_iter()
+                    .filter_map(|n| n.as_f64())
+                    .collect(),
+            })
+            .collect();
+
+        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
+            .with_model(self.model)
+            .with_usage(usage))
+    }
 }
 
 /// Provider-specific spelling for an embedding dimension request field.
@@ -53,6 +107,10 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
 
     /// Whether successful responses from this provider must include usage.
     const REQUIRES_USAGE: bool = true;
+
+    /// The provider's transport request-id response header, when it has one
+    /// (OpenAI: `x-request-id`). `None` means the provider reports none.
+    const REQUEST_ID_HEADER: Option<&'static str> = None;
 
     /// Whether the provider accepts the OpenAI-compatible `encoding_format` field.
     const SUPPORTS_ENCODING_FORMAT: bool = true;
@@ -109,10 +167,12 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
 
 impl OpenAIEmbeddingsCompatible for super::OpenAIResponsesExt {
     const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
 impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -137,7 +197,7 @@ struct CompatibleEmbeddingRequest<'a> {
     user: Option<&'a str>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingData {
     pub object: String,
     pub embedding: Vec<serde_json::Number>,
@@ -171,45 +231,43 @@ pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize
     }
 }
 
-impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
+impl<Ext, H> GenericEmbeddingModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
 {
-    const MAX_DOCUMENTS: usize = Ext::MAX_DOCUMENTS;
-
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let dimensions_were_explicitly_set = ndims.is_some();
-        let dims = ndims
-            .or_else(|| Ext::default_ndims(&model))
-            .unwrap_or_default();
-
-        Self::from_parts(client.clone(), model, dims, dimensions_were_explicitly_set)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+    /// Perform the request and return the provider's native wire response
+    /// instead of the normalized [`embeddings::EmbeddingResponse`]. Same
+    /// request, transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-        let response = self.embed_texts_with_usage(documents).await?;
-        Ok(response.embeddings)
+    ) -> Result<CompatibleEmbeddingResponse, EmbeddingError> {
+        self.raw_embed_texts_with_request_id(documents)
+            .await
+            .map(|(response, _)| response)
     }
 
-    async fn embed_texts_with_usage(
+    /// [`Self::raw_embed_texts`] plus the transport request id from the
+    /// provider's request-id response header, when it carries one.
+    pub async fn raw_embed_texts_with_request_id(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    ) -> Result<(CompatibleEmbeddingResponse, Option<String>), EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
+        self.raw_embed_texts_slice(&documents).await
+    }
 
+    /// Borrow-shaped twin of [`Self::raw_embed_texts_with_request_id`]: the
+    /// batch is only serialized into the request body, so callers that keep
+    /// their documents (the normalize path) can lend them instead of cloning
+    /// the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        documents: &[String],
+    ) -> Result<(CompatibleEmbeddingResponse, Option<String>), EmbeddingError> {
         if self.encoding_format == Some(EncodingFormat::Base64) {
             return Err(EmbeddingError::UnsupportedResponseEncoding {
                 provider: Ext::PROVIDER_NAME,
@@ -245,7 +303,7 @@ where
 
         let body = serde_json::to_vec(&CompatibleEmbeddingRequest {
             model: Ext::SENDS_MODEL_FIELD.then_some(self.model.as_str()),
-            input: &documents,
+            input: documents,
             dimensions,
             output_dimension,
             encoding_format: self.encoding_format,
@@ -260,9 +318,15 @@ where
 
         let response = self.client.send(req).await?;
 
-        let status = response.status();
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let provider_request_id =
+            crate::providers::internal::transcription::request_id_from_headers(
+                &parts.headers,
+                Ext::REQUEST_ID_HEADER,
+            );
+        let response_body: Vec<u8> = body.await?;
         if status.is_success() {
-            let response_body: Vec<u8> = response.into_body().await?;
             let parsed: ApiResponse<CompatibleEmbeddingResponse> =
                 serde_json::from_slice(&response_body)?;
 
@@ -272,86 +336,7 @@ where
                         "embedding token usage: {:?}",
                         response.usage
                     );
-
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
-
-                    let usage = match response.usage {
-                        Some(usage) => crate::completion::Usage {
-                            input_tokens: usage.prompt_tokens as u64,
-                            output_tokens: 0,
-                            total_tokens: usage.total_tokens as u64,
-                            cached_input_tokens: usage
-                                .prompt_tokens_details
-                                .as_ref()
-                                .map_or(0, |details| details.cached_tokens as u64),
-                            cache_creation_input_tokens: 0,
-                            tool_use_prompt_tokens: 0,
-                            reasoning_tokens: 0,
-                        },
-                        None if Ext::REQUIRES_USAGE => {
-                            return Err(EmbeddingError::MissingUsage {
-                                provider: Ext::PROVIDER_NAME,
-                            });
-                        }
-                        None => crate::completion::Usage::new(),
-                    };
-
-                    let embeddings: Vec<embeddings::Embedding> = response
-                        .data
-                        .into_iter()
-                        .zip(documents)
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding
-                                .embedding
-                                .into_iter()
-                                .filter_map(|n| n.as_f64())
-                                .collect(),
-                        })
-                        .collect();
-
-                    // A width the caller *declared* must be the width they
-                    // got. Two carve-outs, and both matter:
-                    //
-                    // * the width must have been set explicitly — a handle
-                    //   built without one reports whatever the provider table
-                    //   says and has nothing to disagree with;
-                    // * and it must be non-zero. Zero is rig's sentinel for
-                    //   *unknown*, not a declaration: `default_ndims`
-                    //   returning `None` lands here through
-                    //   `unwrap_or_default()`, and
-                    //   `GenericEmbeddingModel::new(client, model, 0)` is the
-                    //   documented way to say "I do not know how wide this
-                    //   is". Treating it as a claim would turn every such
-                    //   handle into a hard error on its first request.
-                    //
-                    // The failure this catches is silent, because the
-                    // providers where it happens are the ones that *ignore*
-                    // `dimensions` rather than rejecting it — `llama-server`'s
-                    // embeddings handler reads no such field at all, so a
-                    // request for 128 answers 200 with 1024-wide vectors while
-                    // `ndims()` keeps reporting 128. A vector store sized from
-                    // `ndims()` then builds an index that cannot hold its own
-                    // vectors, and the first thing to notice is the store.
-                    if self.dimensions_were_explicitly_set
-                        && self.ndims > 0
-                        && let Some(returned) = embeddings
-                            .iter()
-                            .map(|embedding| embedding.vec.len())
-                            .find(|width| *width != self.ndims)
-                    {
-                        return Err(EmbeddingError::MismatchedDimensions {
-                            provider: Ext::PROVIDER_NAME,
-                            requested: self.ndims,
-                            returned,
-                        });
-                    }
-
-                    Ok(embeddings::EmbeddingResponse { embeddings, usage })
+                    Ok((response, provider_request_id))
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
@@ -362,9 +347,117 @@ where
                 }
             }
         } else {
-            let text = http_client::text(response).await?;
-            Err(EmbeddingError::from_http_response(status, text))
+            Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&response_body).into_owned(),
+            ))
         }
+    }
+}
+
+impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
+where
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
+{
+    fn max_documents(&self) -> usize {
+        Ext::MAX_DOCUMENTS
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        crate::telemetry::instrument_modality(
+            Ext::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
+
+                let documents: Vec<String> = documents.into_iter().collect();
+                let (response, provider_request_id) =
+                    self.raw_embed_texts_slice(&documents).await?;
+
+                if response.usage.is_none() && Ext::REQUIRES_USAGE {
+                    return Err(EmbeddingError::MissingUsage {
+                        provider: Ext::PROVIDER_NAME,
+                    });
+                }
+
+                let captured = serde_json::to_value(&response)?;
+                let normalized = response.normalize(Ext::PROVIDER_NAME, documents)?;
+                let embeddings = &normalized.embeddings;
+
+                // A width the caller *declared* must be the width they
+                // got. Two carve-outs, and both matter:
+                //
+                // * the width must have been set explicitly — a handle
+                //   built without one reports whatever the provider table
+                //   says and has nothing to disagree with;
+                // * and it must be non-zero. Zero is rig's sentinel for
+                //   *unknown*, not a declaration: `default_ndims`
+                //   returning `None` lands here through
+                //   `unwrap_or_default()`, and
+                //   `GenericEmbeddingModel::new(client, model, 0)` is the
+                //   documented way to say "I do not know how wide this
+                //   is". Treating it as a claim would turn every such
+                //   handle into a hard error on its first request.
+                //
+                // The failure this catches is silent, because the
+                // providers where it happens are the ones that *ignore*
+                // `dimensions` rather than rejecting it — `llama-server`'s
+                // embeddings handler reads no such field at all, so a
+                // request for 128 answers 200 with 1024-wide vectors while
+                // `ndims()` keeps reporting 128. A vector store sized from
+                // `ndims()` then builds an index that cannot hold its own
+                // vectors, and the first thing to notice is the store.
+                if self.dimensions_were_explicitly_set
+                    && self.ndims > 0
+                    && let Some(returned) = embeddings
+                        .iter()
+                        .map(|embedding| embedding.vec.len())
+                        .find(|width| *width != self.ndims)
+                {
+                    return Err(EmbeddingError::MismatchedDimensions {
+                        provider: Ext::PROVIDER_NAME,
+                        requested: self.ndims,
+                        returned,
+                    });
+                }
+
+                Ok(normalized
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<Ext, H> crate::client::ConstructEmbeddingModel<crate::client::Client<Ext, H>>
+    for GenericEmbeddingModel<Ext, H>
+where
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
+{
+    fn construct(
+        client: &crate::client::Client<Ext, H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self {
+        let dimensions_were_explicitly_set = ndims.is_some();
+        let dims = ndims
+            .or_else(|| Ext::default_ndims(&model))
+            .unwrap_or_default();
+
+        Self::from_parts(client.clone(), model, dims, dimensions_were_explicitly_set)
     }
 }
 
@@ -501,7 +594,7 @@ mod tests {
             .user("user-123");
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding should succeed");
 
@@ -514,6 +607,57 @@ mod tests {
         assert_eq!(body["dimensions"], serde_json::json!(1_536));
         assert_eq!(body["encoding_format"], serde_json::json!("float"));
         assert_eq!(body["user"], serde_json::json!("user-123"));
+    }
+
+    /// The normalized response carries the provider name, the wire's model,
+    /// the `x-request-id` transport id, and the raw payload — which
+    /// round-trips back to the provider type.
+    #[tokio::test]
+    async fn openai_embeddings_normalize_identity_and_raw() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("x-request-id", "req_embed_0001".parse().expect("header"));
+        // `with_error_response_headers` with 200 is the one unary double that
+        // carries response headers.
+        let http_client = RecordingHttpClient::with_error_response_headers(
+            http::StatusCode::OK,
+            RESPONSE_BODY,
+            headers,
+        );
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
+
+        let response = model
+            .embed_texts_response(["hello".to_string()])
+            .await
+            .expect("embedding should succeed");
+
+        assert_eq!(response.provider, "openai");
+        assert_eq!(response.model.as_deref(), Some("text-embedding-3-small"));
+        assert_eq!(
+            response.provider_request_id.as_deref(),
+            Some("req_embed_0001")
+        );
+        assert_eq!(
+            response.identity().provider_request_id.as_deref(),
+            Some("req_embed_0001")
+        );
+        assert_eq!(response.embeddings.len(), 1);
+        assert_eq!(response.embeddings[0].document, "hello");
+
+        let raw: CompatibleEmbeddingResponse =
+            serde_json::from_value(response.raw.clone()).expect("raw round-trips");
+        assert_eq!(raw.data.len(), 1);
+        assert_eq!(raw.usage.map(|usage| usage.total_tokens), Some(4));
+
+        let typed = model
+            .raw_embed_texts(["hello".to_string()])
+            .await
+            .expect("raw route should succeed");
+        assert_eq!(typed.model, "text-embedding-3-small");
     }
 
     /// A width of zero is rig's "unknown", not a declaration.

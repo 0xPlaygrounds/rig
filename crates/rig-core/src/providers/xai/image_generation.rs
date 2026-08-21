@@ -1,10 +1,12 @@
 use crate::image_generation;
-use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+use crate::image_generation::{
+    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+};
 use crate::json_utils::merge_inplace;
 use crate::providers::internal::image_generation::{
     GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // ================================================================
@@ -13,28 +15,30 @@ use serde_json::json;
 pub const GROK_IMAGINE_IMAGE: &str = "grok-imagine-image";
 pub const GROK_IMAGINE_IMAGE_PRO: &str = "grok-imagine-image-pro";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageGenerationData {
     pub b64_json: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageGenerationResponse {
     pub data: Vec<ImageGenerationData>,
 }
 
-impl TryFrom<ImageGenerationResponse>
-    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
-{
-    type Error = ImageGenerationError;
-
-    fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        decode_base64_image(
-            value,
+impl NormalizeImageGenerationResponse for ImageGenerationResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        let image = decode_base64_image(
+            &self,
             |response| response.data.first().map(|image| image.b64_json.as_str()),
             "No image data returned",
             Some("Base64 decode error: "),
-        )
+        )?;
+        Ok(image_generation::ImageGenerationResponse::new(
+            image, provider,
+        ))
     }
 }
 
@@ -44,6 +48,7 @@ pub type ImageGenerationModel<T = reqwest::Client> =
 
 impl JsonImageGenerationProvider for super::client::XAiExt {
     const IMAGE_GENERATION_PATH: &'static str = "/v1/images/generations";
+    const PROVIDER_NAME: &'static str = "xai";
     type Response = ImageGenerationResponse;
 
     fn image_generation_request_body(

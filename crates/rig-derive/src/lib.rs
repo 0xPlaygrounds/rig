@@ -147,7 +147,7 @@ pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as tool::args::MacroArgs);
     let input_fn = parse_macro_input!(input as syn::ItemFn);
 
-    tool::expand::expand_rig_tool(args, input_fn)
+    tool::expand::expand_rig_tool(&args, &input_fn)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

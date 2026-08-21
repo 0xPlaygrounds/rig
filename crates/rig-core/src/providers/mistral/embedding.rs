@@ -21,6 +21,11 @@ const MISTRAL_EMBED_NDIMS: usize = 1024;
 
 impl OpenAIEmbeddingsCompatible for MistralExt {
     const PROVIDER_NAME: &'static str = "mistral";
+    // Mistral reports its transport id on every response, embeddings
+    // included; inheriting the trait's `None` default silently dropped it
+    // (latent since the id capture landed for completions in #2313's wake).
+    // Pinned by `embedding_matrix/bug_mistral_request_id_dropped`.
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("mistral-correlation-id");
     const SUPPORTS_USER: bool = false;
     const MAX_DOCUMENTS: usize = MAX_DOCUMENTS;
 
@@ -123,7 +128,7 @@ mod tests {
             .encoding_format(EncodingFormat::Float);
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding request should succeed");
 
@@ -238,9 +243,12 @@ mod batch_tests {
     /// `tests/providers/mistral/capability_edges.rs`.
     #[test]
     fn builder_chunks_at_mistrals_cap_not_openais() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel as _;
         assert_eq!(MAX_DOCUMENTS, 256);
+        let client = super::super::Client::new("key").expect("client");
         assert_eq!(
-            <super::super::EmbeddingModel as crate::embeddings::EmbeddingModel>::MAX_DOCUMENTS,
+            client.embedding_model(super::MISTRAL_EMBED).max_documents(),
             256,
             "the generic model must take the provider's cap; the shared default is OpenAI's 1024, \
              which Mistral rejects"

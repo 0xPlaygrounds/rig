@@ -24,7 +24,7 @@ impl AwsCompletionRequest {
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
         self.inner
             .additional_params
-            .to_owned()
+            .clone()
             .map(|params| params.into())
             .map(|doc: AwsDocument| doc.0)
     }
@@ -120,7 +120,7 @@ impl AwsCompletionRequest {
             .output_schema_name()
             .unwrap_or_else(|| "response_schema".to_string());
 
-        let schema_json = serde_json::to_string(&schema.clone().to_value())
+        let schema_json = serde_json::to_string(schema.as_value())
             .map_err(|e| CompletionError::RequestError(e.into()))?;
 
         let json_schema_def = aws_bedrock::JsonSchemaDefinition::builder()
@@ -147,7 +147,7 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
         let mut system_blocks = Vec::new();
 
-        if let Some(system_prompt) = self.inner.preamble.to_owned()
+        if let Some(system_prompt) = self.inner.preamble.clone()
             && !system_prompt.is_empty()
         {
             system_blocks.push(SystemContentBlock::Text(system_prompt));
@@ -171,7 +171,9 @@ impl AwsCompletionRequest {
         }
     }
 
-    pub fn messages(&self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
+    /// Consumes the request: this is the one accessor that needs the chat
+    /// history by value, so call it after the borrowing accessors.
+    pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
         let mut full_history: Vec<Message> = Vec::new();
 
         if !self.inner.documents.is_empty() {
@@ -191,12 +193,19 @@ impl AwsCompletionRequest {
             full_history.push(Message::User { content });
         }
 
+        // Compute before the history is moved below.
+        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
+            Message::Assistant { content, .. } => content
+                .iter()
+                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
+            _ => false,
+        });
+
         full_history.extend(
             self.inner
                 .chat_history
-                .iter()
-                .filter(|message| !matches!(message, Message::System { .. }))
-                .cloned(),
+                .into_iter()
+                .filter(|message| !matches!(message, Message::System { .. })),
         );
 
         let mut messages: Vec<aws_bedrock::Message> = full_history
@@ -212,18 +221,11 @@ impl AwsCompletionRequest {
         // result. Skip the message-level checkpoint in that case; the
         // system-prompt cache point still applies and captures the largest
         // stable prefix.
-        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
-            Message::Assistant { content, .. } => content
-                .iter()
-                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
-            _ => false,
-        });
-
         if self.prompt_caching
             && !has_reasoning
             && let Some(last_msg) = messages.last_mut()
         {
-            let mut content = last_msg.content.clone();
+            let mut content = std::mem::take(&mut last_msg.content);
             content.push(aws_bedrock::ContentBlock::CachePoint(cache_point_block()?));
             *last_msg = aws_bedrock::Message::builder()
                 .role(last_msg.role.clone())
@@ -616,6 +618,12 @@ mod tests {
         };
 
         let aws_request = aws_request(request, true);
+
+        // The system-prompt cache point path is independent and unaffected;
+        // read it before `messages()` consumes the request.
+        let system_only = aws_request.system_prompt().expect("system prompt builds");
+        assert!(system_only.is_none() || !system_only.unwrap().is_empty());
+
         let messages = aws_request.messages().expect("messages should convert");
 
         let last_message = messages.last().expect("messages should not be empty");
@@ -626,10 +634,6 @@ mod tests {
                 .any(|c| matches!(c, aws_bedrock::ContentBlock::CachePoint(_))),
             "message-level cache point should be skipped when chat history contains reasoning"
         );
-
-        // The system-prompt cache point path is independent and unaffected.
-        let system_only = aws_request.system_prompt().expect("system prompt builds");
-        assert!(system_only.is_none() || !system_only.unwrap().is_empty());
     }
 
     #[test]

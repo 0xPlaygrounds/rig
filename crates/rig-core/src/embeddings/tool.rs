@@ -85,7 +85,7 @@ impl ToolSchema {
     /// ```
     pub fn try_from<T>(tool: &T) -> Result<Self, EmbedError>
     where
-        T: PortableToolEmbedding + 'static,
+        T: PortableToolEmbedding,
     {
         Ok(ToolSchema {
             name: T::NAME.to_string(),

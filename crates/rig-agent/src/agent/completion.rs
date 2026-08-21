@@ -339,7 +339,7 @@ pub(crate) async fn build_prepared_completion_request(
         tool_snapshot.retain_names(&allowed);
     }
 
-    let mut tooldefs = tool_snapshot.definitions().to_vec();
+    let mut tooldefs = tool_snapshot.take_definitions();
 
     // Executable tools are the real tool-server tools, computed BEFORE any
     // synthetic output tool is appended.
@@ -493,7 +493,7 @@ pub(crate) async fn build_prepared_completion_request(
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params)
         .record_content_telemetry(record_telemetry_content)
-        .documents(static_context.to_vec())
+        .documents(static_context.clone())
         .tools(tooldefs);
 
     // Hook-supplied extra context documents (passive RAG) follow static context,

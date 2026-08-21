@@ -24,14 +24,14 @@ pub enum DiscordBotError {
 // Bot state containing the agent and conversation histories
 struct BotState {
     agent: Agent,
-    conversations: Arc<RwLock<HashMap<u64, Vec<RigMessage>>>>,
+    conversations: RwLock<HashMap<u64, Vec<RigMessage>>>,
 }
 
 impl BotState {
     fn new(agent: Agent) -> Self {
         Self {
             agent,
-            conversations: Arc::new(RwLock::new(HashMap::new())),
+            conversations: RwLock::new(HashMap::new()),
         }
     }
 }

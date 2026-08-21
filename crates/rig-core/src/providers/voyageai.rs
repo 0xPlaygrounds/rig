@@ -5,7 +5,7 @@ use crate::http_client::HttpClientExt;
 use crate::rerank;
 use crate::rerank::RerankError;
 use bytes::Bytes;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // ================================================================
@@ -103,7 +103,7 @@ pub fn model_dimensions_from_identifier(model_identifier: &str) -> Option<usize>
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
     pub object: String,
     pub data: Vec<EmbeddingData>,
@@ -111,7 +111,42 @@ pub struct EmbeddingResponse {
     pub usage: Usage,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
+    fn normalize(
+        self,
+        provider: &str,
+        documents: Vec<String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        if self.data.len() != documents.len() {
+            return Err(EmbeddingError::ResponseError(
+                "Response data length does not match input length".into(),
+            ));
+        }
+
+        let usage = crate::completion::Usage {
+            input_tokens: self.usage.total_tokens as u64,
+            output_tokens: 0,
+            total_tokens: self.usage.total_tokens as u64,
+            ..crate::completion::Usage::new()
+        };
+
+        let embeddings = self
+            .data
+            .into_iter()
+            .zip(documents)
+            .map(|(embedding, document)| embeddings::Embedding {
+                document,
+                vec: embedding.embedding,
+            })
+            .collect();
+
+        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
+            .with_model(self.model)
+            .with_usage(usage))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Usage {
     pub total_tokens: usize,
 }
@@ -143,7 +178,7 @@ pub(crate) enum ApiResponse<T> {
     Err(ApiErrorResponse),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingData {
     pub object: String,
     pub embedding: Vec<f64>,
@@ -183,41 +218,29 @@ pub struct EmbeddingModel<T> {
     options: EmbeddingOptions,
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = dims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
+    /// Perform the request and return Voyage AI's native response instead of
+    /// the normalized [`embeddings::EmbeddingResponse`]. Same request,
+    /// transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
-        let response = self.embed_texts_with_usage(documents).await?;
-        Ok(response.embeddings)
+        self.raw_embed_texts_slice(&documents).await
     }
 
-    async fn embed_texts_with_usage(
+    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
+    /// serialized into the request body, so callers that keep their documents
+    /// (the normalize path) can lend them instead of cloning the batch.
+    async fn raw_embed_texts_slice(
         &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
+        documents: &[String],
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
         let mut request = json!({
             "model": self.model,
             "input": documents,
@@ -256,34 +279,7 @@ where
                         "VoyageAI embedding token usage: {}",
                         response.usage.total_tokens
                     );
-
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
-
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.total_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    };
-
-                    let embeddings = response
-                        .data
-                        .into_iter()
-                        .zip(documents)
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding.embedding,
-                        })
-                        .collect();
-
-                    Ok(embeddings::EmbeddingResponse { embeddings, usage })
+                    Ok(response)
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
@@ -299,6 +295,55 @@ where
                 String::from_utf8_lossy(&response_body),
             ))
         }
+    }
+}
+
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1024
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        crate::telemetry::instrument_modality(
+            "voyageai",
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
+
+                let documents: Vec<String> = documents.into_iter().collect();
+                // Voyage AI reports no transport request-id header.
+                let response = self.raw_embed_texts_slice(&documents).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize("voyageai", documents)?
+                    .with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+        let dims = dims
+            .or(model_dimensions_from_identifier(&model))
+            .unwrap_or_default();
+
+        Self::new(client.clone(), model, dims)
     }
 }
 
@@ -319,19 +364,41 @@ pub const RERANK_1: &str = "rerank-1";
 /// `rerank-lite-1` reranker model (Voyage AI)
 pub const RERANK_LITE_1: &str = "rerank-lite-1";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiResponse {
     pub data: Vec<RerankApiData>,
     pub model: String,
     pub usage: RerankApiUsage,
 }
 
-#[derive(Debug, Deserialize)]
+impl rerank::NormalizeRerankResponse for RerankApiResponse {
+    fn normalize(self, provider: &str) -> Result<rerank::RerankResponse, RerankError> {
+        let usage = crate::completion::Usage {
+            input_tokens: self.usage.total_tokens as u64,
+            total_tokens: self.usage.total_tokens as u64,
+            ..crate::completion::Usage::new()
+        };
+        let results = self
+            .data
+            .into_iter()
+            .map(|d| rerank::RerankResult {
+                index: d.index,
+                document: d.document,
+                relevance_score: d.relevance_score,
+            })
+            .collect();
+        Ok(rerank::RerankResponse::new(results, provider)
+            .with_model(self.model)
+            .with_usage(usage))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiUsage {
     pub total_tokens: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiData {
     pub index: usize,
     pub relevance_score: f64,
@@ -375,23 +442,18 @@ impl<T> RerankModel<T> {
     }
 }
 
-impl<T> rerank::RerankModel for RerankModel<T>
+impl<T> RerankModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1000;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn rerank(
+    /// Perform the request and return Voyage AI's native response instead of
+    /// the normalized [`rerank::RerankResponse`]. Same request, transport,
+    /// parser, and error path as [`rerank::RerankModel::rerank`].
+    pub async fn raw_rerank(
         &self,
         query: &str,
         documents: Vec<String>,
-    ) -> Result<rerank::RerankResponse, RerankError> {
+    ) -> Result<RerankApiResponse, RerankError> {
         let mut body = json!({
             "query": query,
             "documents": documents,
@@ -431,32 +493,7 @@ where
                         "VoyageAI rerank token usage: {}",
                         response.usage.total_tokens
                     );
-
-                    let usage = crate::completion::Usage {
-                        input_tokens: response.usage.total_tokens as u64,
-                        output_tokens: 0,
-                        total_tokens: response.usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        reasoning_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                    };
-
-                    let results = response
-                        .data
-                        .into_iter()
-                        .map(|d| rerank::RerankResult {
-                            index: d.index,
-                            document: d.document,
-                            relevance_score: d.relevance_score,
-                        })
-                        .collect();
-
-                    Ok(rerank::RerankResponse {
-                        results,
-                        model: response.model,
-                        usage,
-                    })
+                    Ok(response)
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
@@ -472,6 +509,45 @@ where
                 String::from_utf8_lossy(&response_body),
             ))
         }
+    }
+}
+
+impl<T> rerank::RerankModel for RerankModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1000
+    }
+
+    async fn rerank(
+        &self,
+        query: &str,
+        documents: Vec<String>,
+    ) -> Result<rerank::RerankResponse, RerankError> {
+        crate::telemetry::instrument_modality(
+            "voyageai",
+            &self.model,
+            crate::telemetry::ModalityOperation::Rerank,
+            async {
+                use rerank::NormalizeRerankResponse as _;
+
+                // Voyage AI reports no transport request-id header.
+                let response = self.raw_rerank(query, documents).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response.normalize("voyageai")?.with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<T> crate::client::ConstructRerankModel<Client<T>> for RerankModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -571,7 +647,7 @@ mod tests {
                 truncation: Some(true),
                 output_dimension: Some(256),
             })
-            .embed_texts_with_usage(vec!["doc".to_string()])
+            .embed_texts_response(vec!["doc".to_string()])
             .await
             .expect("embed should succeed");
 
@@ -607,7 +683,7 @@ mod tests {
         let model = client.embedding_model(super::VOYAGE_3_LARGE);
 
         model
-            .embed_texts_with_usage(vec!["doc".to_string()])
+            .embed_texts_response(vec!["doc".to_string()])
             .await
             .expect("embed should succeed");
 

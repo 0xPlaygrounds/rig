@@ -888,12 +888,12 @@ pub mod gemini_api_types {
     impl ProviderResponseExt for GenerateContentResponse {
         type Usage = UsageMetadata;
 
-        fn get_response_id(&self) -> Option<String> {
-            Some(self.response_id.clone())
+        fn get_response_id(&self) -> Option<&str> {
+            Some(self.response_id.as_str())
         }
 
-        fn get_response_model_name(&self) -> Option<String> {
-            self.model_version.clone()
+        fn get_response_model_name(&self) -> Option<&str> {
+            self.model_version.as_deref()
         }
 
         fn get_text_response(&self) -> Option<String> {

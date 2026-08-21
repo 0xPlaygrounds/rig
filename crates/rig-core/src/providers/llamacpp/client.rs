@@ -522,7 +522,7 @@ mod tests {
         let model = client.embedding_model(super::super::LLAMA_CPP);
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding request should succeed");
 
@@ -602,7 +602,7 @@ mod tests {
             "no top_n unless the caller set one"
         );
 
-        assert_eq!(reranked.model, "reranker");
+        assert_eq!(reranked.model.as_deref(), Some("reranker"));
         assert_eq!(reranked.usage.input_tokens, 42);
         assert_eq!(reranked.usage.total_tokens, 42);
         assert_eq!(

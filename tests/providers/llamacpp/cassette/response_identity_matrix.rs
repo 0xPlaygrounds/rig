@@ -157,7 +157,6 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
 
             let id = response
                 .response_id
-                .clone()
                 .expect("llama.cpp mints a response id and rig surfaces it");
             assert!(
                 id.starts_with("chatcmpl-"),

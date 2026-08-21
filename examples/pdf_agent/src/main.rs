@@ -8,7 +8,7 @@ use rig::{
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Embed, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 struct Document {
@@ -17,7 +17,7 @@ struct Document {
     content: String,
 }
 
-fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
+fn load_pdf(path: &Path) -> Result<Vec<String>> {
     const CHUNK_SIZE: usize = 2000;
     let content_chunks = PdfFileLoader::with_glob(path.to_str().context("Invalid path")?)?
         .read()
@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("examples/documents");
     let pdf_chunks =
-        load_pdf(documents_dir.join("deepseek_r1.pdf")).context("Failed to load pdf documents")?;
+        load_pdf(&documents_dir.join("deepseek_r1.pdf")).context("Failed to load pdf documents")?;
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model

@@ -73,6 +73,13 @@ fn audio() -> Vec<u8> {
     std::fs::read(AUDIO_FIXTURE_PATH).expect("audio fixture should be readable")
 }
 
+/// The provider's own payload, recovered from the normalized response's
+/// `raw` field — the same value `raw_transcription` would have returned.
+fn raw(response: &rig::transcription::TranscriptionResponse) -> openai::TranscriptionResponse {
+    serde_json::from_value(response.raw.clone())
+        .expect("raw payload should round-trip to OpenAI's own transcription type")
+}
+
 /// The transcript itself, so no cell asserts usage while ignoring whether the
 /// endpoint still did its job.
 fn assert_transcribed(text: &str) {
@@ -101,7 +108,7 @@ async fn whisper_reports_duration_usage() {
                 .expect("transcription should succeed");
 
             assert_transcribed(&response.text);
-            match response.response.usage {
+            match raw(&response).usage {
                 Some(TranscriptionUsage::Duration { seconds, .. }) => assert!(seconds > 0.0),
                 other => panic!("whisper-1 bills by duration, got {other:?}"),
             }
@@ -125,7 +132,7 @@ async fn gpt_4o_transcribe_reports_token_usage() {
                 .expect("transcription should succeed");
 
             assert_transcribed(&response.text);
-            match response.response.usage {
+            match raw(&response).usage {
                 Some(TranscriptionUsage::Tokens {
                     input_tokens,
                     input_token_details,
@@ -163,7 +170,7 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
 
             assert_transcribed(&response.text);
             assert!(matches!(
-                response.response.usage,
+                raw(&response).usage,
                 Some(TranscriptionUsage::Tokens { .. })
             ));
         },
@@ -190,7 +197,7 @@ async fn completions_client_reports_duration_usage() {
 
             assert_transcribed(&response.text);
             assert!(matches!(
-                response.response.usage,
+                raw(&response).usage,
                 Some(TranscriptionUsage::Duration { .. })
             ));
         },
@@ -215,7 +222,7 @@ async fn completions_client_reports_token_usage() {
 
             assert_transcribed(&response.text);
             assert!(matches!(
-                response.response.usage,
+                raw(&response).usage,
                 Some(TranscriptionUsage::Tokens { .. })
             ));
         },
@@ -248,11 +255,11 @@ async fn verbose_json_still_reports_duration_usage() {
             // variant-selection regression would surface first.
             assert!(
                 matches!(
-                    response.response.usage,
+                    raw(&response).usage,
                     Some(TranscriptionUsage::Duration { .. })
                 ),
                 "a richer response format must not cost or reshape the usage: {:?}",
-                response.response.usage
+                raw(&response).usage
             );
         },
     )
@@ -275,7 +282,8 @@ async fn transcript_still_reaches_the_normalized_response() {
                 .await
                 .expect("transcription should succeed");
 
-            assert_eq!(response.text, response.response.text);
+            assert_eq!(response.text, raw(&response).text);
+            assert_eq!(response.provider, "openai");
             assert_transcribed(&response.text);
         },
     )

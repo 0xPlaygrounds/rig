@@ -53,31 +53,31 @@ impl<T> EmbeddingModel<T> {
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: Clone + HttpClientExt + 'static,
 {
-    type Client = Client<T>;
-
-    const MAX_DOCUMENTS: usize = 1024;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
-        Self::new(client.clone(), model, ndims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
+    /// Perform the request and return Gemini's native `batchEmbedContents`
+    /// response instead of the normalized [`embeddings::EmbeddingResponse`].
+    /// Same request, transport, parser, and error path as
+    /// [`embeddings::EmbeddingModel::embed_texts_response`].
+    ///
     /// <https://ai.google.dev/api/embeddings#batch_embed_contents-SHELL>
-    async fn embed_texts(
+    pub async fn raw_embed_texts(
         &self,
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+    ) -> Result<gemini_api_types::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
+        self.raw_embed_texts_slice(&documents).await
+    }
 
+    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
+    /// serialized into the request body, so callers that keep their documents
+    /// (the normalize path) can lend them instead of cloning the batch.
+    async fn raw_embed_texts_slice(
+        &self,
+        documents: &[String],
+    ) -> Result<gemini_api_types::EmbeddingResponse, EmbeddingError> {
         // Google batch embed requests. See docstrings for API ref link.
         let requests: Vec<_> = documents
             .iter()
@@ -86,7 +86,7 @@ where
                     "model": format!("models/{}", self.model),
                     "content": json!({
                         "parts": [json!({
-                            "text": doc.to_string()
+                            "text": doc
                         })]
                     }),
                     "output_dimensionality": self.ndims,
@@ -125,22 +125,7 @@ where
         }
 
         match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {
-            ApiResponse::Ok(response) => {
-                let docs = documents
-                    .into_iter()
-                    .zip(response.embeddings)
-                    .map(|(document, embedding)| embeddings::Embedding {
-                        document,
-                        vec: embedding
-                            .values
-                            .into_iter()
-                            .filter_map(|n| n.as_f64())
-                            .collect(),
-                    })
-                    .collect();
-
-                Ok(docs)
-            }
+            ApiResponse::Ok(response) => Ok(response),
             ApiResponse::Err(err) => {
                 tracing::warn!(message = %err.error.message, "provider returned an error response");
                 Err(EmbeddingError::from_http_response(
@@ -152,28 +137,105 @@ where
     }
 }
 
+impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
+where
+    T: Clone + HttpClientExt + 'static,
+{
+    fn max_documents(&self) -> usize {
+        1024
+    }
+
+    fn ndims(&self) -> usize {
+        self.ndims
+    }
+
+    async fn embed_texts_response(
+        &self,
+        documents: impl IntoIterator<Item = String> + WasmCompatSend,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Embeddings,
+            async {
+                use embeddings::NormalizeEmbeddingResponse as _;
+
+                let documents: Vec<String> = documents.into_iter().collect();
+                // Gemini sends no transport request-id header.
+                let response = self.raw_embed_texts_slice(&documents).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(super::completion::PROVIDER_NAME, documents)?
+                    .with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+where
+    T: Clone + HttpClientExt,
+{
+    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+        let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
+        Self::new(client.clone(), model, ndims)
+    }
+}
+
 // =================================================================
 // Gemini API Types
 // =================================================================
 /// Rust Implementation of the Gemini Types from [Gemini API Reference](https://ai.google.dev/api/embeddings)
-mod gemini_api_types {
-    use serde::Deserialize;
+pub mod gemini_api_types {
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Deserialize)]
+    use crate::embeddings::{self, EmbeddingError, NormalizeEmbeddingResponse};
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingResponse {
         pub embeddings: Vec<EmbeddingValues>,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct EmbeddingValues {
         #[serde(default)]
         pub values: Vec<serde_json::Number>,
+    }
+
+    impl NormalizeEmbeddingResponse for EmbeddingResponse {
+        fn normalize(
+            self,
+            provider: &str,
+            documents: Vec<String>,
+        ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+            if self.embeddings.len() != documents.len() {
+                return Err(EmbeddingError::ResponseError(
+                    "Number of returned embeddings does not match input".into(),
+                ));
+            }
+            let docs = documents
+                .into_iter()
+                .zip(self.embeddings)
+                .map(|(document, embedding)| embeddings::Embedding {
+                    document,
+                    vec: embedding
+                        .values
+                        .into_iter()
+                        .filter_map(|n| n.as_f64())
+                        .collect(),
+                })
+                .collect();
+            // batchEmbedContents reports neither usage nor a response id.
+            Ok(embeddings::EmbeddingResponse::new(docs, provider))
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::EmbeddingsClient;
 
     #[test]
     fn test_embedding_values_deserializes_without_empty_values_field() {
@@ -194,21 +256,15 @@ mod tests {
         let client = Client::new("test_key").unwrap();
 
         // EMBEDDING_001 defaults to 3072
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, None);
+        let model = client.embedding_model(EMBEDDING_001);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 3072);
 
         // EMBEDDING_004 defaults to 768
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_004, None);
+        let model = client.embedding_model(EMBEDDING_004);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
 
         // Unknown model falls back to 768
-        let model = <EmbeddingModel as embeddings::EmbeddingModel>::make(
-            &client,
-            "some-future-model",
-            None,
-        );
+        let model = client.embedding_model("some-future-model");
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
     }
 
@@ -216,8 +272,7 @@ mod tests {
     fn test_make_respects_explicit_dims() {
         let client = Client::new("test_key").unwrap();
 
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, Some(256));
+        let model = client.embedding_model_with_ndims(EMBEDDING_001, 256);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 256);
     }
 

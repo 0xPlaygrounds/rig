@@ -8,7 +8,7 @@
 //! `sqlite` feature is enabled.
 
 use rig_core::Embed;
-use rig_core::embeddings::{Embedding, EmbeddingModel};
+use rig_core::embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -19,7 +19,6 @@ use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 use tokio_rusqlite::Connection;
 use tracing::{debug, info};
-use zerocopy::IntoBytes;
 
 /// Maximum `k` accepted by a `sqlite-vec` `vec0` KNN query (`embedding MATCH ?
 /// AND k = ?`). `sqlite-vec` enforces this as a hard `#define
@@ -346,27 +345,29 @@ fn sqlite_metadata_value(
     }
 }
 
+/// A SQLite-backed vector store for documents of type `T`.
+///
+/// The store does not name an embedding model in its type; the model is only
+/// consulted (for `ndims`) at construction, and the index built from it via
+/// [`SqliteVectorStore::index`] holds the model behind an erased
+/// [`EmbeddingModelHandle`].
 #[derive(Clone)]
-pub struct SqliteVectorStore<E, T>
-where
-    E: EmbeddingModel + 'static,
-    T: SqliteVectorStoreTable + 'static,
-{
+pub struct SqliteVectorStore<T> {
     conn: Connection,
     distance_metric: SqliteDistanceMetric,
     metadata_columns: Vec<SqliteMetadataColumn>,
-    _phantom: PhantomData<(E, T)>,
+    _phantom: PhantomData<T>,
 }
 
-impl<E, T> SqliteVectorStore<E, T>
+impl<T> SqliteVectorStore<T>
 where
-    E: EmbeddingModel + 'static,
-    T: SqliteVectorStoreTable + 'static,
+    T: SqliteVectorStoreTable,
 {
-    async fn candidate_limit(&self, samples: u64, exhaustive: bool) -> Result<u64, VectorStoreError>
-    where
-        Self: 'static,
-    {
+    async fn candidate_limit(
+        &self,
+        samples: u64,
+        exhaustive: bool,
+    ) -> Result<u64, VectorStoreError> {
         if samples == 0 {
             return Ok(0);
         }
@@ -411,13 +412,15 @@ where
     }
 }
 
-impl<E, T> SqliteVectorStore<E, T>
+impl<T> SqliteVectorStore<T>
 where
-    E: EmbeddingModel + Clone + 'static,
     T: SqliteVectorStoreTable + 'static,
 {
     /// Creates a SQLite vector store using cosine similarity.
-    pub async fn new(conn: Connection, embedding_model: &E) -> Result<Self, VectorStoreError> {
+    pub async fn new(
+        conn: Connection,
+        embedding_model: &impl EmbeddingModel,
+    ) -> Result<Self, VectorStoreError> {
         Self::with_distance_metric(conn, embedding_model, SqliteDistanceMetric::default()).await
     }
 
@@ -428,7 +431,7 @@ where
     /// returned score values.
     pub async fn with_distance_metric(
         conn: Connection,
-        embedding_model: &E,
+        embedding_model: &impl EmbeddingModel,
         distance_metric: SqliteDistanceMetric,
     ) -> Result<Self, VectorStoreError> {
         let dims = embedding_model.ndims();
@@ -558,14 +561,14 @@ where
         })
     }
 
-    pub fn index(self, model: E) -> SqliteVectorIndex<E, T> {
+    pub fn index(self, model: impl EmbeddingModel + 'static) -> SqliteVectorIndex<T> {
         SqliteVectorIndex::new(model, self)
     }
 
     pub fn add_rows_with_txn(
         &self,
         txn: &rusqlite::Transaction<'_>,
-        documents: Vec<(T, Vec<Embedding>)>,
+        documents: &[(T, Vec<Embedding>)],
     ) -> Result<i64, tokio_rusqlite::Error> {
         info!("Adding {} documents to store", documents.len());
         let table_name = T::name();
@@ -594,7 +597,7 @@ where
             format!("DELETE FROM {embedding_map_table_name} WHERE document_rowid = ?1");
         let delete_embeddings_sql = format!("DELETE FROM {embeddings_table_name} WHERE rowid = ?1");
 
-        for (doc, embeddings) in &documents {
+        for (doc, embeddings) in documents {
             debug!("Storing document with id {}", doc.id());
 
             let values = doc.column_values();
@@ -651,13 +654,13 @@ where
                     "Storing embedding {} of {} (size: {} bytes)",
                     i + 1,
                     embeddings.len(),
-                    vec.len() * 4
+                    vec.len()
                 );
                 txn.execute(&insert_embedding_map_sql, [last_id])?;
                 let embedding_rowid = txn.last_insert_rowid();
                 let mut params = Vec::with_capacity(2 + metadata_values.len());
                 params.push(Value::Integer(embedding_rowid));
-                params.push(Value::Blob(vec.as_bytes().to_vec()));
+                params.push(Value::Blob(vec));
                 params.extend(metadata_values.iter().cloned());
                 stmt.execute(rusqlite::params_from_iter(params))?;
             }
@@ -669,17 +672,13 @@ where
     pub async fn add_rows(
         &self,
         documents: Vec<(T, Vec<Embedding>)>,
-    ) -> Result<i64, VectorStoreError>
-    where
-        T: 'static,
-        Self: 'static,
-    {
+    ) -> Result<i64, VectorStoreError> {
         let cloned = self.clone();
 
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                let result = cloned.add_rows_with_txn(&tx, documents)?;
+                let result = cloned.add_rows_with_txn(&tx, &documents)?;
                 tx.commit()?;
 
                 Ok(result)
@@ -689,11 +688,10 @@ where
     }
 }
 
-impl<E, T> InsertDocuments for SqliteVectorStore<E, T>
+impl<T> InsertDocuments for SqliteVectorStore<T>
 where
-    E: EmbeddingModel + Clone + WasmCompatSend + WasmCompatSync + 'static,
     T: SqliteVectorStoreTable
-        + for<'de> Deserialize<'de>
+        + serde::de::DeserializeOwned
         + WasmCompatSend
         + WasmCompatSync
         + 'static,
@@ -950,10 +948,11 @@ impl SqliteSearchFilter {
     /// Non-boolean indexed metadata ranges are applied during sqlite-vec
     /// candidate search. Document-table ranges are applied after candidate
     /// search and may require exhaustive candidate retrieval.
-    pub fn between<N>(key: String, range: RangeInclusive<N>) -> Self
+    pub fn between<N>(key: impl Into<String>, range: RangeInclusive<N>) -> Self
     where
         N: Into<serde_json::Value>,
     {
+        let key = key.into();
         let (lo, hi) = range.into_inner();
 
         Self {
@@ -966,11 +965,13 @@ impl SqliteSearchFilter {
     }
 
     // Null checks
-    pub fn is_null(key: String) -> Self {
+    pub fn is_null(key: impl Into<String>) -> Self {
+        let key = key.into();
         Self::null_check(key, false)
     }
 
-    pub fn is_not_null(key: String) -> Self {
+    pub fn is_not_null(key: impl Into<String>) -> Self {
+        let key = key.into();
         Self::null_check(key, true)
     }
 
@@ -978,7 +979,8 @@ impl SqliteSearchFilter {
     ///
     /// sqlite-vec cannot enforce `GLOB` during candidate search, so this is
     /// applied as a document-table post-filter.
-    pub fn glob(key: String, pattern: impl Into<String>) -> Self {
+    pub fn glob(key: impl Into<String>, pattern: impl Into<String>) -> Self {
+        let key = key.into();
         Self::pattern(key, SqlitePatternOp::Glob, pattern)
     }
 
@@ -986,7 +988,8 @@ impl SqliteSearchFilter {
     ///
     /// sqlite-vec cannot enforce `LIKE` during candidate search, so this is
     /// applied as a document-table post-filter.
-    pub fn like(key: String, pattern: impl Into<String>) -> Self {
+    pub fn like(key: impl Into<String>, pattern: impl Into<String>) -> Self {
+        let key = key.into();
         Self::pattern(key, SqlitePatternOp::Like, pattern)
     }
 }
@@ -1506,7 +1509,7 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
 ///
 /// // Initialize vector store
-/// let vector_store: SqliteVectorStore<_, Document> = SqliteVectorStore::with_distance_metric(
+/// let vector_store: SqliteVectorStore<Document> = SqliteVectorStore::with_distance_metric(
 ///     conn,
 ///     &model,
 ///     SqliteDistanceMetric::Cosine,
@@ -1546,32 +1549,33 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # }
 /// # let _ = example();
 /// ```
-pub struct SqliteVectorIndex<E, T>
-where
-    E: EmbeddingModel + 'static,
-    T: SqliteVectorStoreTable + 'static,
-{
-    store: SqliteVectorStore<E, T>,
-    embedding_model: E,
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`], which is fixed for the index's lifetime: an index
+/// populated under one model is only meaningful when queried under that model.
+pub struct SqliteVectorIndex<T> {
+    store: SqliteVectorStore<T>,
+    embedding_model: EmbeddingModelHandle,
 }
 
-impl<E, T> SqliteVectorIndex<E, T>
+impl<T> SqliteVectorIndex<T>
 where
-    E: EmbeddingModel + 'static,
     T: SqliteVectorStoreTable,
 {
-    pub fn new(embedding_model: E, store: SqliteVectorStore<E, T>) -> Self {
+    pub fn new(
+        embedding_model: impl EmbeddingModel + 'static,
+        store: SqliteVectorStore<T>,
+    ) -> Self {
         Self {
             store,
-            embedding_model,
+            embedding_model: EmbeddingModelHandle::new(embedding_model),
         }
     }
 }
 
-impl<E, T> SqliteVectorIndex<E, T>
+impl<T> SqliteVectorIndex<T>
 where
-    E: EmbeddingModel + 'static,
-    T: SqliteVectorStoreTable + 'static,
+    T: SqliteVectorStoreTable,
 {
     /// Runs the shared candidate search for `top_n`/`top_n_ids`.
     ///
@@ -1589,7 +1593,7 @@ where
         F: Fn(&rusqlite::Row<'_>) -> rusqlite::Result<R> + Send + 'static,
     {
         let embedding = self.embedding_model.embed_text(req.query()).await?;
-        let query_vec: Vec<f32> = serialize_embedding(&embedding);
+        let query_vec: Vec<u8> = serialize_embedding(&embedding);
         let table_name = T::name();
         let embedding_map_table_name = format!("{table_name}_embedding_map");
 
@@ -1699,7 +1703,7 @@ fn render_search_filters(
 }
 
 fn build_search_query(
-    query_vec: Vec<f32>,
+    query_vec: Vec<u8>,
     filters: SqliteRenderedFilters,
     candidate_limit: u64,
 ) -> Result<SqliteSearchQuery, FilterError> {
@@ -1744,7 +1748,6 @@ fn build_search_query(
         )
     };
 
-    let query_vec = query_vec.into_iter().flat_map(f32::to_le_bytes).collect();
     let query_vec = Value::Blob(query_vec);
 
     // Parameter binding is positional. The score expression uses the explicit
@@ -1773,7 +1776,7 @@ fn build_search_query(
 #[cfg(test)]
 fn build_where_clause(
     req: &VectorSearchRequest<SqliteSearchFilter>,
-    query_vec: Vec<f32>,
+    query_vec: Vec<u8>,
     distance_metric: SqliteDistanceMetric,
     metadata_columns: &[SqliteMetadataColumn],
     candidate_limit: u64,
@@ -1933,9 +1936,7 @@ fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Res
     }
 }
 
-impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorStoreIndex
-    for SqliteVectorIndex<E, T>
-{
+impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
     type Filter = SqliteSearchFilter;
 
     async fn top_n<D>(
@@ -1943,7 +1944,7 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
         req: VectorSearchRequest<SqliteSearchFilter>,
     ) -> Result<Vec<(f64, String, D)>, VectorStoreError>
     where
-        D: for<'de> Deserialize<'de>,
+        D: serde::de::DeserializeOwned,
     {
         tracing::debug!("Finding top {} matches for query", req.samples() as usize);
         if req.samples() == 0 {
@@ -2025,8 +2026,15 @@ impl<E: EmbeddingModel + std::marker::Sync, T: SqliteVectorStoreTable> VectorSto
     }
 }
 
-fn serialize_embedding(embedding: &Embedding) -> Vec<f32> {
-    embedding.vec.iter().map(|x| *x as f32).collect()
+/// Serializes an embedding straight to the little-endian f32 blob SQLite
+/// stores, so neither the insert nor the query path needs an intermediate
+/// `Vec<f32>`.
+fn serialize_embedding(embedding: &Embedding) -> Vec<u8> {
+    embedding
+        .vec
+        .iter()
+        .flat_map(|x| (*x as f32).to_le_bytes())
+        .collect()
 }
 
 macro_rules! impl_column_value {
@@ -2056,8 +2064,13 @@ impl_column_value! {
 
 #[cfg(test)]
 mod tests {
+
+    /// f32 slice -> the little-endian blob `build_search_query` now takes.
+    fn query_blob(values: &[f32]) -> Vec<u8> {
+        values.iter().flat_map(|x| x.to_le_bytes()).collect()
+    }
     use super::*;
-    use rig_core::embeddings::EmbeddingError;
+    use rig_core::embeddings::{EmbeddingError, EmbeddingResponse};
     use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
     use sqlite_vec::sqlite3_vec_init;
     use std::cmp::Ordering;
@@ -2209,8 +2222,13 @@ mod tests {
             .threshold(0.95)
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_blob(&[1.0, 0.0]),
+            SqliteDistanceMetric::Cosine,
+            &[],
+            5,
+        )?;
 
         anyhow::ensure!(
             where_clause.contains("e.embedding MATCH ?"),
@@ -2241,8 +2259,13 @@ mod tests {
             .threshold(-1.5)
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2, &[], 5)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_blob(&[1.0, 0.0]),
+            SqliteDistanceMetric::L2,
+            &[],
+            5,
+        )?;
 
         anyhow::ensure!(
             where_clause.contains("(-vec_distance_l2(?1, e.embedding)) >= ?"),
@@ -2264,8 +2287,13 @@ mod tests {
             .samples(5)
             .build();
 
-        let (where_clause, params) =
-            build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
+        let (where_clause, params) = build_where_clause(
+            &req,
+            query_blob(&[1.0, 0.0]),
+            SqliteDistanceMetric::Cosine,
+            &[],
+            5,
+        )?;
 
         anyhow::ensure!(
             where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2285,7 +2313,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &[],
             SQLITE_VEC_MAX_K,
@@ -2314,7 +2342,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &[],
             SQLITE_VEC_MAX_K + 1,
@@ -2352,7 +2380,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &[],
             SQLITE_VEC_MAX_K + 1,
@@ -2392,7 +2420,7 @@ mod tests {
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
         anyhow::ensure!(
             query.document_filter_clause == "AND ((1 = 1) OR (d.category = ?))",
             "default() under OR should render as a tautology: {}",
@@ -2420,7 +2448,7 @@ mod tests {
             filters.has_post_filters(),
             "OR filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2455,7 +2483,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &test_metadata_columns(),
             5,
@@ -2484,7 +2512,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &test_metadata_columns(),
             5,
@@ -2513,7 +2541,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &typed_metadata_columns(),
             5,
@@ -2542,7 +2570,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &typed_metadata_columns(),
             5,
@@ -2578,7 +2606,7 @@ mod tests {
             filters.has_post_filters(),
             "negated range filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2614,7 +2642,7 @@ mod tests {
         let err = filter_error(
             build_where_clause(
                 &req,
-                vec![1.0, 0.0],
+                query_blob(&[1.0, 0.0]),
                 SqliteDistanceMetric::Cosine,
                 &typed_metadata_columns(),
                 5,
@@ -2641,7 +2669,7 @@ mod tests {
 
         let (where_clause, params) = build_where_clause(
             &req,
-            vec![1.0, 0.0],
+            query_blob(&[1.0, 0.0]),
             SqliteDistanceMetric::Cosine,
             &typed_metadata_columns(),
             5,
@@ -2695,7 +2723,7 @@ mod tests {
             let err = filter_error(
                 build_where_clause(
                     &req,
-                    vec![1.0, 0.0],
+                    query_blob(&[1.0, 0.0]),
                     SqliteDistanceMetric::Cosine,
                     &typed_metadata_columns()
                         .into_iter()
@@ -2734,7 +2762,7 @@ mod tests {
             filters.has_post_filters(),
             "pattern and null filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2771,7 +2799,7 @@ mod tests {
             filters.has_post_filters(),
             "non-indexed filters should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2809,7 +2837,7 @@ mod tests {
             filters.has_post_filters(),
             "JSON metadata expressions should be applied after vector candidate search"
         );
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.vector_where_clause == "WHERE e.embedding MATCH ? AND k = ?",
@@ -2843,7 +2871,7 @@ mod tests {
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.document_filter_clause == "AND (d.metadata->'$.xxx' = ?)",
@@ -2872,7 +2900,7 @@ mod tests {
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
-        let query = build_search_query(vec![1.0, 0.0], filters, 5)?;
+        let query = build_search_query(query_blob(&[1.0, 0.0]), filters, 5)?;
 
         anyhow::ensure!(
             query.document_filter_clause == "AND (d.metadata->'$.nested'->>'$.xxx' = ?)",
@@ -2981,7 +3009,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, TestDocument> =
+        let vector_store: SqliteVectorStore<TestDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store
@@ -3037,7 +3065,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, TestDocument> =
+        let vector_store: SqliteVectorStore<TestDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         let multi_document = TestDocument {
@@ -3825,7 +3853,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, ReorderedIdDocument> =
+        let vector_store: SqliteVectorStore<ReorderedIdDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store
@@ -3873,7 +3901,7 @@ mod tests {
         )
         .await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, InternalAliasDocument> =
+        let vector_store: SqliteVectorStore<InternalAliasDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store
@@ -4252,7 +4280,7 @@ mod tests {
     async fn live_test_index(
         name: &str,
         rows: Vec<(TestDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
         live_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
     }
 
@@ -4260,7 +4288,7 @@ mod tests {
         name: &str,
         rows: Vec<(TestDocument, Vec<Embedding>)>,
         distance_metric: SqliteDistanceMetric,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
@@ -4276,7 +4304,7 @@ mod tests {
     async fn live_typed_test_index(
         name: &str,
         rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
         live_typed_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
     }
 
@@ -4284,12 +4312,12 @@ mod tests {
         name: &str,
         rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
         distance_metric: SqliteDistanceMetric,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, TypedTestDocument> =
+        let vector_store: SqliteVectorStore<TypedTestDocument> =
             SqliteVectorStore::with_distance_metric(conn, &model, distance_metric).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4300,12 +4328,12 @@ mod tests {
     async fn live_common_type_test_index(
         name: &str,
         rows: Vec<(CommonTypeDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, CommonTypeDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<CommonTypeDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, CommonTypeDocument> =
+        let vector_store: SqliteVectorStore<CommonTypeDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4316,12 +4344,12 @@ mod tests {
     async fn live_json_metadata_test_index(
         name: &str,
         rows: Vec<(JsonMetadataDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, JsonMetadataDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<JsonMetadataDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, JsonMetadataDocument> =
+        let vector_store: SqliteVectorStore<JsonMetadataDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4332,12 +4360,12 @@ mod tests {
     async fn live_structured_json_metadata_test_index(
         name: &str,
         rows: Vec<(StructuredJsonMetadataDocument, Vec<Embedding>)>,
-    ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, StructuredJsonMetadataDocument>> {
+    ) -> anyhow::Result<SqliteVectorIndex<StructuredJsonMetadataDocument>> {
         register_sqlite_vec_extension();
 
         let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
         let model = TestEmbeddingModel;
-        let vector_store: SqliteVectorStore<_, StructuredJsonMetadataDocument> =
+        let vector_store: SqliteVectorStore<StructuredJsonMetadataDocument> =
             SqliteVectorStore::new(conn, &model).await?;
 
         vector_store.add_rows(rows).await?;
@@ -4383,7 +4411,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.name.clone(),
+                document: document.name,
                 vec,
             }],
         )
@@ -4406,7 +4434,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )
@@ -4427,7 +4455,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )
@@ -4448,7 +4476,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )
@@ -4471,7 +4499,7 @@ mod tests {
         (
             document.clone(),
             vec![Embedding {
-                document: document.title.clone(),
+                document: document.title,
                 vec,
             }],
         )
@@ -4994,29 +5022,34 @@ mod tests {
     struct TestEmbeddingModel;
 
     impl EmbeddingModel for TestEmbeddingModel {
-        const MAX_DOCUMENTS: usize = 16;
-
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
+        fn max_documents(&self) -> usize {
+            16
         }
 
         fn ndims(&self) -> usize {
             2
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             texts: impl IntoIterator<Item = String> + WasmCompatSend,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
-            Ok(texts
-                .into_iter()
-                .map(|text| Embedding {
-                    document: text,
-                    vec: vec![1.0, 0.0],
-                })
-                .collect())
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
+            Ok(EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|text| Embedding {
+                        document: text,
+                        vec: vec![1.0, 0.0],
+                    })
+                    .collect(),
+                "mock",
+            ))
+        }
+    }
+
+    impl rig_core::client::ConstructEmbeddingModel<()> for TestEmbeddingModel {
+        fn construct(_: &(), _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 }

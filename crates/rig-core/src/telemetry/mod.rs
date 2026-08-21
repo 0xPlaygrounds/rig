@@ -382,6 +382,186 @@ fn warn_once_on_completion_parent_verdict(
     }
 }
 
+/// A supported non-completion GenAI operation and its canonical span name.
+///
+/// The completion operations stay on [`CompletionOperation`]: they carry
+/// message content and participate in span adoption. These operations carry
+/// only usage and identity metadata, and their spans are always fresh.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModalityOperation {
+    /// A text (or image) embedding request.
+    Embeddings,
+    /// A reranking request.
+    Rerank,
+    /// An audio transcription request.
+    Transcription,
+    /// An image generation request.
+    ImageGeneration,
+    /// An audio generation (text-to-speech) request.
+    AudioGeneration,
+}
+
+impl ModalityOperation {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Embeddings => "embeddings",
+            Self::Rerank => "rerank",
+            Self::Transcription => "transcription",
+            Self::ImageGeneration => "image_generation",
+            Self::AudioGeneration => "audio_generation",
+        }
+    }
+}
+
+macro_rules! new_modality_span {
+    ($name:literal, $provider:expr, $request_model:expr, $operation:expr) => {
+        $crate::telemetry::__tracing::info_span!(
+            target: "rig::modalities",
+            $name,
+            gen_ai.operation.name = $operation,
+            gen_ai.provider.name = $provider,
+            gen_ai.request.model = $request_model,
+            gen_ai.response.id = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.response.model = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.input_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.output_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.cache_read.input_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.cache_creation.input_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.tool_use_prompt_tokens = $crate::telemetry::__tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = $crate::telemetry::__tracing::field::Empty,
+        )
+    };
+}
+
+/// Builder for a canonical GenAI span on a non-completion modality
+/// (embeddings, rerank, transcription, image generation, audio generation).
+///
+/// Unlike [`CompletionSpanBuilder`], this never adopts an ambient span: the
+/// adoption contract exists so one *model turn* has exactly one completion
+/// span, and a modality call is not a model turn — an agent's RAG lookup
+/// should appear as its own child span under the turn, not overwrite the
+/// turn's fields. The span is created under whatever span is current, so
+/// nesting comes for free.
+pub struct ModalitySpanBuilder<'a> {
+    provider: &'a str,
+    request_model: &'a str,
+    operation: ModalityOperation,
+}
+
+impl<'a> ModalitySpanBuilder<'a> {
+    /// Create a modality-span builder for a provider request.
+    pub fn new(provider: &'a str, request_model: &'a str, operation: ModalityOperation) -> Self {
+        Self {
+            provider,
+            request_model,
+            operation,
+        }
+    }
+
+    /// Build a canonical modality span.
+    pub fn build(self) -> tracing::Span {
+        let operation = self.operation.as_str();
+        match self.operation {
+            ModalityOperation::Embeddings => {
+                new_modality_span!("embeddings", self.provider, self.request_model, operation)
+            }
+            ModalityOperation::Rerank => {
+                new_modality_span!("rerank", self.provider, self.request_model, operation)
+            }
+            ModalityOperation::Transcription => {
+                new_modality_span!(
+                    "transcription",
+                    self.provider,
+                    self.request_model,
+                    operation
+                )
+            }
+            ModalityOperation::ImageGeneration => new_modality_span!(
+                "image_generation",
+                self.provider,
+                self.request_model,
+                operation
+            ),
+            ModalityOperation::AudioGeneration => new_modality_span!(
+                "audio_generation",
+                self.provider,
+                self.request_model,
+                operation
+            ),
+        }
+    }
+}
+
+/// The telemetry a normalized modality response can put on its span: the
+/// usage and identity fields every normalized response carries since the
+/// type-erasure sweep. Implemented for all six normalized response types.
+pub trait ModalityResponseTelemetry {
+    /// Rig-normalized token usage for the call.
+    fn telemetry_usage(&self) -> &Usage;
+    /// Provider-reported model identifier, when the wire named one.
+    fn telemetry_model(&self) -> Option<&str>;
+    /// Provider-assigned response-scoped identifier, when reported.
+    fn telemetry_response_id(&self) -> Option<&str>;
+}
+
+macro_rules! impl_modality_response_telemetry {
+    ($($ty:ty),+ $(,)?) => {
+        $(impl ModalityResponseTelemetry for $ty {
+            fn telemetry_usage(&self) -> &Usage {
+                &self.usage
+            }
+            fn telemetry_model(&self) -> Option<&str> {
+                self.model.as_deref()
+            }
+            fn telemetry_response_id(&self) -> Option<&str> {
+                self.response_id.as_deref()
+            }
+        })+
+    };
+}
+
+impl_modality_response_telemetry!(
+    crate::embeddings::EmbeddingResponse,
+    crate::embeddings::ImageEmbeddingResponse,
+    crate::rerank::RerankResponse,
+    crate::transcription::TranscriptionResponse,
+);
+#[cfg(feature = "image")]
+impl_modality_response_telemetry!(crate::image_generation::ImageGenerationResponse);
+#[cfg(feature = "audio")]
+impl_modality_response_telemetry!(crate::audio_generation::AudioGenerationResponse);
+
+/// Run a modality call inside its canonical span and record the normalized
+/// response's usage and identity onto it on success.
+///
+/// This is the one seam every provider implementation calls, so the span
+/// contract lives here rather than at thirty call sites. Errors close the
+/// span with its request fields only; the provider error itself already
+/// carries the preserved body and status.
+pub async fn instrument_modality<F, T, E>(
+    provider: &str,
+    request_model: &str,
+    operation: ModalityOperation,
+    call: F,
+) -> Result<T, E>
+where
+    F: Future<Output = Result<T, E>>,
+    T: ModalityResponseTelemetry,
+{
+    let span = ModalitySpanBuilder::new(provider, request_model, operation).build();
+    let result = tracing::Instrument::instrument(call, span.clone()).await;
+    if let Ok(response) = &result {
+        span.record_token_usage(response.telemetry_usage());
+        if let Some(id) = response.telemetry_response_id() {
+            span.record("gen_ai.response.id", id);
+        }
+        if let Some(model) = response.telemetry_model() {
+            span.record("gen_ai.response.model", model);
+        }
+    }
+    result
+}
+
 /// Builder for a canonical GenAI completion span.
 ///
 /// Runtime spans declaring [`COMPLETION_PARENT_MARKER_FIELD`] and the
@@ -745,10 +925,10 @@ pub trait ProviderResponseExt {
     type Usage: Serialize;
 
     /// Returns the provider response ID, if supplied.
-    fn get_response_id(&self) -> Option<String>;
+    fn get_response_id(&self) -> Option<&str>;
 
     /// Returns the provider response model name, if supplied.
-    fn get_response_model_name(&self) -> Option<String>;
+    fn get_response_model_name(&self) -> Option<&str>;
 
     /// Returns the primary text response, when available.
     fn get_text_response(&self) -> Option<String>;
@@ -889,6 +1069,205 @@ mod tests {
                 "parts": [{"type": "text", "content": "done"}],
                 "finish_reason": "unknown"
             }])
+        );
+    }
+
+    /// Field capture for modality spans: names paired with stringified
+    /// values, taken from both span creation and later `record` calls.
+    #[derive(Clone, Default)]
+    struct ModalityCapture(Arc<Mutex<Vec<(String, String)>>>);
+
+    impl ModalityCapture {
+        fn get(&self, name: &str) -> Option<String> {
+            self.0.lock().ok().and_then(|fields| {
+                fields
+                    .iter()
+                    .rev()
+                    .find(|(field, _)| field == name)
+                    .map(|(_, value)| value.clone())
+            })
+        }
+    }
+
+    struct ModalityCaptureVisitor(ModalityCapture);
+
+    impl Visit for ModalityCaptureVisitor {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            if let Ok(mut fields) = self.0.0.lock() {
+                fields.push((field.name().to_string(), format!("{value:?}")));
+            }
+        }
+    }
+
+    struct ModalityCaptureLayer {
+        fields: ModalityCapture,
+    }
+
+    impl<S> Layer<S> for ModalityCaptureLayer
+    where
+        S: Subscriber + for<'a> LookupSpan<'a>,
+    {
+        fn on_new_span(
+            &self,
+            attrs: &tracing::span::Attributes<'_>,
+            _id: &Id,
+            _ctx: Context<'_, S>,
+        ) {
+            attrs.record(&mut ModalityCaptureVisitor(self.fields.clone()));
+        }
+
+        fn on_record(&self, _span: &Id, values: &tracing::span::Record<'_>, _ctx: Context<'_, S>) {
+            values.record(&mut ModalityCaptureVisitor(self.fields.clone()));
+        }
+    }
+
+    /// `instrument_modality` opens the canonical span with the request fields
+    /// and records the normalized response's usage and identity on success.
+    #[test]
+    fn instrument_modality_records_usage_and_identity() {
+        let fields = ModalityCapture::default();
+        let subscriber = Registry::default().with(ModalityCaptureLayer {
+            fields: fields.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(subscriber, || {
+            let response = crate::embeddings::EmbeddingResponse::new(vec![], "probe")
+                .with_model("probe-embed-v2")
+                .with_response_id("emb_123")
+                .with_usage(Usage {
+                    input_tokens: 7,
+                    total_tokens: 7,
+                    ..Usage::new()
+                });
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .expect("runtime");
+            runtime
+                .block_on(instrument_modality(
+                    "probe",
+                    "probe-embed",
+                    ModalityOperation::Embeddings,
+                    async { Ok::<_, crate::embeddings::EmbeddingError>(response) },
+                ))
+                .expect("call succeeds");
+        });
+
+        assert_eq!(
+            fields.get("gen_ai.operation.name").as_deref(),
+            Some("\"embeddings\"")
+        );
+        assert_eq!(
+            fields.get("gen_ai.provider.name").as_deref(),
+            Some("\"probe\"")
+        );
+        assert_eq!(
+            fields.get("gen_ai.request.model").as_deref(),
+            Some("\"probe-embed\"")
+        );
+        assert_eq!(
+            fields.get("gen_ai.response.model").as_deref(),
+            Some("\"probe-embed-v2\"")
+        );
+        assert_eq!(
+            fields.get("gen_ai.response.id").as_deref(),
+            Some("\"emb_123\"")
+        );
+        assert_eq!(
+            fields.get("gen_ai.usage.input_tokens").as_deref(),
+            Some("7")
+        );
+    }
+
+    /// The provider seams are wired: an `embed_texts_response` call through
+    /// the shared OpenAI-compatible driver opens the embeddings span and
+    /// records usage — and because the vector stores' `embed_text` defaults
+    /// route through the same method, a `top_n` query over an
+    /// `InMemoryVectorIndex` records the same telemetry with no store-side
+    /// instrumentation.
+    #[test]
+    fn embedding_seam_and_vector_search_record_on_the_span() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::{Embedding, EmbeddingModel as _};
+        use crate::vector_store::VectorStoreIndex as _;
+        use crate::vector_store::in_memory_store::InMemoryVectorStore;
+        use crate::vector_store::request::VectorSearchRequest;
+
+        const BODY: &str = r#"{
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "usage": { "prompt_tokens": 4, "total_tokens": 4 },
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
+        }"#;
+
+        let fields = ModalityCapture::default();
+        let subscriber = Registry::default().with(ModalityCaptureLayer {
+            fields: fields.clone(),
+        });
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+        tracing::subscriber::with_default(subscriber, || {
+            let client = crate::providers::openai::CompletionsClient::builder()
+                .api_key("test-key")
+                .http_client(crate::test_utils::RecordingHttpClient::new(BODY))
+                .build()
+                .expect("client");
+            let model = client.embedding_model_with_ndims("text-embedding-3-small", 2);
+
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            runtime.block_on(async {
+                let response = model
+                    .embed_texts_response(["hello".to_owned()])
+                    .await
+                    .expect("embedding succeeds");
+                assert_eq!(response.usage.input_tokens, 4);
+
+                let store = InMemoryVectorStore::from_documents([(
+                    "doc".to_owned(),
+                    vec![Embedding {
+                        document: "doc".to_owned(),
+                        vec: vec![0.1, 0.2],
+                    }],
+                )]);
+                let index = store.index(model);
+                let request = VectorSearchRequest::builder()
+                    .query("hello")
+                    .samples(1)
+                    .build();
+                let hits: Vec<(f64, String, String)> =
+                    index.top_n(request).await.expect("search succeeds");
+                assert_eq!(hits.len(), 1);
+            });
+        });
+
+        assert_eq!(
+            fields.get("gen_ai.operation.name").as_deref(),
+            Some("\"embeddings\"")
+        );
+        assert_eq!(
+            fields.get("gen_ai.provider.name").as_deref(),
+            Some("\"openai\"")
+        );
+        assert_eq!(
+            fields.get("gen_ai.usage.input_tokens").as_deref(),
+            Some("4")
+        );
+        assert_eq!(
+            fields.get("gen_ai.response.model").as_deref(),
+            Some("\"text-embedding-3-small\"")
+        );
+        // Two embeds ran (direct + the top_n query); both hit the same seam.
+        let usage_records = fields
+            .0
+            .lock()
+            .expect("fields")
+            .iter()
+            .filter(|(name, _)| name == "gen_ai.usage.input_tokens")
+            .count();
+        assert_eq!(
+            usage_records, 2,
+            "the vector-search query embeds through the instrumented seam"
         );
     }
 

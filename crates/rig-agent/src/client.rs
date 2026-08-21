@@ -1,7 +1,7 @@
 //! Classic runtime construction extensions for portable completion clients and models.
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -34,7 +34,7 @@ pub trait AgentClientExt: rig_core::client::completion::CompletionClient {
     fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<T>
     where
         T: JsonSchema
-            + for<'de> Deserialize<'de>
+            + serde::de::DeserializeOwned
             + Serialize
             + WasmCompatSend
             + WasmCompatSync

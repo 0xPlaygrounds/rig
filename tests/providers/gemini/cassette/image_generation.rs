@@ -24,7 +24,7 @@ async fn nano_banana_image_generation_smoke() {
                 "expected non-empty generated image bytes"
             );
             assert_eq!(
-                response.response.model_version.as_deref(),
+                response.model.as_deref(),
                 Some(gemini::GEMINI_2_5_FLASH_IMAGE),
                 "expected Gemini response to identify the image model"
             );

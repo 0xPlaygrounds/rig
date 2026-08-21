@@ -34,30 +34,21 @@ pub fn as_record_batch(
     records: Vec<(Word, Vec<Embedding>)>,
     dims: usize,
 ) -> Result<RecordBatch, lancedb::arrow::arrow_schema::ArrowError> {
-    let id = StringArray::from_iter_values(
-        records
-            .iter()
-            .map(|(Word { id, .. }, _)| id)
-            .collect::<Vec<_>>(),
-    );
+    let id = StringArray::from_iter_values(records.iter().map(|(Word { id, .. }, _)| id));
 
     let definition = StringArray::from_iter_values(
         records
             .iter()
-            .map(|(Word { definition, .. }, _)| definition)
-            .collect::<Vec<_>>(),
+            .map(|(Word { definition, .. }, _)| definition),
     );
 
     let embedding = FixedSizeListArray::from_iter_primitive::<Float64Type, _, _>(
-        records
-            .into_iter()
-            .map(|(_, embeddings)| {
-                embeddings
-                    .into_iter()
-                    .next()
-                    .map(|embedding| embedding.vec.into_iter().map(Some).collect::<Vec<_>>())
-            })
-            .collect::<Vec<_>>(),
+        records.into_iter().map(|(_, embeddings)| {
+            embeddings
+                .into_iter()
+                .next()
+                .map(|embedding| embedding.vec.into_iter().map(Some).collect::<Vec<_>>())
+        }),
         dims as i32,
     );
 

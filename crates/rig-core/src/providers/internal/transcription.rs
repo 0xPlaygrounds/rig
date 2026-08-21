@@ -14,13 +14,25 @@ use super::envelope::ProviderEnvelope;
 use crate::client::Client;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm};
-use crate::transcription::{self, TranscriptionError, TranscriptionRequest};
+use crate::transcription::{
+    self, NormalizeTranscriptionResponse, TranscriptionError, TranscriptionRequest,
+};
 
 /// Provider-specific request routing for the shared OpenAI-style model.
-pub(crate) trait OpenAiTranscriptionClient: HttpClientExt + Clone {
+#[doc(hidden)]
+pub trait OpenAiTranscriptionClient: HttpClientExt + Clone {
     /// Whether the model is a multipart form field. Azure addresses the model
     /// as a deployment in the request URL instead.
     const MODEL_IN_FORM: bool;
+
+    /// Stable descriptor name of the provider, stamped on every normalized
+    /// response. An input to normalization, never hardcoded in the shared
+    /// conversion: this wire shape is shared by several providers.
+    const PROVIDER_NAME: &'static str;
+
+    /// The provider's transport request-id response header, when it has one
+    /// (OpenAI `x-request-id`). `None` means the provider reports none.
+    const REQUEST_ID_HEADER: Option<&'static str>;
 
     fn transcription_request(&self, model: &str) -> http_client::Result<http_client::Builder>;
 }
@@ -45,21 +57,35 @@ impl<C> OpenAiTranscriptionModel<C> {
     }
 }
 
-impl<C> transcription::TranscriptionModel for OpenAiTranscriptionModel<C>
+impl<C> OpenAiTranscriptionModel<C>
 where
     C: OpenAiTranscriptionClient + 'static,
 {
-    type Response = crate::providers::openai::TranscriptionResponse;
-    type Client = C;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    /// Perform the transcription and return the provider's native response
+    /// instead of the normalized [`transcription::TranscriptionResponse`].
+    /// Same request, transport, parser, and error path as
+    /// [`transcription::TranscriptionModel::transcription`].
+    pub async fn raw_transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
+    ) -> Result<crate::providers::openai::TranscriptionResponse, TranscriptionError> {
+        self.raw_transcription_with_request_id(request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// [`Self::raw_transcription`] plus the transport request id from the
+    /// provider's request-id response header, when it carries one.
+    pub async fn raw_transcription_with_request_id(
+        &self,
+        request: TranscriptionRequest,
+    ) -> Result<
+        (
+            crate::providers::openai::TranscriptionResponse,
+            Option<String>,
+        ),
+        TranscriptionError,
+    > {
         let form = transcription_form(
             request,
             TranscriptionFields {
@@ -76,8 +102,44 @@ where
             &self.client,
             self.client.transcription_request(&self.model)?,
             form,
+            C::REQUEST_ID_HEADER,
         )
         .await
+    }
+}
+
+impl<C> transcription::TranscriptionModel for OpenAiTranscriptionModel<C>
+where
+    C: OpenAiTranscriptionClient + 'static,
+{
+    async fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        crate::telemetry::instrument_modality(
+            C::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Transcription,
+            async {
+                let (response, provider_request_id) =
+                    self.raw_transcription_with_request_id(request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(C::PROVIDER_NAME)?
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<C> crate::client::ConstructTranscriptionModel<C> for OpenAiTranscriptionModel<C>
+where
+    C: OpenAiTranscriptionClient + 'static,
+{
+    fn construct(client: &C, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -163,7 +225,9 @@ pub(crate) fn transcription_form(
 }
 
 /// Sends an OpenAI-style transcription request and decodes the shared
-/// success-or-error envelope.
+/// success-or-error envelope, returning the provider's typed payload plus the
+/// transport request id read from `request_id_header`, when the provider has
+/// one and the response carried it.
 ///
 /// `builder` is the provider's already-path-built POST request; `A` is the
 /// provider's own response envelope so error-body classification is unchanged.
@@ -173,12 +237,11 @@ pub(crate) async fn send_transcription<C, A>(
     client: &C,
     builder: http_client::Builder,
     form: MultipartForm,
-) -> Result<transcription::TranscriptionResponse<A::Payload>, TranscriptionError>
+    request_id_header: Option<&str>,
+) -> Result<(A::Payload, Option<String>), TranscriptionError>
 where
     C: HttpClientExt,
     A: DeserializeOwned + ProviderEnvelope,
-    A::Payload:
-        TryInto<transcription::TranscriptionResponse<A::Payload>, Error = TranscriptionError>,
 {
     let req = builder
         .body(form)
@@ -191,12 +254,13 @@ where
     // path (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
+    let provider_request_id = request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let response_body = body.into_future().await?;
 
     if status.is_success() {
         match serde_json::from_slice::<A>(&response_body)?.into_payload() {
-            Ok(response) => response.try_into(),
+            Ok(response) => Ok((response, provider_request_id)),
             Err(message) => {
                 tracing::warn!(message = %message, "provider returned an error response");
                 Err(TranscriptionError::from_http_response(
@@ -215,6 +279,22 @@ where
     }
 }
 
+/// Reads the provider's transport request id off a response's headers, when
+/// the provider names such a header and the response carries a non-empty
+/// value. `None` is the documented "not reported" outcome.
+pub(crate) fn request_id_from_headers(
+    headers: &http::HeaderMap,
+    request_id_header: Option<&str>,
+) -> Option<String> {
+    request_id_header.and_then(|header| {
+        headers
+            .get(header)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
+}
+
 /// Sends a JSON-bodied transcription request and splits the response on
 /// status, mirroring [`send_transcription`] for providers whose transcription
 /// endpoint takes JSON instead of multipart.
@@ -223,17 +303,16 @@ where
 /// provider-specific headers) and `body` the serialized JSON payload. On a
 /// 2xx status the raw body is handed to `decode` together with the status so
 /// each provider keeps its own payload decoding, logging and error-envelope
-/// classification; non-2xx statuses preserve the raw body via
-/// [`TranscriptionError::from_http_response`].
+/// classification; the decoded payload is returned with the transport request
+/// id read from `request_id_header`. Non-2xx statuses preserve the raw body
+/// via [`TranscriptionError::from_http_response`].
 pub(crate) async fn send_json_transcription<C, R>(
     client: &C,
     builder: http_client::Builder,
     body: Vec<u8>,
-    decode: impl FnOnce(
-        http::StatusCode,
-        &[u8],
-    ) -> Result<transcription::TranscriptionResponse<R>, TranscriptionError>,
-) -> Result<transcription::TranscriptionResponse<R>, TranscriptionError>
+    request_id_header: Option<&str>,
+    decode: impl FnOnce(http::StatusCode, &[u8]) -> Result<R, TranscriptionError>,
+) -> Result<(R, Option<String>), TranscriptionError>
 where
     C: HttpClientExt,
 {
@@ -244,11 +323,12 @@ where
     let response = client.send::<_, Vec<u8>>(req).await?;
     let (parts, body) = response.into_parts();
     let status = parts.status;
+    let provider_request_id = request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let body = body.await?;
 
     if status.is_success() {
-        decode(status, &body)
+        Ok((decode(status, &body)?, provider_request_id))
     } else {
         Err(TranscriptionError::from_http_response(
             status,
@@ -450,11 +530,11 @@ mod header_preservation_tests {
                 .method(http::Method::POST)
                 .uri("https://example.test/v1/audio/transcriptions"),
             b"{}".to_vec(),
+            None,
             |_, _| unreachable!("a 429 never reaches the decoder"),
         )
         .await
-        .err()
-        .expect("a 429 should fail");
+        .expect_err("a 429 should fail");
 
         assert_retry_after(&error, "send_json_transcription");
     }
@@ -472,10 +552,10 @@ mod header_preservation_tests {
                 .method(http::Method::POST)
                 .uri("https://example.test/v1/audio/transcriptions"),
             MultipartForm::default(),
+            None,
         )
         .await
-        .err()
-        .expect("a 429 should fail");
+        .expect_err("a 429 should fail");
 
         assert_retry_after(&error, "send_transcription");
     }

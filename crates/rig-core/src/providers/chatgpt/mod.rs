@@ -325,7 +325,7 @@ pub struct ResponsesCompletionModel<H = reqwest::Client> {
 impl<H> ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
         Self {
@@ -361,7 +361,7 @@ where
             self.client.clone(),
             self.model.clone(),
         );
-        model.tools = self.tools.clone();
+        model.tools.clone_from(&self.tools);
         model.strict_tools = self.strict_tools;
         model
     }
@@ -546,7 +546,7 @@ where
 
 impl<H> Client<H>
 where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
         self.ext().auth.auth_context().await.map(|_| ())
@@ -556,7 +556,7 @@ where
 impl<H> crate::client::ConstructCompletionModel<Client<H>> for ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn construct(client: &Client<H>, model: String) -> Self {
         Self::new(client.clone(), model)
@@ -566,7 +566,7 @@ where
 impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn completion(
         &self,
@@ -599,7 +599,7 @@ where
 impl<H> ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Open a stream normalized to rig's terminal record.
     ///

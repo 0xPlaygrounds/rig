@@ -135,6 +135,9 @@ pub trait IntoFilter: MemoryPolicy + Sized + 'static {
     fn into_filter(self) -> BoxedFilter {
         let policy = Arc::new(self);
         Box::new(move |msgs| {
+            // Deliberate clone: `apply` consumes the history, and the
+            // graceful-degradation contract above requires handing the
+            // original back when the policy errors.
             let fallback = msgs.clone();
             match policy.apply(msgs) {
                 Ok(out) => out,

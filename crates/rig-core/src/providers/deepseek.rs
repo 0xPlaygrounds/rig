@@ -186,12 +186,12 @@ pub struct CompletionResponse {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<String> {
-        self.id.clone()
+    fn get_response_id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        self.model.clone()
+    fn get_response_model_name(&self) -> Option<&str> {
+        self.model.as_deref()
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -204,11 +204,11 @@ impl ProviderResponseExt for CompletionResponse {
     }
 
     fn get_usage(&self) -> Option<Self::Usage> {
-        Some(self.usage.clone())
+        Some(self.usage)
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Usage {
     pub completion_tokens: u32,
@@ -253,13 +253,13 @@ impl From<Usage> for crate::completion::Usage {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct CompletionTokensDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct PromptTokensDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_tokens: Option<u32>,

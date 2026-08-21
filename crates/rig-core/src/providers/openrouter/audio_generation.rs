@@ -25,6 +25,7 @@ pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel
 
 impl RawAudioGenerationProvider for OpenRouterExt {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
+    const PROVIDER_NAME: &'static str = "openrouter";
     const EXPLICIT_JSON_CONTENT_TYPE: bool = true;
 
     fn audio_generation_request_body(
@@ -125,8 +126,7 @@ mod tests {
         let error = model
             .audio_generation(request)
             .await
-            .err()
-            .expect("should fail with non-success status");
+            .expect_err("should fail with non-success status");
 
         assert!(matches!(error, AudioGenerationError::HttpError(_)));
         assert_eq!(

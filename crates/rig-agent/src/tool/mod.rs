@@ -273,7 +273,7 @@ where
 
 fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
 where
-    A: for<'de> Deserialize<'de>,
+    A: serde::de::DeserializeOwned,
 {
     match serde_json::from_str(args) {
         Ok(parsed) => Ok(parsed),
@@ -748,27 +748,29 @@ impl ToolSet {
 
     /// Documents describing all registered tools.
     pub fn documents(&self) -> Vec<completion::Document> {
-        let mut docs = Vec::new();
-        for (name, registration) in &self.tools {
-            let definition = registration.tool.definition_with_name(name.clone());
-            let serialized = serde_json::to_string_pretty(&definition).unwrap_or_else(|error| {
-                tracing::warn!(
-                    tool_name = %name,
-                    %error,
-                    "tool definition could not be pretty-printed; using a plain representation"
-                );
-                format!(
-                    "name: {}\ndescription: {}\nparameters: {}",
-                    definition.name, definition.description, definition.parameters
-                )
-            });
-            docs.push(completion::Document {
-                id: name.clone(),
-                text: format!("Tool: {name}\nDefinition: \n{serialized}"),
-                additional_props: HashMap::new(),
-            });
-        }
-        docs
+        self.tools
+            .iter()
+            .map(|(name, registration)| {
+                let definition = registration.tool.definition_with_name(name.clone());
+                let serialized =
+                    serde_json::to_string_pretty(&definition).unwrap_or_else(|error| {
+                        tracing::warn!(
+                            tool_name = %name,
+                            %error,
+                            "tool definition could not be pretty-printed; using a plain representation"
+                        );
+                        format!(
+                            "name: {}\ndescription: {}\nparameters: {}",
+                            definition.name, definition.description, definition.parameters
+                        )
+                    });
+                completion::Document {
+                    id: name.clone(),
+                    text: format!("Tool: {name}\nDefinition: \n{serialized}"),
+                    additional_props: HashMap::new(),
+                }
+            })
+            .collect()
     }
 
     /// Convert embedding tools to vector-store schemas.

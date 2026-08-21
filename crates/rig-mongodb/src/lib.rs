@@ -11,7 +11,10 @@ use mongodb::bson::{self, Bson, Document, doc, to_bson};
 
 use rig_core::{
     Embed,
-    embeddings::embedding::{Embedding, EmbeddingModel},
+    embeddings::{
+        EmbeddingModelHandle,
+        embedding::{Embedding, EmbeddingModel},
+    },
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -107,22 +110,24 @@ struct Field {
 /// # }
 /// # let _ = example();
 /// ```
-pub struct MongoDbVectorIndex<C, M>
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an index
+/// populated under one model is only meaningful under that same model).
+pub struct MongoDbVectorIndex<C>
 where
     C: Send + Sync,
-    M: EmbeddingModel,
 {
     collection: mongodb::Collection<C>,
-    model: M,
+    model: EmbeddingModelHandle,
     index_name: String,
     embedded_field: String,
     search_params: SearchParams,
 }
 
-impl<C, M> MongoDbVectorIndex<C, M>
+impl<C> MongoDbVectorIndex<C>
 where
     C: Send + Sync,
-    M: EmbeddingModel,
 {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
@@ -140,7 +145,7 @@ where
 
         let thresh = req
             .threshold()
-            .map(|thresh| MongoDbSearchFilter::gte("score".into(), thresh.into()));
+            .map(|thresh| MongoDbSearchFilter::gte("score", thresh.into()));
 
         let filter = match (thresh, req.filter()) {
             (Some(thresh), Some(filt)) => thresh.and(filt.clone()).into_inner(),
@@ -228,9 +233,8 @@ where
     }
 }
 
-impl<C, M> MongoDbVectorIndex<C, M>
+impl<C> MongoDbVectorIndex<C>
 where
-    M: EmbeddingModel,
     C: Send + Sync,
 {
     /// Create a new `MongoDbVectorIndex`.
@@ -239,7 +243,7 @@ where
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
     pub async fn new(
         collection: mongodb::Collection<C>,
-        model: M,
+        model: impl EmbeddingModel + 'static,
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
@@ -264,7 +268,7 @@ where
 
         Ok(Self {
             collection,
-            model,
+            model: EmbeddingModelHandle::new(model),
             index_name: index_name.to_string(),
             embedded_field,
             search_params,
@@ -343,11 +347,13 @@ impl MongoDbSearchFilter {
         self.0
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$gte": value } })
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$lte": value } })
     }
 
@@ -357,20 +363,24 @@ impl MongoDbSearchFilter {
     }
 
     /// Tests whether the value at `key` is the BSON type `typ`
-    pub fn is_type(key: String, typ: &'static str) -> Self {
+    pub fn is_type(key: impl Into<String>, typ: &'static str) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$type": typ } })
     }
 
-    pub fn size(key: String, size: i32) -> Self {
+    pub fn size(key: impl Into<String>, size: i32) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$size": size } })
     }
 
     // Array ops
-    pub fn all(key: String, values: Vec<Bson>) -> Self {
+    pub fn all(key: impl Into<String>, values: Vec<Bson>) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$all": values } })
     }
 
-    pub fn any(key: String, condition: Document) -> Self {
+    pub fn any(key: impl Into<String>, condition: Document) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$elemMatch": condition } })
     }
 }
@@ -387,10 +397,9 @@ impl DynamicSearchFilter for MongoDbSearchFilter {
     }
 }
 
-impl<C, M> VectorStoreIndex for MongoDbVectorIndex<C, M>
+impl<C> VectorStoreIndex for MongoDbVectorIndex<C>
 where
     C: Sync + Send,
-    M: EmbeddingModel + Sync + Send,
 {
     type Filter = MongoDbSearchFilter;
 
@@ -438,10 +447,9 @@ where
     }
 }
 
-impl<C, M> InsertDocuments for MongoDbVectorIndex<C, M>
+impl<C> InsertDocuments for MongoDbVectorIndex<C>
 where
     C: Send + Sync,
-    M: EmbeddingModel + Send + Sync,
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,

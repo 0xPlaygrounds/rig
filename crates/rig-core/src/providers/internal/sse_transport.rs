@@ -59,7 +59,7 @@ pub(crate) fn skip_blank_frames(data: String) -> FrameDisposition {
 /// Triage shared by wires whose heartbeats and `[DONE]` sentinel are both
 /// dropped at the transport: trim the payload, skip blanks and `[DONE]`,
 /// yield everything else trimmed.
-pub(crate) fn skip_blank_and_done(data: String) -> FrameDisposition {
+pub(crate) fn skip_blank_and_done(data: &str) -> FrameDisposition {
     let data = data.trim();
     if data.is_empty() || data == "[DONE]" {
         FrameDisposition::Skip
@@ -69,6 +69,7 @@ pub(crate) fn skip_blank_and_done(data: String) -> FrameDisposition {
 }
 
 /// The per-wire transport deltas.
+#[derive(Clone, Copy)]
 pub(crate) struct SseTransportOptions {
     pub open_log: OpenLog,
     /// `false`: `StreamEnded` is the normal end of the stream (break).

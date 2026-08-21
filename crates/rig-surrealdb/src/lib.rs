@@ -11,7 +11,7 @@ use std::fmt::Display;
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -26,12 +26,16 @@ use surrealdb::{
 pub use surrealdb::engine::local::Mem;
 pub use surrealdb::engine::remote::ws::{Ws, Wss};
 
-pub struct SurrealVectorStore<C, Model>
+/// A SurrealDB-backed vector store.
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`], which is fixed for the store's lifetime: an index
+/// populated under one model is only meaningful when queried under that model.
+pub struct SurrealVectorStore<C>
 where
     C: Connection,
-    Model: EmbeddingModel,
 {
-    model: Model,
+    model: EmbeddingModelHandle,
     surreal: Surreal<C>,
     documents_table: String,
     distance_function: SurrealDistanceFunction,
@@ -96,10 +100,9 @@ fn record_key_to_string(key: &RecordIdKey) -> String {
     }
 }
 
-impl<C, Model> InsertDocuments for SurrealVectorStore<C, Model>
+impl<C> InsertDocuments for SurrealVectorStore<C>
 where
-    C: Connection + Send + Sync,
-    Model: EmbeddingModel + Send + Sync,
+    C: Connection,
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
@@ -186,81 +189,80 @@ impl SurrealSearchFilter {
     }
 
     /// Test if the value at `key` contains `val`
-    pub fn contains(key: String, val: <Self as SearchFilter>::Value) -> Self {
+    pub fn contains(key: &str, val: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} CONTAINS {}", val.to_sql()))
     }
 
     /// Test if the value at `key` does *not* contain `val`
-    pub fn does_not_contain(key: String, val: <Self as SearchFilter>::Value) -> Self {
+    pub fn does_not_contain(key: &str, val: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} CONTAINSNOT {}", val.to_sql()))
     }
 
     /// Test if the value at `key` contains every element of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn all(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn all(key: &str, vals: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} CONTAINSALL {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` contains any elements of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn any(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn any(key: &str, vals: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} CONTAINSANY {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` is a member of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn member(key: &str, vals: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} IN {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` is *not* a member of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn not_member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn not_member(key: &str, vals: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} NOTIN {}", vals.to_sql()))
     }
 
     // Geospatial filters
     /// Test if the value at `key` is inside `geometry`
-    pub fn inside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+    pub fn inside(key: &str, geometry: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} INSIDE {}", geometry.to_sql()))
     }
 
     /// Test if the value at `key` is outside `geometry`
-    pub fn outside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+    pub fn outside(key: &str, geometry: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} OUTSIDE {}", geometry.to_sql()))
     }
 
     /// Test if the value at `key` intersects `geometry`
-    pub fn intersects(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+    pub fn intersects(key: &str, geometry: &<Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} INTERSECTS {}", geometry.to_sql()))
     }
 
     // String ops
     /// SurrealDB text search
-    pub fn matches<'a, S: AsRef<&'a str>>(key: String, query: S) -> Self {
+    pub fn matches<'a, S: AsRef<&'a str>>(key: &str, query: S) -> Self {
         Self(format!("{key} @@ {}", query.as_ref()))
     }
 
     /// Check if the value at `key` matches regex `pattern`
     /// `pattern` should be a valid surrealDB regex
-    pub fn regex<'a, S: AsRef<&'a str>>(key: String, pattern: S) -> Self {
+    pub fn regex<'a, S: AsRef<&'a str>>(key: &str, pattern: S) -> Self {
         Self(format!("{key} = /{}/", pattern.as_ref()))
     }
 }
 
-impl<C, Model> SurrealVectorStore<C, Model>
+impl<C> SurrealVectorStore<C>
 where
     C: Connection,
-    Model: EmbeddingModel,
 {
     pub fn new(
-        model: Model,
+        model: impl EmbeddingModel + 'static,
         surreal: Surreal<C>,
         documents_table: Option<String>,
         distance_function: SurrealDistanceFunction,
     ) -> Self {
         Self {
-            model,
+            model: EmbeddingModelHandle::new(model),
             surreal,
             documents_table: documents_table.unwrap_or(String::from("documents")),
             distance_function,
@@ -271,7 +273,7 @@ where
         &self.surreal
     }
 
-    pub fn with_defaults(model: Model, surreal: Surreal<C>) -> Self {
+    pub fn with_defaults(model: impl EmbeddingModel + 'static, surreal: Surreal<C>) -> Self {
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)
     }
 
@@ -319,10 +321,9 @@ where
     }
 }
 
-impl<C, Model> VectorStoreIndex for SurrealVectorStore<C, Model>
+impl<C> VectorStoreIndex for SurrealVectorStore<C>
 where
     C: Connection,
-    Model: EmbeddingModel,
 {
     type Filter = SurrealSearchFilter;
 
@@ -372,7 +373,7 @@ mod tests {
     use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
     use rig_core::{
         client::Nothing,
-        embeddings::{Embedding, EmbeddingError, EmbeddingModel},
+        embeddings::{Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse},
         vector_store::{VectorStoreIndexDyn, request::Filter},
     };
     use serde_json::json;
@@ -382,29 +383,34 @@ mod tests {
     struct MockEmbeddingModel;
 
     impl EmbeddingModel for MockEmbeddingModel {
-        const MAX_DOCUMENTS: usize = 4;
-
-        type Client = Nothing;
-
-        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-            Self
+        fn max_documents(&self) -> usize {
+            4
         }
 
         fn ndims(&self) -> usize {
             3
         }
 
-        async fn embed_texts(
+        async fn embed_texts_response(
             &self,
             texts: impl IntoIterator<Item = String> + Send,
-        ) -> Result<Vec<Embedding>, EmbeddingError> {
-            Ok(texts
-                .into_iter()
-                .map(|text| Embedding {
-                    document: text,
-                    vec: vec![0.0, 0.0, 0.0],
-                })
-                .collect())
+        ) -> Result<EmbeddingResponse, EmbeddingError> {
+            Ok(EmbeddingResponse::new(
+                texts
+                    .into_iter()
+                    .map(|text| Embedding {
+                        document: text,
+                        vec: vec![0.0, 0.0, 0.0],
+                    })
+                    .collect(),
+                "mock",
+            ))
+        }
+    }
+
+    impl rig_core::client::ConstructEmbeddingModel<Nothing> for MockEmbeddingModel {
+        fn construct(_: &Nothing, _: String, _: Option<usize>) -> Self {
+            Self
         }
     }
 

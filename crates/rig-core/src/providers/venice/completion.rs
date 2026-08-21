@@ -305,11 +305,11 @@ impl NormalizeCompletionResponse for CompletionResponse {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = <openai::CompletionResponse as ProviderResponseExt>::Usage;
 
-    fn get_response_id(&self) -> Option<String> {
+    fn get_response_id(&self) -> Option<&str> {
         self.openai.get_response_id()
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn get_response_model_name(&self) -> Option<&str> {
         self.openai.get_response_model_name()
     }
 

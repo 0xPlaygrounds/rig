@@ -89,7 +89,7 @@ impl TypeMap {
 
     pub(crate) fn get<T>(&self) -> Option<&T>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.map
             .as_ref()
@@ -99,7 +99,7 @@ impl TypeMap {
 
     pub(crate) fn get_mut<T>(&mut self) -> Option<&mut T>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.map
             .as_mut()
@@ -109,7 +109,7 @@ impl TypeMap {
 
     pub(crate) fn remove<T>(&mut self) -> Option<T>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.map
             .as_mut()
@@ -120,7 +120,7 @@ impl TypeMap {
 
     pub(crate) fn contains<T>(&self) -> bool
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.map
             .as_ref()
@@ -179,7 +179,7 @@ impl ToolContext {
     /// Read an inbound typed value.
     pub fn get<T>(&self) -> Option<&T>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.inbound.get::<T>()
     }
@@ -187,7 +187,7 @@ impl ToolContext {
     /// Require an inbound typed value.
     pub fn require<T>(&self) -> Result<&T, MissingToolContext>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.get::<T>().ok_or(MissingToolContext(type_name::<T>()))
     }
@@ -195,7 +195,7 @@ impl ToolContext {
     /// Mutably access an inbound typed value.
     pub fn get_mut<T>(&mut self) -> Option<&mut T>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.inbound.get_mut::<T>()
     }
@@ -203,7 +203,7 @@ impl ToolContext {
     /// Remove an inbound typed value.
     pub fn remove<T>(&mut self) -> Option<T>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.inbound.remove::<T>()
     }
@@ -219,7 +219,7 @@ impl ToolContext {
     /// Read host-only result metadata.
     pub fn result<T>(&self) -> Option<&T>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.result.get::<T>()
     }
@@ -227,7 +227,7 @@ impl ToolContext {
     /// Require host-only result metadata.
     pub fn require_result<T>(&self) -> Result<&T, MissingToolContext>
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.result::<T>()
             .ok_or(MissingToolContext(type_name::<T>()))
@@ -236,7 +236,7 @@ impl ToolContext {
     /// Whether this context contains the inbound type `T`.
     pub fn contains<T>(&self) -> bool
     where
-        T: WasmCompatSend + WasmCompatSync + 'static,
+        T: 'static,
     {
         self.inbound.contains::<T>()
     }

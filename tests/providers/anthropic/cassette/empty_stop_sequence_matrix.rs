@@ -587,7 +587,7 @@ async fn identity_survives_empty_stop() {
                 "transport request id must survive — it is what Anthropic support asks for"
             );
             assert!(response.usage.input_tokens > 0, "usage must survive");
-            *sink.lock().expect("model sink should not be poisoned") = response.model.clone();
+            *sink.lock().expect("model sink should not be poisoned") = response.model;
         },
     )
     .await;

@@ -262,8 +262,8 @@ pub struct StreamingPromptRequest {
 impl StreamingPromptRequest {
     /// Create a new `StreamingPromptRequest` from an agent, including its
     /// default hooks.
-    pub fn new(agent: Arc<Agent>, prompt: impl Into<Message>) -> StreamingPromptRequest {
-        Self::from_agent(agent.as_ref(), prompt)
+    pub fn new(agent: &Agent, prompt: impl Into<Message>) -> StreamingPromptRequest {
+        Self::from_agent(agent, prompt)
     }
 
     /// Create a new StreamingPromptRequest from an agent, cloning the agent's
@@ -1394,7 +1394,7 @@ impl TurnSource for StreamingTurnSource {
                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                 return;
             }
-            self.last_message_id = streamed_turn.message_id.clone();
+            self.last_message_id.clone_from(&streamed_turn.message_id);
             // The canonical assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
             // `stream.choice` aggregate. `ModelTurnFinished` — the normalized
@@ -1717,7 +1717,7 @@ mod migrated_tests {
                 .build(),
         );
 
-        let mut stream = StreamingPromptRequest::new(agent, "go").await;
+        let mut stream = StreamingPromptRequest::new(&agent, "go").await;
         let error = stream
             .try_next()
             .await
@@ -1738,7 +1738,7 @@ mod migrated_tests {
             MockCompletionModel::from_stream_turns([[MockStreamEvent::text("partial answer")]]);
         let agent = Arc::new(AgentBuilder::new(model.clone()).build());
 
-        let mut stream = StreamingPromptRequest::new(agent, "go").await;
+        let mut stream = StreamingPromptRequest::new(&agent, "go").await;
         let mut saw_error = false;
         let mut saw_completion_call = false;
         while let Some(item) = stream.next().await {
@@ -5822,10 +5822,7 @@ mod migrated_tests {
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("1}".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
     }
@@ -6211,10 +6208,7 @@ mod migrated_tests {
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("1}".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
     }
@@ -6279,10 +6273,7 @@ mod migrated_tests {
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("1}".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
     }

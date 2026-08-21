@@ -89,10 +89,10 @@ impl ToolCallSlot {
         // call whose wire never supplied one carries no durable handle at
         // all (`WireId::new` rejects the empty string by construction).
         end.tool_id = crate::streaming::WireId::new(self.id.clone());
-        end.signature = self.signature.clone();
-        end.additional_params = self.additional_params.clone();
+        end.signature.clone_from(&self.signature);
+        end.additional_params.clone_from(&self.additional_params);
         if !self.saw_arguments_delta {
-            end.arguments = self.announce_arguments.clone();
+            end.arguments.clone_from(&self.announce_arguments);
         }
         end
     }
@@ -176,13 +176,13 @@ where
         if let Some(id) = wire_id
             && !id.is_empty()
         {
-            slot.id = id.to_owned();
+            id.clone_into(&mut slot.id);
         }
 
         if let Some(name) = name
             && !name.is_empty()
         {
-            slot.name = name.to_owned();
+            name.clone_into(&mut slot.name);
         }
 
         slot

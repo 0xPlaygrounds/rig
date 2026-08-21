@@ -669,7 +669,7 @@ pub(crate) fn tool_result_message(
 pub(crate) fn invalid_tool_retry_user_message(
     assistant_content: &[AssistantContent],
     invalid_tool_call_id: &ToolCallId,
-    feedback: String,
+    feedback: &str,
 ) -> Option<Message> {
     // Selecting the invalid call by id is correct by construction:
     // `ToolCallId` is unique and non-empty (minted at the provider boundary
@@ -683,7 +683,7 @@ pub(crate) fn invalid_tool_retry_user_message(
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    feedback.clone(),
+                    feedback.to_string(),
                 ))
             }
             AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
@@ -1144,7 +1144,7 @@ mod tests {
             AssistantContent::text("answer")
         ]));
         assert!(
-            !turn_delivered_no_answer(&[reasoning.clone(), image.clone()]),
+            !turn_delivered_no_answer(&[reasoning.clone(), image]),
             "a thinking image model that produced an image has answered"
         );
         assert!(turn_delivered_no_answer(&[

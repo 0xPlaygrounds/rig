@@ -1,11 +1,13 @@
 use super::{OpenAICompletionsExt, OpenAIResponsesExt};
 use crate::image_generation;
-use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+use crate::image_generation::{
+    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+};
 use crate::json_utils::merge_inplace;
 use crate::providers::internal::image_generation::{
     GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 // ================================================================
@@ -17,29 +19,31 @@ pub const GPT_IMAGE_1: &str = "gpt-image-1";
 pub const GPT_IMAGE_1_5: &str = "gpt-image-1.5";
 pub const GPT_IMAGE_2: &str = "gpt-image-2";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageGenerationData {
     pub b64_json: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageGenerationResponse {
     pub created: i32,
     pub data: Vec<ImageGenerationData>,
 }
 
-impl TryFrom<ImageGenerationResponse>
-    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
-{
-    type Error = ImageGenerationError;
-
-    fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        decode_base64_image(
-            value,
+impl NormalizeImageGenerationResponse for ImageGenerationResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        let image = decode_base64_image(
+            &self,
             |response| response.data.first().map(|image| image.b64_json.as_str()),
             "missing image data",
             None,
-        )
+        )?;
+        Ok(image_generation::ImageGenerationResponse::new(
+            image, provider,
+        ))
     }
 }
 
@@ -99,6 +103,8 @@ fn build_request(
 
 impl JsonImageGenerationProvider for OpenAIResponsesExt {
     const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
     type Response = ImageGenerationResponse;
 
     fn image_generation_request_body(
@@ -111,6 +117,8 @@ impl JsonImageGenerationProvider for OpenAIResponsesExt {
 
 impl JsonImageGenerationProvider for OpenAICompletionsExt {
     const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
     type Response = ImageGenerationResponse;
 
     fn image_generation_request_body(

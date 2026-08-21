@@ -1358,7 +1358,7 @@ impl Stream for StreamingCompletionResponse {
                             // An explicit `MessageId` event keeps precedence; the
                             // terminal record only fills a gap.
                             if stream.message_id.is_none() {
-                                stream.message_id = response.message_id.clone();
+                                stream.message_id.clone_from(&response.message_id);
                             }
                             stream.response = Some(response.clone());
                             stream
@@ -1952,7 +1952,7 @@ mod tests {
             encoded
         );
 
-        let wrapped = StreamedAssistantContent::Final(final_record.clone());
+        let wrapped = StreamedAssistantContent::Final(final_record);
         let encoded = serde_json::to_value(&wrapped).expect("serialize wrapped");
         let decoded = serde_json::from_value::<StreamedAssistantContent>(encoded)
             .expect("deserialize wrapped");

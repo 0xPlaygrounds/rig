@@ -3,7 +3,7 @@ use crate::providers::huggingface::Client;
 use crate::providers::huggingface::completion::ApiResponse;
 use crate::providers::internal::transcription::send_json_transcription;
 use crate::transcription;
-use crate::transcription::TranscriptionError;
+use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
 use crate::wasm_compat::WasmCompatSync;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -22,22 +22,19 @@ pub type TranscriptionModel<T = reqwest::Client> =
         T,
     >;
 
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> TranscriptionModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSync + 'static,
 {
-    type Response = TranscriptionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        TranscriptionModel::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    /// Perform the transcription and return the provider's native response
+    /// (the OpenAI-shaped `{ text }` payload Hugging Face answers with)
+    /// instead of the normalized [`transcription::TranscriptionResponse`].
+    /// Same request, transport, parser, and error path as
+    /// [`transcription::TranscriptionModel::transcription`].
+    pub async fn raw_transcription(
         &self,
         request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
+    ) -> Result<TranscriptionResponse, TranscriptionError> {
         let data = request.data;
         let data = BASE64_STANDARD.encode(data);
 
@@ -52,15 +49,17 @@ where
 
         let request = serde_json::to_vec(&request)?;
 
+        // Hugging Face reports no transport request-id header.
         send_json_transcription(
             &self.client,
             self.client
                 .post(&route)?
                 .header("Content-Type", "application/json"),
             request,
+            None,
             |status, body| match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(body)?
             {
-                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Ok(response) => Ok(response),
                 ApiResponse::Err(err) => {
                     let message = err
                         .get("error")
@@ -79,6 +78,38 @@ where
             },
         )
         .await
+        .map(|(response, _)| response)
+    }
+}
+
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSync + 'static,
+{
+    async fn transcription(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        crate::telemetry::instrument_modality(
+            "huggingface",
+            &self.model,
+            crate::telemetry::ModalityOperation::Transcription,
+            async {
+                let response = self.raw_transcription(request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response.normalize("huggingface")?.with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSync + 'static,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        TranscriptionModel::new(client.clone(), model)
     }
 }
 
@@ -106,8 +137,7 @@ mod tests {
         let error = model
             .transcription(request)
             .await
-            .err()
-            .expect("should fail with non-success status");
+            .expect_err("should fail with non-success status");
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));
         assert_eq!(
@@ -136,8 +166,7 @@ mod tests {
         let error = model
             .transcription(request)
             .await
-            .err()
-            .expect("should fail with provider error envelope");
+            .expect_err("should fail with provider error envelope");
 
         match &error {
             TranscriptionError::ProviderResponse(stored) => {

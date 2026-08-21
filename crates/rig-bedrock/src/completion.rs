@@ -234,13 +234,16 @@ impl CompletionModel {
             .model_id(request_model.clone());
 
         let tool_config = request.tools_config()?;
-        let messages = request.messages()?;
         let output_config = request.output_config()?;
+        let additional_params = request.additional_params();
+        let inference_config = request.inference_config();
+        let system_prompt = request.system_prompt()?;
+        let messages = request.messages()?;
         converse_builder = converse_builder
-            .set_additional_model_request_fields(request.additional_params())
-            .set_inference_config(request.inference_config())
+            .set_additional_model_request_fields(additional_params)
+            .set_inference_config(inference_config)
             .set_tool_config(tool_config)
-            .set_system(request.system_prompt()?)
+            .set_system(system_prompt)
             .set_messages(Some(messages))
             .set_output_config(output_config)
             .set_guardrail_config(self.guardrail.clone());

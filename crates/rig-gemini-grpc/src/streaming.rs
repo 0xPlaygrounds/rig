@@ -224,7 +224,7 @@ pub(crate) async fn raw_stream(
     model: String,
     completion_request: CompletionRequest,
 ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-    let request = super::completion::create_grpc_request(model, completion_request)?;
+    let request = super::completion::create_grpc_request(&model, completion_request)?;
 
     let mut grpc_client = client
         .grpc_client()
@@ -233,7 +233,7 @@ pub(crate) async fn raw_stream(
     let mut response_stream = grpc_client
         .stream_generate_content(request)
         .await
-        .map_err(super::completion::rpc_error)?
+        .map_err(|status| super::completion::rpc_error(&status))?
         .into_inner();
 
     // Transport layer: gRPC messages only — a `Status` error is a transport
@@ -243,7 +243,7 @@ pub(crate) async fn raw_stream(
             match item {
                 Ok(resp) => yield Ok(resp),
                 Err(status) => {
-                    yield Err(super::completion::rpc_error(status));
+                    yield Err(super::completion::rpc_error(&status));
                     break;
                 }
             }
@@ -287,7 +287,7 @@ fn normalize_grpc_stream(
                     Some(response.response_id.clone()).filter(|id| !id.is_empty()),
                 )
                 .with_optional_model(
-                    Some(response.model_version.clone()).filter(|model| !model.is_empty()),
+                    Some(response.model_version).filter(|model| !model.is_empty()),
                 ),
         )
     })
@@ -627,7 +627,7 @@ mod tests {
         let status = tonic::Status::unavailable("boom");
         let expected = status.to_string();
 
-        let err = super::super::completion::rpc_error(status);
+        let err = super::super::completion::rpc_error(&status);
 
         assert_eq!(err.provider_response_body(), Some(expected.as_str()));
         assert_eq!(err.provider_response_status(), None);

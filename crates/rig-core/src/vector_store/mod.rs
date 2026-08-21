@@ -12,7 +12,7 @@
 
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 use crate::{
@@ -131,7 +131,7 @@ pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
     type Filter: SearchFilter + WasmCompatSend + WasmCompatSync;
 
     /// Returns the top N most similar documents as `(score, id, document)` tuples.
-    fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+    fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>>
@@ -150,27 +150,27 @@ pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
 /// Type-erased [`VectorStoreIndex`] for dynamic dispatch.
 pub trait VectorStoreIndexDyn: WasmCompatSend + WasmCompatSync {
     /// Returns the top N documents for a JSON-serializable request.
-    fn top_n<'a>(
-        &'a self,
+    fn top_n(
+        &self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults>;
+    ) -> WasmBoxedFuture<'_, TopNResults>;
 
     /// Returns only the top N document IDs for a JSON-serializable request.
-    fn top_n_ids<'a>(
-        &'a self,
+    fn top_n_ids(
+        &self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>>;
+    ) -> WasmBoxedFuture<'_, Result<Vec<(f64, String)>, VectorStoreError>>;
 }
 
 impl<I, F> VectorStoreIndexDyn for I
 where
     I: VectorStoreIndex<Filter = F>,
-    F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+    F: DynamicSearchFilter,
 {
-    fn top_n<'a>(
-        &'a self,
+    fn top_n(
+        &self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
+    ) -> WasmBoxedFuture<'_, TopNResults> {
         Box::pin(async move {
             let req = req.try_map_filter(F::from_dynamic_filter)?;
             Ok(self
@@ -182,10 +182,10 @@ where
         })
     }
 
-    fn top_n_ids<'a>(
-        &'a self,
+    fn top_n_ids(
+        &self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
+    ) -> WasmBoxedFuture<'_, Result<Vec<(f64, String)>, VectorStoreError>> {
         Box::pin(async move {
             let req = req.try_map_filter(F::from_dynamic_filter)?;
             self.top_n_ids(req).await
@@ -209,7 +209,7 @@ where
     F: SearchFilter<Value = serde_json::Value>
         + WasmCompatSend
         + WasmCompatSync
-        + for<'de> Deserialize<'de>,
+        + serde::de::DeserializeOwned,
     T: VectorStoreIndex<Filter = F>,
 {
     const NAME: &'static str = "search_vector_store";
@@ -328,7 +328,7 @@ mod tests {
     impl VectorStoreIndex for NativeIndex {
         type Filter = NativeFilter;
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+        async fn top_n<T: DeserializeOwned + WasmCompatSend>(
             &self,
             _req: VectorSearchRequest<Self::Filter>,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -347,7 +347,7 @@ mod tests {
     impl VectorStoreIndex for TestIndex {
         type Filter = Filter<serde_json::Value>;
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+        async fn top_n<T: DeserializeOwned + WasmCompatSend>(
             &self,
             req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

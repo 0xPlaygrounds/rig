@@ -72,7 +72,7 @@ impl<T> InteractionsCompletionModel<T> {
 
 impl<T> InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Create an interaction and return the raw response payload.
     pub async fn create_interaction(
@@ -114,7 +114,7 @@ where
 
 impl<T> InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Execute a completion and return the Interactions API's own payload.
     ///
@@ -176,7 +176,7 @@ where
 
 impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     async fn completion(
         &self,
@@ -209,7 +209,7 @@ where
 
 impl<T> InteractionsClient<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Create a new interaction and return the raw response payload.
     pub async fn create_interaction(
@@ -396,7 +396,7 @@ async fn send_interaction_request<T>(
     request: crate::http_client::Request<Vec<u8>>,
 ) -> Result<Interaction, CompletionError>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     let response = client.send::<_, Vec<u8>>(request).await?;
 
@@ -755,16 +755,16 @@ pub mod interactions_api_types {
     impl ProviderResponseExt for Interaction {
         type Usage = InteractionUsage;
 
-        fn get_response_id(&self) -> Option<String> {
+        fn get_response_id(&self) -> Option<&str> {
             if self.id.is_empty() {
                 None
             } else {
-                Some(self.id.clone())
+                Some(self.id.as_str())
             }
         }
 
-        fn get_response_model_name(&self) -> Option<String> {
-            self.model.clone()
+        fn get_response_model_name(&self) -> Option<&str> {
+            self.model.as_deref()
         }
 
         fn get_text_response(&self) -> Option<String> {
@@ -782,7 +782,7 @@ pub mod interactions_api_types {
         }
 
         fn get_usage(&self) -> Option<Self::Usage> {
-            self.usage.clone()
+            self.usage
         }
     }
 
@@ -1186,7 +1186,7 @@ pub mod interactions_api_types {
     }
 
     /// Token usage metadata for an interaction.
-    #[derive(Clone, Debug, Deserialize, Serialize, Default)]
+    #[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
     #[serde(rename_all = "snake_case")]
     pub struct InteractionUsage {
         #[serde(skip_serializing_if = "Option::is_none")]
