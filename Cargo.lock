@@ -9925,7 +9925,6 @@ dependencies = [
  "anyhow",
  "as-any",
  "assert_fs",
- "async-lock",
  "async-stream",
  "base64 0.22.1",
  "bytes",

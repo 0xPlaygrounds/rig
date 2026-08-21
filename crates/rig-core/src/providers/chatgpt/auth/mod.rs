@@ -1,6 +1,6 @@
 //! Shared ChatGPT authentication types and target-specific dispatch.
 
-use async_lock::Mutex;
+use futures::lock::Mutex;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
