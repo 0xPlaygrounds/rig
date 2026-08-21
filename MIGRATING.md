@@ -796,6 +796,47 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### `VectorStoreError::ReqwestError` is now `VectorStoreError::Http(http_client::Error)`
+
+The variant carried a raw `reqwest::Error`, which tied rig-core's public
+error surface to one HTTP backend. It now carries the transport-agnostic
+[`rig::http_client::Error`]: a non-success response arrives as one of its
+status-bearing variants (so the status code is still inspectable), and a
+response-less transport failure (connect, decode, timeout) arrives as
+`http_client::Error::Instance`.
+
+```rust
+// before
+Err(VectorStoreError::ReqwestError(e)) => {
+    if let Some(status) = e.status() { /* … */ }
+}
+
+// after
+Err(VectorStoreError::Http(e)) => match e {
+    http_client::Error::InvalidStatusCode(status)
+    | http_client::Error::InvalidStatusCodeWithMessage(status, _)
+    | http_client::Error::InvalidStatusCodeWithDetails { status, .. } => { /* … */ }
+    http_client::Error::Instance(source) => { /* transport failure */ }
+    _ => { /* … */ }
+},
+```
+
+Code that relied on `?` converting a `reqwest::Error` straight into
+`VectorStoreError` must map it first; `rig::http_client::from_reqwest`
+applies the routing above:
+
+```rust
+let res = client.send().await.map_err(http_client::from_reqwest)?;
+```
+
+### `ClientBuilderError` is removed
+
+The enum (`HttpError(reqwest::Error)` / `InvalidProperty`) had no remaining
+constructor or match site in the workspace — `Client::builder()`/`build()`
+return `http_client::Result` — so it is deleted rather than ported off
+reqwest. Nothing to migrate unless you named the type yourself; use
+`http_client::Error` in its place.
+
 ### `ToolServerHandle` registration methods are now synchronous
 
 `add_tool`, `add_dynamic_tool`, `add_portable_dynamic_tool`, `append_toolset`,

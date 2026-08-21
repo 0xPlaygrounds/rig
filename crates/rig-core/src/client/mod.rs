@@ -44,20 +44,6 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-#[derive(Debug, Error)]
-pub enum ClientBuilderError {
-    /// The underlying HTTP backend failed during builder construction.
-    #[error("reqwest error: {0}")]
-    HttpError(
-        #[from]
-        #[source]
-        reqwest::Error,
-    ),
-    /// A provider-specific builder property was invalid.
-    #[error("invalid property: {0}")]
-    InvalidProperty(&'static str),
-}
-
 /// Errors returned while constructing provider clients from environment variables or explicit input.
 ///
 /// Provider-specific client constructors use this error for configuration problems that can be
@@ -167,7 +153,8 @@ impl ApiKey for Nothing {}
 /// Generic provider client shared by Rig provider integrations.
 ///
 /// `Ext` stores provider-specific behavior such as URL construction, request
-/// customization, and capabilities. `H` is the HTTP backend and defaults to
+/// customization, and capabilities. `H` is the HTTP backend — any
+/// [`crate::http_client::HttpClientExt`] implementation — and defaults to
 /// `reqwest::Client`.
 pub struct Client<Ext = Nothing, H = reqwest::Client> {
     base_url: Arc<str>,
@@ -505,6 +492,9 @@ pub(crate) use impl_provider_client;
 /// `new` is pinned to `H = reqwest::Client` so the call site infers without an explicit `H`
 /// annotation. Callers who want a different backend should go through [`Client::builder`] and
 /// chain [`ClientBuilder::http_client`] before [`ClientBuilder::build`].
+// bevy-prep: this reqwest-pinned construction surface (together with `builder()`'s inference
+// anchor and `ClientBuilder::build`'s default backend) relocates to the `rig` facade in the
+// transport-crate split.
 impl<Ext> Client<Ext, reqwest::Client>
 where
     Ext: Provider,
@@ -720,7 +710,7 @@ where
 
         match response.status() {
             StatusCode::OK => Ok(()),
-            StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
                 Err(VerifyError::InvalidAuthentication)
             }
             // The failed response's headers are preserved on every branch, so

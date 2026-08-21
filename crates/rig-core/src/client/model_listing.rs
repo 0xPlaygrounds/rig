@@ -80,7 +80,8 @@ pub trait ModelListingClient {
 ///
 /// # Type Parameters
 ///
-/// - `H`: The HTTP client type (typically `reqwest::Client`)
+/// - `H`: The HTTP backend, any [`crate::http_client::HttpClientExt`] implementation
+///   (defaults to `reqwest::Client`)
 ///
 /// # Example Implementation
 ///
