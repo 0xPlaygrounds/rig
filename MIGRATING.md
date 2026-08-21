@@ -796,6 +796,43 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### `AuthError::Http` carries `http_client::Error`, and `Authenticator::auth_context` takes the transport
+
+`rig::providers::copilot::auth::AuthError` / `rig::providers::chatgpt::auth::AuthError`
+(`providers::internal::auth::AuthError`) wrapped a raw `reqwest::Error`. The
+OAuth/device-code flows now run through the client's own `HttpClientExt`
+transport instead of an ad-hoc `reqwest::Client`, so the variant carries the
+transport-agnostic `http_client::Error`: a non-success response is one of its
+status-bearing variants, a response-less failure is `Instance`.
+
+```rust
+// before
+Err(AuthError::Http(e)) => e.status()
+
+// after
+Err(AuthError::Http(e)) => match e {
+    http_client::Error::InvalidStatusCode(status)
+    | http_client::Error::InvalidStatusCodeWithMessage(status, _)
+    | http_client::Error::InvalidStatusCodeWithDetails { status, .. } => Some(status),
+    _ => None,
+}
+```
+
+`Authenticator::auth_context()` accordingly takes the transport to use:
+`auth.auth_context(client.http_client()).await`. The provider clients'
+`authorize()` helpers are unchanged. `Client::http_client()` is new: it
+borrows the transport a `Client<Ext, H>` sends through.
+
+### `http_client::ReqwestClient` / `from_reqwest` live in a reqwest-only module
+
+Both still resolve at `rig::http_client::ReqwestClient` and
+`rig::http_client::from_reqwest`; they are re-exported from the bundled
+reqwest transport module, which is now the only place rig-core names a reqwest
+type. `http_client::Error::non_success_with_details(status, headers, body)` is
+the new transport-agnostic constructor for the headers-preserving non-success
+error — custom `HttpClientExt` implementations should build their errors with
+it so `non_success_headers()` keeps working for retry policies.
+
 ### `VectorStoreError::ReqwestError` is now `VectorStoreError::Http(http_client::Error)`
 
 The variant carried a raw `reqwest::Error`, which tied rig-core's public

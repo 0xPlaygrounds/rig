@@ -325,7 +325,7 @@ pub struct ResponsesCompletionModel<H = reqwest::Client> {
 impl<H> ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
         Self {
@@ -486,7 +486,7 @@ where
             .client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(self.client.http_client())
             .await
             .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
 
@@ -549,14 +549,18 @@ where
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext().auth.auth_context().await.map(|_| ())
+        self.ext()
+            .auth
+            .auth_context(self.http_client())
+            .await
+            .map(|_| ())
     }
 }
 
 impl<H> crate::client::ConstructCompletionModel<Client<H>> for ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn construct(client: &Client<H>, model: String) -> Self {
         Self::new(client.clone(), model)
@@ -566,7 +570,7 @@ where
 impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn completion(
         &self,
@@ -599,7 +603,7 @@ where
 impl<H> ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Open a stream normalized to rig's terminal record.
     ///
@@ -639,7 +643,7 @@ where
             .client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(self.client.http_client())
             .await
             .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
 
