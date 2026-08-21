@@ -796,6 +796,27 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### `ToolServerHandle` registration methods are now synchronous
+
+`add_tool`, `add_dynamic_tool`, `add_portable_dynamic_tool`, `append_toolset`,
+and `remove_tool` only ever took a short registry lock that is never held
+across an await; the lock is now a `std::sync::RwLock` and the methods are
+plain `fn`. Drop the `.await`:
+
+```rust
+// before
+handle.add_tool(MyTool).await;
+
+// after
+handle.add_tool(MyTool);
+```
+
+Execution and snapshot paths (`execute`, `get_tool_defs`) are unchanged and
+remain async. This removes the last `tokio::sync` primitive from the
+tool-server hot path; streaming pause/resume and the copilot/chatgpt auth
+caches likewise moved off tokio primitives (no API change), so neither
+rig-core nor rig-agent needs a tokio runtime for these paths.
+
 ### Telemetry getters borrow: `ProviderResponseExt::get_response_id` / `get_response_model_name` return `Option<&str>`
 
 Both getters exist to hand a value to `tracing::Span::record`, which takes

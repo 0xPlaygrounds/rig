@@ -110,6 +110,7 @@ anyhow = "1"
 arrow-array = "58"
 as-any = "0.3"
 assert_fs = "1"
+async-lock = "3"
 async-stream = "0.3"
 axum = "0.8"
 aws-config = { version = "1", default-features = false }

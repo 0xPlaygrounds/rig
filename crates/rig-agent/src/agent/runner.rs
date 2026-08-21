@@ -7913,7 +7913,7 @@ mod migrated_tests {
             request_started.notified().await;
             handle
                 .add_tool(SecondGenerationTool(second_calls.clone()))
-                .await;
+                ;
             release_response.notify_one();
         };
         let (response, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
@@ -7971,7 +7971,7 @@ mod migrated_tests {
             request_started.notified().await;
             handle
                 .add_tool(SecondGenerationTool(second_calls.clone()))
-                .await;
+                ;
             release_response.notify_one();
         };
         let (final_output, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
@@ -9232,7 +9232,7 @@ mod migrated_tests {
             _event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
             if ctx.turn() == 1 {
-                self.handle.add_tool(FinalResultTool).await;
+                self.handle.add_tool(FinalResultTool);
             }
 
             ModelTurnAction::continue_run()

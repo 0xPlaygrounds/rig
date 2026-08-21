@@ -39,7 +39,7 @@ async fn add_tool_between_turns_appears_in_next_request() {
                 .expect("first prompt should succeed with only the add tool");
             assert_mentions_expected_number(&first, 42);
 
-            handle.add_tool(subtract).await;
+            handle.add_tool(subtract);
 
             let mut history = Vec::<Message>::new();
             let second = agent
@@ -88,7 +88,7 @@ async fn remove_tool_between_turns_drops_definition() {
             assert_mentions_expected_number(&first, 42);
             assert_eq!(add_counter.count(), 1, "add should execute on the first prompt");
 
-            handle.remove_tool("subtract").await;
+            handle.remove_tool("subtract");
 
             let mut history = Vec::<Message>::new();
             let second = agent
@@ -144,7 +144,7 @@ async fn shared_tool_server_handle_updates_all_agents() {
                 .expect("the first agent should use the shared add tool");
             assert_mentions_expected_number(&first, 42);
 
-            handle.add_tool(subtract).await;
+            handle.add_tool(subtract);
 
             let mut history = Vec::<Message>::new();
             let second = second_agent
