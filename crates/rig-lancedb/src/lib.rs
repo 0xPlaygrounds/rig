@@ -41,7 +41,7 @@ mod utils;
 /// # Example
 /// ```ignore
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-/// use rig_core::client::ProviderClient;
+/// use rig_reqwest::prelude::*;
 /// use rig_core::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
 ///
 /// let openai_client = Client::from_env()?;
@@ -376,7 +376,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     /// # Example
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig_core::client::ProviderClient;
+    /// use rig_reqwest::prelude::*;
     /// use rig_core::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
     ///
     /// let openai_client = Client::from_env()?;
@@ -439,7 +439,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     /// # Example
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig_core::client::ProviderClient;
+    /// use rig_reqwest::prelude::*;
     /// use rig_core::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
     ///
     /// let openai_client = Client::from_env()?;

@@ -20,7 +20,7 @@ pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMA
 
 /// Gemini image generation model.
 #[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
+pub struct ImageGenerationModel<T> {
     client: Client<T>,
     /// Name of the model, for example [`GEMINI_2_5_FLASH_IMAGE`].
     pub model: String,

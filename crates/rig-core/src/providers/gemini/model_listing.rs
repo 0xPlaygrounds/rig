@@ -138,7 +138,7 @@ where
 
 /// [`ModelLister`] implementation for Gemini GenerateContent clients.
 #[derive(Clone)]
-pub struct GeminiModelLister<H = reqwest::Client> {
+pub struct GeminiModelLister<H> {
     client: Client<H>,
 }
 
@@ -365,7 +365,7 @@ mod tests {
 
 /// [`ModelLister`] implementation for Gemini Interactions API clients.
 #[derive(Clone)]
-pub struct GeminiInteractionsModelLister<H = reqwest::Client> {
+pub struct GeminiInteractionsModelLister<H> {
     client: InteractionsClient<H>,
 }
 

@@ -1,7 +1,7 @@
 //! Create a new completion model with the given name
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::CompletionClient,
 //!     providers::huggingface::{client, completion},

@@ -1,7 +1,8 @@
 //! OpenRouter audio generation (TTS) smoke test.
 
 use rig::audio_generation::AudioGenerationModel;
-use rig::client::ProviderClient;
+
+use rig::client::DefaultTransportClient as _;
 use rig::prelude::AudioGenerationClient;
 use rig::providers::openrouter;
 

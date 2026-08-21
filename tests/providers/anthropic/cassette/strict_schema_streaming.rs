@@ -33,7 +33,7 @@ async fn assert_streaming_strict_tool_call(
 }
 
 async fn assert_model_streaming_tool_call(
-    model: anthropic::completion::CompletionModel,
+    model: anthropic::CompletionModel,
     tool_name: &str,
     prompt: &str,
     parameters: Value,

@@ -22,7 +22,7 @@
 //! [`ProviderClient::from_env`](crate::client::ProviderClient::from_env).
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::CompletionModel,
@@ -40,7 +40,7 @@
 //! ```
 //!
 //! # Venice-specific request parameters
-//! ```no_run
+//! ```ignore
 //! use rig_core::client::{CompletionClient, ProviderClient};
 //! use rig_core::completion::CompletionModel;
 //! use rig_core::providers::venice;

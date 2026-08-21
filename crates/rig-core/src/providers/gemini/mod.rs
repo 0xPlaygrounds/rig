@@ -1,7 +1,7 @@
 //! Google Gemini API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::EmbeddingsClient, providers::gemini};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {

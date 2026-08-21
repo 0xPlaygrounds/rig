@@ -43,12 +43,12 @@ where
 }
 
 /// Gemini GenerateContent client.
-pub type Client<H = reqwest::Client> = client::Client<GeminiExt, H>;
+pub type Client<H> = client::Client<GeminiExt, H>;
 /// Builder for the Gemini GenerateContent client.
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
 /// Gemini Interactions API client.
-pub type InteractionsClient<H = reqwest::Client> = client::Client<GeminiInteractionsExt, H>;
+pub type InteractionsClient<H> = client::Client<GeminiInteractionsExt, H>;
 
 impl ApiKey for GeminiApiKey {}
 
@@ -166,9 +166,13 @@ impl ProviderBuilder for GeminiInteractionsBuilder {
     }
 }
 
-client::impl_provider_client!(Client, input = GeminiApiKey, api_key_env = "GEMINI_API_KEY",);
-client::impl_provider_client!(
-    InteractionsClient,
+client::impl_provider_from_env!(
+    GeminiExt,
+    input = GeminiApiKey,
+    api_key_env = "GEMINI_API_KEY",
+);
+client::impl_provider_from_env!(
+    GeminiInteractionsExt,
     input = GeminiApiKey,
     api_key_env = "GEMINI_API_KEY",
 );
@@ -275,9 +279,12 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client: Client = Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: Client = Client::builder()
+        let _client: Client<_> =
+            Client::new_with("dummy-key", crate::test_utils::RecordingHttpClient::new(""))
+                .expect("Client::new() failed");
+        let _client_from_builder: Client<_> = Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

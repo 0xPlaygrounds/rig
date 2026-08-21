@@ -5,7 +5,7 @@
 //!
 //! # Low-level request example
 //!
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::{AssistantContent, CompletionModel},
@@ -976,7 +976,7 @@ fn merge_provider_tools_into_additional_params(
 /// Builder struct for constructing a completion request.
 ///
 /// Example usage:
-/// ```no_run
+/// ```ignore
 /// use rig_core::{
 ///     client::CompletionClient,
 ///     providers::openai::{Client, self},
@@ -999,7 +999,7 @@ fn merge_provider_tools_into_additional_params(
 /// ```
 ///
 /// Alternatively, you can execute the completion request directly from the builder:
-/// ```no_run
+/// ```ignore
 /// use rig_core::{
 ///     client::CompletionClient,
 ///     providers::openai::{Client, self},

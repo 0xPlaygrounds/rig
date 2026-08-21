@@ -2,6 +2,7 @@ mod anthropic;
 mod coding;
 mod general;
 
+use rig::client::DefaultTransportBuilder as _;
 use rig::providers::zai;
 
 pub(crate) fn api_key() -> String {

@@ -15,7 +15,7 @@ pub struct OpenRouterExtBuilder;
 
 type OpenRouterApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<OpenRouterExt, H>;
+pub type Client<H> = client::Client<OpenRouterExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
 
@@ -42,8 +42,8 @@ client::impl_default_provider_builder!(
     base_url = OPENROUTER_API_BASE_URL,
 );
 
-client::impl_provider_client!(
-    Client,
+client::impl_provider_from_env!(
+    OpenRouterExt,
     input = OpenRouterApiKey,
     api_key_env = "OPENROUTER_API_KEY",
 );
@@ -191,10 +191,14 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::openrouter::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::openrouter::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }
@@ -204,6 +208,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_identity("My App", "https://myapp.example.com")
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -224,6 +229,7 @@ mod tests {
     fn test_without_app_identity_no_extra_headers() {
         let client = crate::providers::openrouter::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -237,6 +243,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_categories(&["cli-agent", "ide-extension"])
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -254,6 +261,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_categories(&["cli-agent", "ide-extension", "chat"])
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -272,6 +280,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_categories(&empty)
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -282,6 +291,7 @@ mod tests {
     fn test_without_app_categories_no_header() {
         let client = crate::providers::openrouter::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 

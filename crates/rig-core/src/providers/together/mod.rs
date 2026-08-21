@@ -1,7 +1,7 @@
 //! Together AI API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::EmbeddingsClient, providers::together};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {

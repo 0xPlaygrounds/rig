@@ -4,8 +4,8 @@
 //! `https://chatgpt.com/backend-api/codex`.
 //!
 //! # Example
-//! ```no_run
-//! use rig_core::client::{CompletionClient, ProviderClient};
+//! ```ignore
+//! use rig_core::client::{CompletionClient};
 //! use rig_core::providers::chatgpt;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,7 +18,7 @@
 
 mod auth;
 
-use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient, Transport};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, Transport};
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
@@ -108,7 +108,7 @@ impl Debug for ChatGPTExt {
     }
 }
 
-pub type Client<H = reqwest::Client> = client::Client<ChatGPTExt, H>;
+pub type Client<H> = client::Client<ChatGPTExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H>;
 
@@ -211,12 +211,16 @@ impl ProviderBuilder for ChatGPTBuilder {
     }
 }
 
-impl ProviderClient for Client {
+impl crate::client::ProviderFromEnv for ChatGPTExt {
     type Input = ChatGPTAuth;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let mut builder = Self::builder();
+    fn from_env_with<H>(
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        let mut builder = crate::client::Client::<Self, crate::markers::Missing>::builder();
 
         if let Some(base_url) = crate::client::optional_env_var("CHATGPT_API_BASE")?
             .or(crate::client::optional_env_var("OPENAI_CHATGPT_API_BASE")?)
@@ -231,15 +235,31 @@ impl ProviderClient for Client {
                     access_token,
                     account_id,
                 })
+                .http_client(http)
                 .build()
                 .map_err(Into::into)
         } else {
-            builder.oauth().build().map_err(Into::into)
+            builder
+                .oauth()
+                .http_client(http)
+                .build()
+                .map_err(Into::into)
         }
     }
 
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
+    fn from_val_with<H>(
+        input: Self::Input,
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
+            .api_key(input)
+            .http_client(http)
+            .build()
+            .map_err(Into::into)
     }
 }
 
@@ -315,7 +335,7 @@ impl<H> ClientBuilder<H> {
 }
 
 #[derive(Clone)]
-pub struct ResponsesCompletionModel<H = reqwest::Client> {
+pub struct ResponsesCompletionModel<H> {
     client: Client<H>,
     pub model: String,
     pub tools: Vec<responses_api::ResponsesToolDefinition>,
@@ -721,6 +741,7 @@ data: [DONE]"#;
     fn test_client_initialization() {
         let _client = crate::providers::chatgpt::Client::builder()
             .oauth()
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder()");
     }
@@ -755,6 +776,7 @@ data: [DONE]"#;
     fn chatgpt_conversion_request(chat_history: Vec<completion::Message>) -> ResponsesRequest {
         let client = crate::providers::chatgpt::Client::builder()
             .oauth()
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("client");
         let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
@@ -810,6 +832,7 @@ data: [DONE]"#;
     fn test_create_request_merges_default_and_request_instructions() {
         let client = crate::providers::chatgpt::Client::builder()
             .oauth()
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("client");
         let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
@@ -838,6 +861,7 @@ data: [DONE]"#;
     fn test_create_request_drops_temperature() {
         let client = crate::providers::chatgpt::Client::builder()
             .oauth()
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("client");
         let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);

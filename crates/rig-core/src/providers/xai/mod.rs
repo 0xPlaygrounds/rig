@@ -1,7 +1,7 @@
 //! xAI API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::xai};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {

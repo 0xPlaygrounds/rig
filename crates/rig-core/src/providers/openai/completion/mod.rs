@@ -1945,7 +1945,7 @@ pub(crate) fn request_body(
 /// This is the advertised path for OpenAI-compatible providers; see the
 /// provider checklist in [`crate::providers`].
 #[derive(Clone)]
-pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
+pub struct GenericCompletionModel<Ext, H> {
     pub(crate) client: crate::client::Client<Ext, H>,
     pub model: String,
     pub(crate) strict_tools: bool,
@@ -1957,8 +1957,7 @@ pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type CompletionModel<H = reqwest::Client> =
-    GenericCompletionModel<super::OpenAICompletionsExt, H>;
+pub type CompletionModel<H> = GenericCompletionModel<super::OpenAICompletionsExt, H>;
 
 impl<Ext, H> GenericCompletionModel<Ext, H> {
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {

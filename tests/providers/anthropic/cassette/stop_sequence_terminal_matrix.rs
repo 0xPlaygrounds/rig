@@ -76,7 +76,7 @@ use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
 
-type AnthropicModel = anthropic::completion::CompletionModel;
+type AnthropicModel = anthropic::CompletionModel;
 
 /// Emits `alpha`, `bravo`, `charlie`, `delta` on separate lines, so a stop
 /// sequence naming any of them cuts the turn at a known point.

@@ -1,4 +1,4 @@
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -7,6 +7,7 @@ use rig_core::{
     providers::openai::Client,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
+use rig_reqwest::prelude::*;
 use rig_sqlite::{
     Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
 };

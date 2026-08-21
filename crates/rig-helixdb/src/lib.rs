@@ -117,7 +117,8 @@ impl HelixDBClient for HelixDB {
 ///
 /// Usage:
 /// ```no_run
-/// use rig_core::client::{EmbeddingsClient, ProviderClient};
+/// use rig_core::client::EmbeddingsClient;
+/// use rig_reqwest::prelude::*;
 /// use rig_helixdb::{HelixDB, HelixDBVectorStore};
 ///
 /// # fn example() -> anyhow::Result<()> {

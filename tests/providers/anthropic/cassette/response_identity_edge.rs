@@ -41,7 +41,7 @@ async fn caching_and_identity_share_the_wire_blocking() {
                 .completion_model(CLAUDE_SONNET_4_6)
                 .with_prompt_caching()
                 .with_static_prefix_cache_ttl(CacheTtl::OneHour);
-            let send = |model: rig::providers::anthropic::completion::CompletionModel| async move {
+            let send = |model: rig::providers::anthropic::CompletionModel| async move {
                 model
                     .raw_completion(
                         model
@@ -98,7 +98,7 @@ async fn caching_and_identity_share_the_wire_streaming() {
                 .completion_model(CLAUDE_SONNET_4_6)
                 .with_prompt_caching()
                 .with_static_prefix_cache_ttl(CacheTtl::OneHour);
-            let send = |model: rig::providers::anthropic::completion::CompletionModel| async move {
+            let send = |model: rig::providers::anthropic::CompletionModel| async move {
                 let mut stream = model
                     .completion_request("Reply with exactly: stream edge probe")
                     .preamble(cache_padding("caching-streaming"))

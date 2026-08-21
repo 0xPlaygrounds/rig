@@ -128,7 +128,8 @@ impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
 ///
 /// Maps only the terminal record; every incremental event passes through
 /// untouched.
-pub(crate) fn normalize_responses_stream(
+#[doc(hidden)]
+pub fn normalize_responses_stream(
     provider: &str,
     raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
 ) -> streaming::StreamingCompletionResponse {
@@ -270,7 +271,8 @@ fn is_known_responses_event_type(kind: &str) -> bool {
 /// boundary. Provider `error` events (and the websocket-only `response.done`)
 /// are checked separately before this, because their `type` is outside the
 /// modeled set yet must not be skipped as unknown.
-pub(super) fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChunk> {
+#[doc(hidden)]
+pub fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChunk> {
     wire::classify_tagged_frame(data, "type", is_known_responses_event_type)
 }
 
@@ -281,13 +283,15 @@ fn provider_response_from_responses_sse_data(data: &str) -> Option<CompletionErr
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum ResponsesStreamOptions {
+#[doc(hidden)]
+pub enum ResponsesStreamOptions {
     Strict,
     StrictWithImmediateToolCalls,
 }
 
 impl ResponsesStreamOptions {
-    pub(crate) const fn strict() -> Self {
+    #[doc(hidden)]
+    pub const fn strict() -> Self {
         Self::Strict
     }
 
@@ -371,7 +375,8 @@ pub(crate) fn parse_sse_completion_body(
     })
 }
 
-pub(crate) struct RawChoiceAccumulator {
+#[doc(hidden)]
+pub struct RawChoiceAccumulator {
     final_usage: ResponsesUsage,
     reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
@@ -428,7 +433,8 @@ pub(crate) struct RawChoiceAccumulator {
 }
 
 impl RawChoiceAccumulator {
-    pub(crate) fn new(initial_usage: ResponsesUsage) -> Self {
+    #[doc(hidden)]
+    pub fn new(initial_usage: ResponsesUsage) -> Self {
         Self {
             final_usage: initial_usage,
             reasoning_metadata: None,
@@ -496,7 +502,8 @@ impl RawChoiceAccumulator {
         key
     }
 
-    pub(crate) fn decode_item_chunk(
+    #[doc(hidden)]
+    pub fn decode_item_chunk(
         &mut self,
         chunk: ItemChunk,
         options: ResponsesStreamOptions,
@@ -601,7 +608,8 @@ impl RawChoiceAccumulator {
         immediate
     }
 
-    pub(crate) fn record_response_chunk(
+    #[doc(hidden)]
+    pub fn record_response_chunk(
         &mut self,
         kind: ResponseChunkKind,
         response: CompletionResponse,
@@ -790,11 +798,13 @@ impl RawChoiceAccumulator {
     /// Drain the buffered fully-delivered tool calls without finishing the
     /// stream. The errored-terminal path flushes these before the error and
     /// must not produce a terminal record.
-    pub(crate) fn take_tool_calls(&mut self) -> Vec<StreamingRawChoice> {
+    #[doc(hidden)]
+    pub fn take_tool_calls(&mut self) -> Vec<StreamingRawChoice> {
         std::mem::take(&mut self.tool_calls)
     }
 
-    pub(crate) fn finish(mut self) -> Vec<StreamingRawChoice> {
+    #[doc(hidden)]
+    pub fn finish(mut self) -> Vec<StreamingRawChoice> {
         let mut choices = Vec::new();
         choices.append(&mut self.tool_calls);
         // Only a genuine terminal event (`response.completed` or
@@ -932,7 +942,8 @@ pub(crate) async fn completion_response_from_sse_body(
 /// terminal body fills any gap it left (usage, message ID, finish reason,
 /// model). Returns `Ok(None)` when the replay produced no content, leaving the
 /// caller to decide how to fall back.
-pub(crate) async fn completion_response_from_raw_choices(
+#[doc(hidden)]
+pub async fn completion_response_from_raw_choices(
     provider: &str,
     raw_choices: Vec<StreamingRawChoice>,
     raw_response: &CompletionResponse,

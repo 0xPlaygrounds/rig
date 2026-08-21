@@ -179,7 +179,7 @@ fn image_document(bytes: &[u8], media_type: &str) -> String {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
+pub struct EmbeddingModel<T> {
     client: Client<T>,
     pub model: String,
     pub input_type: String,
@@ -191,7 +191,7 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 /// Cohere Embed v3 accepts one image per request, so batch calls are sent as
 /// ordered individual requests.
 #[derive(Clone)]
-pub struct ImageEmbeddingModel<T = reqwest::Client> {
+pub struct ImageEmbeddingModel<T> {
     client: Client<T>,
 }
 

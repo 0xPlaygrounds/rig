@@ -26,6 +26,7 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
+use rig::client::DefaultTransportBuilder as _;
 use rig::providers::chatgpt::{self, ChatGPTAuth};
 use serde::Deserialize;
 use std::path::PathBuf;

@@ -71,6 +71,7 @@
 
 use rig::client::completion::CompletionClient;
 use rig::completion::{CompletionError, CompletionModel};
+use rig::rig_reqwest::openai_websocket::ResponsesWebSocketExt as _;
 
 use super::super::support::with_openai_websocket_cassette;
 

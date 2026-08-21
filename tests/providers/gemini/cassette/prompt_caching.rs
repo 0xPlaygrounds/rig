@@ -167,8 +167,6 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    use rig::client::ProviderClient as _;
-
     let client = gemini::Client::from_env().expect("GEMINI_API_KEY");
     let model = client.completion_model(CACHE_MODEL);
 

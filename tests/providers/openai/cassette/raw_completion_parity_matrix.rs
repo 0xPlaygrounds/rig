@@ -442,7 +442,7 @@ async fn chat_plain_raw_completion_lacks_request_id() {
 /// transport id itself), then `completion()`, on the same request.
 fn responses_parity_body(
     sink: Observed,
-    request_for: fn(&openai::responses_api::ResponsesCompletionModel) -> CompletionRequest,
+    request_for: fn(&openai::ResponsesCompletionModel) -> CompletionRequest,
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {

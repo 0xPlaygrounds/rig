@@ -1,4 +1,5 @@
 use futures::StreamExt;
+use rig::client::DefaultTransportClient as _;
 use rig::{completion::Message, prelude::*, providers::openai, streaming::StreamingChat};
 use rig_agent::test_utils::MockExampleTool;
 

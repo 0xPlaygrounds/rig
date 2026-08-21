@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub(crate) struct GeminiAgent {
-    model: gemini::completion::CompletionModel,
+    model: gemini::CompletionModel,
     preamble: String,
     tools: Vec<ToolDefinition>,
     tool_choice: Option<ToolChoice>,
@@ -23,7 +23,7 @@ pub(crate) struct GeminiAgent {
 
 impl GeminiAgent {
     pub(crate) fn new(
-        model: gemini::completion::CompletionModel,
+        model: gemini::CompletionModel,
         preamble: impl Into<String>,
         tool_names: &[&str],
         tool_choice: Option<ToolChoice>,
@@ -50,7 +50,7 @@ impl GeminiAgent {
         &self,
         prompt: Message,
         history: Vec<Message>,
-    ) -> CompletionRequestBuilder<gemini::completion::CompletionModel> {
+    ) -> CompletionRequestBuilder<gemini::CompletionModel> {
         let mut request = self
             .model
             .completion_request(prompt)

@@ -43,6 +43,7 @@
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;
 //! use rig_core::{providers::openai::*, vector_store::VectorStoreIndex};
+//! use rig_reqwest::prelude::*;
 //! use serde::Deserialize;
 //! use std::env;
 //!

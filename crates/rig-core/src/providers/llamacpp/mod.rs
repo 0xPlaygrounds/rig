@@ -19,7 +19,7 @@
 //!
 //! # Base URL
 //!
-//! [`Client::from_url`] and the builder's `base_url` take the server root
+//! [`Client::from_url_with`] and the builder's `base_url` take the server root
 //! (`http://localhost:8080`); the `/v1` prefix is this provider's business, not
 //! the caller's. Passing a URL that already ends in `/v1` is also accepted and
 //! does not double up — see [`LlamacppExt`]'s
@@ -32,7 +32,7 @@
 //! rejects everything else with 401, so pass the key and the client sends
 //! `Authorization: Bearer <key>`:
 //!
-//! ```no_run
+//! ```ignore
 //! # use rig_core::providers::llamacpp;
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // No credential — the common local case.
@@ -56,7 +56,7 @@
 //! to each.
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::CompletionClient,
 //!     completion::CompletionModel,

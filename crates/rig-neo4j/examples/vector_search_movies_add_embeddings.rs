@@ -5,6 +5,7 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
+use rig_reqwest::prelude::*;
 use std::env;
 
 use rig_core::{
@@ -37,7 +38,7 @@ const INDEX_NAME: &str = "moviePlots";
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client: Client = Client::new(&openai_api_key)?;
+    let openai_client: Client<_> = Client::new(&openai_api_key)?;
 
     let neo4j_uri = env::var("NEO4J_URI")?;
     let neo4j_username = env::var("NEO4J_USERNAME")?;

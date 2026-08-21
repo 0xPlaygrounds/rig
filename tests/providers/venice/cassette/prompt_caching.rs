@@ -119,8 +119,6 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
 #[tokio::test]
 #[ignore = "requires VENICE_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    use rig::client::ProviderClient as _;
-
     let client = venice::Client::from_env().expect("VENICE_API_KEY");
     let model = client.completion_model(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;

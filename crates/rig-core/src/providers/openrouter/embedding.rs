@@ -6,7 +6,7 @@ impl OpenAIEmbeddingsCompatible for OpenRouterExt {
     const REQUIRES_USAGE: bool = false;
 }
 
-pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<OpenRouterExt, H>;
+pub type EmbeddingModel<H> = GenericEmbeddingModel<OpenRouterExt, H>;
 
 #[cfg(test)]
 mod tests {

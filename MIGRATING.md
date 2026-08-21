@@ -796,6 +796,78 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### rig-core has no default transport; the bundled reqwest transport is the new `rig-reqwest` crate
+
+`rig-core` no longer depends on `reqwest` or `tokio` and no longer names a
+default HTTP transport anywhere: every `H` type parameter that used to default
+to `reqwest::Client` (provider `Client`/`CompletionModel`/`EmbeddingModel`/…
+aliases, `Capabilities<H>`, `ModelLister<H>`, `Client<Ext, H>`) now has no
+default, and the reqwest-pinned constructors (`Client::new`, the default
+`ClientBuilder::build`, the per-provider `ProviderClient` impls) are gone from
+rig-core. The transport lives in **`rig-reqwest`**:
+
+- `rig_reqwest::ReqwestClient` — a newtype over `reqwest::Client` implementing
+  `HttpClientExt` (a newtype because the orphan rule forbids implementing
+  rig-core's trait for reqwest's type from a third crate; it derefs to the
+  inner client and converts `From<reqwest::Client>`). `ReqwestMiddlewareClient`
+  wraps `reqwest_middleware::ClientWithMiddleware` behind `reqwest-middleware`.
+- `rig_reqwest::client::DefaultTransportClient` / `DefaultTransportBuilder` —
+  the traits that give every rig-core provider client `new(api_key)`,
+  `from_env()`, `from_val(input)` and `builder().…build()` over the bundled
+  transport. They are implemented exactly once, for `Client<Ext, ReqwestClient>`,
+  which is what lets `openai::Client::from_env()` infer `H`.
+- `rig_reqwest::providers::*` — the familiar provider module tree with every
+  transport-generic type aliased to `…<ReqwestClient>` for type position
+  (`Agent<openai::CompletionModel>`, `let c: openai::Client = …`).
+- `rig_reqwest::openai_websocket` — the OpenAI Responses websocket mode
+  (feature `websocket`), with `ResponsesWebSocketExt` supplying
+  `client.responses_websocket(..)`.
+- It works without a tokio runtime (Bevy task pools, smol, `futures::executor`):
+  reqwest futures are driven on a lazily started fallback runtime and the
+  caller only ever polls runtime-agnostic futures.
+
+**Through the `rig` facade nothing changes for the common path** — the default
+`reqwest` feature re-exports all of the above, so with `use rig::prelude::*`
+these keep working unchanged:
+
+```rust
+use rig::prelude::*;
+let client = rig::providers::openai::Client::from_env()?;
+let client = rig::providers::openai::Client::new("key")?;
+let client = rig::providers::openai::Client::builder().api_key("key").build()?;
+let agent: Agent<rig::providers::openai::CompletionModel> = client.agent("gpt-4o").build();
+```
+
+What does change:
+
+- Code that imported `rig::client::ProviderClient` (or `rig_core::client::ProviderClient`)
+  to call `from_env()` on a **core** provider client must import the new traits
+  instead: `use rig::client::{DefaultTransportClient, DefaultTransportBuilder};`
+  (or just `use rig::prelude::*;`). `ProviderClient` itself stays in rig-core
+  for companion crates' own client types (rig-bedrock, rig-vertexai,
+  rig-gemini-grpc), which still implement it.
+- Direct `rig-core` users (no facade) must name the transport:
+  `Client::new_with(key, http)`, `<OpenAIResponsesExt as ProviderFromEnv>::from_env_with(http)`
+  / `from_val_with(input, http)`, or `Client::builder().api_key(..).http_client(http).build()`,
+  with any `HttpClientExt` implementation (e.g. `rig_reqwest::ReqwestClient::default()`).
+  `llamacpp::Client::from_url(url)` is `from_url_with(url, http)`.
+- `impl Capabilities for X` / `impl ModelLister for X` relied on the trait
+  defaults and must spell `Capabilities<H>` / `ModelLister<H>`.
+- Type annotations that named the nested generic aliases without `H`
+  (`openai::responses_api::ResponsesCompletionModel`) use the facade's
+  top-level aliases (`rig::providers::openai::ResponsesCompletionModel`) or
+  spell `<ReqwestClient>`.
+- `rig::http_client::ReqwestClient` / `from_reqwest` still resolve (re-exported
+  from `rig-reqwest`); `Error::instance(err)` is the public constructor for a
+  transport's response-less failures and `Error::non_success_with_details`
+  for status-bearing ones.
+- The `websocket*`, `rustls`, `native-tls`, `socks`, `reqwest-middleware*`
+  features on the `rig` facade now forward to `rig-reqwest`; rig-core has none
+  of them. rig-core's default features are just `["derive"]`.
+- `Client::http_client()` borrows a client's transport; `ProviderFromEnv` on
+  the provider extension types replaces the per-client `ProviderClient` impls
+  for anyone who implemented `ProviderClient` for a core `Client`.
+
 ### `AuthError::Http` carries `http_client::Error`, and `Authenticator::auth_context` takes the transport
 
 `rig::providers::copilot::auth::AuthError` / `rig::providers::chatgpt::auth::AuthError`

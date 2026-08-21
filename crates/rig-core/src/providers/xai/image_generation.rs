@@ -43,8 +43,7 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 }
 
 /// xAI image generation model.
-pub type ImageGenerationModel<T = reqwest::Client> =
-    GenericImageGenerationModel<super::client::XAiExt, T>;
+pub type ImageGenerationModel<T> = GenericImageGenerationModel<super::client::XAiExt, T>;
 
 impl JsonImageGenerationProvider for super::client::XAiExt {
     const IMAGE_GENERATION_PATH: &'static str = "/v1/images/generations";

@@ -116,7 +116,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
             .collect::<Vec<_>>()
             .join(" ");
 
-            let send = |model: anthropic::completion::CompletionModel<_>, padding: String| async move {
+            let send = |model: anthropic::CompletionModel<_>, padding: String| async move {
                 let agent = rig::agent::AgentBuilder::new(model)
                     .preamble(&padding)
                     .max_tokens(32)

@@ -21,7 +21,7 @@ use super::completion::gemini_api_types::GenerateContentResponse;
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-pub type TranscriptionModel<T = reqwest::Client> =
+pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
         crate::providers::gemini::client::GeminiExt,
         T,

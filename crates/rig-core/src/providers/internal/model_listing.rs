@@ -51,7 +51,7 @@ macro_rules! impl_model_lister {
     ($(#[$meta:meta])* $name:ident, $client:ty, $entry:ty, $label:literal, $path:literal) => {
         $(#[$meta])*
         #[derive(Clone)]
-        pub struct $name<H = reqwest::Client> {
+        pub struct $name<H> {
             client: $client,
         }
 

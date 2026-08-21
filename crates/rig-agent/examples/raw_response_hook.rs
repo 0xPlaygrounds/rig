@@ -31,6 +31,7 @@ use rig_agent::{
     prelude::*,
 };
 use rig_core::providers::openai;
+use rig_reqwest::prelude::*;
 use serde::Deserialize;
 
 /// Prints the OpenAI-only fields of every completed call. Provider-specific by

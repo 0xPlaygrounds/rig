@@ -12,6 +12,7 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
+use rig::client::DefaultTransportBuilder as _;
 use rig::mongodb::{MongoDbVectorIndex, SearchParams};
 use rig::{
     Embed,

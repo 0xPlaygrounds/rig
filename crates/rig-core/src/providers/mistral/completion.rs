@@ -58,8 +58,7 @@ pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
 pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
 /// Mistral completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<MistralExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<MistralExt, H>;
 
 /// Mistral's provider-native terminal streaming record: the value carried by
 /// the final item of the stream returned by `CompletionModel::raw_stream`.

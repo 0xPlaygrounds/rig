@@ -171,7 +171,7 @@ fn chat_body(sink: Observed) -> Body {
 fn responses_body_with(
     sink: Observed,
     model_name: &'static str,
-    build: impl FnOnce(&openai::responses_api::ResponsesCompletionModel) -> CompletionRequest + 'static,
+    build: impl FnOnce(&openai::ResponsesCompletionModel) -> CompletionRequest + 'static,
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {

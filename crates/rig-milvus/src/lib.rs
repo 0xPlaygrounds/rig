@@ -36,6 +36,16 @@ pub struct MilvusVectorStore {
     token: Option<String>,
 }
 
+/// Map a transport-level `reqwest::Error` onto rig's transport-agnostic
+/// [`rig_core::http_client::Error`]: a status-carrying failure keeps its status
+/// as `InvalidStatusCode`, a response-less one becomes `Instance`.
+fn from_reqwest(err: reqwest::Error) -> rig_core::http_client::Error {
+    match err.status() {
+        Some(status) => rig_core::http_client::Error::InvalidStatusCode(status),
+        None => rig_core::http_client::Error::instance(err),
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateRecord {
     document: String,
@@ -188,26 +198,16 @@ impl MilvusVectorStore {
 
         let body = serde_json::to_string(&body)?;
 
-        let res = client
-            .body(body)
-            .send()
-            .await
-            .map_err(rig_core::http_client::from_reqwest)?;
+        let res = client.body(body).send().await.map_err(from_reqwest)?;
 
         if res.status() != StatusCode::OK {
             let status = res.status();
-            let text = res
-                .text()
-                .await
-                .map_err(rig_core::http_client::from_reqwest)?;
+            let text = res.text().await.map_err(from_reqwest)?;
 
             return Err(VectorStoreError::ExternalAPIError(status, text));
         }
 
-        Ok(res
-            .json()
-            .await
-            .map_err(rig_core::http_client::from_reqwest)?)
+        Ok(res.json().await.map_err(from_reqwest)?)
     }
 }
 
@@ -239,18 +239,11 @@ impl InsertDocuments for MilvusVectorStore {
 
         let body = serde_json::to_string(&insert_request)?;
 
-        let res = client
-            .body(body)
-            .send()
-            .await
-            .map_err(rig_core::http_client::from_reqwest)?;
+        let res = client.body(body).send().await.map_err(from_reqwest)?;
 
         if res.status() != StatusCode::OK {
             let status = res.status();
-            let text = res
-                .text()
-                .await
-                .map_err(rig_core::http_client::from_reqwest)?;
+            let text = res.text().await.map_err(from_reqwest)?;
 
             return Err(VectorStoreError::ExternalAPIError(status, text));
         }

@@ -5,7 +5,7 @@ pub use crate::providers::openai::responses_api::CompletionResponse;
 use super::client::XAiExt;
 
 /// xAI completion model, driven by the shared Responses implementation.
-pub type CompletionModel<H = reqwest::Client> =
+pub type CompletionModel<H> =
     crate::providers::openai::responses_api::GenericResponsesCompletionModel<XAiExt, H>;
 
 /// xAI completion models.
@@ -46,6 +46,7 @@ mod tests {
     fn completion_keeps_xai_structured_output_capability() {
         let client = crate::providers::xai::Client::builder()
             .api_key("test-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("build client");
         let model = client.completion_model(super::GROK_4);

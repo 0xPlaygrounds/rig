@@ -105,7 +105,8 @@ pub fn resolve_empty_tool_result_names(history: &mut [crate::message::Message]) 
 /// `tracing` targets must be literals, so the dispatch is total by
 /// construction.
 #[derive(Clone, Copy)]
-pub(crate) enum LogTarget {
+#[doc(hidden)]
+pub enum LogTarget {
     Completions,
     Streaming,
 }
@@ -113,7 +114,8 @@ pub(crate) enum LogTarget {
 /// Trace-log `value` as pretty-printed JSON under one of rig's logging
 /// targets. Infallible: does nothing when TRACE is disabled for the target or
 /// the value fails to serialize.
-pub(crate) fn trace_json(target: LogTarget, label: &str, value: &impl serde::Serialize) {
+#[doc(hidden)]
+pub fn trace_json(target: LogTarget, label: &str, value: &impl serde::Serialize) {
     macro_rules! emit {
         ($target:literal) => {
             if tracing::enabled!(target: $target, tracing::Level::TRACE) {

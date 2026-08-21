@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::client::DefaultTransportBuilder as _;
 use rig::client::EmbeddingsClient;
 use rig::providers::openai;
 use rig::scylladb::{ScyllaDbVectorStore, create_session};

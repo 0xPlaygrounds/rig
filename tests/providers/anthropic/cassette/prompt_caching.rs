@@ -170,7 +170,7 @@ fn matrix_model(
     client: &anthropic::Client,
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
-) -> anthropic::completion::CompletionModel {
+) -> anthropic::CompletionModel {
     let mut model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
     if mode.manual() {
         model = model.with_prompt_caching();
@@ -289,7 +289,7 @@ fn unreachable_anthropic_client() -> anthropic::Client {
 }
 
 async fn send_matrix_raw_probe(
-    model: &anthropic::completion::CompletionModel,
+    model: &anthropic::CompletionModel,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> anthropic::completion::CompletionResponse {
@@ -319,7 +319,7 @@ fn assert_matrix_raw_response(
 }
 
 async fn send_matrix_streaming_probe(
-    model: &anthropic::completion::CompletionModel,
+    model: &anthropic::CompletionModel,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> StreamingCacheProbeResponse {
@@ -1343,7 +1343,7 @@ async fn static_prefix_with_excess_explicit_tool_markers_errors_client_side() {
 }
 
 async fn send_cache_probe(
-    model: anthropic::completion::CompletionModel,
+    model: anthropic::CompletionModel,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
@@ -1366,7 +1366,7 @@ struct StreamingCacheProbeResponse {
 }
 
 async fn send_streaming_cache_probe(
-    model: anthropic::completion::CompletionModel,
+    model: anthropic::CompletionModel,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,

@@ -336,8 +336,6 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    use rig::client::ProviderClient as _;
-
     let client = openai::Client::from_env().expect("OPENAI_API_KEY");
     let model = client.completion_model(CACHE_MODEL);
     let observation = run_cache_probe(&model, &keyed_probe()).await;

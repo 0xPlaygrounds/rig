@@ -5,15 +5,18 @@ use std::borrow::Cow;
 /// A generic multipart form part that can represent text or binary data
 #[derive(Clone, Debug)]
 pub struct Part {
-    pub(crate) name: String,
-    pub(crate) content: PartContent,
-    pub(crate) filename: Option<String>,
-    pub(crate) content_type: Option<Mime>,
+    name: String,
+    content: PartContent,
+    filename: Option<String>,
+    content_type: Option<Mime>,
 }
 
+/// The payload of a multipart [`Part`].
 #[derive(Clone, Debug)]
-pub(crate) enum PartContent {
+pub enum PartContent {
+    /// A text field.
     Text(String),
+    /// Binary data (e.g. a file upload).
     Binary(Bytes),
 }
 
@@ -64,12 +67,23 @@ impl Part {
     pub fn get_content_type(&self) -> Option<&Mime> {
         self.content_type.as_ref()
     }
+
+    /// The part's payload.
+    pub fn content(&self) -> &PartContent {
+        &self.content
+    }
+
+    /// Split the part into its owned pieces: `(name, content, filename, content_type)`.
+    /// Transports use this to render the part in their native multipart type.
+    pub fn into_pieces(self) -> (String, PartContent, Option<String>, Option<Mime>) {
+        (self.name, self.content, self.filename, self.content_type)
+    }
 }
 
 /// Generic multipart form data container
 #[derive(Clone, Debug, Default)]
 pub struct MultipartForm {
-    pub(crate) parts: Vec<Part>,
+    parts: Vec<Part>,
     boundary: Option<String>,
 }
 
@@ -114,6 +128,12 @@ impl MultipartForm {
     /// Get the parts
     pub fn parts(&self) -> &[Part] {
         &self.parts
+    }
+
+    /// Consume the form, yielding its parts in order. Transports use this to
+    /// render the form in their native multipart type.
+    pub fn into_parts(self) -> Vec<Part> {
+        self.parts
     }
 
     /// Generate a boundary string

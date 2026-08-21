@@ -78,7 +78,7 @@ pub trait JsonImageGenerationProvider: Provider {
 
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericImageGenerationModel<Ext, H = reqwest::Client> {
+pub struct GenericImageGenerationModel<Ext, H> {
     client: Client<Ext, H>,
     /// Name of the image generation model.
     pub model: String,

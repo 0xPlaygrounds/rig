@@ -58,7 +58,7 @@ use super::Client;
 pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
 #[derive(Clone, Debug)]
-pub struct CompletionModel<T = reqwest::Client> {
+pub struct CompletionModel<T> {
     pub(crate) client: Client<T>,
     pub model: String,
     /// Handle of a `cachedContents` resource every request should read from.

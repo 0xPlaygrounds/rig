@@ -7,6 +7,7 @@
 //! ```no_run
 //! use rig_agent::prelude::*;
 //! use rig_core::providers::openai;
+//! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the OpenAI client

@@ -1,6 +1,6 @@
 //! Migrated from `examples/transcription.rs`.
 
-use rig::client::ProviderClient;
+use rig::client::DefaultTransportClient as _;
 use rig::prelude::TranscriptionClient;
 use rig::providers::azure;
 use rig::transcription::TranscriptionModel;

@@ -119,7 +119,7 @@ pub struct HuggingFaceBuilder {
 
 type HuggingFaceApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<HuggingFaceExt, H>;
+pub type Client<H> = client::Client<HuggingFaceExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HuggingFaceBuilder, HuggingFaceApiKey, H>;
 
@@ -192,7 +192,11 @@ impl ProviderBuilder for HuggingFaceBuilder {
     }
 }
 
-client::impl_provider_client!(Client, input = String, api_key_env = "HUGGINGFACE_API_KEY",);
+client::impl_provider_from_env!(
+    HuggingFaceExt,
+    input = String,
+    api_key_env = "HUGGINGFACE_API_KEY",
+);
 
 impl<H> ClientBuilder<H> {
     pub fn subprovider(mut self, subprovider: SubProvider) -> Self {
@@ -212,10 +216,14 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::huggingface::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::huggingface::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::huggingface::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

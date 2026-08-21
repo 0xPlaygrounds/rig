@@ -66,7 +66,7 @@ struct StoredStreamingTurn {
 /// derived from the same raw response through the provider's own conversion
 /// rather than by issuing a second identical request.
 async fn prompt_with_reasoning(
-    model: &openai::responses_api::ResponsesCompletionModel,
+    model: &openai::ResponsesCompletionModel,
     reasoning: serde_json::Value,
 ) -> (
     CompletionResponse,

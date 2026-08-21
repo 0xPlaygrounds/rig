@@ -29,7 +29,7 @@ fn model_default_ndims(model: &str) -> Option<usize> {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
+pub struct EmbeddingModel<T> {
     client: Client<T>,
     model: String,
     ndims: usize,
@@ -253,7 +253,8 @@ mod tests {
 
     #[test]
     fn test_make_resolves_default_dims() {
-        let client = Client::new("test_key").unwrap();
+        let client =
+            Client::new_with("test_key", crate::test_utils::RecordingHttpClient::new("")).unwrap();
 
         // EMBEDDING_001 defaults to 3072
         let model = client.embedding_model(EMBEDDING_001);
@@ -270,7 +271,8 @@ mod tests {
 
     #[test]
     fn test_make_respects_explicit_dims() {
-        let client = Client::new("test_key").unwrap();
+        let client =
+            Client::new_with("test_key", crate::test_utils::RecordingHttpClient::new("")).unwrap();
 
         let model = client.embedding_model_with_ndims(EMBEDDING_001, 256);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 256);
@@ -278,7 +280,8 @@ mod tests {
 
     #[test]
     fn test_new_uses_provided_ndims() {
-        let client = Client::new("test_key").unwrap();
+        let client =
+            Client::new_with("test_key", crate::test_utils::RecordingHttpClient::new("")).unwrap();
 
         let model = EmbeddingModel::new(client, EMBEDDING_001, 512);
         assert_eq!(embeddings::EmbeddingModel::ndims(&model), 512);

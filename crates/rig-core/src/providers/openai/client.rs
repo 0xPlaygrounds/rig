@@ -9,9 +9,6 @@ use crate::{
 use serde::Deserialize;
 use std::fmt::Debug;
 
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-use crate::client::completion::CompletionClient;
-
 // ================================================================
 // Main OpenAI Client
 // ================================================================
@@ -45,12 +42,12 @@ pub struct OpenAICompletionsExtBuilder;
 type OpenAIApiKey = BearerAuth;
 
 // Responses API client (default)
-pub type Client<H = reqwest::Client> = client::Client<OpenAIResponsesExt, H>;
+pub type Client<H> = client::Client<OpenAIResponsesExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
 
 // Completions API client
-pub type CompletionsClient<H = reqwest::Client> = client::Client<OpenAICompletionsExt, H>;
+pub type CompletionsClient<H> = client::Client<OpenAICompletionsExt, H>;
 pub type CompletionsClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
 
@@ -145,32 +142,6 @@ where
     }
 }
 
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-impl Client<reqwest::Client> {
-    /// WebSocket mode currently uses a native `tokio-tungstenite` transport and does
-    /// not reuse custom `HttpClientExt` backends, so this API is only exposed for the
-    /// default `reqwest::Client` transport.
-    pub fn responses_websocket_builder(
-        &self,
-        model: impl Into<String>,
-    ) -> super::responses_api::websocket::ResponsesWebSocketSessionBuilder {
-        super::responses_api::websocket::ResponsesWebSocketSessionBuilder::new(
-            self.completion_model(model),
-        )
-    }
-
-    /// This API is OpenAI-specific and only available on non-wasm targets in `rig-core`.
-    pub async fn responses_websocket(
-        &self,
-        model: impl Into<String>,
-    ) -> Result<
-        super::responses_api::websocket::ResponsesWebSocketSession,
-        crate::completion::CompletionError,
-    > {
-        self.responses_websocket_builder(model).connect().await
-    }
-}
-
 impl<H> CompletionsClient<H>
 where
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -187,14 +158,14 @@ where
     }
 }
 
-client::impl_provider_client!(
-    Client,
+client::impl_provider_from_env!(
+    OpenAIResponsesExt,
     input = OpenAIApiKey,
     api_key_env = "OPENAI_API_KEY",
     base_url_env_first = "OPENAI_BASE_URL",
 );
-client::impl_provider_client!(
-    CompletionsClient,
+client::impl_provider_from_env!(
+    OpenAICompletionsExt,
     input = OpenAIApiKey,
     api_key_env = "OPENAI_API_KEY",
     base_url_env_first = "OPENAI_BASE_URL",
@@ -589,31 +560,43 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::openai::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }
 
     #[test]
     fn test_legacy_chat_completion_model_type_annotation_still_compiles() {
-        let client = crate::providers::openai::Client::new("dummy-key")
-            .expect("Client::new() failed")
-            .completions_api();
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed")
+        .completions_api();
 
-        let _model: crate::providers::openai::completion::CompletionModel<reqwest::Client> =
-            client.completion_model("gpt-4o");
+        let _model: crate::providers::openai::completion::CompletionModel<
+            crate::test_utils::RecordingHttpClient,
+        > = client.completion_model("gpt-4o");
     }
 
     #[test]
     fn test_legacy_embedding_model_type_annotation_still_compiles() {
-        let client =
-            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
 
-        let _model: crate::providers::openai::EmbeddingModel<reqwest::Client> =
-            client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
+        let _model: crate::providers::openai::EmbeddingModel<
+            crate::test_utils::RecordingHttpClient,
+        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
     }
 
     #[test]
@@ -621,15 +604,18 @@ mod tests {
         use crate::client::ModelListingClient;
         use crate::client::transcription::TranscriptionClient;
 
-        let client = crate::providers::openai::Client::new("dummy-key")
-            .expect("Client::new() failed")
-            .completions_api();
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed")
+        .completions_api();
 
         let _: crate::providers::openai::GenericEmbeddingModel<
             crate::providers::openai::OpenAICompletionsExt,
-            reqwest::Client,
+            crate::test_utils::RecordingHttpClient,
         > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
-        let _: crate::providers::openai::CompletionsTranscriptionModel =
+        let _: crate::providers::openai::CompletionsTranscriptionModel<_> =
             client.transcription_model(crate::providers::openai::WHISPER_1);
 
         fn assert_model_listing<T: ModelListingClient>(_: &T) {}
@@ -638,14 +624,14 @@ mod tests {
         #[cfg(feature = "image")]
         {
             use crate::client::image_generation::ImageGenerationClient;
-            let _: crate::providers::openai::CompletionsImageGenerationModel =
+            let _: crate::providers::openai::CompletionsImageGenerationModel<_> =
                 client.image_generation_model(crate::providers::openai::DALL_E_3);
         }
 
         #[cfg(feature = "audio")]
         {
             use crate::client::audio_generation::AudioGenerationClient;
-            let _: crate::providers::openai::audio_generation::CompletionsAudioGenerationModel =
+            let _: crate::providers::openai::audio_generation::CompletionsAudioGenerationModel<_> =
                 client.audio_generation_model(crate::providers::openai::TTS_1);
         }
     }

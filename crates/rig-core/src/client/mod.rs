@@ -112,6 +112,36 @@ pub trait ProviderClient {
         Self: Sized;
 }
 
+/// Provider-specific environment configuration, generic over the transport.
+///
+/// Implemented by each provider *extension* type. This is where rig-core keeps
+/// the knowledge of which environment variables configure a provider; it
+/// never picks a transport itself. A transport crate supplies the ergonomic
+/// `from_env()` / `from_val()` by calling these with its client — see
+/// `rig-reqwest`'s `DefaultTransportClient`, re-exported through the `rig`
+/// facade prelude.
+pub trait ProviderFromEnv: Provider {
+    /// Provider-specific input accepted by [`Self::from_val_with`].
+    type Input;
+
+    /// Build a client for this provider from the process's environment,
+    /// sending through `http`.
+    fn from_env_with<H>(http: H) -> Result<Client<Self, H>, ProviderClientError>
+    where
+        H: HttpClientExt,
+        Self::Builder: ProviderBuilder<Extension<H> = Self>;
+
+    /// Build a client for this provider from an explicit input value,
+    /// sending through `http`.
+    fn from_val_with<H>(
+        input: Self::Input,
+        http: H,
+    ) -> Result<Client<Self, H>, ProviderClientError>
+    where
+        H: HttpClientExt,
+        Self::Builder: ProviderBuilder<Extension<H> = Self>;
+}
+
 /// A trait for API key inputs accepted by [`ClientBuilder::api_key`].
 ///
 /// Returning `Some` inserts a header into the generic [`Client`]. Returning `None`
@@ -154,9 +184,12 @@ impl ApiKey for Nothing {}
 ///
 /// `Ext` stores provider-specific behavior such as URL construction, request
 /// customization, and capabilities. `H` is the HTTP backend — any
-/// [`crate::http_client::HttpClientExt`] implementation — and defaults to
-/// `reqwest::Client`.
-pub struct Client<Ext = Nothing, H = reqwest::Client> {
+/// [`crate::http_client::HttpClientExt`] implementation. rig-core has no
+/// default transport: construct with [`Client::new_with`] /
+/// [`ClientBuilder::http_client`], or use the bundled `reqwest` transport's
+/// conveniences (`rig-reqwest`, re-exported by the `rig` facade) which pin
+/// `H` for you.
+pub struct Client<Ext = Nothing, H = Missing> {
     base_url: Arc<str>,
     headers: Arc<HeaderMap>,
     http_client: H,
@@ -259,7 +292,7 @@ impl Capability for Nothing {
 }
 
 /// The capabilities of a given provider, i.e. embeddings, audio transcriptions, text completion
-pub trait Capabilities<H = reqwest::Client> {
+pub trait Capabilities<H> {
     /// Completion model capability marker.
     type Completion: Capability;
     /// Embedding model capability marker.
@@ -387,18 +420,18 @@ macro_rules! impl_capabilities {
 }
 pub(crate) use impl_capabilities;
 
-// ProviderClient is implemented for concrete client aliases, which likewise
-// cannot be factored into a function. The optional base-URL form captures the
-// only common construction variation without hiding provider-specific auth.
-macro_rules! impl_provider_client {
+// `ProviderFromEnv` is implemented per provider *extension* type, generic over
+// the transport. The optional base-URL forms capture the only common
+// construction variation without hiding provider-specific auth.
+macro_rules! impl_provider_from_env {
     (
-        $client:ty,
+        $ext:ty,
         input = $input:ty,
         api_key_env = $api_key_env:literal,
         base_url_env_first = $base_url_env:literal $(,)?
     ) => {
-        $crate::client::impl_provider_client!(@with_base
-            $client,
+        $crate::client::impl_provider_from_env!(@with_base
+            $ext,
             input = $input,
             api_key_env = $api_key_env,
             configuration = {
@@ -409,13 +442,13 @@ macro_rules! impl_provider_client {
         );
     };
     (
-        $client:ty,
+        $ext:ty,
         input = $input:ty,
         api_key_env = $api_key_env:literal,
         base_url_env = $base_url_env:literal $(,)?
     ) => {
-        $crate::client::impl_provider_client!(@with_base
-            $client,
+        $crate::client::impl_provider_from_env!(@with_base
+            $ext,
             input = $input,
             api_key_env = $api_key_env,
             configuration = {
@@ -426,13 +459,13 @@ macro_rules! impl_provider_client {
         );
     };
     (
-        $client:ty,
+        $ext:ty,
         input = $input:ty,
         api_key_env = $api_key_env:literal,
         base_url = $base_url:expr $(,)?
     ) => {
-        $crate::client::impl_provider_client!(@with_base
-            $client,
+        $crate::client::impl_provider_from_env!(@with_base
+            $ext,
             input = $input,
             api_key_env = $api_key_env,
             configuration = {
@@ -442,69 +475,97 @@ macro_rules! impl_provider_client {
         );
     };
     (@with_base
-        $client:ty,
+        $ext:ty,
         input = $input:ty,
         api_key_env = $api_key_env:literal,
         configuration = $configuration:block
     ) => {
-        impl $crate::client::ProviderClient for $client {
+        impl $crate::client::ProviderFromEnv for $ext {
             type Input = $input;
-            type Error = $crate::client::ProviderClientError;
 
-            #[doc = concat!("Create this provider client from the `", $api_key_env, "` environment variable.")]
-            fn from_env() -> Result<Self, Self::Error> {
+            #[doc = concat!("Configure this provider from the `", $api_key_env, "` environment variable.")]
+            fn from_env_with<H>(
+                http: H,
+            ) -> Result<$crate::client::Client<Self, H>, $crate::client::ProviderClientError>
+            where
+                H: $crate::http_client::HttpClientExt,
+                Self::Builder: $crate::client::ProviderBuilder<Extension<H> = Self>,
+            {
                 let (api_key, base_url) = $configuration;
-                let mut builder = Self::builder().api_key(api_key);
+                let mut builder = $crate::client::Client::<Self, $crate::markers::Missing>::builder()
+                    .api_key(api_key);
                 if let Some(base_url) = base_url {
                     builder = builder.base_url(base_url);
                 }
-                builder.build().map_err(Into::into)
+                builder.http_client(http).build().map_err(Into::into)
             }
 
-            fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-                Self::new(input).map_err(Into::into)
+            fn from_val_with<H>(
+                input: Self::Input,
+                http: H,
+            ) -> Result<$crate::client::Client<Self, H>, $crate::client::ProviderClientError>
+            where
+                H: $crate::http_client::HttpClientExt,
+                Self::Builder: $crate::client::ProviderBuilder<Extension<H> = Self>,
+            {
+                $crate::client::Client::new_with(input, http).map_err(Into::into)
             }
         }
     };
     (
-        $client:ty,
+        $ext:ty,
         input = $input:ty,
         api_key_env = $api_key_env:literal $(,)?
     ) => {
-        impl $crate::client::ProviderClient for $client {
+        impl $crate::client::ProviderFromEnv for $ext {
             type Input = $input;
-            type Error = $crate::client::ProviderClientError;
 
-            #[doc = concat!("Create this provider client from the `", $api_key_env, "` environment variable.")]
-            fn from_env() -> Result<Self, Self::Error> {
+            #[doc = concat!("Configure this provider from the `", $api_key_env, "` environment variable.")]
+            fn from_env_with<H>(
+                http: H,
+            ) -> Result<$crate::client::Client<Self, H>, $crate::client::ProviderClientError>
+            where
+                H: $crate::http_client::HttpClientExt,
+                Self::Builder: $crate::client::ProviderBuilder<Extension<H> = Self>,
+            {
                 let api_key = $crate::client::required_env_var($api_key_env)?;
-                Self::new(api_key).map_err(Into::into)
+                $crate::client::Client::new_with(api_key, http).map_err(Into::into)
             }
 
-            fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-                Self::new(input).map_err(Into::into)
+            fn from_val_with<H>(
+                input: Self::Input,
+                http: H,
+            ) -> Result<$crate::client::Client<Self, H>, $crate::client::ProviderClientError>
+            where
+                H: $crate::http_client::HttpClientExt,
+                Self::Builder: $crate::client::ProviderBuilder<Extension<H> = Self>,
+            {
+                $crate::client::Client::new_with(input, http).map_err(Into::into)
             }
         }
     };
 }
-pub(crate) use impl_provider_client;
+pub(crate) use impl_provider_from_env;
 
-/// `new` is pinned to `H = reqwest::Client` so the call site infers without an explicit `H`
-/// annotation. Callers who want a different backend should go through [`Client::builder`] and
-/// chain [`ClientBuilder::http_client`] before [`ClientBuilder::build`].
-// This reqwest-pinned construction surface (together with `builder()`'s inference
-// anchor and `ClientBuilder::build`'s default backend) relocates to the `rig` facade in the
-// transport-crate split.
-impl<Ext> Client<Ext, reqwest::Client>
+/// Construction with an explicit transport. rig-core never chooses a transport
+/// for you; the bundled `reqwest` one lives in `rig-reqwest`, whose
+/// `DefaultTransportClient` (re-exported via the `rig` facade prelude) supplies
+/// the one-argument `new(api_key)` on top of this.
+impl<Ext, H> Client<Ext, H>
 where
     Ext: Provider,
-    Ext::Builder: ProviderBuilder<Extension<reqwest::Client> = Ext> + Default,
+    Ext::Builder: ProviderBuilder<Extension<H> = Ext> + Default,
+    H: HttpClientExt,
 {
-    /// Construct a provider client using the default `reqwest::Client` backend.
-    pub fn new(
+    /// Construct a provider client that sends through `http`.
+    pub fn new_with(
         api_key: impl Into<<Ext::Builder as ProviderBuilder>::ApiKey>,
+        http: H,
     ) -> http_client::Result<Self> {
-        Self::builder().api_key(api_key).build()
+        Client::<Ext, Missing>::builder()
+            .api_key(api_key)
+            .http_client(http)
+            .build()
     }
 }
 
@@ -591,12 +652,14 @@ where
     }
 }
 
-/// `builder()` is anchored on `Client<Ext, reqwest::Client>` purely as an inference hook so that
-/// `provider::Client::builder()` resolves without a `H` annotation. The returned builder itself
-/// has `H = Missing`, accurately reflecting that no backend has been chosen yet; the eventual
-/// `Client` produced by `build()` may end up with any HTTP backend depending on whether
-/// [`ClientBuilder::http_client`] was called.
-impl<Ext> Client<Ext, reqwest::Client>
+/// `builder()` lives on `Client<Ext, Missing>` — the "no transport chosen yet"
+/// state — so `provider::Client::builder()` resolves without an `H` annotation
+/// (it is the only `builder` inherent fn, so `H` infers to `Missing`). The
+/// returned builder's `H` slot is `Missing` too; [`ClientBuilder::http_client`]
+/// must be called before [`ClientBuilder::build`] (or a transport crate's
+/// default-substituting `build`, such as `rig-reqwest`'s
+/// `DefaultTransportBuilder`).
+impl<Ext> Client<Ext, Missing>
 where
     Ext: Provider,
     Ext::Builder: ProviderBuilder + Default,
@@ -772,15 +835,15 @@ where
 ///
 /// - `ApiKey = Missing` means the caller has not yet called [`Self::api_key`]; transitioning to a
 ///   concrete `ApiKey` type is required before [`Self::build`] is reachable.
-/// - `H = Missing` means the caller has not yet called [`Self::http_client`]; in that state
-///   `build()` substitutes the canonical `reqwest::Client` backend at construction time. Once a
-///   backend has been supplied, `H` is the concrete HTTP client type and `build()` uses it
-///   directly.
+/// - `H = Missing` means the caller has not yet called [`Self::http_client`]; rig-core's own
+///   `build()` is only reachable once a concrete `HttpClientExt` backend has been supplied. A
+///   transport crate may add a default-substituting `build` for the `Missing` state (the
+///   bundled one is `rig-reqwest`'s `DefaultTransportBuilder`, in the `rig` facade prelude).
 ///
-/// Keeping `Missing` as the *type-level* placeholder (rather than reusing `reqwest::Client`)
-/// means the builder's generics describe what the caller has actually provided, instead of
-/// pretending a default value is already present. It also avoids carrying an `Option<H>` whose
-/// `None` branch existed only to model the same "user hasn't picked a backend" state.
+/// Keeping `Missing` as the *type-level* placeholder means the builder's generics describe what
+/// the caller has actually provided, instead of pretending a default value is already present.
+/// It also avoids carrying an `Option<H>` whose `None` branch existed only to model the same
+/// "user hasn't picked a backend" state.
 #[derive(Clone)]
 pub struct ClientBuilder<Ext, ApiKey = Missing, H = Missing> {
     base_url: String,
@@ -904,26 +967,8 @@ impl<Ext, Key, H> ClientBuilder<Ext, Key, H> {
     }
 }
 
-/// Default-backend `build`: when the caller never called [`ClientBuilder::http_client`], the
-/// builder's `H` slot is still `Missing`, and we substitute the canonical `reqwest::Client` at
-/// build time. This is the only place in the crate that knows about that default, and it is
-/// disjoint by trait bound from the H-generic `build` below (`Missing` does not implement
-/// [`HttpClientExt`]).
-impl<ExtBuilder, Key> ClientBuilder<ExtBuilder, Key, Missing>
-where
-    ExtBuilder: ProviderBuilder<ApiKey = Key>,
-    Key: ApiKey,
-{
-    /// Build a client using the default `reqwest::Client` backend.
-    pub fn build(
-        self,
-    ) -> http_client::Result<Client<ExtBuilder::Extension<reqwest::Client>, reqwest::Client>> {
-        self.http_client(reqwest::Client::default()).build()
-    }
-}
-
-/// Concrete-backend `build`: the caller supplied an HTTP client via
-/// [`ClientBuilder::http_client`], so `H` is a real `HttpClientExt` type and we use it directly.
+/// `build`: the caller supplied an HTTP client via [`ClientBuilder::http_client`], so `H` is a
+/// real `HttpClientExt` type and we use it directly.
 impl<ExtBuilder, Key, H> ClientBuilder<ExtBuilder, Key, H>
 where
     ExtBuilder: ProviderBuilder<ApiKey = Key>,
@@ -1181,7 +1226,7 @@ mod tests {
     /// backig HTTP client
     #[test]
     fn ensures_client_builder_no_annotation() {
-        let http_client = reqwest::Client::default();
+        let http_client = crate::test_utils::RecordingHttpClient::new("");
         let _ = anthropic::Client::builder()
             .http_client(http_client)
             .api_key("Foo")
@@ -1438,7 +1483,7 @@ mod external_modality_extension_probe {
         #[cfg(feature = "audio")]
         fn assert_audio<C: AudioGenerationClient>() {}
 
-        type ExternalClient = Client<ExternalExt, reqwest::Client>;
+        type ExternalClient = Client<ExternalExt, crate::test_utils::RecordingHttpClient>;
         assert_transcription::<ExternalClient>();
         assert_embeddings::<ExternalClient>();
         assert_rerank::<ExternalClient>();
@@ -1451,10 +1496,12 @@ mod external_modality_extension_probe {
 
     #[test]
     fn embedding_hook_receives_the_requested_dims() {
-        let client: Client<ExternalExt, reqwest::Client> = Client::<ExternalExt>::builder()
-            .api_key("key")
-            .build()
-            .expect("client should build");
+        let client: Client<ExternalExt, crate::test_utils::RecordingHttpClient> =
+            Client::<ExternalExt>::builder()
+                .api_key("key")
+                .http_client(crate::test_utils::RecordingHttpClient::new(""))
+                .build()
+                .expect("client should build");
         assert_eq!(client.embedding_model("m").ndims(), 3);
         assert_eq!(client.embedding_model_with_ndims("m", 7).ndims(), 7);
     }
@@ -1469,10 +1516,10 @@ mod external_modality_extension_probe {
         #[cfg(feature = "audio")]
         fn assert_audio_model<M: AudioGenerationModel>() {}
 
-        assert_transcription_model::<Arc<ExternalModel<reqwest::Client>>>();
+        assert_transcription_model::<Arc<ExternalModel<crate::test_utils::RecordingHttpClient>>>();
         #[cfg(feature = "image")]
-        assert_image_model::<Arc<ExternalModel<reqwest::Client>>>();
+        assert_image_model::<Arc<ExternalModel<crate::test_utils::RecordingHttpClient>>>();
         #[cfg(feature = "audio")]
-        assert_audio_model::<Arc<ExternalModel<reqwest::Client>>>();
+        assert_audio_model::<Arc<ExternalModel<crate::test_utils::RecordingHttpClient>>>();
     }
 }

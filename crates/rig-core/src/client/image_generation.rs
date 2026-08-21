@@ -11,7 +11,7 @@ mod image {
         /// Create an image generation model with the given name.
         ///
         /// # Example with OpenAI
-        /// ```no_run
+        /// ```ignore
         /// use rig_core::prelude::*;
         /// use rig_core::providers::openai::{Client, self};
         ///

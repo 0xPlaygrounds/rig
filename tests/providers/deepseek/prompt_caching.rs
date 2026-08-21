@@ -34,6 +34,7 @@
 //! ```
 
 use rig::client::CompletionClient as _;
+use rig::client::DefaultTransportClient as _;
 use rig::providers::deepseek;
 
 use crate::cache_conformance::{
@@ -97,8 +98,6 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires DEEPSEEK_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    use rig::client::ProviderClient as _;
-
     let client = deepseek::Client::from_env().expect("DEEPSEEK_API_KEY");
     let model = client.completion_model(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;

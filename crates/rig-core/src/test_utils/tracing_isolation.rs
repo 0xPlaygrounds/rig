@@ -1,8 +1,11 @@
 //! Serialization for tests that install scoped tracing subscribers.
 
-use tokio::sync::{Mutex, MutexGuard};
+use futures::lock::{Mutex, MutexGuard};
+use std::sync::LazyLock;
 
-static GUARD: Mutex<()> = Mutex::const_new(());
+// An async mutex: the guard is deliberately held across awaits for a test's
+// whole lifetime, which a std mutex could not do soundly.
+static GUARD: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Serializes tests that install scoped tracing subscribers
 /// (`tracing::subscriber::set_default` / `with_default`).
@@ -72,5 +75,5 @@ pub async fn scoped_tracing_subscriber_guard() -> MutexGuard<'static, ()> {
 ///
 /// The same two rules apply — see [`scoped_tracing_subscriber_guard`].
 pub fn scoped_tracing_subscriber_guard_blocking() -> MutexGuard<'static, ()> {
-    GUARD.blocking_lock()
+    futures::executor::block_on(GUARD.lock())
 }

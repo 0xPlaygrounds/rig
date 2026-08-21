@@ -73,7 +73,7 @@ pub trait RawAudioGenerationProvider: Provider {
 /// aliases; request routing and JSON shape remain on the provider extension.
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericAudioGenerationModel<Ext, H = reqwest::Client> {
+pub struct GenericAudioGenerationModel<Ext, H> {
     client: Client<Ext, H>,
     /// Name of the audio generation model.
     pub model: String,

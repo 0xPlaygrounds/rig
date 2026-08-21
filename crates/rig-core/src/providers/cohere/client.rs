@@ -21,7 +21,7 @@ pub struct CohereBuilder;
 
 type CohereApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<CohereExt, H>;
+pub type Client<H> = client::Client<CohereExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<CohereBuilder, CohereApiKey, H>;
 
@@ -44,7 +44,11 @@ client::impl_default_provider_builder!(
     base_url = "https://api.cohere.ai",
 );
 
-client::impl_provider_client!(Client, input = CohereApiKey, api_key_env = "COHERE_API_KEY",);
+client::impl_provider_from_env!(
+    CohereExt,
+    input = CohereApiKey,
+    api_key_env = "COHERE_API_KEY",
+);
 
 #[derive(Debug)]
 pub struct ApiErrorResponse {
@@ -119,10 +123,14 @@ where
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::cohere::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::cohere::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::cohere::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

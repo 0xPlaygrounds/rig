@@ -70,7 +70,7 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
     }
 }
 
-pub type TranscriptionModel<T = reqwest::Client> =
+pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
         crate::providers::openrouter::client::OpenRouterExt,
         T,

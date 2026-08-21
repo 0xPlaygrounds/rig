@@ -76,7 +76,7 @@ impl OpenAIEmbeddingsCompatible for MistralExt {
     }
 }
 
-pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<MistralExt, H>;
+pub type EmbeddingModel<H> = GenericEmbeddingModel<MistralExt, H>;
 
 #[cfg(test)]
 mod tests {
@@ -246,7 +246,9 @@ mod batch_tests {
         use crate::client::EmbeddingsClient;
         use crate::embeddings::EmbeddingModel as _;
         assert_eq!(MAX_DOCUMENTS, 256);
-        let client = super::super::Client::new("key").expect("client");
+        let client =
+            super::super::Client::new_with("key", crate::test_utils::RecordingHttpClient::new(""))
+                .expect("client");
         assert_eq!(
             client.embedding_model(super::MISTRAL_EMBED).max_documents(),
             256,

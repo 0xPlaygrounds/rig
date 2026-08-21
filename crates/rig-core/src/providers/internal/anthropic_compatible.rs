@@ -110,11 +110,11 @@ macro_rules! impl_dual_dialect_provider {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct $anthropic_ext;
 
-        pub type Client<H = reqwest::Client> = $crate::client::Client<$ext, H>;
+        pub type Client<H> = $crate::client::Client<$ext, H>;
         pub type ClientBuilder<H = $crate::markers::Missing> =
             $crate::client::ClientBuilder<$builder, $crate::client::BearerAuth, H>;
 
-        pub type AnthropicClient<H = reqwest::Client> = $crate::client::Client<$anthropic_ext, H>;
+        pub type AnthropicClient<H> = $crate::client::Client<$anthropic_ext, H>;
         pub type AnthropicClientBuilder<H = $crate::markers::Missing> = $crate::client::ClientBuilder<
             $anthropic_builder,
             $crate::providers::anthropic::client::AnthropicKey,
@@ -162,15 +162,15 @@ macro_rules! impl_dual_dialect_provider {
             }
         }
 
-        $crate::client::impl_provider_client!(
-            Client,
+        $crate::client::impl_provider_from_env!(
+            $ext,
             input = $client_input,
             api_key_env = $api_key_env,
             base_url_env = $base_url_env,
         );
 
-        $crate::client::impl_provider_client!(
-            AnthropicClient,
+        $crate::client::impl_provider_from_env!(
+            $anthropic_ext,
             input = String,
             api_key_env = $api_key_env,
             base_url = ANTHROPIC_BASE_URLS.resolve_from_env($anthropic_base_url_env, $base_url_env)?,

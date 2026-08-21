@@ -37,7 +37,6 @@ mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
-reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 rig-derive = { version = "0.42.0", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -46,7 +45,6 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 fastrand = { workspace = true }
@@ -54,18 +52,6 @@ eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
 mime = { workspace = true }
-reqwest-middleware = { workspace = true, optional = true, features = [
-  "json",
-  "multipart",
-  "charset",
-  "http2",
-] }
-
-# Native-only dependency for OpenAI Responses websocket mode.
-# Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokio-tungstenite = { workspace = true, optional = true }
-
 # futures-timer's default backend uses a background timer thread, which cannot
 # drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
 # the target is browser wasm — regardless of feature flags — so
@@ -94,23 +80,12 @@ trybuild = "1.0.111"
 proptest = "1"
 assert_fs = { workspace = true }
 futures = { workspace = true }
-# server side of the websocket conformance suite (tests/streaming_conformance_websocket.rs)
-tokio-tungstenite = { workspace = true, features = ["handshake"] }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
 redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
-reqwest-retry = { workspace = true }
-reqwest-middleware = { workspace = true, features = [
-  "json",
-  "multipart",
-  "charset",
-  "http2",
-  "rustls",
-] }
-
 # required for otel
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
@@ -119,7 +94,7 @@ tracing-opentelemetry = { workspace = true }
 
 
 [features]
-default = ["reqwest", "derive", "rustls"]
+default = ["derive"]
 audio = []
 image = []
 derive = ["dep:rig-derive"]
@@ -127,25 +102,3 @@ test-utils = []
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-socks = ["reqwest/socks"]
-reqwest = [
-  "reqwest/charset",
-  "reqwest/http2",
-  "reqwest/system-proxy",
-]
-websocket = ["websocket-rustls"]
-websocket-rustls = [
-  "dep:tokio-tungstenite",
-  "tokio-tungstenite/connect",
-  "rustls",
-]
-websocket-native-tls = [
-  "dep:tokio-tungstenite",
-  "tokio-tungstenite/connect",
-  "native-tls",
-]
-rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
-native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
-reqwest-middleware = ["reqwest-middleware-rustls"]
-reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
-reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]

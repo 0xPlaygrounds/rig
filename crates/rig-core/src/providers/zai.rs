@@ -5,7 +5,7 @@
 //! like Claude Code.
 //!
 //! # OpenAI-compatible example
-//! ```no_run
+//! ```ignore
 //! use rig_core::client::CompletionClient;
 //! use rig_core::providers::zai;
 //!
@@ -14,7 +14,7 @@
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```no_run
+//! ```ignore
 //! use rig_core::client::CompletionClient;
 //! use rig_core::providers::zai;
 //!
@@ -114,15 +114,24 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client = crate::providers::zai::Client::new("dummy-key").expect("Client::new()");
+        let _client = crate::providers::zai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new()");
         let _client_from_builder = crate::providers::zai::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder()");
-        let _anthropic_client = crate::providers::zai::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new()");
+        let _anthropic_client = crate::providers::zai::AnthropicClient::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("AnthropicClient::new()");
         let _anthropic_client_from_builder = crate::providers::zai::AnthropicClient::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("AnthropicClient::builder()");
     }

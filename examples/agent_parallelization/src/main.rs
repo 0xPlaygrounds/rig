@@ -1,7 +1,7 @@
 use rig::prelude::*;
 
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
+use rig::providers::openai::Client;
 
 use schemars::JsonSchema;
 

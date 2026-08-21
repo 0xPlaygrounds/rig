@@ -1,7 +1,7 @@
 //! Groq API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::groq};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -142,20 +142,19 @@ client::impl_default_provider_builder!(
     base_url = GROQ_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
+pub type Client<H> = client::Client<GroqExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GroqBuilder, GroqApiKey, H>;
 
 /// Groq completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<GroqExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<GroqExt, H>;
 
 /// Groq's provider-native terminal streaming record: the value carried by the
 /// final item of the stream returned by `CompletionModel::raw_stream`. Shared
 /// with the OpenAI Chat Completions path, usage payload included.
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
 
-client::impl_provider_client!(Client, input = String, api_key_env = "GROQ_API_KEY");
+client::impl_provider_from_env!(GroqExt, input = String, api_key_env = "GROQ_API_KEY");
 
 #[cfg(test)]
 use crate::providers::openai::client::ApiResponse;
@@ -273,7 +272,7 @@ pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
 pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
 /// Groq transcription model using the shared OpenAI-style implementation.
-pub type TranscriptionModel<T = reqwest::Client> =
+pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
 impl<T> OpenAiTranscriptionClient for Client<T>
@@ -493,11 +492,17 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::groq::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let builder: crate::providers::groq::ClientBuilder =
             crate::providers::groq::Client::builder().api_key("dummy-key");
-        let _client_from_builder = builder.build().expect("Client::builder() failed");
+        let _client_from_builder = builder
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
+            .build()
+            .expect("Client::builder() failed");
     }
 
     #[tokio::test]

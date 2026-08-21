@@ -18,7 +18,7 @@ impl MockModelLister {
     }
 }
 
-impl ModelLister for MockModelLister {
+impl<H> ModelLister<H> for MockModelLister {
     fn list_all(
         &self,
     ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend

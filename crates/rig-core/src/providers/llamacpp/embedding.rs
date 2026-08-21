@@ -44,5 +44,5 @@ impl OpenAIEmbeddingsCompatible for super::client::LlamacppExt {
 }
 
 /// llama.cpp embedding model, driven by the shared OpenAI embeddings path.
-pub type EmbeddingModel<H = reqwest::Client> =
+pub type EmbeddingModel<H> =
     openai::embedding::GenericEmbeddingModel<super::client::LlamacppExt, H>;

@@ -63,7 +63,7 @@ const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: parity probe";
 const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool.";
 
-type AnthropicModel = anthropic::completion::CompletionModel;
+type AnthropicModel = anthropic::CompletionModel;
 
 fn text_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(TEXT_PROMPT).max_tokens(32).build()
