@@ -122,12 +122,12 @@ jobs:
         if: matrix.package == 'rig-core'
         run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
 
-  # `rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
-  # unconditionally, which rig's wasm tool registry cannot satisfy. Asking for it
-  # on wasm must fail with exactly one actionable sentence rather than a wall of
-  # `dyn ErasedTool` trait errors, so assert both the message *and* the error
-  # count — a new ungated `#[cfg(feature = "rmcp")]` would leak follow-on errors
-  # and is the regression this guards.
+  # `rig-rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
+  # unconditionally, which rig's wasm tool registry cannot satisfy. Building it
+  # for wasm must fail with exactly one actionable sentence (the crate-root
+  # `compile_error!`) rather than a wall of trait errors, so assert both the
+  # message *and* the error count — an item that escapes the crate's
+  # `not(wasm)` gate would leak follow-on errors and is the regression this guards.
   check-rmcp-native-only:
     name: stable / rmcp rejected on wasm
     runs-on: ubuntu-latest
@@ -143,7 +143,7 @@ jobs:
       - name: Assert the native-only diagnostic is the only error
         run: |
           set +e
-          out=$(cargo check --package rig-agent --features rmcp \
+          out=$(cargo check --package rig-rmcp \
                   --target wasm32-unknown-unknown 2>&1)
           status=$?
           set -e
@@ -165,7 +165,7 @@ jobs:
           # itself printed as an `error:` line.
           count=$(printf '%s\n' "$plain" | grep -E '^error(\[|:)' | grep -cv 'could not compile' || true)
           if [ "$count" -ne 1 ]; then
-            echo "::error::expected exactly 1 error, got $count — an ungated \`#[cfg(feature = \"rmcp\")]\` is leaking follow-on errors"
+            echo "::error::expected exactly 1 error, got $count — an item outside rig-rmcp's \`not(wasm)\` gate is leaking follow-on errors"
             exit 1
           fi
           echo "ok: rmcp on wasm fails with exactly one actionable error"
@@ -326,7 +326,7 @@ jobs:
       # is the authoritative plain-`cargo test` execution.
       - name: Test rig-core and rig-agent with all features
         run: >-
-          cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-agent --all-features
+          cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-agent -p rig-rmcp --all-features
           --retries 2 -E 'not binary(macro_hygiene)'
 
       # `cargo nextest run` (in the `test` job) selects the workspace's

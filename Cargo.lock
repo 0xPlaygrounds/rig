@@ -9822,6 +9822,7 @@ dependencies = [
  "rig-postgres",
  "rig-qdrant",
  "rig-reqwest",
+ "rig-rmcp",
  "rig-s3vectors",
  "rig-scylladb",
  "rig-sqlite",
@@ -9863,7 +9864,6 @@ dependencies = [
  "rig-core",
  "rig-derive",
  "rig-reqwest",
- "rmcp",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10182,6 +10182,21 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "rig-rmcp"
+version = "0.42.0"
+dependencies = [
+ "futures",
+ "rig-agent",
+ "rig-core",
+ "rmcp",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
 ]
 
 [[package]]

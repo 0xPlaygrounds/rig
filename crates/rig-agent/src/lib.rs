@@ -25,9 +25,9 @@
 //! supported with no feature flags to set — the relaxed async bounds follow
 //! from the target alone.
 //!
-//! The `rmcp` feature is unavailable on wasm: rmcp's `ClientHandler` requires
-//! `Send + Sync` unconditionally, which this crate's wasm tool registry cannot
-//! satisfy, so asking for it there raises a targeted `compile_error!`. WASI
+//! MCP tool support lives in the companion `rig-rmcp` crate, which is
+//! native-only (rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
+//! which rig's wasm tool registry cannot satisfy). WASI
 //! (`wasm32-wasip1`/`wasip2`) is **not supported**: the dependency graph does
 //! not build for it. See the crate README for the full matrix and the
 //! reasoning.

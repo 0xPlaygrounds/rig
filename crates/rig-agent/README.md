@@ -106,8 +106,8 @@ Classic tools that need mutable per-call state implement
 
 | Tier | Target | Status |
 | --- | --- | --- |
-| 1 | native (linux / macOS / windows, `x86_64` and `aarch64`) | Full support, all features including `rmcp` |
-| 2 | `wasm32-unknown-unknown` (browser) | Supported, with no feature flags to set; the `rmcp` feature is **not** available |
+| 1 | native (linux / macOS / windows, `x86_64` and `aarch64`) | Full support, all features; MCP tools via the companion `rig-rmcp` crate |
+| 2 | `wasm32-unknown-unknown` (browser) | Supported, with no feature flags to set; `rig-rmcp` (MCP tools) is **not** available |
 | — | `wasm32-wasip1` / `wasm32-wasip2` (WASI) | **Not supported** |
 | — | `wasm32-unknown-emscripten` | Not supported |
 
@@ -123,7 +123,7 @@ feature set WASI rejects. Supporting it would mean making `reqwest` optional and
 adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
 `cfg` fix.
 
-**`rmcp` is native-only.** rmcp's `ClientHandler` is declared
+**MCP (`rig-rmcp`) is native-only.** rmcp's `ClientHandler` is declared
 `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
 the future bounds but not the handler itself — while this crate's handler owns a
 tool registry whose `Arc<dyn ErasedTool>` is deliberately neither `Send` nor

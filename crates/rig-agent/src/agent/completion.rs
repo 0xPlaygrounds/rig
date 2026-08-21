@@ -652,6 +652,13 @@ impl AgentConfig {
 }
 
 impl Agent {
+    /// The tool server this agent dispatches tool calls through. Cloning the
+    /// handle lets external tool sources (an MCP client handler, for example)
+    /// register and refresh tools the agent will see on its next turn.
+    pub fn tool_server_handle(&self) -> &crate::tool::server::ToolServerHandle {
+        &self.tool_server_handle
+    }
+
     /// Returns the configured agent name.
     pub fn name(&self) -> Option<&str> {
         self.config.name.as_deref()

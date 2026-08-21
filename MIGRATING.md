@@ -796,6 +796,32 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### MCP tool support moves from rig-agent's `rmcp` feature to the `rig-rmcp` crate
+
+rig-agent no longer has an `rmcp` feature or an rmcp dependency; MCP lives in
+the new **`rig-rmcp`** crate. Through the `rig` facade nothing changes for the
+common path — the `rmcp` feature now pulls `rig-rmcp`, `rig::tool::rmcp::*`
+(`McpClientHandler`, `McpTool`, `Meta`, …) keeps resolving, and with
+`use rig::prelude::*` the `rmcp_tool` / `rmcp_tools` / `…_with_timeout` builders
+keep working on `AgentBuilder` and `ToolServer`. What changes:
+
+- Those builder methods are now extension traits — `rig_rmcp::RmcpAgentBuilderExt`
+  and `rig_rmcp::RmcpToolServerExt` (in `rig::prelude` / `rig_rmcp::prelude`).
+  Code that called them without the prelude imports the traits.
+- Direct rig-agent users depend on `rig-rmcp` (its default `agent` feature).
+- rig-rmcp with `default-features = false` depends on rig-core only: MCP tools
+  are exposed as `rig_core::tool::PortableDynamicTool`s (`From<McpTool>`,
+  `rig_rmcp::tools_from_server`), usable from any runtime — minus the two
+  context-dependent conveniences (MCP `_meta` passthrough from a `ToolContext`,
+  the raw `CallToolResult` preserved on it), which need rig-agent.
+- rig-agent's registry support for externally managed tools is now public and
+  ungated: `ErasedTool` (and `ErasedTool::is_live`), `ToolSet::add_erased`,
+  `ToolServer::erased_tool`, `AgentBuilder::erased_tool`,
+  `ToolServerHandle::{add_managed_erased_tools, reconcile_managed_erased_tools}`
+  and the opaque `ManagedToolToken`. Nothing about "a remote tool list that can
+  refresh or disconnect" is MCP-specific; rig-rmcp is its first consumer.
+- rig-agent's `tokio` is now optional and enabled only by `discord-bot`.
+
 ### rig-core has no default transport; the bundled reqwest transport is the new `rig-reqwest` crate
 
 `rig-core` no longer depends on `reqwest` or `tokio` and no longer names a
