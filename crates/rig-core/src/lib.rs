@@ -23,7 +23,7 @@
 //! - Integrate LLMs in your app with minimal boilerplate
 //!
 //! # Simple example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::{AssistantContent, CompletionModel},

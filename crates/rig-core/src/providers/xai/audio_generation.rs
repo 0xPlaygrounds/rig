@@ -12,7 +12,7 @@ use serde_json::json;
 pub const TTS_1: &str = "tts-1";
 
 /// xAI audio generation model.
-pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel<XAiExt, T>;
+pub type AudioGenerationModel<T> = GenericAudioGenerationModel<XAiExt, T>;
 
 impl RawAudioGenerationProvider for XAiExt {
     const AUDIO_GENERATION_PATH: &'static str = "/v1/tts";

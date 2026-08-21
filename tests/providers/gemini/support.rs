@@ -1,4 +1,5 @@
 use futures::FutureExt;
+use rig::client::DefaultTransportBuilder as _;
 use rig::providers::gemini;
 use serde::Deserialize;
 use std::future::Future;

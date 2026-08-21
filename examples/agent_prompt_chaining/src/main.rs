@@ -6,7 +6,7 @@ use anyhow::Result;
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
+use rig::providers::openai::Client;
 
 const INPUT_PROMPT: &str = "Please generate a single whole integer that is 0 or 1";
 const RNG_PREAMBLE: &str =

@@ -1549,7 +1549,7 @@ impl TryFrom<Message> for message::Message {
 
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
+pub struct GenericCompletionModel<Ext, T> {
     pub(crate) client: crate::client::Client<Ext, T>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
@@ -1575,8 +1575,7 @@ pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type CompletionModel<T = reqwest::Client> =
-    GenericCompletionModel<super::client::AnthropicExt, T>;
+pub type CompletionModel<T> = GenericCompletionModel<super::client::AnthropicExt, T>;
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
 where

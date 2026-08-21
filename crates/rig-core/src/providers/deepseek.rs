@@ -1,7 +1,7 @@
 //! DeepSeek API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::deepseek};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,7 +14,7 @@
 
 use serde_json::Value;
 
-use crate::client::{self, BearerAuth, DebugExt, Provider, ProviderClient};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -130,13 +130,12 @@ client::impl_default_provider_builder!(
     base_url = DEEPSEEK_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
+pub type Client<H> = client::Client<DeepSeekExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<DeepSeekExtBuilder, DeepSeekApiKey, H>;
 
 /// DeepSeek completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<DeepSeekExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<DeepSeekExt, H>;
 
 /// DeepSeek's provider-native terminal streaming record: the value carried by
 /// the final item of the stream returned by `CompletionModel::raw_stream`.
@@ -144,24 +143,35 @@ pub type CompletionModel<H = reqwest::Client> =
 /// usage payload (cache hit/miss counters).
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
 
-impl ProviderClient for Client {
+impl crate::client::ProviderFromEnv for DeepSeekExt {
     type Input = DeepSeekApiKey;
-    type Error = crate::client::ProviderClientError;
-
     // If you prefer the environment variable approach:
-    fn from_env() -> Result<Self, Self::Error> {
+    fn from_env_with<H>(
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
         let api_key = crate::client::required_env_var("DEEPSEEK_API_KEY")?;
-        let mut client_builder = Self::builder();
+        let mut client_builder = crate::client::Client::<Self, crate::markers::Missing>::builder();
         client_builder.headers_mut().insert(
             http::header::CONTENT_TYPE,
             http::HeaderValue::from_static("application/json"),
         );
         let client_builder = client_builder.api_key(&api_key);
-        client_builder.build().map_err(Into::into)
+        client_builder.http_client(http).build().map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
+    fn from_val_with<H>(
+        input: Self::Input,
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        crate::client::Client::new_with(input, http).map_err(Into::into)
     }
 }
 
@@ -1054,10 +1064,14 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::deepseek::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::deepseek::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

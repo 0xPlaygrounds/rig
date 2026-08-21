@@ -554,7 +554,8 @@ pub(crate) async fn build_prepared_completion_request(
 /// # Example
 /// ```no_run
 /// use rig_agent::prelude::*;
-/// use rig_core::{client::ProviderClient, providers::openai};
+/// use rig_core::providers::openai;
+/// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// let openai = openai::Client::from_env()?;

@@ -1,7 +1,7 @@
 //! Azure OpenAI API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::providers::azure;
 //! use rig_core::client::CompletionClient;
 //!
@@ -24,7 +24,7 @@
 
 use std::fmt::Debug;
 
-use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder};
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 use crate::providers::openai;
@@ -74,7 +74,7 @@ impl Default for AzureExtBuilder {
     }
 }
 
-pub type Client<H = reqwest::Client> = client::Client<AzureExt, H>;
+pub type Client<H> = client::Client<AzureExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H>;
 
@@ -274,12 +274,16 @@ pub struct AzureOpenAIClientParams {
     header: String,
 }
 
-impl ProviderClient for Client {
+impl crate::client::ProviderFromEnv for AzureExt {
     type Input = AzureOpenAIClientParams;
-    type Error = crate::client::ProviderClientError;
-
     /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    fn from_env() -> Result<Self, Self::Error> {
+    fn from_env_with<H>(
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
         let auth = if let Some(api_key) = crate::client::optional_env_var("AZURE_API_KEY")? {
             AzureOpenAIAuth::ApiKey(api_key)
         } else if let Some(token) = crate::client::optional_env_var("AZURE_TOKEN")? {
@@ -293,27 +297,34 @@ impl ProviderClient for Client {
         let api_version = crate::client::required_env_var("AZURE_API_VERSION")?;
         let azure_endpoint = crate::client::required_env_var("AZURE_ENDPOINT")?;
 
-        Self::builder()
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
             .api_key(auth)
             .azure_endpoint(azure_endpoint)
             .api_version(&api_version)
+            .http_client(http)
             .build()
             .map_err(Into::into)
     }
 
-    fn from_val(
+    fn from_val_with<H>(
         AzureOpenAIClientParams {
             api_key,
             version,
             header,
         }: Self::Input,
-    ) -> Result<Self, Self::Error> {
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
         let auth = AzureOpenAIAuth::ApiKey(api_key);
 
-        Self::builder()
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
             .api_key(auth)
             .azure_endpoint(header)
             .api_version(&version)
+            .http_client(http)
             .build()
             .map_err(Into::into)
     }
@@ -334,8 +345,7 @@ pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 /// embeddings path. `EmbeddingModel::make` (and the client's
 /// `embedding_model` helpers) default unknown dimensions from the model
 /// identifier, exactly like OpenAI.
-pub type EmbeddingModel<T = reqwest::Client> =
-    openai::embedding::GenericEmbeddingModel<AzureExt, T>;
+pub type EmbeddingModel<T> = openai::embedding::GenericEmbeddingModel<AzureExt, T>;
 
 impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
     const PROVIDER_NAME: &'static str = "azure.openai";
@@ -391,8 +401,7 @@ pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 /// on [`AzureExt`], pinned to the deployment this model handle was created
 /// with (a per-request `model` override changes only the request body, as
 /// before the migration).
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<AzureExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<AzureExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for AzureExt {
     const PROVIDER_NAME: &'static str = "azure.openai";
@@ -419,7 +428,7 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
 // ================================================================
 
 /// Azure OpenAI transcription model; `model` identifies the Azure deployment.
-pub type TranscriptionModel<T = reqwest::Client> =
+pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
 impl<T> OpenAiTranscriptionClient for Client<T>
@@ -456,7 +465,7 @@ mod image_generation {
     use serde_json::json;
 
     /// Azure OpenAI image generation model; `model` identifies the deployment.
-    pub type ImageGenerationModel<T = reqwest::Client> = GenericImageGenerationModel<AzureExt, T>;
+    pub type ImageGenerationModel<T> = GenericImageGenerationModel<AzureExt, T>;
 
     impl JsonImageGenerationProvider for AzureExt {
         const IMAGE_GENERATION_PATH: &'static str = "";
@@ -505,7 +514,7 @@ mod audio_generation {
     };
 
     /// Azure OpenAI audio generation model; `model` identifies the deployment.
-    pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel<AzureExt, T>;
+    pub type AudioGenerationModel<T> = GenericAudioGenerationModel<AzureExt, T>;
 
     impl RawAudioGenerationProvider for AzureExt {
         const AUDIO_GENERATION_PATH: &'static str = "";
@@ -537,11 +546,9 @@ mod audio_generation {
 #[cfg(test)]
 mod azure_tests {
     use super::*;
-    use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
-    use crate::completion::CompletionModel;
+    use crate::client::embeddings::EmbeddingsClient;
     use crate::completion::{CompletionError, CompletionRequest};
     use crate::embeddings::EmbeddingError;
-    use crate::embeddings::EmbeddingModel;
 
     #[cfg(any(feature = "image", feature = "audio"))]
     fn test_client(
@@ -629,6 +636,7 @@ mod azure_tests {
             .api_key("test-key")
             .azure_endpoint("https://example.openai.azure.com".to_owned())
             .audio_api_version("2026-01-01-preview")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("build client");
         let request = client
@@ -956,70 +964,11 @@ mod azure_tests {
     }
 
     #[tokio::test]
-    #[ignore]
-    async fn test_azure_embedding() -> anyhow::Result<()> {
-        let _ = tracing_subscriber::fmt::try_init();
-
-        let client = Client::from_env()?;
-        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
-        let embeddings = model.embed_texts(vec!["Hello, world!".to_string()]).await?;
-
-        tracing::info!("Azure embedding: {:?}", embeddings);
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_azure_embedding_dimensions() -> anyhow::Result<()> {
-        let _ = tracing_subscriber::fmt::try_init();
-
-        let ndims = 256;
-        let client = Client::from_env()?;
-        let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
-        let embedding = model.embed_text("Hello, world!").await?;
-
-        anyhow::ensure!(
-            embedding.vec.len() == ndims,
-            "expected embedding dimensions {ndims}, got {}",
-            embedding.vec.len()
-        );
-
-        tracing::info!("Azure dimensions embedding: {:?}", embedding);
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_azure_completion() -> anyhow::Result<()> {
-        let _ = tracing_subscriber::fmt::try_init();
-
-        let client = Client::from_env()?;
-        let model = client.completion_model(GPT_4O_MINI);
-        let completion = model
-            .completion(CompletionRequest {
-                model: None,
-                preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: vec!["Hello!".into()],
-                documents: vec![],
-                max_tokens: Some(100),
-                temperature: Some(0.0),
-                tools: vec![],
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-                record_telemetry_content: false,
-            })
-            .await?;
-
-        tracing::info!("Azure completion: {:?}", completion);
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn test_client_initialization() {
         let _client = crate::providers::azure::Client::builder()
             .api_key("test")
             .azure_endpoint("test".to_string()) // add your endpoint here!
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

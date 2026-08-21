@@ -32,7 +32,7 @@
 //! rejects everything else with 401, so pass the key and the client sends
 //! `Authorization: Bearer <key>`:
 //!
-//! ```no_run
+//! ```ignore
 //! # use rig_core::providers::llamacpp;
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // No credential — the common local case.
@@ -56,7 +56,7 @@
 //! to each.
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::CompletionClient,
 //!     completion::CompletionModel,

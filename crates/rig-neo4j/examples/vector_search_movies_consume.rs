@@ -17,6 +17,7 @@ use neo4rs::ConfigBuilder;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig_neo4j::Neo4jClient;
+use rig_reqwest::prelude::*;
 
 use std::env;
 
@@ -38,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialize OpenAI client
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client: Client = Client::new(&openai_api_key)?;
+    let openai_client: Client<_> = Client::new(&openai_api_key)?;
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
     let neo4j_username = "recommendations";

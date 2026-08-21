@@ -112,7 +112,7 @@ impl OpenAIEmbeddingsCompatible for DoublewordExt {
 
 /// Doubleword embedding model, driven by the shared OpenAI-compatible
 /// embeddings path.
-pub type EmbeddingModel<T = reqwest::Client> = GenericEmbeddingModel<DoublewordExt, T>;
+pub type EmbeddingModel<T> = GenericEmbeddingModel<DoublewordExt, T>;
 
 #[cfg(test)]
 mod tests {
@@ -199,18 +199,24 @@ mod tests {
 
     #[test]
     fn default_ndims_reports_the_native_width_doubleword_returns() {
-        let model = doubleword::Client::new("dummy-key")
-            .expect("client should build")
-            .embedding_model(QWEN3_EMBEDDING_8B);
+        let model = doubleword::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client should build")
+        .embedding_model(QWEN3_EMBEDDING_8B);
 
         assert_eq!(model.ndims(), 4_096);
     }
 
     #[test]
     fn an_unknown_embedding_model_still_reports_no_width() {
-        let model = doubleword::Client::new("dummy-key")
-            .expect("client should build")
-            .embedding_model("Qwen/Qwen4-Embedding-Unreleased");
+        let model = doubleword::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client should build")
+        .embedding_model("Qwen/Qwen4-Embedding-Unreleased");
 
         assert_eq!(model.ndims(), 0);
     }

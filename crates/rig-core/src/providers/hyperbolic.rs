@@ -1,7 +1,7 @@
 //! Hyperbolic Inference API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::hyperbolic};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,12 +88,12 @@ client::impl_default_provider_builder!(
     base_url = HYPERBOLIC_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
+pub type Client<H> = client::Client<HyperbolicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
 
-client::impl_provider_client!(
-    Client,
+client::impl_provider_from_env!(
+    HyperbolicExt,
     input = HyperbolicApiKey,
     api_key_env = "HYPERBOLIC_API_KEY",
 );
@@ -131,7 +131,7 @@ pub const DEEPSEEK_R1_ZERO: &str = "deepseek-ai/DeepSeek-R1-Zero";
 pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
 /// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
+pub type CompletionModel<H> =
     crate::providers::openai::completion::GenericCompletionModel<HyperbolicExt, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
@@ -400,11 +400,17 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::hyperbolic::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let builder: crate::providers::hyperbolic::ClientBuilder =
             crate::providers::hyperbolic::Client::builder().api_key("dummy-key");
-        let _client_from_builder = builder.build().expect("Client::builder() failed");
+        let _client_from_builder = builder
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
+            .build()
+            .expect("Client::builder() failed");
     }
 
     #[tokio::test]

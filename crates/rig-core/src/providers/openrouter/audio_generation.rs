@@ -21,7 +21,7 @@ pub const KOKORO_82M: &str = "hexgrad/kokoro-82m";
 // ================================================================
 
 /// OpenRouter audio generation model.
-pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel<OpenRouterExt, T>;
+pub type AudioGenerationModel<T> = GenericAudioGenerationModel<OpenRouterExt, T>;
 
 impl RawAudioGenerationProvider for OpenRouterExt {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";

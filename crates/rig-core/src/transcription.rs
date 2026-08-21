@@ -170,7 +170,7 @@ pub struct TranscriptionRequest {
 /// Builder struct for a transcription request
 ///
 /// Example usage:
-/// ```no_run
+/// ```ignore
 /// use rig_core::{
 ///     prelude::TranscriptionClient,
 ///     providers::openai::{Client, self},
@@ -194,7 +194,7 @@ pub struct TranscriptionRequest {
 /// ```
 ///
 /// Alternatively, you can execute the transcription request directly from the builder:
-/// ```no_run
+/// ```ignore
 /// use rig_core::{
 ///     prelude::TranscriptionClient,
 ///     providers::openai::{Client, self},

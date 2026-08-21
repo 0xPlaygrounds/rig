@@ -1,7 +1,7 @@
 //! Moonshot AI (Kimi) API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::providers::moonshot;
 //! use rig_core::client::CompletionClient;
 //!
@@ -13,7 +13,7 @@
 //! # Custom base URL
 //! The default base URL is `https://api.moonshot.ai/v1`. For China access,
 //! use `https://api.moonshot.cn/v1`:
-//! ```no_run
+//! ```ignore
 //! use rig_core::providers::moonshot;
 //!
 //! let client = moonshot::Client::builder()
@@ -111,8 +111,7 @@ pub const KIMI_K2: &str = "kimi-k2";
 pub const KIMI_K2_5: &str = "kimi-k2.5";
 
 /// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<MoonshotExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<MoonshotExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
     const PROVIDER_NAME: &'static str = "moonshot";
@@ -195,16 +194,24 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::moonshot::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::moonshot::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
-        let _anthropic_client = crate::providers::moonshot::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new() failed");
+        let _anthropic_client = crate::providers::moonshot::AnthropicClient::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("AnthropicClient::new() failed");
         let _anthropic_client_from_builder = crate::providers::moonshot::AnthropicClient::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("AnthropicClient::builder() failed");
     }

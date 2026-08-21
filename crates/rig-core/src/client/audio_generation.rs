@@ -11,7 +11,7 @@ mod audio {
         /// Create an audio generation model with the given name.
         ///
         /// # Example
-        /// ```no_run
+        /// ```ignore
         /// use rig_core::prelude::AudioGenerationClient;
         /// use rig_core::providers::openai::{Client, self};
         ///

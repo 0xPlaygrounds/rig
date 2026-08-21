@@ -1677,7 +1677,6 @@ mod migrated_tests {
     };
     use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
-    use rig_core::client::ProviderClient;
     use rig_core::message::{
         AssistantContent, DocumentSourceKind, ImageMediaType, Message, ReasoningContent,
         ToolChoice, ToolResultContent, UserContent,
@@ -7134,7 +7133,8 @@ mod migrated_tests {
 
         // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
         // (rig reuses current span if one exists, so we need to ensure there's no current span)
-        let client = anthropic::Client::from_env()?;
+        let client =
+            <anthropic::Client<rig_reqwest::ReqwestClient> as rig_reqwest::client::DefaultTransportClient>::from_env()?;
         let agent = client
             .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
             .preamble("You are a helpful assistant.")
@@ -7192,7 +7192,8 @@ mod migrated_tests {
     async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
         use rig_core::message::Message;
 
-        let client = anthropic::Client::from_env()?;
+        let client =
+            <anthropic::Client<rig_reqwest::ReqwestClient> as rig_reqwest::client::DefaultTransportClient>::from_env()?;
         let agent = client
             .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
             .preamble("You are a helpful assistant. Keep responses brief.")

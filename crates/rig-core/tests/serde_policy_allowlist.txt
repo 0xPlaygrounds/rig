@@ -22,11 +22,11 @@ providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_j
 # `error` and `response.done` are transport envelopes outside the modeled
 # Responses event set; parse_server_event dispatches exactly those two and
 # routes every other frame through classify_responses_frame + triage_frame.
-providers/openai/responses_api/websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to dispatch the two websocket-only envelopes; a corrupt payload errors, never skips.
-providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope (outside the modeled Responses set); decode failure is a CompletionError.
-providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope (outside the modeled Responses set); decode failure is a CompletionError.
-providers/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the optional `status` field of an already-decoded `response.done` payload for turn-state bookkeeping; absence/mismatch falls into an explicit handled arm.
-providers/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Attempts the full CompletionResponse view of an already-decoded `response.done` payload; the None case is handled with an explicit provider error, not a skip.
+rig-reqwest/src/openai_websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to dispatch the two websocket-only envelopes; a corrupt payload errors, never skips.
+rig-reqwest/src/openai_websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope (outside the modeled Responses set); decode failure is a CompletionError.
+rig-reqwest/src/openai_websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope (outside the modeled Responses set); decode failure is a CompletionError.
+rig-reqwest/src/openai_websocket.rs | serde_json::from_value(status) | Reads the optional `status` field of an already-decoded `response.done` payload for turn-state bookkeeping; absence/mismatch falls into an explicit handled arm.
+rig-reqwest/src/openai_websocket.rs | serde_json::from_value(self.response.clone()) | Attempts the full CompletionResponse view of an already-decoded `response.done` payload; the None case is handled with an explicit provider error, not a skip.
 
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
 providers/openai/responses_api/streaming.rs | let value = serde_json::from_str::<serde_json::Value>(data).ok()?; | provider_response_from_responses_sse_data peeks at the `type` tag to build the provider-error body; classification already happened.

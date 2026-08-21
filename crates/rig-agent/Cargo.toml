@@ -32,7 +32,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serenity = { workspace = true, optional = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync"], optional = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
@@ -46,6 +46,7 @@ tracing-futures = { workspace = true, features = ["futures-03"] }
 rmcp = { workspace = true, optional = true, features = ["client"] }
 
 [dev-dependencies]
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }
 # `cargo test -p rig-agent` needs rig-core's mock models even when the
 # `test-utils` feature is not requested explicitly.
@@ -60,5 +61,5 @@ audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
 test-utils = ["rig-core/test-utils"]
-discord-bot = ["dep:serenity"]
-rmcp = ["dep:rmcp"]
+discord-bot = ["dep:serenity", "dep:tokio"]
+rmcp = ["dep:rmcp", "dep:tokio"]

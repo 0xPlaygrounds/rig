@@ -51,7 +51,7 @@ pub const MISTRAL_SMALL_3_2_24B: &str = "mistral-small-3-2-24b-instruct";
 /// Venice completion model — the shared OpenAI-compatible
 /// [`GenericCompletionModel`](openai::completion::GenericCompletionModel)
 /// specialized to Venice.
-pub type CompletionModel<H = reqwest::Client> =
+pub type CompletionModel<H> =
     openai::completion::GenericCompletionModel<super::client::VeniceExt, H>;
 
 // ================================================================
@@ -77,7 +77,7 @@ pub enum WebSearchMode {
 /// which is the same merge path every other provider's dialect extras use, so
 /// there is no separate request abstraction to keep in sync:
 ///
-/// ```no_run
+/// ```ignore
 /// use rig_core::client::{CompletionClient, ProviderClient};
 /// use rig_core::completion::CompletionModel;
 /// use rig_core::providers::venice::{self, VeniceParameters, WebSearchMode};

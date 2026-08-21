@@ -92,7 +92,7 @@ const IMMEDIATE_PHRASE_PROMPT: &str =
     "Reply with exactly this phrase and nothing else: alpha bravo charlie";
 const IMMEDIATE_PUNCTUATION_PROMPT: &str = "Reply with exactly this and nothing else: ###";
 
-type AnthropicModel = anthropic::completion::CompletionModel;
+type AnthropicModel = anthropic::CompletionModel;
 
 fn request(
     model: &AnthropicModel,

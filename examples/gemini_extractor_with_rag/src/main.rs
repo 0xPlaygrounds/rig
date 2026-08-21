@@ -1,6 +1,6 @@
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::providers::gemini::client::Client;
+use rig::providers::gemini::Client;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
 };

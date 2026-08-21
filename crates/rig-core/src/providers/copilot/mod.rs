@@ -8,8 +8,8 @@
 //! `/chat/completions`.
 //!
 //! # Example
-//! ```no_run
-//! use rig_core::client::{CompletionClient, ProviderClient};
+//! ```ignore
+//! use rig_core::client::{CompletionClient};
 //! use rig_core::providers::copilot;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,9 +22,7 @@
 
 mod auth;
 
-use crate::client::{
-    self, ApiKey, DebugExt, ModelLister, Provider, ProviderBuilder, ProviderClient, Transport,
-};
+use crate::client::{self, ApiKey, DebugExt, ModelLister, Provider, ProviderBuilder, Transport};
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
@@ -167,7 +165,7 @@ impl Debug for CopilotExt {
     }
 }
 
-pub type Client<H = reqwest::Client> = client::Client<CopilotExt, H>;
+pub type Client<H> = client::Client<CopilotExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<CopilotBuilder, CopilotAuth, H>;
 
@@ -234,12 +232,16 @@ impl ProviderBuilder for CopilotBuilder {
     }
 }
 
-impl ProviderClient for Client {
+impl crate::client::ProviderFromEnv for CopilotExt {
     type Input = CopilotAuth;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let mut builder = Self::builder();
+    fn from_env_with<H>(
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        let mut builder = crate::client::Client::<Self, crate::markers::Missing>::builder();
         fn get(name: &str) -> Option<String> {
             std::env::var(name).ok()
         }
@@ -249,19 +251,39 @@ impl ProviderClient for Client {
         }
 
         if let Some(api_key) = env_api_key(&get) {
-            builder.api_key(api_key).build().map_err(Into::into)
+            builder
+                .api_key(api_key)
+                .http_client(http)
+                .build()
+                .map_err(Into::into)
         } else if let Some(access_token) = env_github_access_token(&get) {
             builder
                 .github_access_token(access_token)
+                .http_client(http)
                 .build()
                 .map_err(Into::into)
         } else {
-            builder.oauth().build().map_err(Into::into)
+            builder
+                .oauth()
+                .http_client(http)
+                .build()
+                .map_err(Into::into)
         }
     }
 
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
+    fn from_val_with<H>(
+        input: Self::Input,
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
+            .api_key(input)
+            .http_client(http)
+            .build()
+            .map_err(Into::into)
     }
 }
 
@@ -670,7 +692,7 @@ impl<T> crate::providers::internal::envelope::ProviderEnvelope for ChatApiRespon
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<H = reqwest::Client> {
+pub struct CompletionModel<H> {
     client: Client<H>,
     pub model: String,
     pub strict_tools: bool,
@@ -1096,7 +1118,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<H = reqwest::Client> {
+pub struct EmbeddingModel<H> {
     client: Client<H>,
     pub model: String,
     pub encoding_format: Option<openai::EncodingFormat>,
@@ -1388,7 +1410,7 @@ impl From<ListModelEntry> for Model {
 
 /// [`ModelLister`] implementation for the GitHub Copilot API (`GET /models`).
 #[derive(Clone)]
-pub struct CopilotModelLister<H = reqwest::Client> {
+pub struct CopilotModelLister<H> {
     client: Client<H>,
 }
 
@@ -1695,6 +1717,7 @@ mod tests {
     fn copilot_completion_model_intent_builders_update_intent() {
         let client = Client::builder()
             .api_key("copilot-token")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("build client");
 

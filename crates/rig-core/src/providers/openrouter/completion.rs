@@ -1642,8 +1642,7 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 /// [`raw_stream`](openai::completion::GenericCompletionModel::raw_stream) a
 /// stream whose terminal record stays provider-native — both over the same
 /// single request path as the normalized methods.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<OpenRouterExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<OpenRouterExt, H>;
 
 /// Final streaming response, shared with the OpenAI Chat Completions path.
 pub type StreamingCompletionResponse =
@@ -1676,8 +1675,11 @@ mod tests {
         // response conversion satisfies the normalization bound.
         use crate::client::CompletionClient;
 
-        let client =
-            crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let client = crate::providers::openrouter::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let model = client.completion_model(GEMINI_FLASH_2_0);
 
         assert_eq!(model.model, GEMINI_FLASH_2_0);

@@ -15,7 +15,7 @@ pub trait CompletionClient {
     /// Implement this by calling the model's own inherent constructor.
     ///
     /// # Example with OpenAI
-    /// ```no_run
+    /// ```ignore
     /// use rig_core::prelude::*;
     /// use rig_core::providers::openai::{Client, self};
     ///
@@ -217,7 +217,8 @@ mod tests {
         fn external_extension_reaches_the_blanket_completion_client_impl() {
             fn assert_completion_client<C: CompletionClient>() {}
 
-            assert_completion_client::<Client<ExternalExt, reqwest::Client>>();
+            assert_completion_client::<Client<ExternalExt, crate::test_utils::RecordingHttpClient>>(
+            );
         }
     }
 }

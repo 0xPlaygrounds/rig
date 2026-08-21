@@ -18,6 +18,7 @@ qdrant-client = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 anyhow = { workspace = true }
 testcontainers = { workspace = true }

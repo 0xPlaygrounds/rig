@@ -611,8 +611,11 @@ async fn tool_choice_required_forces_a_call() {
 #[tokio::test]
 async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
-    let client = rig::providers::llamacpp::Client::from_url("http://127.0.0.1:1")
-        .expect("client should build");
+    let client = rig::providers::llamacpp::Client::from_url_with(
+        "http://127.0.0.1:1",
+        rig::http_client::ReqwestClient::default(),
+    )
+    .expect("client should build");
     let model = client.completion_model(CASSETTE_MODEL);
 
     let error = model
@@ -662,8 +665,11 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 /// cell is what makes that a checked fact rather than a reading.
 #[tokio::test]
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
-    let client = rig::providers::llamacpp::Client::from_url("http://127.0.0.1:1")
-        .expect("client should build");
+    let client = rig::providers::llamacpp::Client::from_url_with(
+        "http://127.0.0.1:1",
+        rig::http_client::ReqwestClient::default(),
+    )
+    .expect("client should build");
     let model = client.completion_model(CASSETTE_MODEL);
 
     let error = model

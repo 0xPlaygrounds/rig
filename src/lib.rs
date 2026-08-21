@@ -38,6 +38,33 @@
 
 pub use rig_core::*;
 
+/// The bundled `reqwest` transport and its default-transport conveniences
+/// (`rig-reqwest`). With the default `reqwest` feature, [`providers`] is the
+/// aliased tree whose types default to [`rig_reqwest::ReqwestClient`], and
+/// [`prelude`] carries [`rig_reqwest::client::DefaultTransportClient`] /
+/// [`rig_reqwest::client::DefaultTransportBuilder`]. Without it, rig has no
+/// default transport: construct clients with `new_with(..)` / `.http_client(..)`
+/// and any `HttpClientExt` implementation.
+#[cfg(feature = "reqwest")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+pub use rig_reqwest;
+
+/// Provider clients and models, with the transport defaulted to the bundled
+/// `reqwest` one.
+#[cfg(feature = "reqwest")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+pub mod providers {
+    pub use rig_reqwest::providers::*;
+}
+
+/// Transport-agnostic HTTP contracts, plus the bundled reqwest transport type.
+pub mod http_client {
+    pub use rig_core::http_client::*;
+    #[cfg(feature = "reqwest")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+    pub use rig_reqwest::{ReqwestClient, from_reqwest};
+}
+
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};
@@ -72,6 +99,12 @@ pub mod client {
     // shadow — just one canonical completion-client trait plus the classic
     // construction extension.
     pub use rig_core::client::*;
+
+    // Default-transport construction (`Client::new(key)`, `from_env()`,
+    // `builder().…build()`) over the bundled reqwest transport.
+    #[cfg(feature = "reqwest")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+    pub use rig_reqwest::client::{DefaultTransportBuilder, DefaultTransportClient};
 }
 
 /// Low-level completion contracts plus classic prompting traits and errors.
@@ -116,6 +149,10 @@ pub mod prelude {
         TypedPrompt,
     };
     pub use rig_core::prelude::*;
+    // Default-transport construction traits: `Client::new(..)` / `from_env()` /
+    // `builder().build()` over the bundled reqwest transport.
+    #[cfg(feature = "reqwest")]
+    pub use rig_reqwest::prelude::*;
 }
 
 /// Low-level streaming values plus classic streaming traits.

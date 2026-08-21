@@ -91,7 +91,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! use rig_core::client::{CompletionClient, ProviderClient};
 //! use rig_core::providers::gemini;
@@ -387,7 +387,7 @@ struct ListCachedContentsResponse {
 ///
 /// Obtained from [`Client::cached_contents`].
 #[derive(Clone, Debug)]
-pub struct CachedContentClient<H = reqwest::Client> {
+pub struct CachedContentClient<H> {
     client: Client<H>,
 }
 

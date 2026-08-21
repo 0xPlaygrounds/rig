@@ -6,7 +6,7 @@ use anyhow::{Result, bail};
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
+use rig::providers::openai::Client;
 
 const INPUT_PROMPT: &str = "Sheep can self-medicate";
 const ROUTER_PREAMBLE: &str = "

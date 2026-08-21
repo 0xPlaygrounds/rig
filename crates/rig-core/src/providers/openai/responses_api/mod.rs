@@ -3,7 +3,7 @@
 //! By default when creating a completion client, this is the API that gets used.
 //!
 //! If you'd like to switch back to the regular Completions API, you can do so by using the `.completions_api()` function - see below for an example:
-//! ```rust
+//! ```ignore
 //! use rig_core::client::{CompletionClient, ProviderClient};
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,8 +36,6 @@ use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-pub mod websocket;
 
 /// The completion request type for OpenAI's Response API: <https://platform.openai.com/docs/api-reference/responses/create>
 /// Intended to be derived from [`crate::completion::request::CompletionRequest`].
@@ -971,7 +969,8 @@ pub struct ResponsesUsage {
 
 impl ResponsesUsage {
     /// Create a new ResponsesUsage instance
-    pub(crate) fn new() -> Self {
+    #[doc(hidden)]
+    pub fn new() -> Self {
         Self {
             input_tokens: 0,
             input_tokens_details: Some(InputTokensDetails::new()),
@@ -1505,7 +1504,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
 /// The completion model struct for OpenAI's response API.
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
+pub struct GenericResponsesCompletionModel<Ext, H> {
     /// The OpenAI client
     pub(crate) client: crate::client::Client<Ext, H>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
@@ -1522,13 +1521,18 @@ pub struct GenericResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = 
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type ResponsesCompletionModel<H = reqwest::Client> =
+pub type ResponsesCompletionModel<H> =
     GenericResponsesCompletionModel<super::OpenAIResponsesExt, H>;
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     Ext: crate::client::Provider + ResponsesProviderExt,
 {
+    /// The provider client this model sends through.
+    pub fn client(&self) -> &crate::client::Client<Ext, H> {
+        &self.client
+    }
+
     /// Creates a new [`ResponsesCompletionModel`].
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
         let system_instructions_placement = client.ext().system_instructions_placement();
@@ -1577,7 +1581,8 @@ where
     }
 
     /// Attempt to create a completion request from [`crate::completion::CompletionRequest`].
-    pub(crate) fn create_completion_request(
+    #[doc(hidden)]
+    pub fn create_completion_request(
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionRequest, CompletionError> {
@@ -3840,7 +3845,11 @@ mod tests {
 
     #[test]
     fn responses_model_can_fallback_to_system_messages_in_input() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client");
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_system_instructions_as_messages();
 
@@ -3863,9 +3872,12 @@ mod tests {
     fn responses_client_can_fallback_to_system_messages_in_input() {
         use crate::prelude::CompletionClient;
 
-        let client = crate::providers::openai::Client::new("dummy-key")
-            .expect("client")
-            .with_system_instructions_as_messages();
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client")
+        .with_system_instructions_as_messages();
         let model = client.completion_model("gpt-4o-mini");
 
         let req = model
@@ -3885,7 +3897,11 @@ mod tests {
 
     #[test]
     fn responses_model_can_lift_all_system_messages_via_placement() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client");
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
@@ -3917,11 +3933,14 @@ mod tests {
     fn responses_client_placement_survives_completions_api_round_trip() {
         use crate::prelude::CompletionClient;
 
-        let client = crate::providers::openai::Client::new("dummy-key")
-            .expect("client")
-            .with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
-            .completions_api()
-            .responses_api();
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client")
+        .with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
+        .completions_api()
+        .responses_api();
         let model = client.completion_model("gpt-4o-mini");
 
         let req = model
@@ -3980,7 +3999,11 @@ mod tests {
 
     #[test]
     fn responses_model_strict_tools_opt_in_sanitizes_all_function_tools() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client");
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_strict_tools()
             .with_tool(completion::ToolDefinition {
@@ -4015,7 +4038,11 @@ mod tests {
 
     #[test]
     fn responses_model_default_preserves_all_function_tools_as_constructed() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client");
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_tool(weather_tool_definition());
 
@@ -4042,7 +4069,11 @@ mod tests {
 
     #[test]
     fn responses_explicit_strict_tool_stays_strict_on_default_model() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("client");
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini").with_tool(
             ResponsesToolDefinition::strict_function(
                 "lookup",

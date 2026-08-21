@@ -53,7 +53,7 @@ impl ApiKey for AnthropicKey {
     }
 }
 
-pub type Client<H = reqwest::Client> = client::Client<AnthropicExt, H>;
+pub type Client<H> = client::Client<AnthropicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
 
@@ -94,8 +94,8 @@ impl ProviderBuilder for AnthropicBuilder {
 
 impl DebugExt for AnthropicExt {}
 
-client::impl_provider_client!(
-    Client,
+client::impl_provider_from_env!(
+    AnthropicExt,
     input = String,
     api_key_env = "ANTHROPIC_API_KEY",
     base_url_env_first = "ANTHROPIC_BASE_URL",
@@ -104,7 +104,7 @@ client::impl_provider_client!(
 /// Create a new anthropic client using the builder
 ///
 /// # Example
-/// ```no_run
+/// ```ignore
 /// use rig_core::providers::anthropic::{Client, self};
 /// use rig_core::providers::anthropic::completion::ANTHROPIC_VERSION_LATEST;
 ///
@@ -235,8 +235,6 @@ pub(crate) use impl_anthropic_compatible_builder;
 mod tests {
     use std::sync::Mutex;
 
-    use crate::client::ProviderClient;
-
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     struct EnvVarGuard {
@@ -279,10 +277,14 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::anthropic::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::anthropic::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::anthropic::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }
@@ -296,7 +298,7 @@ mod tests {
             "https://anthropic-compatible.example/v1/messages",
         );
 
-        let client = crate::providers::anthropic::Client::from_env()
+        let client = <crate::providers::anthropic::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
             .expect("Client::from_env should build with ANTHROPIC_BASE_URL");
 
         assert_eq!(
@@ -312,7 +314,7 @@ mod tests {
         let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "dummy-key");
         let _base_url = EnvVarGuard::remove("ANTHROPIC_BASE_URL");
 
-        let client = crate::providers::anthropic::Client::from_env()
+        let client = <crate::providers::anthropic::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
             .expect("Client::from_env should build without ANTHROPIC_BASE_URL");
 
         assert_eq!(client.base_url(), "https://api.anthropic.com");

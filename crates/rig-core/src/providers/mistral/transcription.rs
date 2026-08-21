@@ -98,7 +98,7 @@ impl NormalizeTranscriptionResponse for MistralTranscriptionResponse {
     }
 }
 
-pub type TranscriptionModel<T = reqwest::Client> =
+pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
         crate::providers::mistral::client::MistralExt,
         T,

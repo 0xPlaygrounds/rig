@@ -1,4 +1,5 @@
 use futures::FutureExt;
+use rig::client::DefaultTransportBuilder as _;
 use rig::providers::perplexity;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;

@@ -83,7 +83,7 @@ const THINKING_SCENARIO: &str =
 const TOOL_USE_SCENARIO: &str =
     "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream";
 
-type AnthropicModel = anthropic::completion::CompletionModel;
+type AnthropicModel = anthropic::CompletionModel;
 
 fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(32).build()

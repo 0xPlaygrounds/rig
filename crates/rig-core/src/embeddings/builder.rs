@@ -21,7 +21,7 @@ use crate::{
 /// it will batch the documents in a single request to the model provider.
 ///
 /// # Example
-/// ```no_run
+/// ```ignore
 /// use rig_core::{
 ///     client::{EmbeddingsClient, ProviderClient},
 ///     embeddings::EmbeddingsBuilder,

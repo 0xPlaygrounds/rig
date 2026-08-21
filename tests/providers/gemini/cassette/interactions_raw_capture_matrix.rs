@@ -57,7 +57,7 @@ const MODEL: &str = "gemini-3-flash-preview";
 
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
 
-type Model = InteractionsCompletionModel<reqwest::Client>;
+type Model = InteractionsCompletionModel<rig::http_client::ReqwestClient>;
 
 fn request(model: &Model) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()

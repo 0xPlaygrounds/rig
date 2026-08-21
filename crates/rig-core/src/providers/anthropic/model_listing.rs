@@ -30,7 +30,7 @@ impl From<ListModelEntry> for Model {
 ///
 /// Automatically paginates through all pages using cursor-based pagination.
 #[derive(Clone)]
-pub struct AnthropicModelLister<H = reqwest::Client> {
+pub struct AnthropicModelLister<H> {
     client: Client<H>,
 }
 

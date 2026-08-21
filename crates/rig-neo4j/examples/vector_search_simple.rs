@@ -6,10 +6,11 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
+use rig_reqwest::prelude::*;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{

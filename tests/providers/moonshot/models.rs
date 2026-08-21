@@ -5,7 +5,8 @@
 //! the OpenAI-style `{"object":"list","data":[…]}` envelope this decodes
 //! (rig#2079).
 
-use rig::client::{ModelListingClient, ProviderClient};
+use rig::client::DefaultTransportClient as _;
+use rig::client::ModelListingClient;
 use rig::providers::moonshot;
 
 #[tokio::test]

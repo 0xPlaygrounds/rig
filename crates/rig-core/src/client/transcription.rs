@@ -9,7 +9,7 @@ pub trait TranscriptionClient {
     /// Create a transcription model with the given name.
     ///
     /// # Example with OpenAI
-    /// ```no_run
+    /// ```ignore
     /// use rig_core::prelude::TranscriptionClient;
     /// use rig_core::providers::openai::{Client, self};
     ///

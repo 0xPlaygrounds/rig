@@ -115,7 +115,7 @@ impl NormalizeRerankResponse for JinaRerankResponse {
 
 /// A rerank model on a Jina-shaped `/rerank` endpoint.
 #[derive(Clone)]
-pub struct GenericRerankModel<Ext, H = reqwest::Client> {
+pub struct GenericRerankModel<Ext, H> {
     client: Client<Ext, H>,
     /// Identifier the request carries in its `model` field.
     pub model: String,

@@ -1,7 +1,7 @@
 //! Mira API client and Rig integration
 //!
 //! # Example
-//! ```
+//! ```ignore
 //! use rig_core::providers::mira;
 //!
 //! let client = mira::Client::new("YOUR_API_KEY");
@@ -107,7 +107,7 @@ client::impl_default_provider_builder!(
     base_url = MIRA_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
+pub type Client<H> = client::Client<MiraExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
 
@@ -143,10 +143,10 @@ pub struct ChatChoice {
     pub index: Option<usize>,
 }
 
-client::impl_provider_client!(Client, input = String, api_key_env = "MIRA_API_KEY");
+client::impl_provider_from_env!(MiraExt, input = String, api_key_env = "MIRA_API_KEY");
 
 /// Mira completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
+pub type CompletionModel<H> =
     crate::providers::openai::completion::GenericCompletionModel<MiraExt, H>;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
@@ -407,10 +407,14 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::mira::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::mira::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::mira::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

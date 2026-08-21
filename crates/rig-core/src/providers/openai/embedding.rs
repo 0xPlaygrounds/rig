@@ -206,7 +206,7 @@ pub struct EmbeddingData {
 
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
+pub struct GenericEmbeddingModel<Ext, H> {
     client: crate::client::Client<Ext, H>,
     pub model: String,
     pub encoding_format: Option<EncodingFormat>,
@@ -219,7 +219,7 @@ pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::C
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
+pub type EmbeddingModel<H> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
 /// Default dimensions for OpenAI's known embedding models (also used by
 /// Azure OpenAI, which deploys the same models).

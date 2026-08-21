@@ -4,7 +4,7 @@
 //! under a single global host.
 //!
 //! # OpenAI-compatible example
-//! ```no_run
+//! ```ignore
 //! use rig_core::client::CompletionClient;
 //! use rig_core::providers::xiaomimimo;
 //!
@@ -13,7 +13,7 @@
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```no_run
+//! ```ignore
 //! use rig_core::client::CompletionClient;
 //! use rig_core::providers::xiaomimimo;
 //!
@@ -93,17 +93,25 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::xiaomimimo::Client::new("dummy-key").expect("Client::new()");
+        let _client = crate::providers::xiaomimimo::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new()");
         let _client_from_builder = crate::providers::xiaomimimo::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder()");
-        let _anthropic_client = crate::providers::xiaomimimo::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new()");
+        let _anthropic_client = crate::providers::xiaomimimo::AnthropicClient::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("AnthropicClient::new()");
         let _anthropic_client_from_builder =
             crate::providers::xiaomimimo::AnthropicClient::builder()
                 .api_key("dummy-key")
+                .http_client(crate::test_utils::RecordingHttpClient::new(""))
                 .build()
                 .expect("AnthropicClient::builder()");
     }

@@ -3,12 +3,10 @@ use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{HeaderName, StatusCode};
 pub mod multipart;
-mod reqwest_transport;
 pub mod retry;
 pub mod sse;
 use crate::wasm_compat::*;
 pub use multipart::MultipartForm;
-pub use reqwest_transport::{ReqwestClient, from_reqwest};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -115,14 +113,21 @@ impl Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[cfg(not(target_family = "wasm"))]
-pub(crate) fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
-    Error::Instance(error.into())
-}
+impl Error {
+    /// Wrap a transport's native error as [`Error::Instance`]. Transports use
+    /// this for response-less failures (connect, decode, timeout); non-success
+    /// responses go through [`Error::non_success_with_details`] instead so the
+    /// status stays inspectable.
+    #[cfg(not(target_family = "wasm"))]
+    pub fn instance<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
+        Self::Instance(error.into())
+    }
 
-#[cfg(target_family = "wasm")]
-pub(crate) fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
-    Error::Instance(error.into())
+    /// Wrap a transport's native error as [`Error::Instance`].
+    #[cfg(target_family = "wasm")]
+    pub fn instance<E: std::error::Error + 'static>(error: E) -> Self {
+        Self::Instance(error.into())
+    }
 }
 
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;

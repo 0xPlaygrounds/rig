@@ -42,11 +42,11 @@ client::impl_default_provider_builder!(
     base_url = VOYAGEAI_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<VoyageExt, H>;
+pub type Client<H> = client::Client<VoyageExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<VoyageBuilder, VoyageApiKey, H>;
 
-client::impl_provider_client!(Client, input = String, api_key_env = "VOYAGE_API_KEY");
+client::impl_provider_from_env!(VoyageExt, input = String, api_key_env = "VOYAGE_API_KEY");
 
 impl<T> EmbeddingModel<T> {
     pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
@@ -407,7 +407,7 @@ pub struct RerankApiData {
 }
 
 #[derive(Clone)]
-pub struct RerankModel<T = reqwest::Client> {
+pub struct RerankModel<T> {
     client: Client<T>,
     pub model: String,
     pub top_k: Option<usize>,
@@ -555,10 +555,14 @@ where
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::voyageai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::voyageai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::voyageai::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

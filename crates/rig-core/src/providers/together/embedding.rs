@@ -31,7 +31,7 @@ impl OpenAIEmbeddingsCompatible for TogetherExt {
 }
 
 /// Together AI embedding model, driven by the shared OpenAI-compatible transport.
-pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<TogetherExt, H>;
+pub type EmbeddingModel<H> = GenericEmbeddingModel<TogetherExt, H>;
 
 #[cfg(test)]
 mod tests {

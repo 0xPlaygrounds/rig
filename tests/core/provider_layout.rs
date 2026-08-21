@@ -175,6 +175,15 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
         Exempt("embeddings-only provider — no completion model, so no streaming wire"),
     ),
     // --- workspace packages -------------------------------------------------
+    // The bundled reqwest transport crate: no wire of its own. The OpenAI
+    // Responses websocket suite it hosts is the out-of-binary
+    // `openai_responses_websocket` family in streaming_conformance_registry.rs.
+    (
+        "rig-reqwest",
+        Exempt(
+            "transport crate (reqwest HttpClientExt impl, default-transport traits, websocket); no provider wire of its own",
+        ),
+    ),
     ("rig-bedrock", Families(&["bedrock"])),
     ("rig-candle", Families(&["candle"])),
     ("rig-gemini-grpc", Families(&["gemini_grpc"])),

@@ -1,3 +1,4 @@
+use rig::client::DefaultTransportClient as _;
 use rig::{
     completion::TypedPrompt,
     prelude::*,

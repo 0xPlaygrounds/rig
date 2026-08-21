@@ -1,7 +1,7 @@
 //! Ollama API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, EmbeddingsClient, Nothing},
 //!     completion::CompletionModel,
@@ -38,7 +38,7 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::client::{self, ApiKey, DebugExt, ModelLister, Nothing, Provider, ProviderClient};
+use crate::client::{self, ApiKey, DebugExt, ModelLister, Nothing, Provider};
 use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
@@ -133,15 +133,19 @@ client::impl_default_provider_builder!(
     base_url = OLLAMA_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<OllamaExt, H>;
+pub type Client<H> = client::Client<OllamaExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OllamaBuilder, OllamaApiKey, H>;
 
-impl ProviderClient for Client {
+impl crate::client::ProviderFromEnv for OllamaExt {
     type Input = OllamaApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
+    fn from_env_with<H>(
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
         let api_base = crate::client::optional_env_var("OLLAMA_API_BASE_URL")?
             .unwrap_or_else(|| OLLAMA_API_BASE_URL.to_string());
 
@@ -149,15 +153,27 @@ impl ProviderClient for Client {
             .map(OllamaApiKey::from)
             .unwrap_or_default();
 
-        Self::builder()
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
             .api_key(api_key)
             .base_url(&api_base)
+            .http_client(http)
             .build()
             .map_err(Into::into)
     }
 
-    fn from_val(api_key: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(api_key).build().map_err(Into::into)
+    fn from_val_with<H>(
+        api_key: Self::Input,
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
+            .api_key(api_key)
+            .http_client(http)
+            .build()
+            .map_err(Into::into)
     }
 }
 
@@ -217,7 +233,7 @@ impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
 // ---------- Embedding Model ----------
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
+pub struct EmbeddingModel<T> {
     client: Client<T>,
     pub model: String,
     ndims: usize,
@@ -635,7 +651,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
+pub struct CompletionModel<T> {
     client: Client<T>,
     pub model: String,
 }
@@ -1078,7 +1094,7 @@ impl From<ListModelEntry> for Model {
 
 /// [`ModelLister`] implementation for the Ollama API (`GET /api/tags`).
 #[derive(Clone)]
-pub struct OllamaModelLister<H = reqwest::Client> {
+pub struct OllamaModelLister<H> {
     client: Client<H>,
 }
 
@@ -2693,9 +2709,14 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client = crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
+        let _client = crate::providers::ollama::Client::new_with(
+            Nothing,
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::ollama::Client::builder()
             .api_key(Nothing)
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

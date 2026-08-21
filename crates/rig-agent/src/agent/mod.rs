@@ -19,7 +19,8 @@
 //! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::{client::ProviderClient, providers::openai};
+//! use rig_core::providers::openai;
+//! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let openai = openai::Client::from_env()?;
@@ -55,8 +56,9 @@
 //! Passive RAG agent example
 //! ```no_run
 //! use rig_agent::{completion::Prompt, prelude::*};
+//! use rig_reqwest::prelude::*;
 //! use rig_core::{
-//!     client::{EmbeddingsClient, ProviderClient},
+//!     client::EmbeddingsClient,
 //!     embeddings::EmbeddingsBuilder,
 //!     providers::openai,
 //!     vector_store::in_memory_store::InMemoryVectorStore,

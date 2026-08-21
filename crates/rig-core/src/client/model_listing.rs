@@ -81,7 +81,6 @@ pub trait ModelListingClient {
 /// # Type Parameters
 ///
 /// - `H`: The HTTP backend, any [`crate::http_client::HttpClientExt`] implementation
-///   (defaults to `reqwest::Client`)
 ///
 /// # Example Implementation
 ///
@@ -117,7 +116,7 @@ pub trait ModelListingClient {
 ///
 /// `H` stays a parameter of this trait: it is the transport, not a provider
 /// leak, and the listing request is written against it.
-pub trait ModelLister<H = reqwest::Client>: WasmCompatSend + WasmCompatSync {
+pub trait ModelLister<H>: WasmCompatSend + WasmCompatSync {
     /// List all available models from the provider.
     ///
     /// This implementation should handle fetching all pages if the provider
@@ -161,7 +160,12 @@ mod tests {
         ];
         let lister = MockModelLister::new(models);
 
-        let result = lister.list_all().await.unwrap();
+        let result =
+            <MockModelLister as ModelLister<crate::test_utils::RecordingHttpClient>>::list_all(
+                &lister,
+            )
+            .await
+            .unwrap();
         assert_eq!(result.len(), 2);
     }
 }

@@ -1,7 +1,7 @@
 //! Perplexity API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::perplexity};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,18 +88,21 @@ client::impl_default_provider_builder!(
     base_url = PERPLEXITY_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
+pub type Client<H> = client::Client<PerplexityExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
 
 /// Perplexity completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<PerplexityExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<PerplexityExt, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;
 
-client::impl_provider_client!(Client, input = String, api_key_env = "PERPLEXITY_API_KEY");
+client::impl_provider_from_env!(
+    PerplexityExt,
+    input = String,
+    api_key_env = "PERPLEXITY_API_KEY"
+);
 
 // ================================================================
 // Perplexity Completion API
@@ -118,10 +121,14 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::perplexity::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::perplexity::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::perplexity::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

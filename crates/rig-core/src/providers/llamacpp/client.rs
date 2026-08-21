@@ -1,4 +1,4 @@
-use crate::client::{self, ApiKey, DebugExt, Nothing, Provider, ProviderClient, Transport};
+use crate::client::{self, ApiKey, DebugExt, Nothing, Provider, Transport};
 use crate::http_client;
 use crate::providers::internal::model_listing::{ListModelEntry, impl_model_lister};
 use crate::providers::openai;
@@ -267,29 +267,31 @@ client::impl_default_provider_builder!(
     base_url = LLAMACPP_API_BASE_URL,
 );
 
-pub type Client<H = reqwest::Client> = client::Client<LlamacppExt, H>;
+pub type Client<H> = client::Client<LlamacppExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<LlamacppBuilder, LlamacppApiKey, H>;
 
-impl Client {
+impl<H> Client<H>
+where
+    H: crate::http_client::HttpClientExt,
+{
     /// Create a client pointing at the given `llama-server` base URL
-    /// (e.g. `http://localhost:8080`), sending no credential.
+    /// (e.g. `http://localhost:8080`), sending no credential through `http`.
     ///
     /// For a server started with `--api-key`, use
     /// [`Client::builder`] and set [`ClientBuilder::api_key`].
-    pub fn from_url(base_url: &str) -> crate::client::ProviderClientResult<Self> {
-        Self::builder()
+    pub fn from_url_with(base_url: &str, http: H) -> crate::client::ProviderClientResult<Self> {
+        Client::<crate::markers::Missing>::builder()
             .api_key(LlamacppApiKey::default())
             .base_url(base_url)
+            .http_client(http)
             .build()
             .map_err(Into::into)
     }
 }
 
-impl ProviderClient for Client {
+impl crate::client::ProviderFromEnv for LlamacppExt {
     type Input = LlamacppApiKey;
-    type Error = crate::client::ProviderClientError;
-
     /// Read `LLAMACPP_API_BASE_URL` (optional, defaults to
     /// `http://localhost:8080`) and `LLAMACPP_API_KEY` (optional).
     ///
@@ -297,22 +299,40 @@ impl ProviderClient for Client {
     /// required it: a llama.cpp server on its default port is the overwhelming
     /// case, and demanding an environment variable to reach `localhost:8080`
     /// bought nothing.
-    fn from_env() -> Result<Self, Self::Error> {
+    fn from_env_with<H>(
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
         let api_base = crate::client::optional_env_var("LLAMACPP_API_BASE_URL")?
             .unwrap_or_else(|| LLAMACPP_API_BASE_URL.to_string());
         let api_key = crate::client::optional_env_var("LLAMACPP_API_KEY")?
             .map(LlamacppApiKey::from)
             .unwrap_or_default();
 
-        Self::builder()
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
             .api_key(api_key)
             .base_url(&api_base)
+            .http_client(http)
             .build()
             .map_err(Into::into)
     }
 
-    fn from_val(api_key: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(api_key).build().map_err(Into::into)
+    fn from_val_with<H>(
+        api_key: Self::Input,
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        crate::client::Client::<Self, crate::markers::Missing>::builder()
+            .api_key(api_key)
+            .http_client(http)
+            .build()
+            .map_err(Into::into)
     }
 }
 
@@ -334,17 +354,26 @@ mod tests {
 
     #[test]
     fn client_initialization() {
-        let _from_new = Client::new(LlamacppApiKey::default()).expect("Client::new() failed");
+        let _from_new = Client::new_with(
+            LlamacppApiKey::default(),
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _from_builder = Client::builder()
             .api_key(LlamacppApiKey::default())
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
-        let _from_url =
-            Client::from_url("http://localhost:8080").expect("Client::from_url() failed");
+        let _from_url = Client::from_url_with(
+            "http://localhost:8080",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::from_url_with() failed");
         // A bare `&str` key is accepted by the builder, which is the
         // `--api-key` path.
         let _keyed = Client::builder()
             .api_key("hunter2")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("keyed Client::builder() failed");
     }

@@ -92,8 +92,6 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires OPENROUTER_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    use rig::client::ProviderClient as _;
-
     let client = rig::providers::openrouter::Client::from_env().expect("OPENROUTER_API_KEY");
     let model = client.completion_model(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;

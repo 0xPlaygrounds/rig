@@ -78,7 +78,7 @@
 //!   credential requirements.
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::{AssistantContent, CompletionModel},

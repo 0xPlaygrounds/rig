@@ -170,7 +170,7 @@ async fn interactions_raw_try_into_matches_completion() {
     with_gemini_interactions_cassette(
         "raw_completion_parity_matrix/interactions_raw_try_into_matches_completion",
         |client| async move {
-            let model: InteractionsCompletionModel<reqwest::Client> =
+            let model: InteractionsCompletionModel<rig::http_client::ReqwestClient> =
                 client.completion_model(INTERACTIONS_MODEL);
             let request = || model.completion_request(PROMPT).temperature(0.0).build();
 

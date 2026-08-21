@@ -13,7 +13,7 @@ pub struct DoublewordExtBuilder;
 
 type DoublewordApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<DoublewordExt, H>;
+pub type Client<H> = client::Client<DoublewordExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<DoublewordExtBuilder, DoublewordApiKey, H>;
 
@@ -44,8 +44,8 @@ client::impl_default_provider_builder!(
     base_url = DOUBLEWORD_API_BASE_URL,
 );
 
-client::impl_provider_client!(
-    Client,
+client::impl_provider_from_env!(
+    DoublewordExt,
     input = String,
     api_key_env = "DOUBLEWORD_API_KEY",
     base_url_env_first = "DOUBLEWORD_BASE_URL",
@@ -55,10 +55,14 @@ client::impl_provider_client!(
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::doubleword::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::doubleword::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::doubleword::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

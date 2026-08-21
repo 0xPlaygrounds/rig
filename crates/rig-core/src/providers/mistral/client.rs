@@ -14,7 +14,7 @@ pub struct MistralBuilder;
 
 type MistralApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<MistralExt, H>;
+pub type Client<H> = client::Client<MistralExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<MistralBuilder, MistralApiKey, H>;
 
@@ -161,7 +161,7 @@ client::impl_default_provider_builder!(
     base_url = MISTRAL_API_BASE_URL,
 );
 
-client::impl_provider_client!(Client, input = String, api_key_env = "MISTRAL_API_KEY");
+client::impl_provider_from_env!(MistralExt, input = String, api_key_env = "MISTRAL_API_KEY");
 
 /// In-depth details on prompt tokens.
 ///
@@ -281,11 +281,17 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::mistral::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::mistral::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let builder: crate::providers::mistral::ClientBuilder =
             crate::providers::mistral::Client::builder().api_key("dummy-key");
-        let _client_from_builder = builder.build().expect("Client::builder() failed");
+        let _client_from_builder = builder
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
+            .build()
+            .expect("Client::builder() failed");
     }
 
     #[test]
