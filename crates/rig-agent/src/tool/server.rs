@@ -4,7 +4,7 @@ use std::{collections::BTreeSet, sync::Arc};
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
-use tokio::sync::RwLock;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 use crate::tool::ErasedTool;
@@ -270,10 +270,23 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
+    /// Shared registry state under the single poisoning policy: a panic
+    /// inside one of the short sync critical sections cannot leave the
+    /// registry logically torn, so a poisoned lock is recovered rather than
+    /// propagated.
+    fn state(&self) -> RwLockReadGuard<'_, ToolServerState> {
+        self.0.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Exclusive registry state; same poisoning policy as [`Self::state`].
+    fn state_mut(&self) -> RwLockWriteGuard<'_, ToolServerState> {
+        self.0.write().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Register through `add`, then drop any stale MCP managed-generation
     /// entry so the (re)registered name follows last-registration-wins.
-    async fn register(&self, add: impl FnOnce(&mut ToolSet) -> String) {
-        let mut state = self.0.write().await;
+    fn register(&self, add: impl FnOnce(&mut ToolSet) -> String) {
+        let mut state = self.state_mut();
         let _name = add(&mut state.toolset);
         #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         state.managed_generations.remove(&_name);
@@ -281,33 +294,31 @@ impl ToolServerHandle {
 
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
-    pub async fn add_tool<T>(&self, tool: T)
+    pub fn add_tool<T>(&self, tool: T)
     where
         T: Tool + 'static,
     {
-        self.register(|toolset| toolset.add_tool(tool)).await
+        self.register(|toolset| toolset.add_tool(tool))
     }
 
     /// Register a runtime-defined static tool.
-    pub async fn add_dynamic_tool(&self, tool: DynamicTool) {
+    pub fn add_dynamic_tool(&self, tool: DynamicTool) {
         self.register(|toolset| toolset.add_dynamic_tool(tool))
-            .await
     }
 
     /// Register a context-free dynamic tool through the classic adapter.
-    pub async fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
+    pub fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
         self.register(|toolset| toolset.add_portable_dynamic_tool(tool))
-            .await
     }
 
     /// Atomically install the initial tools owned by one MCP handler.
     /// Initial connection retains the registry's last-registration-wins policy.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub(crate) async fn add_managed_erased_tools(
+    pub(crate) fn add_managed_erased_tools(
         &self,
         tools: Vec<Arc<dyn ErasedTool>>,
     ) -> HashMap<String, ManagedToolToken> {
-        let mut state = self.0.write().await;
+        let mut state = self.state_mut();
         let mut managed = HashMap::with_capacity(tools.len());
 
         for tool in tools {
@@ -336,12 +347,12 @@ impl ToolServerHandle {
     /// tool list. Existing names are changed only when their expected generation
     /// remains current; newer local or peer-handler registrations win.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub(crate) async fn reconcile_managed_erased_tools(
+    pub(crate) fn reconcile_managed_erased_tools(
         &self,
         mut expected: HashMap<String, ManagedToolToken>,
         tools: Vec<Arc<dyn ErasedTool>>,
     ) -> HashMap<String, ManagedToolToken> {
-        let mut state = self.0.write().await;
+        let mut state = self.state_mut();
         let mut refreshed = HashMap::with_capacity(tools.len());
         let mut managed_order = Vec::with_capacity(tools.len());
         let mut seen = std::collections::HashSet::with_capacity(tools.len());
@@ -421,8 +432,8 @@ impl ToolServerHandle {
 
     /// Merge an entire toolset into the server in registration order.
     /// Existing names are replaced (last wins) and keep their position.
-    pub async fn append_toolset(&self, toolset: ToolSet) {
-        let mut state = self.0.write().await;
+    pub fn append_toolset(&self, toolset: ToolSet) {
+        let mut state = self.state_mut();
         #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         let names = toolset.tools.keys().cloned().collect::<Vec<_>>();
         state.toolset.add_tools(toolset);
@@ -433,8 +444,8 @@ impl ToolServerHandle {
     }
 
     /// Remove a tool by name.
-    pub async fn remove_tool(&self, tool_name: &str) {
-        let mut state = self.0.write().await;
+    pub fn remove_tool(&self, tool_name: &str) {
+        let mut state = self.state_mut();
         state.toolset.delete_tool(tool_name);
         #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         state.managed_generations.remove(tool_name);
@@ -460,16 +471,16 @@ impl ToolServerHandle {
 
     /// Run `f` against the registry state, first retiring disconnected MCP
     /// tools (which needs a write lock) when that feature is compiled in.
-    async fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
+    fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
         #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         {
-            let mut state = self.0.write().await;
+            let mut state = self.state_mut();
             state.retire_disconnected_tools();
             f(&state)
         }
         #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
         {
-            let state = self.0.read().await;
+            let state = self.state();
             f(&state)
         }
     }
@@ -481,9 +492,7 @@ impl ToolServerHandle {
         args: &str,
         context: &ToolContext,
     ) -> ToolDispatch {
-        let tool = self
-            .with_registry(|state| state.toolset.get(tool_name).cloned())
-            .await;
+        let tool = self.with_registry(|state| state.toolset.get(tool_name).cloned());
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
 
@@ -507,7 +516,7 @@ impl ToolServerHandle {
         prompt: Option<String>,
     ) -> Result<ToolRegistrySnapshot, ToolServerError> {
         let retrieval_indexes = {
-            let state = self.0.read().await;
+            let state = self.state();
             state.retrieval_indexes.clone()
         };
 
@@ -549,9 +558,7 @@ impl ToolServerHandle {
             Vec::new()
         };
 
-        let tools = self
-            .with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids))
-            .await;
+        let tools = self.with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids));
 
         Ok(ToolRegistrySnapshot::new(tools))
     }
@@ -728,7 +735,7 @@ mod tests {
 
         let handle = server.run();
 
-        handle.add_tool(MockAddTool).await;
+        handle.add_tool(MockAddTool);
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 1);
@@ -740,7 +747,7 @@ mod tests {
             .unwrap();
         assert_eq!(res, "7");
 
-        handle.remove_tool("add").await;
+        handle.remove_tool("add");
         let res = handle.get_tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
@@ -756,12 +763,10 @@ mod tests {
             .run();
         let snapshot = handle.snapshot_tool_defs(None).await.unwrap();
 
-        handle
-            .add_tool(ReplacementTool {
-                description: "second schema",
-                output: "second implementation",
-            })
-            .await;
+        handle.add_tool(ReplacementTool {
+            description: "second schema",
+            output: "second implementation",
+        });
 
         assert_eq!(snapshot.definitions()[0].description, "first schema");
         let dispatch = snapshot
@@ -786,8 +791,8 @@ mod tests {
     pub async fn test_toolserver_append_toolset_matches_add_tool() {
         let mut via_add_tool = {
             let handle = ToolServer::new().run();
-            handle.add_tool(MockAddTool).await;
-            handle.add_tool(MockSubtractTool).await;
+            handle.add_tool(MockAddTool);
+            handle.add_tool(MockSubtractTool);
             handle.get_tool_defs(None).await.unwrap()
         };
         via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
@@ -797,7 +802,7 @@ mod tests {
             let mut toolset = ToolSet::default();
             toolset.add_tool(MockAddTool);
             toolset.add_tool(MockSubtractTool);
-            handle.append_toolset(toolset).await;
+            handle.append_toolset(toolset);
             handle.get_tool_defs(None).await.unwrap()
         };
         via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
@@ -824,7 +829,7 @@ mod tests {
     #[tokio::test]
     pub async fn handle_add_tool_uses_canonical_static_name() {
         let handle = ToolServer::new().run();
-        handle.add_tool(NamedTool::new()).await;
+        handle.add_tool(NamedTool::new());
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
@@ -850,8 +855,8 @@ mod tests {
     #[tokio::test]
     pub async fn get_tool_defs_preserves_static_registration_order() {
         let handle = ToolServer::new().run();
-        handle.add_tool(MockSubtractTool).await;
-        handle.add_tool(MockAddTool).await;
+        handle.add_tool(MockSubtractTool);
+        handle.add_tool(MockAddTool);
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(
@@ -906,11 +911,11 @@ mod tests {
     #[tokio::test]
     pub async fn duplicate_registration_advertises_one_definition() {
         let handle = ToolServer::new().tool(MockAddTool).run();
-        handle.add_tool(MockAddTool).await;
+        handle.add_tool(MockAddTool);
 
         let mut toolset = ToolSet::default();
         toolset.add_tool(MockAddTool);
-        handle.append_toolset(toolset).await;
+        handle.append_toolset(toolset);
 
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(
@@ -1029,15 +1034,10 @@ mod tests {
         // Wait until we are strictly inside `call()`
         started.notified().await;
 
-        // Try to write to the state (add a tool) while the tool call is mid-execution.
-        // If the read lock is incorrectly held across tool execution, this will deadlock.
-        let add_result =
-            tokio::time::timeout(Duration::from_secs(1), handle.add_tool(MockAddTool)).await;
-
-        assert!(
-            add_result.is_ok(),
-            "Writing to ToolServer deadlocked! The read lock is being held across tool execution."
-        );
+        // Write to the state (add a tool) while the tool call is mid-execution.
+        // If the read lock were incorrectly held across tool execution, this
+        // sync call would block forever and the test harness would time out.
+        handle.add_tool(MockAddTool);
 
         // Allow the background tool to finish and clean up
         allow_finish.notify_one();

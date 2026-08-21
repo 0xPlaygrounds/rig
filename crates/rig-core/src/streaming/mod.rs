@@ -14,45 +14,58 @@ use crate::message::{
 };
 use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
+use futures::task::AtomicWaker;
 use futures::{Stream, StreamExt};
 pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
 use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
-use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
-use tokio::sync::watch;
+
+/// Shared pause flag plus the parked consumer's waker.
+///
+/// `AtomicWaker` holds a single waker, so this is correct only while one
+/// task polls the stream — which `poll_next` taking `Pin<&mut Self>`
+/// enforces. A design that shares one control across multiple streams must
+/// switch to a multi-waiter primitive instead.
+struct PauseState {
+    paused: AtomicBool,
+    waker: AtomicWaker,
+}
 
 /// Control for pausing and resuming a streaming response
+#[derive(Clone)]
 pub struct PauseControl {
-    pub(crate) paused_tx: watch::Sender<bool>,
-    pub(crate) paused_rx: watch::Receiver<bool>,
+    state: Arc<PauseState>,
 }
 
 impl PauseControl {
     /// Create a pause controller in the running state.
     pub fn new() -> Self {
-        let (paused_tx, paused_rx) = watch::channel(false);
         Self {
-            paused_tx,
-            paused_rx,
+            state: Arc::new(PauseState {
+                paused: AtomicBool::new(false),
+                waker: AtomicWaker::new(),
+            }),
         }
     }
 
     /// Pause polling of the public stream until [`PauseControl::resume`] is called.
     pub fn pause(&self) {
-        let _ = self.paused_tx.send(true);
+        self.state.paused.store(true, Ordering::Release);
     }
 
     /// Resume polling after a pause.
     pub fn resume(&self) {
-        let _ = self.paused_tx.send(false);
+        self.state.paused.store(false, Ordering::Release);
+        self.state.waker.wake();
     }
 
     /// Returns whether the stream is currently paused.
     pub fn is_paused(&self) -> bool {
-        *self.paused_rx.borrow()
+        self.state.paused.load(Ordering::Acquire)
     }
 }
 
@@ -888,16 +901,6 @@ where
     }))
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Future a paused [`StreamingCompletionResponse`] parks on until resumed, on
-/// native targets.
-type ResumeWait = Pin<Box<dyn Future<Output = ()> + Send>>;
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Future a paused [`StreamingCompletionResponse`] parks on until resumed, on
-/// wasm targets.
-type ResumeWait = Pin<Box<dyn Future<Output = ()>>>;
-
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
 /// `inner` stream.
@@ -923,9 +926,6 @@ pub struct StreamingCompletionResponse {
     /// stream — which `Stream` permits and combinators do — would otherwise
     /// replace a fully aggregated `choice` with empty text (#2258 H6).
     finished: bool,
-    /// Parked wait on the pause channel while [`PauseControl`] holds the
-    /// stream paused; `None` whenever the stream is running (#2258 H7).
-    resume_wait: Option<ResumeWait>,
     /// Rig-generated public correlators for reasoning parts, one per
     /// accumulation key: stable across a part's deltas, unique per run, and
     /// carrying nothing an accumulation key could leak.
@@ -966,7 +966,6 @@ impl StreamingCompletionResponse {
             // empty text block the model had emitted.
             choice: Vec::new(),
             finished: false,
-            resume_wait: None,
             reasoning_correlators: std::collections::HashMap::new(),
             finished_reasoning_correlators: std::collections::HashMap::new(),
             response: None,
@@ -1115,25 +1114,18 @@ impl Stream for StreamingCompletionResponse {
         }
 
         if stream.is_paused() {
-            // Park on the pause channel rather than re-waking immediately: a
-            // self-wake turns a pause into a busy poll loop that burns the
-            // executor for as long as the consumer stays paused (#2258 H7).
-            // `wait_for` evaluates the *current* value when it is first
-            // polled, so a resume racing this branch resolves it at once
-            // instead of parking forever on a notification already sent.
-            let wait = match stream.resume_wait.as_mut() {
-                Some(wait) => wait,
-                None => {
-                    let mut paused_rx = stream.pause_control.paused_rx.clone();
-                    stream.resume_wait.insert(Box::pin(async move {
-                        let _ = paused_rx.wait_for(|paused| !*paused).await;
-                    }))
-                }
-            };
-            if wait.as_mut().poll(cx).is_pending() {
+            // Park rather than re-waking immediately: a self-wake turns a
+            // pause into a busy poll loop that burns the executor for as long
+            // as the consumer stays paused (#2258 H7). Register-then-recheck
+            // is the `AtomicWaker` protocol that also closes the resume race:
+            // `resume` clears the flag before waking, and this poll registers
+            // its waker before re-reading the flag, so a resume racing this
+            // branch either sees the registered waker (and wakes the task) or
+            // is observed by the re-check below.
+            stream.pause_control.state.waker.register(cx.waker());
+            if stream.is_paused() {
                 return Poll::Pending;
             }
-            stream.resume_wait = None;
         }
 
         // Non-yielding events (`continue` arms: block bookkeeping, dropped
@@ -2111,7 +2103,7 @@ mod tests {
                 yield Ok(RawStreamingChoice::Message("hello".to_string()));
             }),
         );
-        let resume = stream.pause_control.paused_tx.clone();
+        let resume = stream.pause_control.clone();
         stream.pause();
 
         let mut task = tokio_test::task::spawn(stream);
@@ -2124,7 +2116,7 @@ mod tests {
             "a paused stream must idle, not re-wake itself"
         );
 
-        resume.send(false).expect("resume");
+        resume.resume();
         assert!(task.is_woken(), "resuming must wake the parked stream");
         assert!(matches!(
             task.poll_next(),

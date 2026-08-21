@@ -224,7 +224,7 @@ impl PlatformAuthenticator {
                 response.error.as_deref(),
                 response.error_description.as_deref(),
             )?;
-            tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+            crate::wasm_compat::sleep(std::time::Duration::from_secs(interval)).await;
         }
 
         Err(AuthError::Message(

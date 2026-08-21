@@ -702,10 +702,7 @@ impl McpClientHandler {
             tracing::debug!(refresh, "discarding stale initial MCP tool list");
             return;
         }
-        managed.registrations = self
-            .tool_server_handle
-            .add_managed_erased_tools(tools)
-            .await;
+        managed.registrations = self.tool_server_handle.add_managed_erased_tools(tools);
         managed.committed_refresh = refresh;
     }
 
@@ -718,8 +715,7 @@ impl McpClientHandler {
         let expected = managed.registrations.clone();
         managed.registrations = self
             .tool_server_handle
-            .reconcile_managed_erased_tools(expected, tools)
-            .await;
+            .reconcile_managed_erased_tools(expected, tools);
         managed.committed_refresh = refresh;
         true
     }
@@ -1791,9 +1787,7 @@ mod migrated_tests {
         let handle = ToolServer::new().run();
         let (client, server_task) = connect(server, handle.clone()).await;
 
-        handle
-            .add_dynamic_tool(make_dynamic_tool("alpha", "Local alpha"))
-            .await;
+        handle.add_dynamic_tool(make_dynamic_tool("alpha", "Local alpha"));
         server_control
             .set_tools(vec![make_tool("refresh_complete", "Refresh sentinel")])
             .await;

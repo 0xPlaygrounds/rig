@@ -115,6 +115,17 @@ where
     }
 }
 
+/// Sleep for `duration`.
+///
+/// A cross-platform (native + wasm) replacement for `tokio::time::sleep`, for
+/// the same reason as [`timeout`]: rig's `tokio` dependency is built without
+/// the `time` feature, and `tokio::time` does not function on wasm. Built on
+/// [`futures_timer::Delay`], whose backend selection (background timer thread
+/// natively, `setTimeout` on browser wasm) is documented on [`timeout`].
+pub async fn sleep(duration: std::time::Duration) {
+    futures_timer::Delay::new(duration).await;
+}
+
 #[macro_export]
 macro_rules! if_wasm {
     ($($tokens:tt)*) => {

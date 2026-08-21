@@ -179,7 +179,7 @@ impl PlatformAuthenticator {
 
             let status = response.status();
             if status.as_u16() == 403 || status.as_u16() == 404 {
-                tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+                crate::wasm_compat::sleep(std::time::Duration::from_secs(interval)).await;
                 continue;
             }
 

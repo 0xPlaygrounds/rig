@@ -504,7 +504,7 @@ impl AgentHook for RemoveToolBeforeExecutionHook {
         event: ToolCallEvent<'_>,
     ) -> ToolCallAction {
         if event.tool_name == self.tool_name {
-            self.handle.remove_tool(self.tool_name).await;
+            self.handle.remove_tool(self.tool_name);
         }
         ToolCallAction::run()
     }

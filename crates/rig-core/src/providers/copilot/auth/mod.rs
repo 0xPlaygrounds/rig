@@ -1,7 +1,7 @@
+use futures::lock::Mutex;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
 
@@ -35,15 +35,17 @@ impl fmt::Debug for AuthSource {
 #[derive(Clone)]
 pub struct Authenticator {
     source: AuthSource,
-    platform: platform::PlatformAuthenticator,
-    state_lock: Arc<Mutex<()>>,
+    /// The platform half owns the token/key caches (files plus their parsed
+    /// state); serializing access to it — rather than to a detached unit
+    /// lock — is what prevents concurrent refreshes from racing the cache.
+    platform: Arc<Mutex<platform::PlatformAuthenticator>>,
 }
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Authenticator")
             .field("source", &self.source)
-            .field("platform", &self.platform)
+            .field("platform", &"<serialized>")
             .finish()
     }
 }
@@ -66,13 +68,12 @@ impl Authenticator {
     ) -> Self {
         Self {
             source,
-            platform: platform::PlatformAuthenticator::new(
+            platform: Arc::new(Mutex::new(platform::PlatformAuthenticator::new(
                 access_token_file,
                 api_key_file,
                 device_code_handler,
                 allow_device_flow,
-            ),
-            state_lock: Arc::new(Mutex::new(())),
+            ))),
         }
     }
 
@@ -83,15 +84,13 @@ impl Authenticator {
                 api_base: None,
             }),
             AuthSource::GitHubAccessToken(access_token) => {
-                let _guard = self.state_lock.lock().await;
                 self.platform
+                    .lock()
+                    .await
                     .auth_context_with_github_access_token(access_token)
                     .await
             }
-            AuthSource::OAuth => {
-                let _guard = self.state_lock.lock().await;
-                self.platform.auth_context_oauth().await
-            }
+            AuthSource::OAuth => self.platform.lock().await.auth_context_oauth().await,
         }
     }
 }
