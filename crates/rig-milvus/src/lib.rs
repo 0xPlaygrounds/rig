@@ -188,16 +188,26 @@ impl MilvusVectorStore {
 
         let body = serde_json::to_string(&body)?;
 
-        let res = client.body(body).send().await?;
+        let res = client
+            .body(body)
+            .send()
+            .await
+            .map_err(rig_core::http_client::from_reqwest)?;
 
         if res.status() != StatusCode::OK {
             let status = res.status();
-            let text = res.text().await?;
+            let text = res
+                .text()
+                .await
+                .map_err(rig_core::http_client::from_reqwest)?;
 
             return Err(VectorStoreError::ExternalAPIError(status, text));
         }
 
-        Ok(res.json().await?)
+        Ok(res
+            .json()
+            .await
+            .map_err(rig_core::http_client::from_reqwest)?)
     }
 }
 
@@ -229,11 +239,18 @@ impl InsertDocuments for MilvusVectorStore {
 
         let body = serde_json::to_string(&insert_request)?;
 
-        let res = client.body(body).send().await?;
+        let res = client
+            .body(body)
+            .send()
+            .await
+            .map_err(rig_core::http_client::from_reqwest)?;
 
         if res.status() != StatusCode::OK {
             let status = res.status();
-            let text = res.text().await?;
+            let text = res
+                .text()
+                .await
+                .map_err(rig_core::http_client::from_reqwest)?;
 
             return Err(VectorStoreError::ExternalAPIError(status, text));
         }

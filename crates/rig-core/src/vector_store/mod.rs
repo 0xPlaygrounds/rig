@@ -10,8 +10,8 @@
 //!
 //! Types implementing [`VectorStoreIndex`] automatically implement [`PortableTool`].
 
+use http::StatusCode;
 pub use request::VectorSearchRequest;
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
@@ -58,8 +58,13 @@ pub enum VectorStoreError {
     MissingIdError(String),
 
     /// HTTP request failed for an external vector store service.
+    ///
+    /// Non-success responses arrive as the status-bearing
+    /// [`crate::http_client::Error`] variants, so callers can still inspect
+    /// the status code; response-less transport failures arrive as
+    /// [`crate::http_client::Error::Instance`].
     #[error("HTTP request error: {0}")]
-    ReqwestError(#[from] reqwest::Error),
+    Http(#[from] crate::http_client::Error),
 
     /// External vector store service returned an error response.
     #[error("External call to API returned an error. Error code: {0} Message: {1}")]

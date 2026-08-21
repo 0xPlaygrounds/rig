@@ -151,6 +151,21 @@ impl From<NoBody> for Body {
     }
 }
 
+/// Map a transport-level `reqwest::Error` onto the transport-agnostic
+/// [`Error`].
+///
+/// A failure that carries a status (an `error_for_status` rejection) keeps
+/// it as [`Error::InvalidStatusCode`] so provider retry and error-inspection
+/// paths can still read the code; a response-less failure (connect, decode,
+/// timeout) becomes [`Error::Instance`].
+// bevy-prep: moves to `rig-reqwest` in the transport-crate split.
+pub fn from_reqwest(err: reqwest::Error) -> Error {
+    match err.status() {
+        Some(status) => Error::InvalidStatusCode(status),
+        None => Error::Instance(Box::new(err)),
+    }
+}
+
 pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     let text = response.into_body().await?;
     Ok(String::from(String::from_utf8_lossy(&text)))
