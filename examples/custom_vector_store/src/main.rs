@@ -8,7 +8,7 @@ use redis::{
     vector_sets::{VAddOptions, VSimOptions, VectorAddInput, VectorSimilaritySearchInput},
 };
 use rig::{
-    client::{EmbeddingsClient, DefaultTransportClient},
+    client::{DefaultTransportClient, EmbeddingsClient},
     embeddings::EmbeddingModel,
     providers::openai,
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},

@@ -19,7 +19,7 @@
 //!
 //! # Base URL
 //!
-//! [`Client::from_url`] and the builder's `base_url` take the server root
+//! [`Client::from_url_with`] and the builder's `base_url` take the server root
 //! (`http://localhost:8080`); the `/v1` prefix is this provider's business, not
 //! the caller's. Passing a URL that already ends in `/v1` is also accepted and
 //! does not double up — see [`LlamacppExt`]'s
