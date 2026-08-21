@@ -1,4 +1,7 @@
 use super::{AuthContext, AuthError, DeviceCodeHandler};
+use crate::http_client::HttpClientExt;
+use crate::providers::internal::auth::{request, send_json};
+use http::Method;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -28,31 +31,34 @@ impl PlatformAuthenticator {
         Self
     }
 
-    pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
+    pub(super) async fn auth_context_oauth<H>(&self, _http: &H) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         Err(AuthError::Message(
             "GitHub Copilot OAuth is not supported on wasm targets".into(),
         ))
     }
 
-    pub(super) async fn auth_context_with_github_access_token(
+    pub(super) async fn auth_context_with_github_access_token<H>(
         &self,
+        http: &H,
         access_token: &str,
-    ) -> Result<AuthContext, AuthError> {
-        let response = reqwest::Client::new()
-            .get(GITHUB_API_KEY_URL)
-            .header(reqwest::header::ACCEPT, "application/json")
-            .header("editor-version", super::super::EDITOR_VERSION)
-            .header("editor-plugin-version", super::super::EDITOR_PLUGIN_VERSION)
-            .header("user-agent", super::super::USER_AGENT)
-            .header(
-                reqwest::header::AUTHORIZATION,
-                format!("token {access_token}"),
-            )
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<ApiKeyRecord>()
-            .await?;
+    ) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
+        let response: ApiKeyRecord = send_json(
+            http,
+            request(Method::GET, GITHUB_API_KEY_URL)
+                .header(http::header::ACCEPT, "application/json")
+                .header("editor-version", super::super::EDITOR_VERSION)
+                .header("editor-plugin-version", super::super::EDITOR_PLUGIN_VERSION)
+                .header("user-agent", super::super::USER_AGENT)
+                .header(http::header::AUTHORIZATION, format!("token {access_token}"))
+                .body(bytes::Bytes::new()),
+        )
+        .await?;
 
         let Some(api_key) = response.token.filter(|token| !token.trim().is_empty()) else {
             return Err(AuthError::Message(

@@ -368,7 +368,11 @@ where
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext().auth.auth_context().await.map(|_| ())
+        self.ext()
+            .auth
+            .auth_context(self.http_client())
+            .await
+            .map(|_| ())
     }
 }
 
@@ -677,7 +681,7 @@ pub struct CompletionModel<H = reqwest::Client> {
 impl<H> CompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
         Self {
@@ -723,7 +727,7 @@ where
         self.client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(self.client.http_client())
             .await
             .map_err(|err| CompletionError::ProviderError(err.to_string()))
     }
@@ -1054,7 +1058,7 @@ where
 impl<H> crate::client::ConstructCompletionModel<Client<H>> for CompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn construct(client: &Client<H>, model: String) -> Self {
         Self::new(client.clone(), model)
@@ -1064,7 +1068,7 @@ where
 impl<H> completion::CompletionModel for CompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn completion(
         &self,
@@ -1170,7 +1174,7 @@ where
 impl<H> EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Perform the request and return Copilot's native response instead of
     /// the normalized [`embeddings::EmbeddingResponse`]. Same request,
@@ -1207,7 +1211,7 @@ where
             .client
             .ext()
             .auth
-            .auth_context()
+            .auth_context(self.client.http_client())
             .await
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
@@ -1295,7 +1299,7 @@ where
 impl<H> embeddings::EmbeddingModel for EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn max_documents(&self) -> usize {
         1024
@@ -1333,7 +1337,7 @@ where
 impl<H> crate::client::ConstructEmbeddingModel<Client<H>> for EmbeddingModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
-    H: Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn construct(client: &Client<H>, model: String, ndims: Option<usize>) -> Self {
         let dims = ndims.unwrap_or(match model.as_str() {
@@ -1393,11 +1397,15 @@ where
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let auth = self.client.ext().auth.auth_context().await.map_err(|err| {
-            ModelListingError::AuthError {
+        let auth = self
+            .client
+            .ext()
+            .auth
+            .auth_context(self.client.http_client())
+            .await
+            .map_err(|err| ModelListingError::AuthError {
                 message: err.to_string(),
-            }
-        })?;
+            })?;
 
         let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
         let req = apply_headers(

@@ -492,7 +492,7 @@ pub(crate) use impl_provider_client;
 /// `new` is pinned to `H = reqwest::Client` so the call site infers without an explicit `H`
 /// annotation. Callers who want a different backend should go through [`Client::builder`] and
 /// chain [`ClientBuilder::http_client`] before [`ClientBuilder::build`].
-// bevy-prep: this reqwest-pinned construction surface (together with `builder()`'s inference
+// This reqwest-pinned construction surface (together with `builder()`'s inference
 // anchor and `ClientBuilder::build`'s default backend) relocates to the `rig` facade in the
 // transport-crate split.
 impl<Ext> Client<Ext, reqwest::Client>
@@ -522,6 +522,13 @@ impl<Ext, H> Client<Ext, H> {
     /// Returns the provider extension.
     pub fn ext(&self) -> &Ext {
         &self.ext
+    }
+
+    /// The HTTP transport this client sends through, for callers that must
+    /// talk to an absolute URL outside the provider's API base (OAuth/device
+    /// flows) with the same transport.
+    pub fn http_client(&self) -> &H {
+        &self.http_client
     }
 
     /// Reuse this client's base URL, headers, and HTTP backend with a different extension.

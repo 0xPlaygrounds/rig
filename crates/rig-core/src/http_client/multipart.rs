@@ -5,14 +5,14 @@ use std::borrow::Cow;
 /// A generic multipart form part that can represent text or binary data
 #[derive(Clone, Debug)]
 pub struct Part {
-    name: String,
-    content: PartContent,
-    filename: Option<String>,
-    content_type: Option<Mime>,
+    pub(crate) name: String,
+    pub(crate) content: PartContent,
+    pub(crate) filename: Option<String>,
+    pub(crate) content_type: Option<Mime>,
 }
 
 #[derive(Clone, Debug)]
-enum PartContent {
+pub(crate) enum PartContent {
     Text(String),
     Binary(Bytes),
 }
@@ -69,7 +69,7 @@ impl Part {
 /// Generic multipart form data container
 #[derive(Clone, Debug, Default)]
 pub struct MultipartForm {
-    parts: Vec<Part>,
+    pub(crate) parts: Vec<Part>,
     boundary: Option<String>,
 }
 
@@ -180,37 +180,6 @@ impl MultipartForm {
         body.extend_from_slice(b"--\r\n");
 
         (boundary.into_owned(), Bytes::from(body))
-    }
-}
-
-impl From<MultipartForm> for reqwest::multipart::Form {
-    fn from(value: MultipartForm) -> Self {
-        let mut form = reqwest::multipart::Form::new();
-
-        for part in value.parts {
-            match part.content {
-                PartContent::Text(text) => {
-                    form = form.text(part.name, text);
-                }
-                PartContent::Binary(bytes) => {
-                    let mut req_part = if let Some(content_type) = part.content_type.as_ref() {
-                        reqwest::multipart::Part::bytes(bytes.to_vec())
-                            .mime_str(content_type.as_ref())
-                            .unwrap_or_else(|_| reqwest::multipart::Part::bytes(bytes.to_vec()))
-                    } else {
-                        reqwest::multipart::Part::bytes(bytes.to_vec())
-                    };
-
-                    if let Some(filename) = part.filename {
-                        req_part = req_part.file_name(filename);
-                    }
-
-                    form = form.part(part.name, req_part);
-                }
-            }
-        }
-
-        form
     }
 }
 

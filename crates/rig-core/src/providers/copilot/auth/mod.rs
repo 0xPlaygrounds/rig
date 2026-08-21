@@ -1,3 +1,4 @@
+use crate::http_client::HttpClientExt;
 use futures::lock::Mutex;
 use std::fmt;
 use std::path::PathBuf;
@@ -77,7 +78,12 @@ impl Authenticator {
         }
     }
 
-    pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
+    /// Resolve the API key (and optional API base), refreshing or signing in
+    /// through `http` — the client's own transport — when the cache is stale.
+    pub async fn auth_context<H>(&self, http: &H) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         match &self.source {
             AuthSource::ApiKey(api_key) => Ok(AuthContext {
                 api_key: api_key.clone(),
@@ -87,10 +93,10 @@ impl Authenticator {
                 self.platform
                     .lock()
                     .await
-                    .auth_context_with_github_access_token(access_token)
+                    .auth_context_with_github_access_token(http, access_token)
                     .await
             }
-            AuthSource::OAuth => self.platform.lock().await.auth_context_oauth().await,
+            AuthSource::OAuth => self.platform.lock().await.auth_context_oauth(http).await,
         }
     }
 }

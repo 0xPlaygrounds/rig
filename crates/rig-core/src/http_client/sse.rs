@@ -362,7 +362,7 @@ fn check_response<T>(
     };
 
     let content_type =
-        if let Some(content_type) = response.headers().get(&reqwest::header::CONTENT_TYPE) {
+        if let Some(content_type) = response.headers().get(&http::header::CONTENT_TYPE) {
             content_type
         } else if allow_missing_content_type {
             return Ok(response);
