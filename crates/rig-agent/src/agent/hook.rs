@@ -2636,7 +2636,11 @@ mod migrated_tests {
         assert_eq!(context.agent_name(), Some("agent"));
         context.set_turn(3);
         assert_eq!(context.turn(), 3);
-        assert_eq!(context.run_id().to_string().len(), 32);
+        assert!(context.run_id().to_raw() > 0);
+        assert_eq!(
+            context.run_id().to_string().parse::<RunId>(),
+            Ok(context.run_id())
+        );
     }
 
     struct RewriteHook(Value);
