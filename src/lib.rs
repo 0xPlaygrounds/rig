@@ -145,8 +145,8 @@ pub mod prelude {
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
         Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
-        RunEvents, StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError,
-        ToolSet, TypedPrompt,
+        RunEvents, StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
+        TypedPrompt,
     };
     pub use rig_core::prelude::*;
     // Default-transport construction traits: `Client::new(..)` / `from_env()` /
