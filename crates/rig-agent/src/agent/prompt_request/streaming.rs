@@ -24,7 +24,7 @@ use crate::{
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
 };
-use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream, stream};
+use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream, stream::FusedStream};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing_futures::Instrument;
@@ -1626,7 +1626,7 @@ pub const RUN_EVENTS_CAPACITY: usize = 32;
 ///
 /// Dropping the feed does not cancel the run; it simply stops receiving events
 /// and the run future still resolves with the final
-/// [`PromptResponse`](super::PromptResponse).
+/// [`PromptResponse`].
 #[derive(Debug)]
 pub struct RunEvents {
     receiver: mpsc::Receiver<MultiTurnStreamItem>,
@@ -1674,7 +1674,7 @@ impl AgentRunner {
     ///
     /// The future performs the whole agent loop — the same engine as
     /// [`run`](AgentRunner::run) and [`stream`](AgentRunner::stream) — and
-    /// resolves with the final [`PromptResponse`](super::PromptResponse); the
+    /// resolves with the final [`PromptResponse`]; the
     /// feed receives each intermediate [`MultiTurnStreamItem`] as it happens.
     /// Spawn the future on any executor and poll the feed from wherever the
     /// events are consumed; neither side assumes a runtime.
@@ -7666,7 +7666,10 @@ mod migrated_tests {
         let model = streaming_tool_then_text_model();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-        let (run, events) = agent.stream_prompt("do tool work").max_turns(3).run_channel();
+        let (run, events) = agent
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
         let (response, items) = futures::join!(run, events.collect::<Vec<_>>());
 
         let response = response.expect("run succeeds");
@@ -7695,7 +7698,10 @@ mod migrated_tests {
         let recorded = model.clone();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-        let (run, events) = agent.stream_prompt("do tool work").max_turns(3).run_channel();
+        let (run, events) = agent
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
         drop(events);
 
         let response = run.await.expect("run succeeds without a consumer");
@@ -7710,7 +7716,10 @@ mod migrated_tests {
         let model = streaming_tool_then_text_model();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-        let (run, mut events) = agent.stream_prompt("do tool work").max_turns(3).run_channel();
+        let (run, mut events) = agent
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
         let run = tokio::spawn(run);
 
         let mut seen = Vec::new();
@@ -7736,11 +7745,18 @@ mod migrated_tests {
         let model = MockCompletionModel::text("unused");
         let agent = AgentBuilder::new(model).build();
 
-        let (run, events) = agent.stream_prompt("budget of zero").max_turns(0).run_channel();
+        let (run, events) = agent
+            .stream_prompt("budget of zero")
+            .max_turns(0)
+            .run_channel();
         let _: (_, RunEvents) = agent.run_channel("plain entry point type-checks");
         let (response, items) = futures::join!(run, events.collect::<Vec<_>>());
 
         assert!(response.is_err(), "zero-turn budget must fail the run");
-        assert!(!items.iter().any(|item| matches!(item, MultiTurnStreamItem::FinalResponse(_))));
+        assert!(
+            !items
+                .iter()
+                .any(|item| matches!(item, MultiTurnStreamItem::FinalResponse(_)))
+        );
     }
 }
