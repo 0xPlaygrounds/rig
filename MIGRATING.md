@@ -796,6 +796,29 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Synchronous, retrieval-free registry reads: `ToolServerHandle::{snapshot, static_tool_defs, toolset}`; `ToolRegistrySnapshot` is public; `ToolSet: Clone`
+
+Additive. The registry lock has been a `std::sync::RwLock` since 0.41 → next's
+runtime-agnostic work, and registration was already synchronous; the read side
+now is too. Pick the path by what you need:
+
+- **The registry as it stands** (no dynamic-tool selection): the new sync
+  `ToolServerHandle::snapshot() -> ToolRegistrySnapshot` and
+  `static_tool_defs() -> Vec<ToolDefinition>` — plain `fn`s, no executor, safe
+  to call from a frame/tick loop or a plain `#[test]`. Callers of
+  `get_tool_defs(None)` can switch to `static_tool_defs()` and drop the
+  `.await` (the async form stays and returns the same definitions).
+- **Dynamic-tool selection for a prompt** (vector-store retrieval): the async
+  `get_tool_defs(Some(prompt))`, unchanged.
+
+`ToolRegistrySnapshot` — the per-turn pinned view the agent loop already uses —
+is now public (`rig_agent::tool::server::ToolRegistrySnapshot`): `definitions()`,
+`names()`, `len()`/`is_empty()`, and `execute(name, args, &mut ToolContext)`,
+which runs the implementation pinned at snapshot time regardless of later
+registry changes. `ToolServerHandle::toolset() -> ToolSet` forks the registry,
+and `ToolSet` now derives `Clone` (shallow: shared `Arc` implementations, copied
+names/order/exposure). All read paths retire disconnected remote tools first.
+
 ### `AgentRunner::run_channel` / `Agent::run_channel`: a future plus an event feed
 
 Additive. Beside `run()` (fold to a `PromptResponse`) and `stream()` (a
