@@ -1347,3 +1347,10 @@ mod migrated_tests {
         server_task.abort();
     }
 }
+
+// Compile-time thread-safety contract: rmcp's `ClientHandler` requires it, and
+// rig-agent's `ToolServerHandle` is the sink the docs recommend.
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<crate::McpClientHandler<rig_agent::tool::server::ToolServerHandle>>();
+};

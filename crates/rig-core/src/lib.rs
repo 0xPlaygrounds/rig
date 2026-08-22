@@ -200,3 +200,19 @@ pub use rig_derive::Embed;
 pub use rig_derive::{rig_tool, rig_tool as tool_macro};
 
 pub mod telemetry;
+
+// Compile-time thread-safety contract. These types cross threads in host
+// runtimes (worker pools, ECS resources); on native they must stay
+// `Send + Sync + 'static`, and losing it is an API break that should fail the
+// build here rather than in a downstream crate.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    fn assert_send_static<T: Send + 'static>() {}
+    assert_send_sync_static::<tool::PortableDynamicTool>();
+    assert_send_sync_static::<tool::ManagedToolToken>();
+    assert_send_sync_static::<streaming::StreamedAssistantContent>();
+    // A live stream is owned by one poller: `Send` so it can move to a worker,
+    // not `Sync`.
+    assert_send_static::<streaming::StreamingCompletionResponse>();
+};
