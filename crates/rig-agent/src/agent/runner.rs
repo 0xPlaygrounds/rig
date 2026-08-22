@@ -67,6 +67,7 @@ use crate::{
 };
 
 use super::UNKNOWN_AGENT_NAME;
+use crate::agent::run_id::RunId;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum UnhandledInvalidToolCallPolicy {
@@ -167,6 +168,8 @@ pub struct AgentRunner {
     pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
+    /// Caller-chosen run identity; minted at run start when `None`.
+    pub(crate) run_id: Option<RunId>,
 }
 
 /// The `(history_override, memory_handle)` pair resolved for one run by
@@ -193,7 +196,32 @@ impl AgentRunner {
             unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
             concurrency: 1,
             error_usage: None,
+            run_id: None,
         }
+    }
+
+    /// Choose the [`RunId`] this run reports — on every hook's
+    /// [`HookContext::run_id`](crate::agent::HookContext::run_id) and on every
+    /// [`RunEvent`](crate::agent::RunEvent) of a
+    /// [`run_channel`](Self::run_channel) feed. A host that already has an
+    /// identity for the work (an entity, a job) passes it here so the run's
+    /// events carry that identity from the first one; without this call the
+    /// run mints a fresh id when it starts.
+    pub fn with_run_id(mut self, run_id: RunId) -> Self {
+        self.run_id = Some(run_id);
+        self
+    }
+
+    /// The run id chosen with [`with_run_id`](Self::with_run_id), if any.
+    /// `None` means the run will mint one when it starts.
+    pub fn run_id(&self) -> Option<RunId> {
+        self.run_id
+    }
+
+    /// Resolve the run id in place: the chosen one, or a freshly minted one
+    /// that is then pinned so every later reader agrees.
+    pub(crate) fn resolve_run_id(&mut self) -> RunId {
+        *self.run_id.get_or_insert_with(RunId::new)
     }
 
     /// Append a hook to the stack (on top of any the agent already carries).
@@ -1602,6 +1630,7 @@ mod tests {
 mod migrated_tests {
     use std::collections::HashMap;
 
+    use crate::agent::RunId;
     use crate::agent::{
         CompletionCallAction, CompletionCallEvent, HookStack, InvalidToolCallAction,
         InvalidToolCallContext, ModelTurnAction, ModelTurnFinished, ObservationAction,
@@ -11273,8 +11302,8 @@ mod migrated_tests {
     #[tokio::test]
     async fn retry_scratchpad_state_is_isolated_by_run_and_hook_instance() {
         let shared_hook = BoundedResponseRetry::new("rejected", 1, TestRetryMode::Repeat);
-        let first_ctx = HookContext::new(false, None);
-        let second_ctx = HookContext::new(false, None);
+        let first_ctx = HookContext::new(false, None, RunId::new());
+        let second_ctx = HookContext::new(false, None, RunId::new());
         let content = vec![AssistantContent::text("rejected")];
         let first_event = ModelTurnFinished {
             turn: 1,
@@ -11301,7 +11330,7 @@ mod migrated_tests {
             ModelTurnAction::Stop(_)
         ));
 
-        let same_run_ctx = HookContext::new(false, None);
+        let same_run_ctx = HookContext::new(false, None, RunId::new());
         let first_hook = BoundedResponseRetry::new("first", 1, TestRetryMode::Repeat);
         let second_hook = BoundedResponseRetry::new("second", 1, TestRetryMode::Repeat);
         let first_content = vec![AssistantContent::text("first")];
@@ -11368,7 +11397,7 @@ mod migrated_tests {
             max_tokens: None,
             raw: &serde_json::Value::Null,
         };
-        let ctx = HookContext::new(false, None);
+        let ctx = HookContext::new(false, None, RunId::new());
 
         let first_calls = Arc::new(AtomicU32::new(0));
         let retry_calls = Arc::new(AtomicU32::new(0));

@@ -211,26 +211,7 @@ use crate::{
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
-/// Opaque process-scoped identifier for one agent run.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RunId(String);
-
-impl RunId {
-    pub(crate) fn generate() -> Self {
-        Self(rig_core::id::generate())
-    }
-
-    /// Identifier as text.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for RunId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+pub use crate::agent::run_id::RunId;
 
 /// Run-scoped typed storage shared by hooks.
 #[derive(Clone, Default)]
@@ -390,9 +371,9 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
+    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>, run_id: RunId) -> Self {
         Self {
-            run_id: RunId::generate(),
+            run_id,
             turn: AtomicUsize::new(0),
             is_streaming,
             agent_name,
@@ -405,9 +386,10 @@ impl HookContext {
         self.turn.store(turn, Ordering::Relaxed);
     }
 
-    /// Stable run identifier.
-    pub fn run_id(&self) -> &RunId {
-        &self.run_id
+    /// Stable run identifier — the same one every
+    /// [`RunEvent`](crate::agent::RunEvent) of this run carries.
+    pub fn run_id(&self) -> RunId {
+        self.run_id
     }
 
     /// Current one-based model-call index.
@@ -1737,7 +1719,7 @@ mod tests {
         let prompt = Message::user("hi");
         let action = outer
             .on_completion_call(
-                &HookContext::new(false, None),
+                &HookContext::new(false, None, RunId::new()),
                 CompletionCall {
                     prompt: &prompt,
                     history: &[],
@@ -1781,7 +1763,7 @@ mod tests {
 
         let action = stack
             .on_tool_call(
-                &HookContext::new(false, None),
+                &HookContext::new(false, None, RunId::new()),
                 ToolCall {
                     tool_name: "tool",
                     tool_call_id: Some("provider-id"),
@@ -1839,7 +1821,7 @@ mod tests {
 
         let action = stack
             .on_tool_result(
-                &HookContext::new(false, None),
+                &HookContext::new(false, None, RunId::new()),
                 ToolResultEvent {
                     tool_name: "tool",
                     tool_call_id: None,
@@ -1910,7 +1892,7 @@ mod tests {
         let context = ToolContext::new();
         let action = stack
             .on_tool_result(
-                &HookContext::new(false, None),
+                &HookContext::new(false, None, RunId::new()),
                 ToolResultEvent {
                     tool_name: "tool",
                     tool_call_id: None,
@@ -1939,7 +1921,7 @@ mod migrated_tests {
     use serde_json::{Value, json};
 
     fn ctx() -> HookContext {
-        HookContext::new(false, Some("test-agent".to_string()))
+        HookContext::new(false, Some("test-agent".to_string()), RunId::new())
     }
 
     fn model(label: &str) -> ModelHandle {
@@ -2649,12 +2631,12 @@ mod migrated_tests {
 
     #[test]
     fn hook_context_reports_identity_and_turn() {
-        let context = HookContext::new(true, Some("agent".into()));
+        let context = HookContext::new(true, Some("agent".into()), RunId::new());
         assert!(context.is_streaming());
         assert_eq!(context.agent_name(), Some("agent"));
         context.set_turn(3);
         assert_eq!(context.turn(), 3);
-        assert!(!context.run_id().as_str().is_empty());
+        assert_eq!(context.run_id().to_string().len(), 32);
     }
 
     struct RewriteHook(Value);

@@ -107,6 +107,7 @@ pub mod hook;
 pub mod model;
 pub(crate) mod prompt_request;
 pub mod run;
+mod run_id;
 pub mod runner;
 mod tool;
 
@@ -121,13 +122,14 @@ pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
     HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
     ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
-    RetryRequest, RunId, Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
+    RetryRequest, Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
     ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
 pub use model::ModelHandle;
 pub use prompt_request::streaming::{
-    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingPromptRequest,
-    StreamingResult, stream_to_stdout,
+    MultiTurnStreamItem, RUN_ABORTED_REASON, RUN_EVENTS_CAPACITY, RunChannelConfig, RunEvent,
+    RunEvents, RunFuture, RunHandle, StreamingError, StreamingPromptRequest, StreamingResult,
+    TryNext, stream_to_stdout,
 };
 pub use prompt_request::{
     CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, ResponseIdentity,
@@ -135,4 +137,5 @@ pub use prompt_request::{
 };
 pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
+pub use run_id::{ParseRunIdError, RunId};
 pub use runner::AgentRunner;

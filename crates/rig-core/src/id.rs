@@ -22,6 +22,12 @@ pub fn generate() -> String {
     generate_with_len(DEFAULT_LEN)
 }
 
+/// 128 non-cryptographic random bits, for compact numeric identifiers (a run
+/// id that has to be `Copy` and hashable rather than a string).
+pub fn random_u128() -> u128 {
+    (u128::from(fastrand::u64(..)) << 64) | u128::from(fastrand::u64(..))
+}
+
 /// Generate a `len`-character, URL-safe, non-cryptographic identifier.
 pub fn generate_with_len(len: usize) -> String {
     std::iter::repeat_with(|| {
@@ -54,5 +60,15 @@ mod tests {
     #[test]
     fn custom_length() {
         assert_eq!(generate_with_len(8).len(), 8);
+    }
+
+    #[test]
+    fn random_u128_is_not_degenerate() {
+        let a = random_u128();
+        let b = random_u128();
+        assert_ne!(a, b);
+        // Both halves are populated: a 64-bit RNG used once would leave the
+        // high word zero.
+        assert!((0..64).any(|_| random_u128() >> 64 != 0));
     }
 }

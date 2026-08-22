@@ -269,6 +269,13 @@ where
         }
     }
 
+    /// Choose the [`RunId`](crate::agent::RunId) this run reports. See
+    /// [`AgentRunner::with_run_id`](crate::agent::AgentRunner::with_run_id).
+    pub fn with_run_id(mut self, run_id: crate::agent::RunId) -> Self {
+        self.runner = self.runner.with_run_id(run_id);
+        self
+    }
+
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call. Exceeding the budget returns
