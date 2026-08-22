@@ -178,6 +178,14 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     // The bundled reqwest transport crate: no wire of its own. The OpenAI
     // Responses websocket suite it hosts is the out-of-binary
     // `openai_responses_websocket` family in streaming_conformance_registry.rs.
+    // MCP tool support (rmcp SDK): a tool-source crate, not a provider; no
+    // wire family. Its in-process rmcp suites run in `cargo test -p rig-rmcp`.
+    (
+        "rig-rmcp",
+        Exempt(
+            "MCP tool adapter crate (rmcp client handler, McpTool); no provider wire of its own",
+        ),
+    ),
     (
         "rig-reqwest",
         Exempt(

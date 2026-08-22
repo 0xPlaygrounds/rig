@@ -123,35 +123,12 @@ use rig_core::{
 
 use crate::completion::{self, ToolDefinition};
 
-pub(crate) mod extensions;
-
-// MCP is native-only. rmcp's `ClientHandler` is declared
-// `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
-// the future bounds (`MaybeSendFuture`) but not the handler itself — and this
-// crate's handler owns the tool registry, whose `Arc<dyn ErasedTool>` is
-// deliberately neither `Send` nor `Sync` on wasm because `rig-core`'s
-// `WasmCompatSend`/`WasmCompatSync` are no-op markers there. The two
-// maybe-`Send` abstractions cannot be reconciled from this side.
-//
-// Raise that as one sentence instead of a page of `dyn ErasedTool` trait errors.
-// Upstream fix would be making rmcp's handler bound conditional on `local`, as
-// its future bound already is.
-#[cfg(all(feature = "rmcp", target_family = "wasm"))]
-compile_error!(
-    "the `rmcp` feature is native-only: rmcp's `ClientHandler` requires \
-     `Send + Sync` unconditionally (its `local` feature relaxes only futures), \
-     which rig's wasm tool registry cannot satisfy. Disable `rmcp` for wasm targets."
-);
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-#[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-pub mod rmcp;
 pub mod server;
 
-pub use extensions::{MissingToolContext, ToolContext};
 pub use rig_core::tool::{
     IntoToolOutput, PortableDynamicTool, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
 };
+pub use rig_core::tool::{MissingToolContext, ToolContext};
 
 /// A typed LLM tool.
 ///
@@ -304,7 +281,7 @@ where
 }
 
 /// Crate-private, object-safe dispatch boundary.
-pub(crate) trait ErasedTool: WasmCompatSend + WasmCompatSync {
+pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
     fn name(&self) -> String;
     fn description(&self) -> String;
     fn parameters(&self) -> serde_json::Value;
@@ -312,7 +289,6 @@ pub(crate) trait ErasedTool: WasmCompatSend + WasmCompatSync {
     ///
     /// In-process tools are always live. Remote adapters override this so the
     /// registry can retire disconnected owners without probing by execution.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     fn is_live(&self) -> bool {
         true
     }
@@ -388,6 +364,8 @@ pub struct DynamicTool {
     description: String,
     parameters: serde_json::Value,
     callback: Arc<dyn DynamicCallback>,
+    /// Liveness source inherited from a portable tool, if any.
+    liveness: Option<PortableDynamicTool>,
 }
 
 impl DynamicTool {
@@ -412,24 +390,30 @@ impl DynamicTool {
             description: description.into(),
             parameters,
             callback: Arc::new(callback),
+            liveness: None,
         }
     }
 
-    /// Adapt a context-free dynamic tool for the classic contextual registry.
+    /// Adapt a portable dynamic tool for the classic contextual registry.
     ///
-    /// The portable callback receives the same parsed JSON value and its
+    /// The portable callback receives the same parsed JSON value **and the
+    /// dispatch's [`ToolContext`]** (so context-aware portable tools see the
+    /// agent's per-call values and their result inserts reach hooks); its
     /// [`ToolOutput`] or [`ToolExecutionError`] is forwarded unchanged.
     pub fn from_portable(tool: PortableDynamicTool) -> Self {
         let definition = tool.definition();
-        Self::new(
+        let probe = tool.clone();
+        let mut adapted = Self::new(
             definition.name,
             definition.description,
             definition.parameters,
-            move |_context, arguments| {
+            move |context, arguments| {
                 let tool = tool.clone();
-                Box::pin(async move { tool.execute(arguments).await })
+                Box::pin(async move { tool.execute_with(context, arguments).await })
             },
-        )
+        );
+        adapted.liveness = Some(probe);
+        adapted
     }
 
     /// Runtime name.
@@ -456,6 +440,12 @@ impl From<PortableDynamicTool> for DynamicTool {
 impl ErasedTool for DynamicTool {
     fn name(&self) -> String {
         self.name.clone()
+    }
+
+    fn is_live(&self) -> bool {
+        self.liveness
+            .as_ref()
+            .is_none_or(PortableDynamicTool::is_live)
     }
 
     fn description(&self) -> String {
@@ -538,7 +528,6 @@ impl RegisteredTool {
         definition_with_name(name, self.erased())
     }
 
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     pub(crate) fn is_live(&self) -> bool {
         self.erased().is_live()
     }
@@ -671,8 +660,9 @@ impl ToolSet {
         self.insert(RegisteredTool::Embedding(Arc::new(tool)))
     }
 
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub(crate) fn add_erased(&mut self, tool: Arc<dyn ErasedTool>) -> String {
+    /// Register a pre-erased tool. The extension point for adapters that
+    /// implement [`ErasedTool`] directly (remote tool protocols such as MCP).
+    pub fn add_erased(&mut self, tool: Arc<dyn ErasedTool>) -> String {
         self.insert(RegisteredTool::Static(tool))
     }
 

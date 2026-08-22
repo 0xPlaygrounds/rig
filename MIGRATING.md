@@ -796,6 +796,49 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### MCP tool support moves from rig-agent's `rmcp` feature to the `rig-rmcp` crate
+
+rig-agent no longer has an `rmcp` feature or an rmcp dependency; MCP lives in
+the new **`rig-rmcp`** crate, which depends on **rig-core only**. The
+dependency graph is `rig-core ← rig-rmcp` and `rig-core ← rig-agent`, with the
+`rig` facade gluing them behind its `rmcp` feature. Through the facade,
+`rig::tool::rmcp::*` (`McpClientHandler`, `McpTool`, `Meta`, …) keeps resolving
+and `McpClientHandler::new(client_info, tool_server_handle.clone())` works
+unchanged. What changes:
+
+- **The registry contract is a rig-core abstraction.** `rig_core::tool::ManagedToolSink`
+  (`add_managed_tools` / `reconcile_managed_tools`, generation-tokened,
+  last-registration-wins, retire-on-disconnect) with `ManagedToolToken`; rig-agent's
+  `ToolServerHandle` implements it, and `McpClientHandler<S: ManagedToolSink>` refreshes
+  into any sink. `PortableDynamicTool` gained `with_liveness` / `is_live` so a sink can
+  retire tools whose remote backing disconnected; rig-agent's `DynamicTool::from_portable`
+  forwards it.
+- **MCP tools are rig-core portable tools.** `McpTool` converts `From<McpTool> for
+  rig_core::tool::PortableDynamicTool` (`rig_rmcp::tools_from_server` for a whole list).
+  Register them wherever portable tools go: `builder.portable_dynamic_tool(tool.into())`,
+  `ToolServer::new().portable_dynamic_tool(..)`, `ToolServerHandle::add_portable_dynamic_tool`.
+  The `rmcp_tool` / `rmcp_tools` / `…_with_timeout` builder methods on `AgentBuilder` and
+  `ToolServer` are **removed** — no replacement method; use the portable registration above
+  (nothing is lost: the portable adapter is context-aware).
+- **`ToolContext` lives in rig-core, and portable dynamic tools can receive it.**
+  `rig_core::tool::{ToolContext, MissingToolContext}` (module `rig_core::tool::context`,
+  which also exposes the `TypeMap` primitive and the dispatch helpers `for_dispatch` /
+  `accept_dispatch_result` / `clear_dispatch_result` any runtime needs); `rig_agent::tool::ToolContext`
+  and `rig::tool::ToolContext` are re-exports, so existing paths and `#[rig(context)]` keep
+  working. `PortableDynamicTool::new` stays context-free; `new_with_context` /
+  `execute_with` give a dynamic tool the per-call context, and rig-agent's
+  `DynamicTool::from_portable` now threads the agent's context through instead of
+  discarding it. MCP `_meta` passthrough (an `rmcp::model::Meta` placed in the context)
+  and result preservation (`structuredContent`, response `Meta`, raw `CallToolResult`
+  on `context.result::<T>()`) therefore work through the portable path exactly as before.
+- **Direct rig-agent users** depend on `rig-rmcp`; runtimes other than rig-agent implement
+  `ManagedToolSink` for their registry to get live refresh.
+- rig-agent's registry support for externally managed tools is public and ungated:
+  `ErasedTool` (and `is_live`), `ToolSet::add_erased`, `ToolServer::erased_tool`,
+  `AgentBuilder::erased_tool`, `ToolServerHandle::{add_managed_erased_tools,
+  reconcile_managed_erased_tools}`, `Agent::tool_server_handle()`. rig-agent's `tokio` is
+  optional, enabled only by `discord-bot` (and `test-utils`).
+
 ### rig-core has no default transport; the bundled reqwest transport is the new `rig-reqwest` crate
 
 `rig-core` no longer depends on `reqwest` or `tokio` and no longer names a

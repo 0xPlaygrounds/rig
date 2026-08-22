@@ -36,15 +36,6 @@ tokio = { workspace = true, features = ["rt", "sync"], optional = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
-# MCP is native-only. rmcp's `ClientHandler` requires `Send + Sync`
-# unconditionally (its `local` feature relaxes only the future bounds), which
-# rig's tool registry cannot satisfy on wasm, where `WasmCompatSend`/
-# `WasmCompatSync` are no-op markers. Scoping the dependency out of the wasm
-# graph keeps the wasm dependency tree honest; `tool/mod.rs` raises a targeted
-# `compile_error!` if the feature is requested there anyway.
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-rmcp = { workspace = true, optional = true, features = ["client"] }
-
 [dev-dependencies]
 rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }
@@ -62,4 +53,3 @@ image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
 test-utils = ["rig-core/test-utils", "dep:tokio"]
 discord-bot = ["dep:serenity", "dep:tokio"]
-rmcp = ["dep:rmcp", "dep:tokio"]

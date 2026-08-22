@@ -1,11 +1,18 @@
-//! Typed context passed through tool execution.
+//! Typed per-call context passed through tool execution.
+//!
+//! A runtime hands every tool call a [`ToolContext`]: a bag of typed inbound
+//! values (auth tokens, session ids, request metadata the model never sees)
+//! plus a typed result map a tool can publish host-only data into. rig-agent's
+//! contextual tools, context-aware [`PortableDynamicTool`](super::PortableDynamicTool)s,
+//! and companion adapters (e.g. MCP `_meta` passthrough in `rig-rmcp`) all
+//! share this one type, so the same values flow regardless of runtime.
 
 use std::any::{Any, TypeId, type_name};
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
-use crate::tool::ToolExecutionError;
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use super::ToolExecutionError;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 type AnyMap = HashMap<TypeId, Box<dyn AnyClone>, BuildHasherDefault<IdHasher>>;
 
@@ -68,15 +75,18 @@ impl Clone for Box<dyn AnyClone> {
 }
 
 /// Internal type map shared by tool contexts and hook scratchpads.
+/// A clone-on-dispatch map of values keyed by type, the storage behind
+/// [`ToolContext`]. Public so runtimes can build related per-call state on the
+/// same primitive (rig-agent's hook state does).
 #[derive(Default, Clone)]
-pub(crate) struct TypeMap {
+pub struct TypeMap {
     map: Option<Box<AnyMap>>,
 }
 
 impl TypeMap {
     pub(crate) const EMPTY: Self = Self { map: None };
 
-    pub(crate) fn insert<T>(&mut self, value: T) -> Option<T>
+    pub fn insert<T>(&mut self, value: T) -> Option<T>
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
@@ -87,7 +97,7 @@ impl TypeMap {
             .map(|value| *value)
     }
 
-    pub(crate) fn get<T>(&self) -> Option<&T>
+    pub fn get<T>(&self) -> Option<&T>
     where
         T: 'static,
     {
@@ -97,7 +107,7 @@ impl TypeMap {
             .and_then(|value| (**value).as_any().downcast_ref::<T>())
     }
 
-    pub(crate) fn get_mut<T>(&mut self) -> Option<&mut T>
+    pub fn get_mut<T>(&mut self) -> Option<&mut T>
     where
         T: 'static,
     {
@@ -107,7 +117,7 @@ impl TypeMap {
             .and_then(|value| (**value).as_any_mut().downcast_mut::<T>())
     }
 
-    pub(crate) fn remove<T>(&mut self) -> Option<T>
+    pub fn remove<T>(&mut self) -> Option<T>
     where
         T: 'static,
     {
@@ -118,7 +128,7 @@ impl TypeMap {
             .map(|value| *value)
     }
 
-    pub(crate) fn contains<T>(&self) -> bool
+    pub fn contains<T>(&self) -> bool
     where
         T: 'static,
     {
@@ -127,8 +137,14 @@ impl TypeMap {
             .is_some_and(|map| map.contains_key(&TypeId::of::<T>()))
     }
 
-    pub(crate) fn len(&self) -> usize {
+    /// Number of values held.
+    pub fn len(&self) -> usize {
         self.map.as_ref().map_or(0, |map| map.len())
+    }
+
+    /// Whether the map holds no values.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     fn type_names(&self) -> Vec<&'static str> {
@@ -247,7 +263,10 @@ impl ToolContext {
     /// Dispatch always runs against this snapshot. Mutating its typed slots does
     /// not change the run-wide or caller-owned map. Values with shared/interior
     /// state remain shared according to their [`Clone`] implementation.
-    pub(crate) fn for_dispatch(&self) -> Self {
+    /// Build the snapshot one dispatch runs against. Runtimes call this per
+    /// tool call so map-level mutations inside the call cannot leak into the
+    /// caller's context.
+    pub fn for_dispatch(&self) -> Self {
         Self {
             inbound: self.inbound.clone(),
             result: TypeMap::EMPTY,
@@ -256,12 +275,15 @@ impl ToolContext {
 
     /// Publish metadata produced by one dispatch while preserving the caller's
     /// inbound values.
-    pub(crate) fn accept_dispatch_result(&mut self, dispatched: Self) {
+    /// Publish the result metadata a dispatch produced (see
+    /// [`Self::for_dispatch`]) while keeping the caller's inbound values.
+    pub fn accept_dispatch_result(&mut self, dispatched: Self) {
         self.result = dispatched.result;
     }
 
     /// Clear metadata from the previous dispatch before starting another one.
-    pub(crate) fn clear_dispatch_result(&mut self) {
+    /// Drop the previous dispatch's result metadata before starting another.
+    pub fn clear_dispatch_result(&mut self) {
         self.result = TypeMap::EMPTY;
     }
 }

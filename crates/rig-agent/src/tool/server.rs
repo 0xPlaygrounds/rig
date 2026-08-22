@@ -1,12 +1,10 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 use crate::tool::ErasedTool;
 
 use crate::{
@@ -77,14 +75,12 @@ struct ToolServerState {
     retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The authoritative ordered registry for execution and exposure.
     toolset: ToolSet,
-    /// Generation tokens for registrations managed by MCP client handlers.
+    /// Generation tokens for registrations owned by external tool sources.
     /// A normal registration clears the token, preventing a stale handler
     /// refresh from replacing or removing the newer tool.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     managed_generations: HashMap<String, ManagedToolToken>,
 }
 
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 impl ToolServerState {
     /// Remove remote registrations whose transport can no longer accept calls.
     /// In-process tools use the default live state, while both handler-managed
@@ -101,32 +97,12 @@ impl ToolServerState {
         for name in disconnected {
             self.toolset.delete_tool(&name);
             self.managed_generations.remove(&name);
-            tracing::debug!(tool_name = %name, "retired disconnected MCP tool registration");
+            tracing::debug!(tool_name = %name, "retired disconnected tool registration");
         }
     }
 }
 
-/// Opaque identity for one MCP-managed registry generation.
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-#[derive(Clone, Debug)]
-pub(crate) struct ManagedToolToken(Arc<()>);
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-impl ManagedToolToken {
-    fn new() -> Self {
-        Self(Arc::new(()))
-    }
-}
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-impl PartialEq for ManagedToolToken {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-impl Eq for ManagedToolToken {}
+pub use rig_core::tool::{ManagedToolSink, ManagedToolToken};
 
 /// Builder for constructing a [`ToolServerHandle`].
 ///
@@ -176,66 +152,12 @@ impl ToolServer {
         self
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
-    /// to change or disable it.
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub fn rmcp_tool(self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
-        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-
-    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
-    ///
-    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
-    /// disable the timeout (unbounded).
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub fn rmcp_tool_with_timeout(
-        mut self,
-        tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> Self {
-        use crate::tool::rmcp::McpTool;
-        self.toolset.add_erased(Arc::new(
-            McpTool::from_mcp_server(tool, client).with_timeout(timeout),
-        ));
+    /// Register a pre-erased tool — the extension point for adapters that
+    /// implement [`ErasedTool`] directly (remote tool protocols such as MCP,
+    /// provided by companion crates).
+    pub fn erased_tool(mut self, tool: Arc<dyn ErasedTool>) -> Self {
+        self.toolset.add_erased(tool);
         self
-    }
-
-    /// Add several MCP tools (from `rmcp`) sharing one client, each bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
-    /// to change or disable it.
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub fn rmcp_tools(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-    ) -> Self {
-        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-
-    /// Add several MCP tools (from `rmcp`) sharing one client, each with the same
-    /// per-call timeout (see issue #1914).
-    ///
-    /// Pass a [`Duration`](std::time::Duration) to bound the calls, or `None` to
-    /// disable the timeout (unbounded).
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub fn rmcp_tools_with_timeout(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> Self {
-        let timeout = timeout.into();
-        tools.into_iter().fold(self, |server, tool| {
-            server.rmcp_tool_with_timeout(tool, client.clone(), timeout)
-        })
     }
 
     /// Configure tools retrieved from a vector index for each prompt.
@@ -255,7 +177,6 @@ impl ToolServer {
         ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
             retrieval_indexes: self.retrieval_indexes,
             toolset: self.toolset,
-            #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
             managed_generations: HashMap::new(),
         })))
     }
@@ -283,12 +204,11 @@ impl ToolServerHandle {
         self.0.write().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Register through `add`, then drop any stale MCP managed-generation
+    /// Register through `add`, then drop any stale managed-generation
     /// entry so the (re)registered name follows last-registration-wins.
     fn register(&self, add: impl FnOnce(&mut ToolSet) -> String) {
         let mut state = self.state_mut();
         let _name = add(&mut state.toolset);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         state.managed_generations.remove(&_name);
     }
 
@@ -311,10 +231,12 @@ impl ToolServerHandle {
         self.register(|toolset| toolset.add_portable_dynamic_tool(tool))
     }
 
-    /// Atomically install the initial tools owned by one MCP handler.
-    /// Initial connection retains the registry's last-registration-wins policy.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub(crate) fn add_managed_erased_tools(
+    /// Atomically install the initial tools owned by one external tool source
+    /// (an MCP client handler, for example). Last-registration-wins: an existing
+    /// name is replaced. Tools that report `!is_live()` are skipped. Returns the
+    /// generation token per installed name, to hand back to
+    /// [`Self::reconcile_managed_erased_tools`] on refresh.
+    pub fn add_managed_erased_tools(
         &self,
         tools: Vec<Arc<dyn ErasedTool>>,
     ) -> HashMap<String, ManagedToolToken> {
@@ -343,11 +265,12 @@ impl ToolServerHandle {
         managed
     }
 
-    /// Atomically reconcile one handler's MCP registrations with a refreshed
-    /// tool list. Existing names are changed only when their expected generation
-    /// remains current; newer local or peer-handler registrations win.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub(crate) fn reconcile_managed_erased_tools(
+    /// Atomically reconcile one external source's registrations with a
+    /// refreshed tool list. Existing names are changed only when their expected
+    /// generation remains current; newer local or peer-source registrations
+    /// win. Names missing from the new list (and owned by this source) are
+    /// removed. Returns the new generation tokens.
+    pub fn reconcile_managed_erased_tools(
         &self,
         mut expected: HashMap<String, ManagedToolToken>,
         tools: Vec<Arc<dyn ErasedTool>>,
@@ -434,10 +357,8 @@ impl ToolServerHandle {
     /// Existing names are replaced (last wins) and keep their position.
     pub fn append_toolset(&self, toolset: ToolSet) {
         let mut state = self.state_mut();
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         let names = toolset.tools.keys().cloned().collect::<Vec<_>>();
         state.toolset.add_tools(toolset);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         for name in names {
             state.managed_generations.remove(&name);
         }
@@ -447,7 +368,6 @@ impl ToolServerHandle {
     pub fn remove_tool(&self, tool_name: &str) {
         let mut state = self.state_mut();
         state.toolset.delete_tool(tool_name);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         state.managed_generations.remove(tool_name);
     }
 
@@ -472,17 +392,9 @@ impl ToolServerHandle {
     /// Run `f` against the registry state, first retiring disconnected MCP
     /// tools (which needs a write lock) when that feature is compiled in.
     fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        {
-            let mut state = self.state_mut();
-            state.retire_disconnected_tools();
-            f(&state)
-        }
-        #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
-        {
-            let state = self.state();
-            f(&state)
-        }
+        let mut state = self.state_mut();
+        state.retire_disconnected_tools();
+        f(&state)
     }
 
     /// Run one isolated dispatch and retain its full context for agent hooks.
@@ -606,6 +518,36 @@ pub enum ToolServerError {
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(CompletionError),
 }
+/// The registry contract external tool sources (e.g. `rig-rmcp`'s MCP client
+/// handler) program against: portable tools in, generation tokens out.
+impl ManagedToolSink for ToolServerHandle {
+    fn add_managed_tools(
+        &self,
+        tools: Vec<PortableDynamicTool>,
+    ) -> HashMap<String, ManagedToolToken> {
+        self.add_managed_erased_tools(
+            tools
+                .into_iter()
+                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .collect(),
+        )
+    }
+
+    fn reconcile_managed_tools(
+        &self,
+        expected: HashMap<String, ManagedToolToken>,
+        tools: Vec<PortableDynamicTool>,
+    ) -> HashMap<String, ManagedToolToken> {
+        self.reconcile_managed_erased_tools(
+            expected,
+            tools
+                .into_iter()
+                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{

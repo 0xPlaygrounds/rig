@@ -13,7 +13,7 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-use super::{IntoToolOutput, ToolExecutionError, ToolOutput};
+use super::{IntoToolOutput, ToolContext, ToolExecutionError, ToolOutput};
 
 /// A context-free typed tool that can be executed by any Rig runtime.
 pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
@@ -62,14 +62,20 @@ pub trait PortableToolEmbedding: PortableTool {
 }
 
 trait PortableDynamicCallback:
-    Fn(serde_json::Value) -> WasmBoxedFuture<'static, Result<ToolOutput, ToolExecutionError>>
+    for<'a> Fn(
+        &'a mut ToolContext,
+        serde_json::Value,
+    ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
     + WasmCompatSend
     + WasmCompatSync
 {
 }
 
 impl<F> PortableDynamicCallback for F where
-    F: Fn(serde_json::Value) -> WasmBoxedFuture<'static, Result<ToolOutput, ToolExecutionError>>
+    F: for<'a> Fn(
+            &'a mut ToolContext,
+            serde_json::Value,
+        ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
         + WasmCompatSend
         + WasmCompatSync
 {
@@ -82,6 +88,24 @@ pub struct PortableDynamicTool {
     description: String,
     parameters: serde_json::Value,
     callback: Arc<dyn PortableDynamicCallback>,
+    /// Optional liveness probe for tools backed by a remote transport; `None`
+    /// means always live (the in-process default).
+    liveness: Option<Arc<dyn LivenessProbe>>,
+}
+
+/// Object-safe liveness probe (a `Fn() -> bool` behind the crate's wasm-aware
+/// `Send`/`Sync` markers).
+trait LivenessProbe: WasmCompatSend + WasmCompatSync {
+    fn is_live(&self) -> bool;
+}
+
+impl<F> LivenessProbe for F
+where
+    F: Fn() -> bool + WasmCompatSend + WasmCompatSync,
+{
+    fn is_live(&self) -> bool {
+        self()
+    }
 }
 
 impl std::fmt::Debug for PortableDynamicTool {
@@ -97,6 +121,9 @@ impl std::fmt::Debug for PortableDynamicTool {
 
 impl PortableDynamicTool {
     /// Create a context-free dynamic tool from an owned async callback.
+    ///
+    /// The callback never sees the per-call [`ToolContext`]; use
+    /// [`Self::new_with_context`] when it should.
     pub fn new<F>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -111,12 +138,57 @@ impl PortableDynamicTool {
             + WasmCompatSync
             + 'static,
     {
+        Self::new_with_context(
+            name,
+            description,
+            parameters,
+            move |_context: &mut ToolContext, arguments| callback(arguments),
+        )
+    }
+
+    /// Create a dynamic tool whose callback receives the per-call
+    /// [`ToolContext`]: typed inbound values the runtime supplies (the model
+    /// never sees them) and a result map the tool can publish host-only
+    /// metadata into.
+    pub fn new_with_context<F>(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+        callback: F,
+    ) -> Self
+    where
+        F: for<'a> Fn(
+                &'a mut ToolContext,
+                serde_json::Value,
+            ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
+            + WasmCompatSend
+            + WasmCompatSync
+            + 'static,
+    {
         Self {
             name: name.into(),
             description: description.into(),
             parameters,
             callback: Arc::new(callback),
+            liveness: None,
         }
+    }
+
+    /// Attach a liveness probe. Registries use it to retire tools whose remote
+    /// backing (an MCP connection, for example) can no longer accept calls,
+    /// without probing by execution. In-process tools never need one.
+    pub fn with_liveness<F>(mut self, is_live: F) -> Self
+    where
+        F: Fn() -> bool + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.liveness = Some(Arc::new(is_live));
+        self
+    }
+
+    /// Whether the tool's backing can still accept calls (`true` unless a
+    /// liveness probe says otherwise).
+    pub fn is_live(&self) -> bool {
+        self.liveness.as_ref().is_none_or(|probe| probe.is_live())
     }
 
     /// Provider-facing name.
@@ -133,12 +205,25 @@ impl PortableDynamicTool {
         }
     }
 
-    /// Execute the callback with owned arguments.
+    /// Execute the callback with owned arguments and a fresh, empty
+    /// [`ToolContext`] (any result metadata the tool publishes is discarded).
     pub async fn execute(
         &self,
         arguments: serde_json::Value,
     ) -> Result<ToolOutput, ToolExecutionError> {
-        (self.callback)(arguments).await
+        let mut context = ToolContext::new();
+        self.execute_with(&mut context, arguments).await
+    }
+
+    /// Execute the callback against the caller's [`ToolContext`]: inbound
+    /// values are visible to the tool and its `insert_result`s land on
+    /// `context`.
+    pub async fn execute_with(
+        &self,
+        context: &mut ToolContext,
+        arguments: serde_json::Value,
+    ) -> Result<ToolOutput, ToolExecutionError> {
+        (self.callback)(context, arguments).await
     }
 }
 
