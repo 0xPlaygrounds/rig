@@ -796,6 +796,49 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Runs have an identity and a cancel handle: `RunId` is `Copy`, `run_channel` returns `(RunHandle, RunFuture, RunEvents)`, events are `RunEvent { run, item }`
+
+For hosts that drive many runs at once (an ECS, a job table, a UI with several
+conversations) and need to route each event to the run it belongs to, cancel a
+run when its owner goes away, and drain feeds once per tick.
+
+- **`RunId`** (`rig_agent::agent::RunId`, still re-exported from `hook`) is now
+  `#[serde(transparent)] struct RunId(u128)` — `Copy + Hash + Eq + Ord +
+  Serialize + Deserialize`, `to_bits()`/`from_bits()`, `Display`/`FromStr` as
+  32 hex digits, public `RunId::new()`. It was an opaque `String` newtype with
+  `as_str()` and no public constructor; `as_str()` is gone (use `to_string()`),
+  `HookContext::run_id()` returns `RunId` by value.
+- **Caller-chosen ids**: `AgentRunner::with_run_id(id)` (also on
+  `PromptRequest` and `StreamingPromptRequest`). Without it the run mints one
+  when it starts; either way every hook's `HookContext::run_id()` and every
+  `RunEvent` carry the same id.
+- **`run_channel`** (on `AgentRunner`, `StreamingPromptRequest`, `Agent`) now
+  returns `(RunHandle, RunFuture, RunEvents)`:
+  - `RunHandle { id(), abort(), is_aborted() }` — `Clone`; dropping it does
+    nothing, `abort()` ends the run: the feed closes and the future resolves
+    with `PromptError::PromptCancelled { reason: RUN_ABORTED_REASON, .. }`
+    (no canonical history is available at that point; `chat_history` is empty).
+  - `RunFuture = WasmBoxedFuture<'static, Result<PromptResponse, PromptError>>`
+    — boxed once at the edge so it is a nameable, storable value.
+  - `RunEvents` yields `RunEvent { run: RunId, item: MultiTurnStreamItem }`.
+- **Frame-loop API**: `RunEvents::try_next()` returns `TryNext::{Event, Empty,
+  Closed}` (it returned `Option`, conflating empty with closed);
+  `RunEvents::try_drain(&mut Vec<RunEvent>) -> usize` takes everything queued;
+  `run_channel_with(RunChannelConfig { capacity })` tunes the queue depth
+  (default `RUN_EVENTS_CAPACITY = 32`).
+
+```rust
+let (handle, run, mut events) = agent.run_channel("hi");
+let task = pool.spawn(run);                 // any executor
+let mut batch = Vec::new();
+loop {
+    events.try_drain(&mut batch);           // once per tick
+    for RunEvent { run, item } in batch.drain(..) { route(run, item); }
+    if entity_despawned { handle.abort(); }
+    // … check_ready(&mut task) …
+}
+```
+
 ### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
 
 `rig_core::http_client::BoxedHttpClient` wraps any `H: HttpClientExt + 'static`
