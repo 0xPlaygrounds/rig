@@ -216,6 +216,10 @@ const _: fn() = || {
     // holds, and the serializable identity it is resolved from.
     assert_send_sync_static::<completion::ModelHandle>();
     assert_send_sync_static::<completion::ModelRef>();
+    // The erased tool set a driver forks and the per-turn catalog it pins.
+    assert_send_sync_static::<tool::ToolSet>();
+    assert_send_sync_static::<tool::ToolCatalog>();
+    assert_send_sync_static::<tool::DynamicTool>();
     // One erased transport shared by every provider client a host builds.
     assert_send_sync_static::<http_client::BoxedHttpClient>();
     // A live stream is owned by one poller: `Send` so it can move to a worker,

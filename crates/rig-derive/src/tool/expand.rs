@@ -204,20 +204,6 @@ pub(crate) fn expand_rig_tool(
 
     let has_context = context.is_some();
 
-    // Contextual tools live in the classic runtime crate; give a targeted
-    // error when it is not reachable instead of emitting an unresolved path.
-    let agent_root = match (&context, &refs.agent) {
-        (Some(_), Some(agent)) => Some(agent.clone()),
-        (Some((pat_type, _)), None) => {
-            return Err(syn::Error::new_spanned(
-                pat_type,
-                "contextual tools (`&mut ToolContext`) require a dependency on `rig` or \
-                 `rig-agent`; portable tools only need `rig-core`",
-            ));
-        }
-        (None, _) => None,
-    };
-
     // Validate `params(...)` and `required(...)` names against the actual
     // parameter list so a typo cannot silently alter the advertised schema.
     let model_names: Vec<String> = model_params
@@ -314,12 +300,12 @@ pub(crate) fn expand_rig_tool(
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
-    let tool_module = match &agent_root {
-        Some(agent) => quote!(#agent::tool),
-        None => quote!(#core::tool),
-    };
-    // Contextual tools implement the classic `Tool` trait; context-free tools
-    // implement the portable `PortableTool` contract owned by `rig-core`.
+    // Both traits are rig-core's: contextual tools implement `Tool`
+    // (`rig_core::tool::Tool`, re-exported unchanged by `rig-agent` and the
+    // `rig` facade); context-free tools implement the portable `PortableTool`
+    // contract. Resolving through the core root means a crate that depends on
+    // `rig-core` alone can author either kind.
+    let tool_module = quote!(#core::tool);
     let tool_trait = if has_context {
         quote!(#tool_module::Tool)
     } else {

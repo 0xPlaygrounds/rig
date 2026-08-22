@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use std::collections::HashMap;
 
@@ -10,8 +10,8 @@ use crate::tool::ErasedTool;
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{
-        DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolContext, ToolDispatch,
-        ToolResult, ToolSet, dispatch_tool,
+        DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext,
+        ToolDispatch, ToolResult, ToolSet, dispatch_tool,
     },
 };
 use rig_core::vector_store::{
@@ -19,94 +19,15 @@ use rig_core::vector_store::{
 };
 
 /// A pinned view of the tool registry: provider definitions plus the exact
-/// implementations behind them.
+/// implementations behind them — [`rig_core::tool::ToolCatalog`] under the
+/// name the agent runtime has always used.
 ///
-/// The agent loop takes one per turn, so registration changes after a
-/// snapshot is built take effect on the next turn and calls from the current
-/// turn dispatch through these pinned handles — the implementation cannot
-/// drift from the schema the provider received. Hosts get the same view
-/// synchronously from [`ToolServerHandle::snapshot`], and can read
-/// [`definitions`](Self::definitions) / [`names`](Self::names) or
-/// [`execute`](Self::execute) against it without touching the live registry.
-///
-/// Cloning shares the pinned tool handles (they are `Arc`s) and copies the
-/// definitions.
-#[derive(Clone)]
-pub struct ToolRegistrySnapshot {
-    definitions: Vec<ToolDefinition>,
-    tools: IndexMap<String, RegisteredTool>,
-}
-
-impl ToolRegistrySnapshot {
-    fn new(tools: IndexMap<String, RegisteredTool>) -> Self {
-        let definitions = tools
-            .iter()
-            .map(|(name, tool)| tool.definition_with_name(name.clone()))
-            .collect();
-        Self { definitions, tools }
-    }
-
-    /// Provider-facing definitions in the same order as their pinned handles.
-    pub fn definitions(&self) -> &[ToolDefinition] {
-        &self.definitions
-    }
-
-    /// Registered names in exposure order.
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.tools.keys().map(String::as_str)
-    }
-
-    /// Number of pinned tools.
-    pub fn len(&self) -> usize {
-        self.tools.len()
-    }
-
-    /// Whether the snapshot pins no tools.
-    pub fn is_empty(&self) -> bool {
-        self.tools.is_empty()
-    }
-
-    /// Execute a pinned tool by name through the canonical structured path,
-    /// publishing its result metadata back to `context` — the snapshot twin of
-    /// [`ToolServerHandle::execute`]. Later registry changes do not affect
-    /// which implementation runs.
-    pub async fn execute(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &mut ToolContext,
-    ) -> ToolResult {
-        context.clear_dispatch_result();
-        self.dispatch(tool_name, args, context)
-            .await
-            .publish_to(context)
-    }
-
-    /// Moves the definitions out of the snapshot. The per-turn request
-    /// assembly is the sole consumer and never reads them again, so it takes
-    /// them instead of deep-cloning every tool's JSON schema each turn.
-    pub(crate) fn take_definitions(&mut self) -> Vec<ToolDefinition> {
-        std::mem::take(&mut self.definitions)
-    }
-
-    /// Narrow both provider exposure and dispatch to one per-turn allow-list.
-    pub(crate) fn retain_names(&mut self, names: &BTreeSet<String>) {
-        self.definitions
-            .retain(|definition| names.contains(&definition.name));
-        self.tools.retain(|name, _| names.contains(name));
-    }
-
-    /// Dispatch through the exact implementation advertised for this turn.
-    pub(crate) async fn dispatch(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &ToolContext,
-    ) -> ToolDispatch {
-        let tool = self.tools.get(tool_name).cloned();
-        dispatch_tool(tool_name, args.to_string(), tool, context).await
-    }
-}
+/// The agent loop takes one per turn ([`ToolServerHandle::snapshot`] for the
+/// registry as it stands, the retrieval-aware `snapshot_tool_defs` for a
+/// prompt), so registration changes after a snapshot is built take effect on
+/// the next turn and calls from the current turn dispatch through these
+/// pinned handles.
+pub type ToolRegistrySnapshot = ToolCatalog;
 
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
@@ -127,10 +48,9 @@ impl ToolServerState {
     fn retire_disconnected_tools(&mut self) {
         let disconnected = self
             .toolset
-            .tools
-            .keys()
+            .names()
             .filter(|name| self.toolset.get(name).is_none_or(|tool| !tool.is_live()))
-            .cloned()
+            .map(str::to_owned)
             .collect::<Vec<_>>();
 
         for name in disconnected {
@@ -379,14 +299,8 @@ impl ToolServerHandle {
         // A full MCP list is ordered. Move only entries this handler actually
         // owns to the end in that order, matching remove/re-register semantics;
         // live local or peer-handler competitors retain their relative slots.
-        let mut ordered_entries = Vec::with_capacity(managed_order.len());
         for name in managed_order {
-            if let Some(entry) = state.toolset.tools.shift_remove_entry(&name) {
-                ordered_entries.push(entry);
-            }
-        }
-        for (name, registration) in ordered_entries {
-            state.toolset.tools.insert(name, registration);
+            state.toolset.move_to_end(&name);
         }
 
         refreshed
@@ -396,7 +310,7 @@ impl ToolServerHandle {
     /// Existing names are replaced (last wins) and keep their position.
     pub fn append_toolset(&self, toolset: ToolSet) {
         let mut state = self.state_mut();
-        let names = toolset.tools.keys().cloned().collect::<Vec<_>>();
+        let names = toolset.names().map(str::to_owned).collect::<Vec<_>>();
         state.toolset.add_tools(toolset);
         for name in names {
             state.managed_generations.remove(&name);
@@ -457,7 +371,7 @@ impl ToolServerHandle {
     /// prompt, use the async [`get_tool_defs`](Self::get_tool_defs).
     pub fn snapshot(&self) -> ToolRegistrySnapshot {
         let tools = self.with_registry(|state| snapshot_registered_tools(state, &[]));
-        ToolRegistrySnapshot::new(tools)
+        ToolCatalog::from_registered(tools)
     }
 
     /// Provider definitions of the registry as it stands — the definitions of
@@ -489,7 +403,7 @@ impl ToolServerHandle {
         &self,
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        Ok(self.snapshot_tool_defs(prompt).await?.definitions)
+        Ok(self.snapshot_tool_defs(prompt).await?.take_definitions())
     }
 
     /// Resolve one ordered provider/dispatch snapshot for an agent turn.
@@ -547,7 +461,7 @@ impl ToolServerHandle {
 
         let tools = self.with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids));
 
-        Ok(ToolRegistrySnapshot::new(tools))
+        Ok(ToolCatalog::from_registered(tools))
     }
 }
 

@@ -34,8 +34,10 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
 }
 
 /// A procedural macro that transforms a function into a portable
-/// `rig_core::tool::PortableTool`, or into the classic contextual
-/// `rig::tool::Tool` when the function accepts classic runtime context.
+/// `rig_core::tool::PortableTool`, or into the contextual
+/// `rig_core::tool::Tool` (re-exported as `rig::tool::Tool`) when the function
+/// accepts a `&mut ToolContext`. Both resolve through `rig-core`, so either
+/// kind can be authored in a crate that depends on `rig-core` alone.
 ///
 /// # Examples
 ///

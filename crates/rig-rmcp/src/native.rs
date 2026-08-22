@@ -40,7 +40,7 @@ const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 /// Construct with [`McpTool::from_mcp_server`] (or [`tools_from_server`] for a
 /// whole list). Use it as a rig-core [`PortableDynamicTool`] via `From`, or —
 /// with the `agent` feature — register it directly in rig-agent's tool server
-/// (it implements rig-agent's contextual `ErasedTool`, which additionally
+/// (it implements rig-core's contextual `ErasedTool`, which additionally
 /// forwards MCP `_meta` from the `ToolContext` and preserves the raw result).
 #[derive(Clone)]
 pub struct McpTool {
