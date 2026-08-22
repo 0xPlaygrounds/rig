@@ -963,6 +963,12 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
     ("minimax", "no MINIMAX_API_KEY in this environment"),
     ("mira", "no MIRA_API_KEY in this environment"),
     ("moonshot", "no MOONSHOT_API_KEY in this environment"),
+    (
+        "orcarouter",
+        "new OpenAI-compatible gateway provider whose prompt-cache suite has not yet been \
+         recorded. OrcaRouter forwards OpenAI-style Chat Completions requests, so its cache \
+         semantics mirror the shared OpenAI path already covered by the direct OpenAI cache suite",
+    ),
     ("together", "no TOGETHER_API_KEY in this environment"),
     ("xiaomimimo", "no XIAOMIMIMO_API_KEY in this environment"),
     ("zai", "no ZAI_API_KEY in this environment"),

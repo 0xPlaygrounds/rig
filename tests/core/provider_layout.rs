@@ -153,6 +153,14 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ("mistral", Exempt(OPENAI_CHAT_GATEWAY)),
     ("moonshot", Exempt(OPENAI_CHAT_GATEWAY)),
     (
+        "orcarouter",
+        Exempt(
+            "OrcaRouter — an OpenAI-compatible gateway that implements `OpenAICompatibleProvider`, \
+             forwarding the OpenAI Chat Completions wire verbatim (covered by the `openai_chat` \
+             suite)",
+        ),
+    ),
+    (
         "openrouter",
         SharedWireOwnSemantics {
             wire: OPENAI_CHAT_GATEWAY,
