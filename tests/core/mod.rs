@@ -1,3 +1,4 @@
+mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;
 mod loaders;
