@@ -1,5 +1,4 @@
 use super::hook::{HookStack, RequestPatch};
-use super::model::ModelHandle;
 use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
@@ -13,6 +12,7 @@ use crate::{
     streaming::{StreamingChat, StreamingPrompt},
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
+use rig_core::completion::ModelHandle;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 

@@ -205,7 +205,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::model::ModelHandle,
+    agent::ModelHandle,
     completion::{Document, ResponseIdentity, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},

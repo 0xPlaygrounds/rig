@@ -31,7 +31,7 @@ use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse, forward_prompt_setters};
 use crate::{
-    agent::{Agent, model::ModelHandle},
+    agent::{Agent, ModelHandle},
     completion::{CompletionError, PromptError},
 };
 use rig_core::message::{Message, Text};
