@@ -1,17 +1,11 @@
 pub mod streaming;
 
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
-use rig_core::{
-    completion::FinishReason,
-    message::{
-        AssistantContent, ProviderCallId, ToolCallId, ToolResultContent, UserContent, non_empty,
-    },
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
-};
+use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 
 use crate::{
     completion::{Message, PromptError, Usage},
-    tool::{ToolContext, ToolOutput},
+    tool::ToolContext,
 };
 use serde::{Deserialize, Serialize};
 use std::{future::IntoFuture, marker::PhantomData};
@@ -324,246 +318,11 @@ impl PromptRequest<Standard> {
     }
 }
 
+pub(crate) use rig_run::transcript::{
+    assistant_text_from_choice, is_empty_assistant_turn, tool_result_output,
+};
 /// Details for one successfully completed completion request made by an agent run.
-// No longer `Copy`: the identity fields carry owned strings. No longer `Eq`:
-// `raw` is a `serde_json::Value`, which is `PartialEq` but not `Eq` (floats).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CompletionCall {
-    /// Zero-based index of the completion request within this agent run.
-    pub call_index: usize,
-    /// Token usage reported for this completion request.
-    ///
-    /// Zero-valued usage is [`Usage`]'s documented sentinel for missing
-    /// provider usage metrics; rig does not distinguish "reported all zeros"
-    /// from "unreported".
-    #[serde(default, deserialize_with = "usage_null_as_default")]
-    pub usage: Usage,
-    /// Provider-assigned assistant message ID for this call, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-    /// Provider-assigned response-scoped ID for this call, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
-    /// The provider's transport request id for this call (HTTP response
-    /// header, e.g. Anthropic `request-id`) — the id provider support asks
-    /// for. `None` means the provider did not report one, never an error.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
-    /// Why the model stopped generating on this call, when the provider
-    /// reported it. `None` means the provider reported no reason.
-    ///
-    /// Recorded **per call** rather than once per run: a multi-turn run makes N
-    /// completion requests, each with its own terminal reason, and collapsing
-    /// them to a single run-level value would lose exactly the information that
-    /// makes a truncated turn diagnosable — which turn hit the limit. A caller
-    /// that wants the run's last reason reads it off the final entry.
-    ///
-    /// This is the field whose absence hid rig#2322: the provider layer carried
-    /// [`FinishReason::Length`] on the stream's terminal record, but the agent
-    /// assembler dropped it, so a turn truncated at the output-token limit was
-    /// indistinguishable from a turn that simply had nothing to say.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<FinishReason>,
-    /// The provider's own response for this call — see
-    /// `CompletionResponse::raw` for the exact meaning of the payload. Every
-    /// provider seam populates it; `Value::Null` only when the call's response
-    /// was built without a provider behind it (a hand-constructed model, a
-    /// record persisted before the field, or a hand-driven `AgentRun` that
-    /// recorded a streamed call with no terminal record — the runner itself
-    /// rejects such a stream as truncated before recording anything).
-    ///
-    /// Recorded **per call**, like [`Self::finish_reason`]: on a multi-turn
-    /// run each entry carries its own attempt's response, never a previous
-    /// attempt's, and on a retried turn the recorded call carries the retried
-    /// attempt's own.
-    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
-    pub raw: serde_json::Value,
-}
-
-impl CompletionCall {
-    /// Create details for one completion request in an agent run; identity
-    /// metadata starts unset and is attached with [`Self::with_identity`].
-    pub fn new(call_index: usize, usage: Usage) -> Self {
-        Self {
-            call_index,
-            usage,
-            message_id: None,
-            response_id: None,
-            provider_request_id: None,
-            finish_reason: None,
-            raw: serde_json::Value::Null,
-        }
-    }
-
-    /// Attach the provider's own response this call's attempt produced.
-    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
-        self.raw = raw;
-        self
-    }
-
-    /// Attach the response identity metadata this call's attempt reported.
-    pub fn with_identity(mut self, identity: ResponseIdentity) -> Self {
-        self.message_id = identity.message_id;
-        self.response_id = identity.response_id;
-        self.provider_request_id = identity.provider_request_id;
-        self
-    }
-
-    /// Attach the terminal finish reason this call's attempt reported.
-    ///
-    /// Kept separate from [`Self::with_identity`] because a finish reason is
-    /// not identity: [`ResponseIdentity`] answers "which response was this",
-    /// while this answers "why did it stop".
-    pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
-        self.finish_reason = finish_reason;
-        self
-    }
-
-    /// This call's identity metadata as one [`ResponseIdentity`] carrier.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: self.message_id.clone(),
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
-}
-
-/// Tolerate `null` usage from data serialized before rig dropped the
-/// `Option<Usage>` encoding of missing provider usage metrics.
-///
-/// This tolerance requires a self-describing format such as JSON; data
-/// serialized with non-self-describing formats (e.g. bincode) from before the
-/// change cannot round-trip.
-fn usage_null_as_default<'de, D>(deserializer: D) -> Result<Usage, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<Usage>::deserialize(deserializer)?.unwrap_or_default())
-}
-
-/// The result of an agent run, returned by **both** the blocking
-/// ([`PromptRequest`]) and streaming ([`StreamingPromptRequest`]) surfaces so a
-/// call site reads identically whether it used `.prompt()` or `.stream_prompt()`.
-///
-/// On the streaming surface this is the payload of the terminal
-/// [`MultiTurnStreamItem::FinalResponse`] item.
-///
-/// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
-/// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptResponse {
-    /// Concatenated assistant text for the final turn.
-    pub output: String,
-    /// Aggregated token usage across the whole run.
-    pub usage: Usage,
-    /// Successfully completed completion requests made by this agent run.
-    ///
-    /// `usage` remains the aggregate across the whole run. Use the last
-    /// entry's usage to inspect the final completion request's prompt/context
-    /// length. Zero-valued entry usage means the provider reported no usage
-    /// metrics for that request.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub completion_calls: Vec<CompletionCall>,
-    /// Accumulated message history for the run (the run's persisted transcript),
-    /// unless memory/history bookkeeping was disabled for the request.
-    pub messages: Option<Vec<Message>>,
-    /// Structured assistant content for the final turn.
-    ///
-    /// Where [`output`](Self::output) is the concatenated text, this preserves
-    /// the individual content parts (text, reasoning, images, …).
-    pub content: Vec<AssistantContent>,
-    /// Number of synthetic output-tool calls in the turn that finalized this
-    /// response. Kept crate-private because it is runner bookkeeping rather
-    /// than provider-facing response content.
-    #[serde(skip)]
-    output_tool_calls: usize,
-}
-
-impl std::fmt::Display for PromptResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.output.fmt(f)
-    }
-}
-
-impl PromptResponse {
-    pub fn new(output: impl Into<String>, usage: Usage) -> Self {
-        let output = output.into();
-        Self {
-            content: vec![AssistantContent::text(output.clone())],
-            output,
-            usage,
-            completion_calls: Vec::new(),
-            messages: None,
-            output_tool_calls: 0,
-        }
-    }
-
-    /// An empty run result (empty output, zero usage, no history).
-    pub fn empty() -> Self {
-        Self::new(String::new(), Usage::new())
-    }
-
-    pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
-        self.messages = Some(messages);
-        self
-    }
-
-    /// Attach completion call details to this response.
-    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
-        self.completion_calls = completion_calls;
-        self
-    }
-
-    /// Set the structured assistant content for the final turn.
-    pub fn with_content(mut self, content: Vec<AssistantContent>) -> Self {
-        self.content = content;
-        self
-    }
-
-    pub(crate) fn with_output_tool_calls(mut self, count: usize) -> Self {
-        self.output_tool_calls = count;
-        self
-    }
-
-    pub(crate) fn output_tool_calls(&self) -> usize {
-        self.output_tool_calls
-    }
-
-    /// The concatenated assistant text for the final turn.
-    pub fn output(&self) -> &str {
-        &self.output
-    }
-
-    /// Aggregated token usage across the whole run.
-    pub fn usage(&self) -> Usage {
-        self.usage
-    }
-
-    /// The run's accumulated message history, if tracked.
-    pub fn messages(&self) -> Option<&[Message]> {
-        self.messages.as_deref()
-    }
-
-    /// The structured assistant content for the final turn.
-    pub fn content(&self) -> &[AssistantContent] {
-        &self.content
-    }
-
-    /// Returns successfully completed completion requests made by this agent run.
-    ///
-    /// Zero-valued entry usage means the provider reported no usage metrics
-    /// for that request.
-    pub fn completion_calls(&self) -> &[CompletionCall] {
-        &self.completion_calls
-    }
-
-    /// Number of completion requests this agent run made.
-    pub fn requests(&self) -> usize {
-        self.completion_calls.len()
-    }
-}
-
+pub use rig_run::{CompletionCall, PromptResponse};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedPromptResponse<T> {
     pub output: T,
@@ -605,193 +364,6 @@ impl<T> TypedPromptResponse<T> {
     pub fn requests(&self) -> usize {
         self.completion_calls.len()
     }
-}
-
-pub(crate) const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
-    "Tool not executed because another tool call in the same assistant turn was invalid.";
-
-/// Combine input history with new messages for building completion requests.
-pub(crate) fn build_history_for_request(
-    chat_history: Option<&[Message]>,
-    new_messages: &[Message],
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().chain(new_messages.iter()).cloned().collect()
-}
-
-/// Build the full history for error reporting (input + new messages).
-pub(crate) fn build_full_history(
-    chat_history: Option<&[Message]>,
-    new_messages: Vec<Message>,
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().cloned().chain(new_messages).collect()
-}
-
-/// Wrap already-shaped tool-result content for the model (see
-/// [`tool_result_output`] / [`tool_result_message`]).
-fn tool_result_with(
-    call: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
-    content: Vec<ToolResultContent>,
-) -> UserContent {
-    // The *executed* tool's name travels as data on the result: several
-    // wires require it on replay (Gemini `functionResponse.name`, Ollama
-    // tool messages), and an identifier is not a name.
-    UserContent::tool_result_for(call, provider, name, content)
-}
-
-/// Shape a canonical real tool output as a tool result without reparsing text.
-pub(crate) fn tool_result_output(
-    call: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
-    output: ToolOutput,
-) -> UserContent {
-    tool_result_with(call, provider, name, output.into_content())
-}
-
-/// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
-/// "not executed" notice) as a tool result. Emitted **verbatim as text** and
-/// never re-parsed as structured tool output, so a JSON-shaped message is not
-/// silently reinterpreted as an image/multimodal result. Used identically by the
-/// blocking and streaming drivers so synthetic results match across both.
-pub(crate) fn tool_result_message(
-    call: ToolCallId,
-    provider: Option<ProviderCallId>,
-    name: String,
-    message: String,
-) -> UserContent {
-    tool_result_with(call, provider, name, vec![ToolResultContent::text(message)])
-}
-
-pub(crate) fn invalid_tool_retry_user_message(
-    assistant_content: &[AssistantContent],
-    invalid_tool_call_id: &ToolCallId,
-    feedback: &str,
-) -> Option<Message> {
-    // Selecting the invalid call by id is correct by construction:
-    // `ToolCallId` is unique and non-empty (minted at the provider boundary
-    // when the wire issued none), so id-less wires can no longer collapse
-    // every peer onto the first match arm.
-    let retry_results = assistant_content
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) if tool_call.id == *invalid_tool_call_id => {
-                Some(tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.provider.clone(),
-                    tool_call.function.name.clone(),
-                    feedback.to_string(),
-                ))
-            }
-            AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
-                tool_call.id.clone(),
-                tool_call.provider.clone(),
-                tool_call.function.name.clone(),
-                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-            )),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    Some(Message::User {
-        content: non_empty(retry_results)?,
-    })
-}
-
-/// Whether an assistant turn carried nothing the caller should see.
-///
-/// Two shapes mean the same thing, and both must be recognised:
-///
-/// - **Zero parts.** A turn that produced no text and no tool call is an
-///   empty list — the shape the streaming path produces (its assembler
-///   filters empty text deltas out of the canonical order).
-/// - **One empty, unannotated text block.** A blocking wire can deliver an
-///   assistant message whose only part is an empty text block; it carries
-///   nothing, and the agent curates it out of history exactly as it curates
-///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
-///   empty text block carries data and must not read as empty. Annotation is
-///   a plain `is_some()`: [`rig_core::message::AdditionalParams`] is
-///   non-empty by construction, so `Some` always carries data, live and
-///   restored alike (pinned by
-///   `empty_turn_classification_survives_a_serde_round_trip`).
-///
-/// This runs on turns flowing through the agent loop only. Caller-supplied
-/// `chat_history` is never filtered: an empty text block you replay goes to
-/// the wire as-is.
-pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
-    if choice.is_empty() {
-        return true;
-    }
-
-    choice.len() == 1
-        && matches!(
-            choice.first(),
-            Some(AssistantContent::Text(text))
-                if text.text.is_empty() && text.additional_params.is_none()
-        )
-}
-
-/// Whether a turn delivered **no answer**: no tool call, and no non-empty text
-/// block.
-///
-/// Deliberately *not* [`is_empty_assistant_turn`], which answers a different
-/// question — "does this turn belong in history". They diverge on the shapes
-/// that are **worth recording yet answer nothing**, of which there are two:
-///
-/// 1. a turn carrying only [`AssistantContent::Reasoning`] — the reasoning is
-///    real content worth replaying, but it is not an answer;
-/// 2. a turn carrying only an **empty text block with `additional_params`** —
-///    the annotation (citations, encrypted reasoning references, and other
-///    provider metadata some wires require on replay) is worth recording, but
-///    the caller still receives no text.
-///
-/// Metadata-only text therefore does **not** count as an answer. That follows
-/// from what the caller actually gets: [`assistant_text_from_choice`]
-/// concatenates `text.text` alone, so such a turn yields `""` — the annotation
-/// is metadata *about* an answer, never the answer itself.
-///
-/// Reasoning is not an answer. It is the model's scratch work, it is often not
-/// even replayable across turns, and a caller asked a question rather than for
-/// the thinking. Treating it as output is how a thinking model that burned its
-/// whole budget mid-thought used to report success with an empty string
-/// (rig#2322): Gemini counts thinking tokens against `maxOutputTokens`, so a
-/// truncated thinking turn *typically* carries reasoning and no text — the
-/// common case, not a corner one.
-///
-/// Tool calls count as delivered: they are an answer in progress, and a
-/// truncated tool-call turn must still route to execution. So do images —
-/// ten providers emit assistant images, and an image *is* the answer for an
-/// image-generation turn.
-///
-/// The match is **exhaustive on purpose**: no `_` arm. Every content variant
-/// must be classified explicitly, so adding one to [`AssistantContent`] breaks
-/// this build and forces a decision instead of silently inheriting a default.
-/// The first version of this predicate had a `_ => false` catch-all and so
-/// classified image-only turns as "no answer" — a truncated image-generation
-/// turn would have errored despite delivering an image, which matters because
-/// image tokens count against the same output budget.
-pub(crate) fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
-    !choice.iter().any(|content| match content {
-        // Real text is an answer; an empty block delivers nothing.
-        AssistantContent::Text(text) => !text.text.is_empty(),
-        AssistantContent::ToolCall(_) => true,
-        AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
-    })
-}
-
-pub(crate) fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 impl PromptRequest<Extended> {
@@ -983,7 +555,7 @@ mod tests {
     use super::ResponseIdentity;
     use super::{
         CompletionCall, PromptResponse, TypedPromptResponse, assistant_text_from_choice,
-        is_empty_assistant_turn, turn_delivered_no_answer,
+        is_empty_assistant_turn,
     };
     use crate::{
         agent::{
@@ -1007,6 +579,7 @@ mod tests {
     };
     use rig_core::message::ProviderCallId;
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
+    use rig_run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -2283,7 +1856,7 @@ mod tests {
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
-                                        if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
                                 ))
                     ))
                     && content.iter().any(|item| matches!(
@@ -2359,7 +1932,7 @@ mod tests {
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
-                                        if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
                                 ))
                     ))
                     && content.iter().any(|item| matches!(
