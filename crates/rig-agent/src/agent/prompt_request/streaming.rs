@@ -24,12 +24,18 @@ use crate::{
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
 };
-use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream, stream::FusedStream};
+use futures::{
+    SinkExt, Stream, StreamExt,
+    channel::mpsc,
+    stream,
+    stream::{AbortHandle, Abortable, FusedStream},
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse, forward_prompt_setters};
+use crate::agent::run_id::RunId;
 use crate::{
     agent::{Agent, model::ModelHandle},
     completion::{CompletionError, PromptError},
@@ -319,15 +325,24 @@ impl StreamingPromptRequest {
         self.runner.stream().await
     }
 
-    /// Split the configured run into a driving future and a [`RunEvents`]
-    /// feed instead of a stream. See [`AgentRunner::run_channel`].
-    pub fn run_channel(
-        self,
-    ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend,
-        RunEvents,
-    ) {
+    /// Split the configured run into a [`RunHandle`], a driving [`RunFuture`]
+    /// and a [`RunEvents`] feed instead of a stream. See
+    /// [`AgentRunner::run_channel`].
+    pub fn run_channel(self) -> (RunHandle, RunFuture, RunEvents) {
         self.runner.run_channel()
+    }
+
+    /// [`run_channel`](Self::run_channel) with an explicit
+    /// [`RunChannelConfig`].
+    pub fn run_channel_with(self, config: RunChannelConfig) -> (RunHandle, RunFuture, RunEvents) {
+        self.runner.run_channel_with(config)
+    }
+
+    /// Choose the [`RunId`] this run reports. See
+    /// [`AgentRunner::with_run_id`].
+    pub fn with_run_id(mut self, run_id: RunId) -> Self {
+        self.runner = self.runner.with_run_id(run_id);
+        self
     }
 }
 
@@ -460,7 +475,11 @@ where
         // Run-scoped hook context: minted once, shared by every hook event on
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
-        let hook_ctx = HookContext::new(is_streaming, runner.config.name.clone());
+        let hook_ctx = HookContext::new(
+            is_streaming,
+            runner.config.name.clone(),
+            runner.run_id.unwrap_or_else(RunId::new),
+        );
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
@@ -1608,38 +1627,151 @@ impl AgentRunner {
     }
 }
 
-/// Capacity of the event queue behind [`AgentRunner::run_channel`]: the number
-/// of [`MultiTurnStreamItem`]s the run may buffer ahead of the consumer before
-/// it parks on back-pressure.
+/// Default capacity of the event queue behind [`AgentRunner::run_channel`]:
+/// the number of [`RunEvent`]s the run may buffer ahead of the consumer before
+/// it parks on back-pressure. Override per run with [`RunChannelConfig`].
 pub const RUN_EVENTS_CAPACITY: usize = 32;
+
+/// Tuning for [`AgentRunner::run_channel_with`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunChannelConfig {
+    /// Bounded queue depth of the [`RunEvents`] feed. When the queue is full
+    /// the run waits for the consumer rather than dropping events, so a small
+    /// capacity against a slow tick parks the run between ticks — raise it
+    /// when a run is bursty relative to how often the feed is drained.
+    pub capacity: usize,
+}
+
+impl Default for RunChannelConfig {
+    fn default() -> Self {
+        Self {
+            capacity: RUN_EVENTS_CAPACITY,
+        }
+    }
+}
+
+/// One event of a [`run_channel`](AgentRunner::run_channel) feed: the
+/// [`MultiTurnStreamItem`] the run produced, stamped with the [`RunId`] of
+/// the run that produced it.
+///
+/// The stamp is what lets one consumer drain many runs into one queue and
+/// still route each event to the run — entity, job, session — it belongs to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunEvent {
+    /// The run this event belongs to.
+    pub run: RunId,
+    /// What happened.
+    pub item: MultiTurnStreamItem,
+}
+
+/// Result of [`RunEvents::try_next`]: the three states a non-blocking poll can
+/// find the feed in.
+// The event is moved straight out by the caller; boxing it to shrink the
+// `Empty`/`Closed` arms would add an allocation per delivered event to the
+// per-tick hot path for no benefit.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
+pub enum TryNext {
+    /// An event was queued and is now taken.
+    Event(RunEvent),
+    /// Nothing queued right now; the run is still going.
+    Empty,
+    /// The run has finished and every event has been taken.
+    Closed,
+}
+
+/// The driving future of a run started with [`AgentRunner::run_channel`].
+///
+/// Boxed once at the API edge so it is a nameable, storable value — a task
+/// slot in a component, a field in a job table — without the caller pinning
+/// it. Resolves with the run's final [`PromptResponse`], or with the error
+/// that ended it ([`PromptError::PromptCancelled`] after
+/// [`RunHandle::abort`]).
+pub type RunFuture = WasmBoxedFuture<'static, Result<PromptResponse, PromptError>>;
+
+/// Identity and cancel handle of a run started with
+/// [`AgentRunner::run_channel`].
+///
+/// Cheap to clone; cloning does not duplicate the run. Dropping a handle does
+/// **not** abort the run — only [`abort`](Self::abort) does (or dropping the
+/// [`RunFuture`] itself). Owning the handle next to the future and the feed
+/// is the shape a host keeps per run.
+#[derive(Debug, Clone)]
+pub struct RunHandle {
+    id: RunId,
+    abort: AbortHandle,
+}
+
+impl RunHandle {
+    /// The run's id: the one on every [`RunEvent`] of its feed and on every
+    /// hook's [`HookContext::run_id`].
+    pub fn id(&self) -> RunId {
+        self.id
+    }
+
+    /// Stop the run at the next opportunity.
+    ///
+    /// The run's item stream ends, no further events are delivered, the feed
+    /// closes, and the [`RunFuture`] resolves with
+    /// [`PromptError::PromptCancelled`]. Idempotent; a no-op once the run has
+    /// finished.
+    pub fn abort(&self) {
+        self.abort.abort();
+    }
+
+    /// Whether [`abort`](Self::abort) has been called.
+    pub fn is_aborted(&self) -> bool {
+        self.abort.is_aborted()
+    }
+}
 
 /// Event feed of an agent run started with [`AgentRunner::run_channel`] or
 /// [`Agent::run_channel`].
 ///
 /// Every [`MultiTurnStreamItem`] the run would have streamed is delivered here
-/// in order, ending with [`MultiTurnStreamItem::FinalResponse`]. The feed is a
-/// bounded queue ([`RUN_EVENTS_CAPACITY`]): a slow consumer applies
-/// back-pressure to the run instead of losing events. Poll it as a
-/// [`Stream`] from async code, or drain it with the non-blocking
-/// [`try_next`](RunEvents::try_next) from a synchronous tick — a game loop, a
-/// UI frame, an ECS system.
+/// in order as a [`RunEvent`], ending with
+/// [`MultiTurnStreamItem::FinalResponse`] (or earlier, if the run is aborted or
+/// fails). The feed is a bounded queue ([`RunChannelConfig::capacity`],
+/// default [`RUN_EVENTS_CAPACITY`]): a slow consumer applies back-pressure to
+/// the run instead of losing events. Poll it as a [`Stream`] from async code,
+/// or from a synchronous tick — a game loop, a UI frame, an ECS system — with
+/// the non-blocking [`try_drain`](RunEvents::try_drain) (everything queued,
+/// once per tick) or [`try_next`](RunEvents::try_next) (one at a time).
 ///
 /// Dropping the feed does not cancel the run; it simply stops receiving events
-/// and the run future still resolves with the final
-/// [`PromptResponse`].
+/// and the run future still resolves with the final [`PromptResponse`]. To
+/// cancel, use the [`RunHandle`].
 #[derive(Debug)]
 pub struct RunEvents {
-    receiver: mpsc::Receiver<MultiTurnStreamItem>,
+    receiver: mpsc::Receiver<RunEvent>,
 }
 
 impl RunEvents {
-    /// Take the next buffered event without waiting.
+    /// Take the next queued event without waiting.
+    pub fn try_next(&mut self) -> TryNext {
+        // `Receiver::try_next` is the call that still tells "empty" (`Err`)
+        // from "closed" (`Ok(None)`) apart; its suggested replacement folds
+        // both into one opaque error.
+        #[allow(deprecated)]
+        match self.receiver.try_next() {
+            Ok(Some(event)) => TryNext::Event(event),
+            Ok(None) => TryNext::Closed,
+            Err(_) => TryNext::Empty,
+        }
+    }
+
+    /// Move every queued event into `out` without waiting; returns how many.
     ///
-    /// Returns `None` both when no event is queued yet and once the run has
-    /// finished and the feed is drained; use [`is_done`](RunEvents::is_done)
-    /// to tell the two apart.
-    pub fn try_next(&mut self) -> Option<MultiTurnStreamItem> {
-        self.receiver.try_recv().ok()
+    /// The per-tick call: one drain per feed per frame, then iterate `out`.
+    /// Returns `0` both when nothing is queued and once the feed is closed —
+    /// use [`is_done`](RunEvents::is_done) to tell the two apart.
+    pub fn try_drain(&mut self, out: &mut Vec<RunEvent>) -> usize {
+        let mut drained = 0;
+        while let TryNext::Event(event) = self.try_next() {
+            out.push(event);
+            drained += 1;
+        }
+        drained
     }
 
     /// Whether the run has finished and every event has been taken.
@@ -1649,7 +1781,7 @@ impl RunEvents {
 }
 
 impl Stream for RunEvents {
-    type Item = MultiTurnStreamItem;
+    type Item = RunEvent;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
@@ -1669,28 +1801,46 @@ impl FusedStream for RunEvents {
     }
 }
 
+/// Reason text on the [`PromptError::PromptCancelled`] a [`RunHandle::abort`]
+/// produces.
+pub const RUN_ABORTED_REASON: &str = "aborted via RunHandle";
+
 impl AgentRunner {
-    /// Split the run into a driving future and a [`RunEvents`] feed.
+    /// Split the run into a [`RunHandle`], a driving [`RunFuture`] and a
+    /// [`RunEvents`] feed, with the default [`RunChannelConfig`].
     ///
     /// The future performs the whole agent loop — the same engine as
     /// [`run`](AgentRunner::run) and [`stream`](AgentRunner::stream) — and
-    /// resolves with the final [`PromptResponse`]; the
-    /// feed receives each intermediate [`MultiTurnStreamItem`] as it happens.
-    /// Spawn the future on any executor and poll the feed from wherever the
-    /// events are consumed; neither side assumes a runtime.
+    /// resolves with the final [`PromptResponse`]; the feed receives each
+    /// intermediate [`MultiTurnStreamItem`] as it happens, stamped with the
+    /// run's id; the handle carries that id and can abort the run. Spawn the
+    /// future on any executor and poll the feed from wherever the events are
+    /// consumed; neither side assumes a runtime.
     ///
-    /// The feed is bounded ([`RUN_EVENTS_CAPACITY`]); when it is full the run
-    /// waits for the consumer rather than dropping events. Dropping the feed
-    /// lets the run continue to completion unobserved.
-    pub fn run_channel(
-        self,
-    ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend,
-        RunEvents,
-    ) {
-        let (mut sender, receiver) = mpsc::channel(RUN_EVENTS_CAPACITY);
+    /// The run id is the one chosen with [`with_run_id`](Self::with_run_id),
+    /// or one minted here — either way it is fixed before this returns, so
+    /// [`RunHandle::id`] is valid immediately.
+    ///
+    /// The feed is bounded; when it is full the run waits for the consumer
+    /// rather than dropping events. Dropping the feed lets the run continue to
+    /// completion unobserved; dropping the handle changes nothing; dropping
+    /// the future cancels the run.
+    pub fn run_channel(self) -> (RunHandle, RunFuture, RunEvents) {
+        self.run_channel_with(RunChannelConfig::default())
+    }
+
+    /// [`run_channel`](Self::run_channel) with an explicit
+    /// [`RunChannelConfig`].
+    pub fn run_channel_with(
+        mut self,
+        config: RunChannelConfig,
+    ) -> (RunHandle, RunFuture, RunEvents) {
+        let run_id = self.resolve_run_id();
+        let (abort, abort_registration) = AbortHandle::new_pair();
+        let (mut sender, receiver) = mpsc::channel(config.capacity);
+        let handle = RunHandle { id: run_id, abort };
         let future = async move {
-            let mut stream = self.stream().await;
+            let mut stream = Abortable::new(self.stream().await, abort_registration);
             let mut response = None;
             let mut forward = true;
             while let Some(item) = stream.next().await {
@@ -1700,17 +1850,28 @@ impl AgentRunner {
                         if forward {
                             // The consumer is gone; nothing left to forward.
                             let _ = sender
-                                .send(MultiTurnStreamItem::FinalResponse(done.clone()))
+                                .send(RunEvent {
+                                    run: run_id,
+                                    item: MultiTurnStreamItem::FinalResponse(done.clone()),
+                                })
                                 .await;
                         }
                         response = Some(done);
                     }
                     item => {
-                        if forward && sender.send(item).await.is_err() {
+                        if forward && sender.send(RunEvent { run: run_id, item }).await.is_err() {
                             forward = false;
                         }
                     }
                 }
+            }
+            if stream.is_aborted() {
+                // The transcript lives in the driver, which the abort has torn
+                // down; there is no canonical history to hand back here.
+                return Err(PromptError::PromptCancelled {
+                    chat_history: Vec::new(),
+                    reason: RUN_ABORTED_REASON.to_string(),
+                });
             }
             response.ok_or_else(|| {
                 PromptError::CompletionError(CompletionError::ResponseError(
@@ -1718,24 +1879,31 @@ impl AgentRunner {
                 ))
             })
         };
-        (future, RunEvents { receiver })
+        (handle, Box::pin(future), RunEvents { receiver })
     }
 }
 
 impl Agent {
-    /// Run `prompt` with the agent's defaults, returning the driving future and
-    /// a [`RunEvents`] feed. See [`AgentRunner::run_channel`]; to configure the
-    /// run first (history, turn budget, tool context, …), configure a
-    /// [`StreamingPromptRequest`] and call its
-    /// [`run_channel`](StreamingPromptRequest::run_channel).
+    /// Run `prompt` with the agent's defaults, returning the [`RunHandle`],
+    /// the driving [`RunFuture`] and a [`RunEvents`] feed. See
+    /// [`AgentRunner::run_channel`]; to configure the run first (history, turn
+    /// budget, tool context, run id, …), configure a [`StreamingPromptRequest`]
+    /// and call its [`run_channel`](StreamingPromptRequest::run_channel).
     pub fn run_channel<P: Into<Message> + WasmCompatSend>(
         &self,
         prompt: P,
-    ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend + use<P>,
-        RunEvents,
-    ) {
+    ) -> (RunHandle, RunFuture, RunEvents) {
         AgentRunner::from_agent(self, prompt).run_channel()
+    }
+
+    /// [`run_channel`](Self::run_channel) with an explicit
+    /// [`RunChannelConfig`].
+    pub fn run_channel_with<P: Into<Message> + WasmCompatSend>(
+        &self,
+        prompt: P,
+        config: RunChannelConfig,
+    ) -> (RunHandle, RunFuture, RunEvents) {
+        AgentRunner::from_agent(self, prompt).run_channel_with(config)
     }
 }
 
@@ -2451,7 +2619,7 @@ mod migrated_tests {
         // `AgentRun` rejects the result before any commit-labelled item escapes.
         calls[0].tool_call.id = rig_core::message::ToolCallId::new_or_mint("mismatched_call");
 
-        let hook_context = HookContext::new(true, None);
+        let hook_context = HookContext::new(true, None, RunId::new());
         hook_context.set_turn(1);
         let mut stream = drive_tool_calls(
             &runner,
@@ -7660,20 +7828,22 @@ mod migrated_tests {
 
     /// `run_channel` delivers every event the stream would have produced, in
     /// order and ending with the final response, while the future resolves
-    /// with that same response.
+    /// with that same response — and every event carries the handle's id.
     #[tokio::test]
     async fn run_channel_forwards_events_and_resolves() {
         let model = streaming_tool_then_text_model();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-        let (run, events) = agent
+        let (handle, run, events) = agent
             .stream_prompt("do tool work")
             .max_turns(3)
             .run_channel();
-        let (response, items) = futures::join!(run, events.collect::<Vec<_>>());
+        let (response, events) = futures::join!(run, events.collect::<Vec<_>>());
 
         let response = response.expect("run succeeds");
         assert_eq!(response.output(), "done");
+        assert!(events.iter().all(|event| event.run == handle.id()));
+        let items: Vec<&MultiTurnStreamItem> = events.iter().map(|e| &e.item).collect();
         assert!(items.iter().any(|item| matches!(
             item,
             MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall { .. })
@@ -7688,54 +7858,270 @@ mod migrated_tests {
             }
             other => panic!("expected FinalResponse last, got {other:?}"),
         }
+        assert!(!handle.is_aborted());
+    }
+
+    /// A fresh agent over a fresh scripted model: the mock's streaming script
+    /// is consumed by one run, so every run in these tests gets its own.
+    fn scripted_tool_agent() -> Agent {
+        AgentBuilder::new(streaming_tool_then_text_model())
+            .tool(MockAddTool)
+            .build()
+    }
+
+    /// Items as JSON with the per-run `internal_call_id` stamps removed, so two
+    /// runs of the same script compare equal.
+    fn items_without_call_ids(items: Vec<MultiTurnStreamItem>) -> serde_json::Value {
+        fn strip(value: &mut serde_json::Value) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    map.remove("internal_call_id");
+                    map.values_mut().for_each(strip);
+                }
+                serde_json::Value::Array(items) => items.iter_mut().for_each(strip),
+                _ => {}
+            }
+        }
+        let mut value = serde_json::to_value(items).expect("serialize");
+        strip(&mut value);
+        value
+    }
+
+    /// The feed carries the same items `stream_prompt` yields for the same
+    /// scripted run: the channel is a transport, not a second engine.
+    #[tokio::test]
+    async fn run_channel_items_match_the_stream() {
+        let streamed: Vec<MultiTurnStreamItem> = scripted_tool_agent()
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .await
+            .filter_map(|item| std::future::ready(item.ok()))
+            .collect()
+            .await;
+
+        let (_handle, run, events) = scripted_tool_agent()
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
+        let (_, channelled) = futures::join!(run, events.collect::<Vec<_>>());
+        let channelled: Vec<MultiTurnStreamItem> = channelled.into_iter().map(|e| e.item).collect();
+
+        assert!(!streamed.is_empty());
+        assert_eq!(
+            items_without_call_ids(streamed),
+            items_without_call_ids(channelled)
+        );
+    }
+
+    /// A caller-chosen id is the one on the handle, on every event, and the
+    /// one hooks see; without one, the run mints exactly one id and every
+    /// reader agrees on it.
+    #[tokio::test]
+    async fn run_channel_run_id_is_shared_by_handle_events_and_hooks() {
+        #[derive(Default)]
+        struct SeenIds(std::sync::Mutex<Vec<RunId>>);
+        impl AgentHook for Arc<SeenIds> {
+            async fn on_completion_call(
+                &self,
+                ctx: &HookContext,
+                _event: crate::agent::CompletionCallEvent<'_>,
+            ) -> crate::agent::CompletionCallAction {
+                self.0.lock().expect("lock").push(ctx.run_id());
+                crate::agent::CompletionCallAction::Continue
+            }
+        }
+
+        // Caller-chosen.
+        let chosen = RunId::from_bits(7);
+        let seen = Arc::new(SeenIds::default());
+        let (handle, run, events) = scripted_tool_agent()
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .add_hook(seen.clone())
+            .with_run_id(chosen)
+            .run_channel();
+        assert_eq!(handle.id(), chosen);
+        let (_, events) = futures::join!(run, events.collect::<Vec<_>>());
+        assert!(!events.is_empty());
+        assert!(events.iter().all(|event| event.run == chosen));
+        let hook_ids = seen.0.lock().expect("lock").clone();
+        assert!(!hook_ids.is_empty());
+        assert!(hook_ids.iter().all(|id| *id == chosen));
+
+        // Minted.
+        let seen = Arc::new(SeenIds::default());
+        let (handle, run, events) = scripted_tool_agent()
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .add_hook(seen.clone())
+            .run_channel();
+        let minted = handle.id();
+        assert_ne!(minted, chosen);
+        let (_, events) = futures::join!(run, events.collect::<Vec<_>>());
+        assert!(!events.is_empty());
+        assert!(events.iter().all(|event| event.run == minted));
+        let hook_ids = seen.0.lock().expect("lock").clone();
+        assert!(!hook_ids.is_empty());
+        assert!(hook_ids.iter().all(|id| *id == minted));
+    }
+
+    /// Two runs drained through one consumer route by id: every event's `run`
+    /// is the id of the handle it came from, never the other's.
+    #[tokio::test]
+    async fn run_channel_interleaved_runs_route_by_id() {
+        let (a, run_a, events_a) = scripted_tool_agent()
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
+        let (b, run_b, events_b) = scripted_tool_agent()
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
+        assert_ne!(a.id(), b.id());
+
+        let merged = futures::stream::select(events_a, events_b).collect::<Vec<_>>();
+        let (ra, rb, merged) = futures::join!(run_a, run_b, merged);
+        ra.expect("a succeeds");
+        rb.expect("b succeeds");
+
+        let from_a = merged.iter().filter(|e| e.run == a.id()).count();
+        let from_b = merged.iter().filter(|e| e.run == b.id()).count();
+        assert!(from_a > 0 && from_b > 0);
+        assert_eq!(from_a + from_b, merged.len());
+        // Each run's final response is stamped with its own id.
+        for handle in [&a, &b] {
+            assert!(
+                merged.iter().any(|e| e.run == handle.id()
+                    && matches!(e.item, MultiTurnStreamItem::FinalResponse(_)))
+            );
+        }
     }
 
     /// Dropping the event feed does not abort the run: the future still
-    /// drives the loop to completion and resolves.
+    /// drives the loop to completion and resolves. Dropping the handle changes
+    /// nothing either.
     #[tokio::test]
-    async fn run_channel_survives_dropped_events() {
+    async fn run_channel_survives_dropped_events_and_handle() {
         let model = streaming_tool_then_text_model();
         let recorded = model.clone();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-        let (run, events) = agent
+        let (handle, run, events) = agent
             .stream_prompt("do tool work")
             .max_turns(3)
             .run_channel();
         drop(events);
+        drop(handle);
 
         let response = run.await.expect("run succeeds without a consumer");
         assert_eq!(response.output(), "done");
         assert_eq!(recorded.requests().len(), 2);
     }
 
-    /// The feed can be drained without awaiting — the shape a frame/tick loop
-    /// uses — and reports completion once the run is over and drained.
+    /// Aborting through the handle ends the run: the future resolves with
+    /// `PromptCancelled`, the feed closes, and no further events arrive.
+    /// Aborting a finished run is a no-op.
     #[tokio::test]
-    async fn run_channel_try_next_drains_from_a_tick_loop() {
+    async fn run_channel_abort_cancels_and_closes_the_feed() {
         let model = streaming_tool_then_text_model();
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-        let (run, mut events) = agent
+        // Capacity 1 so the run parks on the first event and is provably
+        // mid-flight when we abort.
+        let (handle, run, mut events) = agent
             .stream_prompt("do tool work")
             .max_turns(3)
-            .run_channel();
+            .run_channel_with(RunChannelConfig { capacity: 1 });
+        let run = tokio::spawn(run);
+
+        // Wait for the first event to prove the run started, then abort.
+        let first = loop {
+            match events.try_next() {
+                TryNext::Event(event) => break event,
+                TryNext::Empty => tokio::task::yield_now().await,
+                TryNext::Closed => panic!("feed closed before any event"),
+            }
+        };
+        assert_eq!(first.run, handle.id());
+        handle.abort();
+        assert!(handle.is_aborted());
+
+        let outcome = run.await.expect("join");
+        match outcome {
+            Err(PromptError::PromptCancelled { reason, .. }) => {
+                assert_eq!(reason, RUN_ABORTED_REASON);
+            }
+            other => panic!("expected PromptCancelled, got {other:?}"),
+        }
+        // Whatever was already queued may still be taken; after that the feed
+        // is closed and nothing new appears.
+        let mut scratch = Vec::new();
+        events.try_drain(&mut scratch);
+        assert!(
+            !scratch
+                .iter()
+                .any(|e| matches!(e.item, MultiTurnStreamItem::FinalResponse(_)))
+        );
+        assert!(events.is_done());
+        assert!(matches!(events.try_next(), TryNext::Closed));
+
+        // Abort after completion: no-op.
+        handle.abort();
+        assert!(handle.is_aborted());
+    }
+
+    /// The feed can be drained without awaiting — the shape a frame/tick loop
+    /// uses — with `try_drain` batching everything queued, `TryNext`
+    /// distinguishing empty from closed, and a capacity of one still
+    /// delivering every event in order.
+    #[tokio::test]
+    async fn run_channel_try_drain_from_a_tick_loop_with_capacity_one() {
+        let model = streaming_tool_then_text_model();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let (handle, run, mut events) = agent
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel_with(RunChannelConfig { capacity: 1 });
         let run = tokio::spawn(run);
 
         let mut seen = Vec::new();
+        let mut ticks_with_nothing = 0;
         while !events.is_done() {
-            match events.try_next() {
-                Some(item) => seen.push(item),
-                None => tokio::task::yield_now().await,
+            let mut batch = Vec::new();
+            let n = events.try_drain(&mut batch);
+            assert_eq!(n, batch.len());
+            if n == 0 {
+                ticks_with_nothing += 1;
+                assert!(matches!(
+                    events.try_next(),
+                    TryNext::Empty | TryNext::Closed
+                ));
+                tokio::task::yield_now().await;
             }
+            seen.extend(batch);
         }
+        assert!(
+            ticks_with_nothing > 0,
+            "capacity 1 must park the run between ticks"
+        );
 
         let response = run.await.expect("join").expect("run succeeds");
         assert_eq!(response.output(), "done");
+        assert!(seen.iter().all(|e| e.run == handle.id()));
         assert!(matches!(
-            seen.last(),
+            seen.last().map(|e| &e.item),
             Some(MultiTurnStreamItem::FinalResponse(_))
         ));
+        // Parity with the default capacity: same items, same order.
+        let (_, run, events) = scripted_tool_agent()
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
+        let (_, default_events) = futures::join!(run, events.collect::<Vec<_>>());
+        let a: Vec<MultiTurnStreamItem> = seen.into_iter().map(|e| e.item).collect();
+        let b: Vec<MultiTurnStreamItem> = default_events.into_iter().map(|e| e.item).collect();
+        assert_eq!(items_without_call_ids(a), items_without_call_ids(b));
     }
 
     /// Load failures surface on the future as a `PromptError`, and the feed
@@ -7745,18 +8131,19 @@ mod migrated_tests {
         let model = MockCompletionModel::text("unused");
         let agent = AgentBuilder::new(model).build();
 
-        let (run, events) = agent
+        let (_handle, run, events) = agent
             .stream_prompt("budget of zero")
             .max_turns(0)
             .run_channel();
-        let _: (_, RunEvents) = agent.run_channel("plain entry point type-checks");
-        let (response, items) = futures::join!(run, events.collect::<Vec<_>>());
+        let _: (RunHandle, RunFuture, RunEvents) =
+            agent.run_channel("plain entry point type-checks");
+        let (response, events) = futures::join!(run, events.collect::<Vec<_>>());
 
         assert!(response.is_err(), "zero-turn budget must fail the run");
         assert!(
-            !items
+            !events
                 .iter()
-                .any(|item| matches!(item, MultiTurnStreamItem::FinalResponse(_)))
+                .any(|e| matches!(e.item, MultiTurnStreamItem::FinalResponse(_)))
         );
     }
 }
