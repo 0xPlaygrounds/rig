@@ -177,7 +177,7 @@ pub mod streaming {
 /// runtime-independent portable contracts are exposed explicitly as
 /// [`crate::tool::PortableTool`], [`crate::tool::PortableToolEmbedding`], and
 /// [`crate::tool::PortableDynamicTool`] (and in full under
-/// [`crate::tool::portable`]). The live registry ([`server`]) is the agent
+/// [`crate::tool::portable`]). The live registry (`server`) is the agent
 /// runtime's and needs the `agent` feature; the same surface also lives at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
 pub mod tool {
