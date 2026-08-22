@@ -3,59 +3,11 @@
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
-use rig_core::{
-    memory::MemoryError,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use rig_core::completion::*;
 
-/// Errors from classic agent prompting.
-#[derive(Debug, Error)]
-pub enum PromptError {
-    /// A provider completion failed.
-    #[error("CompletionError: {0}")]
-    CompletionError(#[from] CompletionError),
-
-    /// Conversation memory failed to load or persist history.
-    #[error("MemoryError: {0}")]
-    MemoryError(#[from] MemoryError),
-
-    /// The run exhausted its total model-call budget.
-    #[error("MaxTurnsError: reached max turns limit: {max_turns}")]
-    MaxTurnsError {
-        /// Configured total model-call budget.
-        max_turns: usize,
-        /// Canonical history available when the budget was exhausted.
-        chat_history: Box<Vec<Message>>,
-        /// Prompt for the call that could not be dispatched.
-        prompt: Box<Message>,
-    },
-
-    /// A prompting loop was cancelled.
-    #[error("PromptCancelled: {reason}")]
-    PromptCancelled {
-        /// Canonical history available at cancellation.
-        chat_history: Vec<Message>,
-        /// Human-readable cancellation reason.
-        reason: String,
-    },
-
-    /// The model attempted to call a tool unavailable for the current turn.
-    #[error(
-        "UnknownToolCall: model attempted to call unknown or disallowed tool `{tool_name}`. Available tools: {available_tools:?}. Allowed tools for this turn: {allowed_tools:?}"
-    )]
-    UnknownToolCall {
-        /// Tool name emitted by the model.
-        tool_name: String,
-        /// Tools registered on the runtime.
-        available_tools: Vec<String>,
-        /// Exact immutable set allowed for this turn.
-        allowed_tools: Vec<String>,
-        /// Canonical history available at failure.
-        chat_history: Box<Vec<Message>>,
-    },
-}
+pub use rig_run::PromptError;
 
 /// Forwards the `provider_response_*` accessor trio through the variant that
 /// wraps an error which itself exposes them.
@@ -107,20 +59,7 @@ macro_rules! forward_provider_response_helpers {
     };
 }
 
-forward_provider_response_helpers!(PromptError, CompletionError, "completion error");
 forward_provider_response_helpers!(StructuredOutputError, PromptError, "prompt error");
-
-impl PromptError {
-    pub(crate) fn prompt_cancelled(
-        chat_history: impl IntoIterator<Item = Message>,
-        reason: impl Into<String>,
-    ) -> Self {
-        Self::PromptCancelled {
-            chat_history: chat_history.into_iter().collect(),
-            reason: reason.into(),
-        }
-    }
-}
 
 /// Errors returned by typed structured prompting.
 #[derive(Debug, Error)]

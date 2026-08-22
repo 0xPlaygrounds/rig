@@ -28,19 +28,19 @@
 //!
 //! `AgentRun` deliberately contains no model, tool registry, memory backend, or
 //! hook stack. Hand-driving it is a low-level provider integration: the caller
-//! owns all IO and any lifecycle policy. To execute a configured [`Agent`](crate::agent::Agent)
+//! owns all IO and any lifecycle policy. To execute a configured `Agent`
 //! with its hooks, tools, retrieval, and memory, use
-//! [`Agent::runner`](crate::agent::Agent::runner); constructing an `AgentRun`
+//! `Agent::runner`; constructing an `AgentRun`
 //! directly is not an alternate way to execute an `Agent`.
 //!
-//! [`crate::completion::Prompt::prompt`] and
-//! [`Agent::runner`](crate::agent::Agent::runner) drive this machine internally;
+//! `Prompt::prompt` and
+//! `Agent::runner` drive this machine internally;
 //! the same machine can be driven by hand for custom provider control flow:
 //!
 //! ```rust,no_run
-//! use rig_agent::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+//! use rig_run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 //!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut run = AgentRun::new("What is 2+2?").max_turns(3);
 //! loop {
 //!     match run.next_step()? {
@@ -64,33 +64,31 @@
 //! # }
 //! ```
 
-pub mod output_mode;
-pub mod streamed;
-
-pub use output_mode::OutputMode;
+pub use crate::output_mode::OutputMode;
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{CompletionError, FinishReason};
+use rig_core::completion::{CompletionError, FinishReason, ToolDefinition};
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 
 use crate::{
-    agent::hook::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
-    agent::prompt_request::{
-        CompletionCall, PromptResponse, ResponseIdentity, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
-        assistant_text_from_choice, build_full_history, build_history_for_request,
-        invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
-        turn_delivered_no_answer,
+    error::PromptError,
+    policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
+    response::{CompletionCall, PromptResponse},
+    transcript::{
+        TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, assistant_text_from_choice, build_full_history,
+        build_history_for_request, invalid_tool_retry_user_message, is_empty_assistant_turn,
+        tool_result_message, turn_delivered_no_answer,
     },
-    completion::{Message, PromptError, Usage},
-    json_utils,
 };
+use rig_core::completion::{Message, ResponseIdentity, Usage};
+use rig_core::json_utils;
 
-pub use streamed::{
+pub use crate::streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
     StreamedTurnAssembler, StreamedTurnEvent,
 };
@@ -150,7 +148,7 @@ enum ValidatedInvalidToolCallAction {
 /// Default number of times Tool output mode re-prompts the model for valid
 /// structured output before finalizing best-effort (see #1928). Mirrors
 /// pydantic-ai's default output-retry budget of 1.
-pub(crate) const DEFAULT_OUTPUT_RETRIES: usize = 1;
+pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
 
 /// What a driver must do next to advance an [`AgentRun`].
 ///
@@ -423,7 +421,32 @@ pub struct AgentRun {
     /// [`AgentRunStep::CallModel`] is emitted.
     #[serde(default)]
     streamed_completion_call_recorded: bool,
+    /// The tool definitions the driver advertised to the model for a turn,
+    /// recorded with [`AgentRun::advertise_tools`]. Protocol data, so a second
+    /// driver (or a resumed run) can re-pair tool calls with what was offered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    turn_tools: Option<TurnTools>,
     state: RunState,
+}
+
+/// The tools advertised to the model for one turn — what the request carried,
+/// as data. Recorded by the driver with [`AgentRun::advertise_tools`] just
+/// before the model call; dispatch of the resulting calls is still the
+/// driver's IO, but *which* tools were offered is part of the run's record.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TurnTools {
+    /// One-based model-call index the definitions were advertised for
+    /// (the `turn` of the matching [`AgentRunStep::CallModel`]).
+    pub turn: usize,
+    /// The definitions sent with that request, in advertised order.
+    pub definitions: Vec<ToolDefinition>,
+}
+
+impl TurnTools {
+    /// Whether a tool of this name was advertised.
+    pub fn contains(&self, tool_name: &str) -> bool {
+        self.definitions.iter().any(|d| d.name == tool_name)
+    }
 }
 
 impl AgentRun {
@@ -447,8 +470,25 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
+            turn_tools: None,
             state: RunState::PreparingRequest,
         }
+    }
+
+    /// Record the tool definitions advertised to the model for `turn` (the
+    /// `turn` of the [`AgentRunStep::CallModel`] being served). Replaces any
+    /// earlier record; the run keeps only the latest turn's advertisement.
+    pub fn advertise_tools(&mut self, turn: usize, definitions: Vec<ToolDefinition>) {
+        self.turn_tools = Some(TurnTools { turn, definitions });
+    }
+
+    /// The tools advertised for the most recent model call, if the driver
+    /// recorded them. A [`CallTools`](AgentRunStep::CallTools) step whose
+    /// calls name tools outside this set means the driver and the run have
+    /// desynchronized (a registry that changed under a resumed run, say); a
+    /// driver that wants that guard checks here before dispatching.
+    pub fn advertised_tools(&self) -> Option<&TurnTools> {
+        self.turn_tools.as_ref()
     }
 
     /// Set the input chat history preceding the prompt.
@@ -556,7 +596,7 @@ impl AgentRun {
     /// Set (or clear) the output-tool name in place. The driver resolves the
     /// name from the prepared request inside the run loop, where the agent's
     /// tool set (and thus the resolved output mode) is known.
-    pub(crate) fn set_output_tool_name(&mut self, name: Option<String>) {
+    pub fn set_output_tool_name(&mut self, name: Option<String>) {
         // The name is committed once and pinned for the whole run, so the
         // request the driver builds each turn stays consistent with the
         // intercept (and a tool set that shifts mid-run cannot flip the mode).
@@ -568,7 +608,7 @@ impl AgentRun {
     /// The synthetic output-tool name committed for this run, if any. The driver
     /// passes this back when preparing later turns so Tool output mode stays
     /// pinned even if the per-turn tool set changes (see #1928).
-    pub(crate) fn output_tool_name(&self) -> Option<&str> {
+    pub fn output_tool_name(&self) -> Option<&str> {
         self.output_tool_name.as_deref()
     }
 
@@ -594,7 +634,7 @@ impl AgentRun {
     }
 
     /// Canonical content for the accepted model turn awaiting advancement.
-    pub(crate) fn accepted_turn_choice(&self) -> Option<Vec<AssistantContent>> {
+    pub fn accepted_turn_choice(&self) -> Option<Vec<AssistantContent>> {
         let RunState::AwaitingAdvance(turn) = &self.state else {
             return None;
         };
@@ -1260,7 +1300,7 @@ impl AgentRun {
     /// preserves the extractor's legacy response semantics: unrelated calls
     /// disappear, a sibling output call can still finalize the turn, and
     /// response observers still receive the canonical response fields.
-    pub(crate) fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
+    pub fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         let mut resolving = self.take_resolving(
             "ignore_invalid_tool_call called without a pending invalid tool call",
         )?;
@@ -1412,7 +1452,7 @@ impl AgentRun {
     }
 
     // ── Streamed-turn entry points ──────────────────────────────────────
-    // Paired with [`streamed::StreamedTurnAssembler`]; see that module's
+    // Paired with [`crate::streamed::StreamedTurnAssembler`]; see that module's
     // docs for the full driving protocol.
 
     /// Record one provider completion call for a streamed turn.
@@ -1454,7 +1494,7 @@ impl AgentRun {
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
-    /// mid-stream by a [`streamed::StreamedTurnAssembler`].
+    /// mid-stream by a [`crate::streamed::StreamedTurnAssembler`].
     pub fn streamed_invalid_tool_call_context(
         &self,
         partial: &PartialStreamedTurn,

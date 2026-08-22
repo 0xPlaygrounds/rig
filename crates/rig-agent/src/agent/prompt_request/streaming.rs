@@ -587,6 +587,10 @@ where
                     };
                     run.set_output_tool_name(prepared.output_tool_name.clone());
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
+                    // What this request advertises becomes run data, so a
+                    // resumed run or another driver can re-pair the calls
+                    // that come back with the tools that were offered.
+                    run.advertise_tools(turn, turn_tool_snapshot.definitions().to_vec());
                     if runner.config.record_telemetry_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
@@ -1806,7 +1810,7 @@ mod migrated_tests {
     use super::*;
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext};
-    use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
+    use crate::agent::prompt_request::tool_result_output;
     use crate::client::AgentClientExt;
     use crate::completion::{
         CompletionRequest, FinishReason, Prompt, PromptError, ToolDefinition, Usage,
@@ -1824,6 +1828,7 @@ mod migrated_tests {
         ToolChoice, ToolResultContent, UserContent,
     };
     use rig_core::providers::anthropic;
+    use rig_run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
     use serde::Deserialize;
     use std::collections::{BTreeSet, HashMap};
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

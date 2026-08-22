@@ -49,7 +49,7 @@ use super::{
         },
         tool_result_output,
     },
-    run::{AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall},
+    run::{AgentRun, ModelTurn, ModelTurnOutcome, PendingToolCall},
 };
 use rig_core::{
     memory::ConversationMemory,
@@ -470,20 +470,14 @@ pub(crate) fn build_agent_run(
     history: Option<Vec<Message>>,
     tool_choice: Option<ToolChoice>,
 ) -> AgentRun {
-    let mut run = AgentRun::new(prompt)
-        .max_turns(max_turns)
-        .max_invalid_tool_call_retries(max_invalid_tool_call_retries)
-        .with_output_validation(
-            output_schema.map(|schema| schema.as_value().clone()),
-            DEFAULT_OUTPUT_RETRIES,
-        );
-    if let Some(history) = history {
-        run = run.with_history(history);
-    }
-    if let Some(tool_choice) = tool_choice {
-        run = run.with_tool_choice(tool_choice);
-    }
-    run
+    let spec = rig_run::RunSpec {
+        max_turns: Some(max_turns),
+        max_invalid_tool_call_retries,
+        output_schema: output_schema.map(|schema| schema.as_value().clone()),
+        tool_choice,
+        ..rig_run::RunSpec::new()
+    };
+    AgentRun::from_spec(&spec, prompt, history)
 }
 
 /// Build (or adopt) the top-level `invoke_agent` span for a run, shared by the
