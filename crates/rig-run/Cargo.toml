@@ -1,0 +1,13 @@
+[package]
+name = "rig-run"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "Placeholder reserving the rig-run name for Rig's forthcoming agent-run host/runtime crate. Contains no code yet."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
