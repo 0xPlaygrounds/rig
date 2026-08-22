@@ -53,19 +53,27 @@ mod dispatch {
         ServiceError,
         ToolReportedError,
         ImageToolReportedError,
+        InputRequired,
     }
 
     #[derive(Clone)]
     struct ScenarioServer {
         scenario: Scenario,
-        seen: Arc<RwLock<Option<Meta>>>,
+        seen: Arc<RwLock<Option<RequestMetaObject>>>,
         cancelled: Arc<Notify>,
     }
 
     impl ServerHandler for ScenarioServer {
         fn get_info(&self) -> ServerInfo {
+            // MRTR results exist only on `2026-07-28`+ sessions; rmcp's
+            // server-side gate refuses to send them to older peers, so the
+            // input-required scenario must negotiate the draft version.
+            let protocol_version = match self.scenario {
+                Scenario::InputRequired => ProtocolVersion::V_2026_07_28,
+                _ => ProtocolVersion::LATEST,
+            };
             ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_protocol_version(protocol_version)
                 .with_server_info(Implementation::new("rig-mcp-test", "0.1.0"))
         }
 
@@ -73,10 +81,12 @@ mod dispatch {
             &self,
             _request: CallToolRequestParams,
             context: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
+        ) -> Result<CallToolResponse, ErrorData> {
             *self.seen.write().await = Some(context.meta.clone());
             match self.scenario {
-                Scenario::Success => Ok(CallToolResult::success(vec![ContentBlock::text("ok")])),
+                Scenario::Success => {
+                    Ok(CallToolResult::success(vec![ContentBlock::text("ok")]).into())
+                }
                 Scenario::StructuredSuccess => {
                     let mut response = CallToolResult::success(vec![
                         ContentBlock::text("before"),
@@ -87,15 +97,15 @@ mod dispatch {
                         "answer": 42,
                         "source": "fixture"
                     }));
-                    let mut meta = Meta::new();
-                    meta.0.insert("response-id".into(), json!("response-123"));
+                    let mut meta = MetaObject::new();
+                    meta.insert("response-id".into(), json!("response-123"));
                     response.meta = Some(meta);
-                    Ok(response)
+                    Ok(response.into())
                 }
                 Scenario::StructuredOnly => {
                     let mut response = CallToolResult::structured(json!({"answer": 42}));
                     response.content.clear();
-                    Ok(response)
+                    Ok(response.into())
                 }
                 Scenario::Hang => {
                     context.ct.cancelled().await;
@@ -107,12 +117,25 @@ mod dispatch {
                 }
                 Scenario::ToolReportedError => Ok(CallToolResult::error(vec![ContentBlock::text(
                     "tool reported exact failure",
-                )])),
+                )])
+                .into()),
                 Scenario::ImageToolReportedError => {
                     Ok(CallToolResult::error(vec![ContentBlock::image(
                         "ZXJyb3ItaW1hZ2U=",
                         "image/png",
-                    )]))
+                    )])
+                    .into())
+                }
+                Scenario::InputRequired => {
+                    // `_meta` is what lets this result tunnel through the
+                    // untagged `ServerResult` union as a lenient
+                    // `CallToolResult` on the client side — the exact shape
+                    // `call_mcp_tool`'s `resultType` guard exists to reject.
+                    let mut result = InputRequiredResult::from_request_state("fixture-state");
+                    let mut meta = MetaObject::new();
+                    meta.insert("hint".into(), json!("supply-input"));
+                    result.meta = Some(meta);
+                    Ok(result.into())
                 }
             }
         }
@@ -123,13 +146,19 @@ mod dispatch {
         /// The adapter itself, for tests that assert MCP argument semantics
         /// directly (the registry path parses JSON in rig-agent first).
         tool: McpTool,
-        seen: Arc<RwLock<Option<Meta>>>,
+        seen: Arc<RwLock<Option<RequestMetaObject>>>,
         cancelled: Arc<Notify>,
         _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
         server_task: JoinHandle<()>,
     }
 
     async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
+        let client_info = match scenario {
+            Scenario::InputRequired => {
+                ClientInfo::default().with_protocol_version(ProtocolVersion::V_2026_07_28)
+            }
+            _ => ClientInfo::default(),
+        };
         let seen = Arc::new(RwLock::new(None));
         let cancelled = Arc::new(Notify::new());
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
@@ -146,7 +175,7 @@ mod dispatch {
                 .expect("server start");
             running.waiting().await.expect("server error");
         });
-        let client = ClientInfo::default()
+        let client = client_info
             .serve((client_from_server, client_to_server))
             .await
             .expect("client connect");
@@ -357,8 +386,8 @@ mod dispatch {
     #[tokio::test]
     async fn canonical_dispatch_forwards_context_meta() {
         let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-        let mut meta = Meta::new();
-        meta.0.insert("authorization".into(), json!("Bearer test"));
+        let mut meta = RequestMetaObject::new();
+        meta.insert("authorization".into(), json!("Bearer test"));
         let mut context = ToolContext::new();
         context.insert(meta);
 
@@ -371,7 +400,6 @@ mod dispatch {
                 .await
                 .as_ref()
                 .expect("server observed metadata")
-                .0
                 .get("authorization"),
             Some(&json!("Bearer test"))
         );
@@ -404,6 +432,28 @@ mod dispatch {
         let output = result.output().render();
         assert!(output.contains("MCP tool 'fixture_tool' request failed"));
         assert!(output.contains("fixture service failed"));
+        fixture.server_task.abort();
+    }
+
+    /// An `InputRequiredResult` that carries `_meta` deserializes into
+    /// `ServerResult::CallToolResult` (untagged-union ordering plus
+    /// `CallToolResult`'s lenient deserializer), so without the `resultType`
+    /// guard in `call_mcp_tool` it would surface as a silent empty success.
+    #[tokio::test]
+    async fn canonical_dispatch_rejects_input_required_results() {
+        let fixture = fixture(Scenario::InputRequired, Some(Duration::from_secs(1))).await;
+        let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
+        let error = result
+            .error()
+            .expect("input-required must surface as an error, not an empty success");
+        assert_eq!(error.kind(), ToolErrorKind::Provider);
+        assert!(error.is::<rmcp::ServiceError>());
+        assert!(
+            result
+                .output()
+                .render()
+                .contains("MCP tool 'fixture_tool' request failed")
+        );
         fixture.server_task.abort();
     }
 
@@ -486,8 +536,8 @@ mod dispatch {
         );
         assert_eq!(
             context
-                .result::<Meta>()
-                .and_then(|meta| meta.0.get("response-id")),
+                .result::<MetaObject>()
+                .and_then(|meta| meta.get("response-id")),
             Some(&json!("response-123"))
         );
         fixture.server_task.abort();
@@ -614,11 +664,12 @@ mod migrated_tests {
             &self,
             request: CallToolRequestParams,
             _: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
+        ) -> Result<CallToolResponse, ErrorData> {
             Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "called {}",
                 request.name
-            ))]))
+            ))])
+            .into())
         }
     }
 
@@ -1251,7 +1302,7 @@ mod migrated_tests {
         use rig_agent::tool::{ToolContext, ToolErrorKind};
         use rig_core::tool::PortableDynamicTool;
         use rmcp::model::{
-            CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
+            CallToolRequestParams, CallToolResponse, ClientInfo, ErrorData, Implementation,
             ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
         };
         use rmcp::service::RequestContext;
@@ -1269,8 +1320,8 @@ mod migrated_tests {
                 &self,
                 _request: CallToolRequestParams,
                 _context: RequestContext<RoleServer>,
-            ) -> Result<CallToolResult, ErrorData> {
-                std::future::pending::<Result<CallToolResult, ErrorData>>().await
+            ) -> Result<CallToolResponse, ErrorData> {
+                std::future::pending::<Result<CallToolResponse, ErrorData>>().await
             }
         }
 

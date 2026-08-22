@@ -796,6 +796,82 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### rmcp 3.0
+
+The rmcp integration moved from 2.2 to 3.0. As with every past rmcp bump, the
+crate's types appear in Rig's public API (`rig_rmcp::McpTool::from_mcp_server`,
+`tools_from_server`, `McpClientHandler`), so your own `rmcp` dependency has to
+move in lockstep — a 2.x `rmcp::model::Tool` will not satisfy a 3.0 one.
+`rig_rmcp::rmcp` re-exports the version the crate is built against.
+
+rmcp 3.0 tracks the MCP `2026-07-28` draft. Rig's handshake still defaults to
+`ProtocolVersion::LATEST` (`2025-11-25`), so the new lifecycle, discovery,
+subscription, and multi-round-trip features do not change how Rig talks to your
+MCP servers. Two of the type changes do reach Rig's API.
+
+**`Meta` split into `RequestMetaObject` and `MetaObject`.** MCP models request
+`_meta` and result `_meta` as different shapes — a request's additionally
+reserves keys such as `progressToken` — and rmcp 3.0 gives each its own type.
+`rig::tool::rmcp::Meta` is gone; both replacements are re-exported in its place.
+Set per-call metadata with the request type and read response metadata with the
+result type:
+
+```rust
+// before
+use rig::tool::rmcp::Meta;
+
+let mut meta = Meta::new();
+meta.0.insert("authorization".into(), json!("Bearer …"));
+context.insert(meta);
+
+let response_meta = event.tool_context.result::<Meta>();
+
+// after
+use rig::tool::rmcp::{MetaObject, RequestMetaObject};
+
+let mut meta = RequestMetaObject::new();
+meta.insert("authorization".into(), json!("Bearer …"));   // derefs to the JSON map
+context.insert(meta);
+
+let response_meta = event.tool_context.result::<MetaObject>();
+```
+
+Reading the map is unchanged — both types deref through to the underlying
+`serde_json::Map` (`RequestMetaObject` via `MetaObject`), so `.get(..)` /
+`.insert(..)` work directly and the `.0` field access from 2.x is no longer
+needed.
+
+**`ServerHandler::call_tool` returns `CallToolResponse`.** If you write your own
+MCP *server* against Rig's example, the tool/prompt/resource handler methods now
+return the SEP-2322 outcome enums (`CallToolResponse`, `GetPromptResponse`,
+`ReadResourceResponse`) so a handler can request another round trip. The enums
+are `#[non_exhaustive]`, and `From<CallToolResult>` is implemented, so an
+existing handler just converts:
+
+```rust
+async fn call_tool(
+    &self,
+    request: CallToolRequestParams,
+    context: RequestContext<RoleServer>,
+) -> Result<CallToolResponse, ErrorData> {          // was CallToolResult
+    Ok(CallToolResult::success(vec![ContentBlock::text("ok")]).into())
+}
+```
+
+Rig itself does not drive multi-round-trip rounds: it dispatches tools over
+rmcp's low-level request API to keep per-call cancellation, not the retrying
+`call_tool` helper. Any non-complete tool outcome — input-required, task, or an
+unknown future `resultType` — is rejected as a
+`ServiceError::UnexpectedResponse` tool failure. You should only encounter that
+with a server that opted into the `2026-07-28` draft; rmcp servers refuse to
+emit MRTR results on the `2025-11-25` sessions Rig negotiates by default.
+
+Two smaller removals: paginated result structs (`ListResourcesResult`,
+`ListToolsResult`, …) gained `result_type`, `ttl_ms`, and `cache_scope` fields,
+so struct-literal construction breaks — the `::with_all_items(..)` constructor
+still works. And `Tool::execution` / `ToolExecution` / `TaskSupport`, along with
+the `#[task_handler]` macro, are gone with the tasks-extension rework.
+
 ### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
 
 `rig_core::http_client::BoxedHttpClient` wraps any `H: HttpClientExt + 'static`
