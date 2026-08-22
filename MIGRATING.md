@@ -796,6 +796,58 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### The run protocol is its own crate: `rig-run` (`rig::run`)
+
+`AgentRun` — the sans-IO, serializable state machine behind every agent run —
+and everything needed to step it now live in **`rig-run`**, which depends on
+`rig-core` only (no async runtime, no hooks, no tool registry; a guard test pins
+this). `rig-agent` is the futures driver over it; an ECS plugin can be another.
+Every old path still resolves through re-exports, so existing code compiles
+unchanged unless it names one of the items below:
+
+- Moved (re-exported at the old paths `rig_agent::agent::run::*`,
+  `rig_agent::agent::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome,
+  PendingToolCall, OutputMode, PromptResponse, CompletionCall}`,
+  `rig_agent::completion::PromptError`,
+  `rig_agent::agent::hook::{InvalidToolCallAction, InvalidToolCallContext,
+  RetryRequest}`): `AgentRun`, `AgentRunStep`, `ModelTurn`, `ModelTurnOutcome`,
+  `PendingToolCall`, the streamed-turn assembler types, `OutputMode`,
+  `PromptResponse`, `CompletionCall`, `PromptError`, the three invalid-call /
+  retry data types, and the transcript helpers (`rig_run::transcript`).
+  The facade exposes the crate as `rig::run` independent of the `agent` feature.
+- `PromptError::prompt_cancelled(..)`, `PromptResponse::{with_output_tool_calls,
+  output_tool_calls}` and the `AgentRun` driver methods
+  (`set_output_tool_name`, `output_tool_name`, `accepted_turn_choice`,
+  `ignore_invalid_tool_call`, …) were crate-private to rig-agent and are now
+  public on rig-run: they are the protocol's driver API.
+- `RunId` (`rig_core::id::RunId`, re-exported from `rig_run` and
+  `rig_agent::agent::hook`) is now a `NonZeroU64` counter id — `Copy + Hash +
+  Ord + Serialize`, `to_raw()`/`from_raw()`, decimal `Display`/`FromStr`,
+  `Option<RunId>` is `u64`-sized — instead of an opaque `String` newtype.
+  `RunId::as_str()` is gone (use `to_string()`); `HookContext::run_id()` returns
+  it by value.
+
+New, additive:
+
+- **`RunSpec`** (`rig_run::RunSpec`): the protocol-facing half of an agent
+  definition as plain `Serialize + Deserialize` data — preamble, static
+  context, sampling params, additional params, turn budget, tool choice,
+  structured-output policy. `AgentRun::from_spec(&spec, prompt, history)`;
+  `Agent::run_spec()` reads it off an agent; `AgentBuilder::apply_spec(&spec)`
+  layers one under imperative builder calls (model, tools, hooks, memory are
+  untouched).
+- **`AgentRun::advertise_tools(turn, Vec<ToolDefinition>)` /
+  `advertised_tools() -> Option<&TurnTools>`**: what the request offered the
+  model, recorded as run data (serialized with the run) so a resumed run or a
+  second driver can re-pair returned calls with the advertised set. rig-agent's
+  driver records it before every model call.
+- **`rig_run::transcript::validate_canonical(&[Message])`** and
+  **`AgentRun::with_validated_history(..)`**: the canonical-transcript rules the
+  protocol produces (no consecutive assistant messages; every assistant tool
+  call answered in the next message; no orphan tool results), as a checkable
+  function for histories that come from outside (memory, a resumed run).
+  `with_history` stays unchecked.
+
 ### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
 
 `rig_core::http_client::BoxedHttpClient` wraps any `H: HttpClientExt + 'static`

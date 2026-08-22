@@ -60,6 +60,46 @@ fn rig_agent_carries_no_runtime_or_mcp() {
     assert_absent("rig-agent", &[], &["tokio", "rmcp"]);
 }
 
+/// The protocol crate is data and transitions only: no runtime, no transport,
+/// no futures, no hooks (which live in rig-agent). A second driver — an ECS
+/// plugin — depends on it precisely because of this.
+#[test]
+fn rig_run_is_pure_protocol() {
+    assert_absent(
+        "rig-run",
+        &[],
+        // `futures`/`async-stream` are not listed: rig-core itself depends on
+        // them (stream and boxed-future vocabulary), so they are in every
+        // rig-run tree; the source-level check below is what keeps the
+        // protocol itself from awaiting.
+        &["tokio", "reqwest", "rig-agent"],
+    );
+}
+
+/// Same invariant from the inside: the protocol never awaits.
+#[test]
+fn rig_run_sources_contain_no_async() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-run/src");
+    let mut offenders = Vec::new();
+    for entry in std::fs::read_dir(&root).expect("rig-run/src is readable") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().is_some_and(|e| e == "rs") {
+            let text = std::fs::read_to_string(&path).expect("source is utf-8");
+            if text.contains("async fn")
+                || text.contains(".await")
+                || text.contains("async_stream")
+                || text.contains("futures::")
+            {
+                offenders.push(path.display().to_string());
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "rig-run must stay sans-IO (no `async fn`/`.await`/`async_stream`/`futures::`); found in: {offenders:?}"
+    );
+}
+
 #[test]
 fn rig_rmcp_depends_on_rig_core_only() {
     assert_absent("rig-rmcp", &[], &["rig-agent"]);
