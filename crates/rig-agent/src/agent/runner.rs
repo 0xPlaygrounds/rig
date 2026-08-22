@@ -33,6 +33,7 @@ use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
+    ModelHandle,
     completion::{Agent, AgentConfig, PreparedCompletionRequest},
     hook::{
         AgentHook, CompletionCall, CompletionCallAction,
@@ -40,7 +41,6 @@ use super::{
         InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     },
-    model::ModelHandle,
     prompt_request::{
         PromptResponse,
         streaming::{

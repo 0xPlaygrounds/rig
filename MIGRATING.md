@@ -352,6 +352,16 @@ association.
 
 ### next
 
+#### `AgentRun::advertised_tools()` now carries the definitions the request sent
+
+rig-agent's driver recorded the advertised tools *after* the per-turn request
+assembly had already moved the definitions out of the registry snapshot, so
+`AgentRun::advertised_tools()` (and the serialized run's `turn_tools`) always
+held an empty list. With request preparation in `rig_run::prepare_request`
+the driver advertises `PreparedRequest::tools` — the executable tools after
+any `active_tools` allow-list plus, in Tool output mode, the synthetic output
+tool — i.e. exactly what the provider received. Nothing on the wire changes.
+
 #### An assistant turn that carried nothing is empty, not a fabricated empty text part
 
 Message content was a non-empty container, so a turn the model ended without
@@ -847,6 +857,72 @@ New, additive:
   call answered in the next message; no orphan tool results), as a checkable
   function for histories that come from outside (memory, a resumed run).
   `with_history` stays unchecked.
+
+### The erased model and the erased tool set are rig-core; request preparation is rig-run
+
+The second step of "one protocol, two drivers". Everything a driver that does
+*not* depend on `rig-agent` needs is now in `rig-core` (handles, tools) and
+`rig-run` (the pure request step). Every old path still resolves through
+re-exports; behavior is unchanged (the recorded provider suites replay the same
+request bodies, and a golden test pins the driver's requests for a scripted
+tool turn). What moved, and what is new:
+
+- **`ModelHandle`** (`rig_core::completion::ModelHandle`, was
+  `rig_agent::agent::model::ModelHandle`; still at `rig_agent::ModelHandle`,
+  `rig_agent::agent::ModelHandle`, the prelude): unchanged API, same private
+  `ErasedModel`/`ModelDriver` shape, same `compile_fail` pins (not
+  `Serialize`). `ModelHandle::named(label, model)` now takes
+  `impl Into<ModelRef>` — `&str`/`String` still work — and `label()` still
+  returns `Option<&str>`.
+- **`ModelRef`** (new, `rig_core::completion::ModelRef`): the serializable
+  string identity a `RunSpec`, an asset, or a registry names a model by
+  (`Arc<str>`, transparent serde, `Deref<Target = str>`, `Display`,
+  `From<&str>/From<String>`). `ModelHandle::model_ref()` reads the typed label.
+- **The contextual tool API is rig-core's** (`rig_core::tool::{Tool,
+  ToolEmbedding, ErasedTool, ErasedEmbeddingTool, DynamicTool, RegisteredTool,
+  ToolDispatch, dispatch_tool, tool_definition, ToolSet}`, module
+  `rig_core::tool::contextual`; re-exported unchanged at `rig_agent::tool::*`
+  and, with or without the `agent` feature, at `rig::tool::*`). `Tool` and
+  `ToolEmbedding` keep their blanket impls over `PortableTool` /
+  `PortableToolEmbedding`. `#[rig_tool]` now expands contextual tools against
+  `rig_core::tool::{Tool, ToolContext}` too, so a crate that depends on
+  `rig-core` alone can author a `&mut ToolContext` tool — the "contextual tools
+  require `rig`/`rig-agent`" macro error is gone, and a fully qualified
+  `&mut rig_core::tool::ToolContext` is recognised without `#[rig(context)]`.
+- **`ToolCatalog`** (new, `rig_core::tool::ToolCatalog`): the pinned,
+  retrieval-free view of a tool set — provider definitions plus dispatch by
+  name (`definitions`, `names`, `contains`, `execute`, `dispatch`,
+  `retain_names`, `take_definitions`). Build one with `ToolSet::catalog()`
+  (always-exposed tools, registration order) or
+  `ToolCatalog::from_registered(IndexMap<String, RegisteredTool>)`.
+  rig-agent's `ToolRegistrySnapshot` is now `pub type ToolRegistrySnapshot =
+  ToolCatalog` — same methods, same name, so nothing to change. `ToolSet`
+  gained the reads the registry used to get by reaching into its map: `names`,
+  `len`, `is_empty`, `get`, `always_exposed_names`, `add_retrievable_tools`,
+  `move_to_end`, `catalog`. `ToolServer` / `ToolServerHandle` (retrieval
+  indexes, managed remote tool sources, `get_tool_defs(prompt)`, the per-turn
+  snapshot) stay in `rig-agent`, layered over these types.
+- **`rig_run::prepare_request`** (new): the pure `(RunSpec, ProviderCapabilities,
+  history, tools, committed output tool, RequestPatch) -> PreparedRequest`
+  step — preamble augmentation, static + extra context, output-mode resolution,
+  synthetic output-tool synthesis and naming, `active_tools` narrowing,
+  tool-choice validation — as owned data with `PreparedRequest::apply(builder)`
+  to bind it to any `CompletionRequestBuilder<M>`. `PrepareError` carries the
+  same local, pre-IO messages rig-agent raised before and converts into
+  `CompletionError::RequestError`. rig-agent's driver now does only the IO
+  around it: retrieve the turn's tools, `prepare_request`, bind the selected
+  model's builder.
+- **`RequestPatch`** (`rig_run::policy::RequestPatch`, was
+  `rig_agent::agent::hook::RequestPatch`; still at the old path and
+  `rig_agent::agent::RequestPatch`): plain per-turn data, unchanged fields and
+  builder methods; `is_empty()` and `merge(later)` are now public. The hook
+  that produces it (`CompletionCallAction::patch`) stays in rig-agent.
+
+A driver over `rig-core` + `rig-run` alone can now erase a model, build a
+`ToolSet`/`ToolCatalog` from `PortableDynamicTool`s, construct an `AgentRun`
+from a `RunSpec`, `prepare_request`, and dispatch a tool by name — the guard
+`tests/core/core_run_driver.rs` runs exactly that fixture and checks its
+dependency graph has no `rig-agent`.
 
 ### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
 
@@ -4748,6 +4824,11 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
+| `rig_agent::agent::model::ModelHandle` | `rig_core::completion::ModelHandle` (re-exported at `rig_agent::ModelHandle` / `rig_agent::agent::ModelHandle`) | next |
+| `rig_agent::tool::{Tool, ToolEmbedding, ErasedTool, DynamicTool, ToolSet, tool_definition}` | `rig_core::tool::{..}` (module `rig_core::tool::contextual`; re-exported at the old paths and at `rig::tool::*` without the `agent` feature) | next |
+| `rig_agent::tool::server::ToolRegistrySnapshot` (struct) | `pub type ToolRegistrySnapshot = rig_core::tool::ToolCatalog` | next |
+| `rig_agent::agent::hook::RequestPatch` | `rig_run::policy::RequestPatch` (re-exported at the old path) | next |
+| `#[rig_tool]` contextual-tool expansion target `rig_agent::tool::Tool` | `rig_core::tool::Tool` (the macro's "contextual tools require `rig`/`rig-agent`" error is gone) | next |
 | `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
 | `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |
 | `one_or_many::string_or_option_one_or_many` | none — `json_utils::string_or_vec` into a `Vec<T>`, then `message::non_empty` where the `Option` carried "absent" | next |

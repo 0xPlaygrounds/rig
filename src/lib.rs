@@ -169,15 +169,16 @@ pub mod streaming {
     pub use rig_core::streaming::*;
 }
 
-/// Tools for the default (classic) runtime.
+/// Tools: contextual authoring, the erased tool set, and the live registry.
 ///
-/// With the `agent` feature (on by default), `Tool`, `ToolContext`, and friends
-/// here are the classic *contextual* tool API — the same surface as before the
-/// runtime split, so `use rig::tool::{Tool, ToolContext};` keeps working. The
-/// runtime-independent portable contracts are always exposed explicitly as
+/// `Tool`, `ToolContext`, `DynamicTool`, `ToolSet`, and `ToolCatalog` are
+/// rig-core types, available with or without the `agent` feature, so
+/// `use rig::tool::{Tool, ToolContext};` keeps working everywhere. The
+/// runtime-independent portable contracts are exposed explicitly as
 /// [`crate::tool::PortableTool`], [`crate::tool::PortableToolEmbedding`], and
 /// [`crate::tool::PortableDynamicTool`] (and in full under
-/// [`crate::tool::portable`]). The classic API also lives at
+/// [`crate::tool::portable`]). The live registry (`server`) is the agent
+/// runtime's and needs the `agent` feature; the same surface also lives at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
 pub mod tool {
     // Canonical execution values — portable, always available.
@@ -188,12 +189,14 @@ pub mod tool {
     pub use rig_core::tool::{
         PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
     };
+    // Contextual authoring and the erased tool set — rig-core, always available.
+    pub use rig_core::tool::{
+        DynamicTool, ErasedTool, MissingToolContext, RegisteredTool, Tool, ToolCatalog,
+        ToolContext, ToolDispatch, ToolEmbedding, ToolSet, dispatch_tool, tool_definition,
+    };
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;
 
-    // Classic contextual tool API (default runtime). `Tool`/`ToolContext` are
-    // the classic contextual trait and its mutable context; none of these
-    // collide with the portable exports above.
     // MCP tool support from the companion `rig-rmcp` crate (rig-core only;
     // native-only: the crate root raises a `compile_error!` on wasm, which CI
     // asserts is the only error). Kept at `rig::tool::rmcp` so existing paths
@@ -204,12 +207,12 @@ pub mod tool {
     pub mod rmcp {
         pub use rig_rmcp::*;
     }
+    // The live registry (`ToolServer`/`ToolServerHandle`): retrieval indexes,
+    // managed remote tool sources, and the per-turn snapshot — the agent
+    // runtime's, layered over the rig-core types above.
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-    pub use rig_agent::tool::{
-        DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, server,
-        tool_definition,
-    };
+    pub use rig_agent::tool::server;
 
     /// The complete portable `rig-core` tool surface, under one explicit path.
     pub mod portable {

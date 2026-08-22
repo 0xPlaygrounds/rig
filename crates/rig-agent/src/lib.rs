@@ -76,7 +76,7 @@ pub mod test_utils;
 pub mod tool;
 
 pub use agent::{
-    Agent, AgentBuilder, AgentHook, AgentRun, AgentRunner, HookContext, ModelHandle,
+    Agent, AgentBuilder, AgentHook, AgentRun, AgentRunner, HookContext, ModelHandle, ModelRef,
     ModelSelection, ModelSelectionAction,
 };
 pub use extractor::ExtractionResponse;

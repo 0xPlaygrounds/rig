@@ -54,13 +54,9 @@ pub(crate) struct CrateRefs {
     /// re-exports `serde`, `serde_json`, and `schemars`, so all generated code
     /// resolves those through it instead of assuming the caller's Cargo.toml.
     pub(crate) core: TokenStream,
-    /// Path to the classic runtime root (the crate exposing
-    /// `tool::{Tool, ToolContext}`): `rig-agent` or the `rig` facade. `None`
-    /// when neither is a dependency, in which case contextual tools cannot be
-    /// generated and get a targeted error instead of an unresolved-crate one.
-    pub(crate) agent: Option<TokenStream>,
     /// First path segments under which `<root>::tool::ToolContext` names the
-    /// runtime context in the expanding crate.
+    /// dispatch context in the expanding crate: `rig-core` (which owns it),
+    /// and `rig-agent` / the `rig` facade (which re-export it).
     context_roots: Vec<String>,
     /// First path segments under which `<root>::agent::tool::ToolContext`
     /// names the runtime context (the facade's explicit runtime module).
@@ -78,10 +74,11 @@ impl CrateRefs {
             .or_else(|| root_tokens(&agent_dep).map(|root| quote!(#root::core)))
             .unwrap_or_else(|| quote!(::rig_core));
 
-        let agent = root_tokens(&agent_dep).or_else(|| root_tokens(&facade_dep));
-
         let mut context_roots = Vec::new();
         let mut facade_roots = Vec::new();
+        if let Some(name) = root_name(&core_dep) {
+            context_roots.push(name);
+        }
         if let Some(name) = root_name(&agent_dep) {
             context_roots.push(name);
         }
@@ -92,7 +89,6 @@ impl CrateRefs {
 
         Self {
             core,
-            agent,
             context_roots,
             facade_roots,
         }

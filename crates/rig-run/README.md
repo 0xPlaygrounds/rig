@@ -10,3 +10,12 @@ performs no IO. A *driver* calls `next_step()` and acts on the returned
 `model_response` / `tool_results`. `rig-agent` is the futures driver; an ECS
 plugin can be another. The crate depends on `rig-core` only: no async runtime,
 no hooks, no tool registry.
+
+`prepare_request` is the protocol's other half: given a `RunSpec`, the model's
+capability snapshot, the history, the tools available this turn and a per-turn
+`RequestPatch`, it returns the `PreparedRequest` — owned data a driver binds to
+any `CompletionRequestBuilder` with `PreparedRequest::apply`. Output-mode
+resolution, synthetic output-tool synthesis, preamble augmentation and
+tool-choice validation live there once, so every driver sends the same bytes.
+Tool *retrieval* (which tools exist this turn) and model *execution* stay with
+the driver.

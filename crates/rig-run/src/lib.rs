@@ -4,8 +4,9 @@
 //! a driver steps it with [`AgentRun::next_step`] and feeds results back. This
 //! crate depends on `rig-core` only — no async runtime, no hooks, no tool
 //! registry — so the same state machine can be driven by a futures loop
-//! (`rig-agent`) or by ECS systems. See [`run`] for the protocol, [`policy`]
-//! for decisions-as-data, [`response`] for outputs, [`transcript`] for how
+//! (`rig-agent`) or by ECS systems. See [`run`] for the protocol, [`prepare`]
+//! for the pure `(spec, tools, patch) → request` step, [`policy`] for
+//! decisions-as-data, [`response`] for outputs, [`transcript`] for how
 //! messages are threaded, and [`error`] for [`PromptError`].
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -24,6 +25,7 @@
 pub mod error;
 pub mod output_mode;
 pub mod policy;
+pub mod prepare;
 pub mod response;
 pub mod run;
 pub mod spec;
@@ -32,7 +34,8 @@ pub mod transcript;
 
 pub use error::PromptError;
 pub use output_mode::OutputMode;
-pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
+pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RequestPatch, RetryRequest};
+pub use prepare::{PrepareError, PreparedRequest, prepare_request};
 pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::id::RunId;
 pub use run::{
@@ -62,4 +65,6 @@ const _: fn() = || {
     assert_send_sync_static::<PromptError>();
     assert_send_sync_static::<RunSpec>();
     assert_send_sync_static::<TurnTools>();
+    assert_send_sync_static::<RequestPatch>();
+    assert_send_sync_static::<PreparedRequest>();
 };
