@@ -53,6 +53,20 @@ impl From<reqwest::Client> for ReqwestClient {
     }
 }
 
+impl ReqwestClient {
+    /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold
+    /// one transport for many providers without naming it in their types.
+    pub fn boxed(self) -> BoxedHttpClient {
+        BoxedHttpClient::new(self)
+    }
+}
+
+impl From<ReqwestClient> for BoxedHttpClient {
+    fn from(client: ReqwestClient) -> Self {
+        client.boxed()
+    }
+}
+
 impl std::ops::Deref for ReqwestClient {
     type Target = reqwest::Client;
     fn deref(&self) -> &reqwest::Client {
@@ -98,8 +112,8 @@ pub mod prelude {
 
 use bytes::Bytes;
 use rig_core::http_client::{
-    Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result, StreamingResponse,
-    multipart::PartContent,
+    BoxedHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
+    StreamingResponse, multipart::PartContent,
 };
 use rig_core::wasm_compat::*;
 use std::pin::Pin;

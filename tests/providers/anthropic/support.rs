@@ -1,5 +1,6 @@
 use futures::FutureExt;
 use rig::client::DefaultTransportBuilder as _;
+use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::providers::anthropic;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -23,6 +24,28 @@ async fn anthropic_cassette(
         .expect("client should build");
 
     (cassette, client)
+}
+
+/// Like [`with_anthropic_cassette`], but the client sends through the erased
+/// [`BoxedHttpClient`] wrapping the same bundled transport — the client type
+/// names no concrete `H`. Replaying a recorded scenario through it proves the
+/// erasure is byte-transparent: the replay server matches on body bytes.
+pub(super) async fn with_anthropic_boxed_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client<BoxedHttpClient>) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
+    let client = anthropic::Client::builder()
+        .api_key(cassette.api_key("ANTHROPIC_API_KEY"))
+        .base_url(cassette.base_url())
+        .http_client(ReqwestClient::default().boxed())
+        .build()
+        .expect("client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
 }
 
 pub(super) async fn with_anthropic_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)

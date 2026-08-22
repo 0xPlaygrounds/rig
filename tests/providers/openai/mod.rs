@@ -7,6 +7,7 @@ mod cassette {
     mod agent;
     #[cfg(feature = "audio")]
     mod audio_params_matrix;
+    mod boxed_transport;
     mod chat_history;
     mod chat_history_roundtrip_matrix;
     mod chat_streaming_logprobs_matrix;

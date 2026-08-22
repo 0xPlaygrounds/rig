@@ -1,4 +1,5 @@
 use rig::client::DefaultTransportBuilder as _;
+use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::providers::openai;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -29,6 +30,26 @@ async fn openai_completions_cassette(
 ) -> (ProviderCassette, openai::CompletionsClient) {
     let (cassette, client) = openai_cassette(spec).await;
     (cassette, client.completions_api())
+}
+
+/// Like [`with_openai_cassette`], but the client sends through the erased
+/// [`BoxedHttpClient`] wrapping the same bundled transport — the client type
+/// names no concrete `H`. Replaying a recorded scenario through it proves the
+/// erasure is byte-transparent: the replay server matches on body bytes.
+pub(super) async fn with_openai_boxed_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
+where
+    F: FnOnce(openai::Client<BoxedHttpClient>) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let client = openai::Client::builder()
+        .api_key(cassette.api_key("OPENAI_API_KEY"))
+        .base_url(cassette.base_url())
+        .http_client(ReqwestClient::default().boxed())
+        .build()
+        .expect("client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
 }
 
 pub(super) async fn with_openai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
