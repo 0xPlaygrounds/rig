@@ -18,13 +18,21 @@ use rig_core::vector_store::{
     VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter,
 };
 
-/// One turn's provider definitions and the exact registry entries behind them.
+/// A pinned view of the tool registry: provider definitions plus the exact
+/// implementations behind them.
 ///
-/// Registration changes after this snapshot is built take effect on the next
-/// turn. Calls from the current turn dispatch through these pinned handles, so
-/// the implementation cannot drift from the schema the provider received.
+/// The agent loop takes one per turn, so registration changes after a
+/// snapshot is built take effect on the next turn and calls from the current
+/// turn dispatch through these pinned handles — the implementation cannot
+/// drift from the schema the provider received. Hosts get the same view
+/// synchronously from [`ToolServerHandle::snapshot`], and can read
+/// [`definitions`](Self::definitions) / [`names`](Self::names) or
+/// [`execute`](Self::execute) against it without touching the live registry.
+///
+/// Cloning shares the pinned tool handles (they are `Arc`s) and copies the
+/// definitions.
 #[derive(Clone)]
-pub(crate) struct ToolRegistrySnapshot {
+pub struct ToolRegistrySnapshot {
     definitions: Vec<ToolDefinition>,
     tools: IndexMap<String, RegisteredTool>,
 }
@@ -39,8 +47,39 @@ impl ToolRegistrySnapshot {
     }
 
     /// Provider-facing definitions in the same order as their pinned handles.
-    pub(crate) fn definitions(&self) -> &[ToolDefinition] {
+    pub fn definitions(&self) -> &[ToolDefinition] {
         &self.definitions
+    }
+
+    /// Registered names in exposure order.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.tools.keys().map(String::as_str)
+    }
+
+    /// Number of pinned tools.
+    pub fn len(&self) -> usize {
+        self.tools.len()
+    }
+
+    /// Whether the snapshot pins no tools.
+    pub fn is_empty(&self) -> bool {
+        self.tools.is_empty()
+    }
+
+    /// Execute a pinned tool by name through the canonical structured path,
+    /// publishing its result metadata back to `context` — the snapshot twin of
+    /// [`ToolServerHandle::execute`]. Later registry changes do not affect
+    /// which implementation runs.
+    pub async fn execute(
+        &self,
+        tool_name: &str,
+        args: &str,
+        context: &mut ToolContext,
+    ) -> ToolResult {
+        context.clear_dispatch_result();
+        self.dispatch(tool_name, args, context)
+            .await
+            .publish_to(context)
     }
 
     /// Moves the definitions out of the snapshot. The per-turn request
@@ -408,8 +447,44 @@ impl ToolServerHandle {
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
 
+    /// The registry as it stands, synchronously: every always-exposed
+    /// registration in registration order, after retiring tools whose remote
+    /// backing disconnected — the same path [`execute`](Self::execute) and
+    /// the agent loop resolve through. No retrieval, no executor, no `.await`,
+    /// so a tick-driven host can call it every frame.
+    ///
+    /// For the retrieval-aware view that also selects dynamic tools for a
+    /// prompt, use the async [`get_tool_defs`](Self::get_tool_defs).
+    pub fn snapshot(&self) -> ToolRegistrySnapshot {
+        let tools = self.with_registry(|state| snapshot_registered_tools(state, &[]));
+        ToolRegistrySnapshot::new(tools)
+    }
+
+    /// Provider definitions of the registry as it stands — the definitions of
+    /// [`snapshot`](Self::snapshot), synchronously. Equivalent to
+    /// `get_tool_defs(None)` without the future.
+    pub fn static_tool_defs(&self) -> Vec<ToolDefinition> {
+        let mut snapshot = self.snapshot();
+        snapshot.take_definitions()
+    }
+
+    /// A clone of the current registry as a [`ToolSet`]: shares the tool
+    /// implementations (they are `Arc`s) and copies names, ordering, and
+    /// exposure flags. Use it to fork the registry — build a second server
+    /// with the same tools — or inspect it outside the lock. Disconnected
+    /// tools are retired first.
+    pub fn toolset(&self) -> ToolSet {
+        self.with_registry(|state| state.toolset.clone())
+    }
+
     /// Retrieve tool definitions, optionally using a prompt to select
     /// dynamic tools from configured vector stores.
+    ///
+    /// This is the retrieval-aware, async read: with a prompt it runs the
+    /// configured vector-store lookups to pick dynamic tools. If you only need
+    /// the registry as it stands, [`static_tool_defs`](Self::static_tool_defs)
+    /// / [`snapshot`](Self::snapshot) give the same always-exposed definitions
+    /// synchronously.
     pub async fn get_tool_defs(
         &self,
         prompt: Option<String>,
@@ -513,6 +588,15 @@ fn snapshot_registered_tools(
     tools
 }
 
+// Compile-time thread-safety contract: a registry snapshot or a forked
+// `ToolSet` is held in shared host state on native targets.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<ToolSet>();
+    assert_send_sync_static::<ToolRegistrySnapshot>();
+};
+
 #[derive(Debug, thiserror::Error)]
 pub enum ToolServerError {
     #[error("Failed to retrieve tool definitions: {0}")]
@@ -577,6 +661,128 @@ mod tests {
         args: &str,
     ) -> Result<String, ToolExecutionError> {
         execute_tool_with_context(handle, name, args, &mut ToolContext::new()).await
+    }
+
+    /// A portable tool whose liveness follows `live`, standing in for a remote
+    /// tool whose transport can disconnect.
+    fn liveness_gated_tool(name: &str, live: Arc<AtomicBool>) -> crate::tool::PortableDynamicTool {
+        crate::tool::PortableDynamicTool::new(
+            name,
+            "gated",
+            serde_json::json!({"type": "object"}),
+            |_| Box::pin(async { Ok(crate::tool::ToolOutput::text("ok")) }),
+        )
+        .with_liveness(move || live.load(Ordering::SeqCst))
+    }
+
+    /// The sync snapshot and the async, prompt-less `get_tool_defs` read the
+    /// same always-exposed registry in the same order.
+    #[tokio::test]
+    async fn sync_snapshot_matches_async_prompt_less_read() {
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .run();
+
+        let sync_defs = handle.static_tool_defs();
+        let async_defs = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(sync_defs.len(), 2);
+        assert_eq!(sync_defs, async_defs);
+
+        let snapshot = handle.snapshot();
+        assert_eq!(snapshot.definitions(), sync_defs.as_slice());
+        assert_eq!(
+            snapshot.names().collect::<Vec<_>>(),
+            vec!["add", "subtract"]
+        );
+        assert_eq!(snapshot.len(), 2);
+        assert!(!snapshot.is_empty());
+    }
+
+    /// A tool whose remote backing disconnected is retired by every read path —
+    /// sync snapshot, sync definitions, forked toolset, and the async read.
+    #[tokio::test]
+    async fn retired_tools_are_absent_from_every_read_path() {
+        let live = Arc::new(AtomicBool::new(true));
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .portable_dynamic_tool(liveness_gated_tool("remote", live.clone()))
+            .run();
+        assert_eq!(
+            handle.snapshot().names().collect::<Vec<_>>(),
+            vec!["add", "remote"]
+        );
+
+        live.store(false, Ordering::SeqCst);
+
+        assert_eq!(handle.snapshot().names().collect::<Vec<_>>(), vec!["add"]);
+        assert_eq!(handle.static_tool_defs().len(), 1);
+        assert!(!handle.toolset().contains("remote"));
+        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+    }
+
+    /// A snapshot pins implementations: it keeps executing the tool it was
+    /// taken with after the registry replaces or removes that name.
+    #[tokio::test]
+    async fn snapshot_executes_pinned_implementation() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let snapshot = handle.snapshot();
+        handle.remove_tool("add");
+        assert!(handle.snapshot().is_empty());
+
+        let mut context = ToolContext::new();
+        let result = snapshot
+            .execute("add", r#"{"x": 2, "y": 3}"#, &mut context)
+            .await;
+        assert_eq!(result.output().render(), "5");
+    }
+
+    /// `toolset()` forks the registry: the fork shares implementations but
+    /// later changes on either side stay local.
+    #[tokio::test]
+    async fn toolset_forks_the_registry() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let mut fork = handle.toolset();
+        assert!(fork.contains("add"));
+
+        fork.add_tool(MockSubtractTool);
+        assert!(!handle.snapshot().names().any(|name| name == "subtract"));
+
+        handle.remove_tool("add");
+        assert!(fork.contains("add"));
+
+        // The fork builds a second, independent server with the same tools.
+        let second = ToolServer::new().run();
+        second.append_toolset(fork);
+        assert_eq!(
+            execute_tool(&second, "add", r#"{"x": 1, "y": 1}"#)
+                .await
+                .unwrap(),
+            "2"
+        );
+    }
+
+    /// The sync read needs no executor: a plain test reads definitions that
+    /// another thread registered, with no runtime in sight.
+    #[test]
+    fn static_tool_defs_reads_without_a_runtime() {
+        let handle = ToolServer::new().run();
+        assert!(handle.static_tool_defs().is_empty());
+
+        let writer = handle.clone();
+        std::thread::spawn(move || {
+            writer.add_tool(MockAddTool);
+            writer.add_tool(MockSubtractTool);
+        })
+        .join()
+        .expect("registering thread");
+
+        let names = handle
+            .static_tool_defs()
+            .into_iter()
+            .map(|definition| definition.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["add", "subtract"]);
     }
 
     async fn execute_tool_with_context(

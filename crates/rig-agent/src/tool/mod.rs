@@ -599,7 +599,12 @@ pub(crate) async fn dispatch_tool(
 }
 
 /// An ordered collection of tools.
-#[derive(Default)]
+///
+/// Cloning is cheap and shallow: the tool implementations are shared `Arc`s,
+/// and names, ordering, and exposure flags are copied. A clone is a snapshot of
+/// *what is registered* — adding to or removing from one set never affects the
+/// other — not of any tool's internal state.
+#[derive(Clone, Default)]
 pub struct ToolSet {
     pub(crate) tools: IndexMap<String, ToolRegistration>,
 }
@@ -1190,6 +1195,43 @@ mod tests {
             assert_eq!(result.is_error(), !refuse);
             assert_rich_error_output(&result, "dynamic feedback");
         }
+    }
+}
+
+#[cfg(test)]
+mod toolset_clone_tests {
+    use std::sync::Arc;
+
+    use super::{RegisteredTool, ToolSet};
+    use crate::test_utils::{MockAddTool, MockSubtractTool};
+
+    fn erased_ptr(set: &ToolSet, name: &str) -> *const () {
+        match &set.get(name).expect("registered").clone() {
+            RegisteredTool::Static(tool) => Arc::as_ptr(tool).cast(),
+            RegisteredTool::Embedding(tool) => Arc::as_ptr(tool).cast(),
+        }
+    }
+
+    /// A clone shares the tool implementations (pointer-equal `Arc`s) and is
+    /// independent for subsequent registration changes.
+    #[test]
+    fn clone_shares_implementations_and_diverges_on_mutation() {
+        let mut original = ToolSet::default();
+        original.add_tool(MockAddTool);
+
+        let mut clone = original.clone();
+        assert_eq!(erased_ptr(&original, "add"), erased_ptr(&clone, "add"));
+        assert_eq!(
+            original.get_tool_definitions(),
+            clone.get_tool_definitions()
+        );
+
+        clone.add_tool(MockSubtractTool);
+        assert!(clone.contains("subtract"));
+        assert!(!original.contains("subtract"));
+
+        original.delete_tool("add");
+        assert!(clone.contains("add"));
     }
 }
 
