@@ -137,8 +137,14 @@ impl TypeMap {
             .is_some_and(|map| map.contains_key(&TypeId::of::<T>()))
     }
 
+    /// Number of values held.
     pub fn len(&self) -> usize {
         self.map.as_ref().map_or(0, |map| map.len())
+    }
+
+    /// Whether the map holds no values.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     fn type_names(&self) -> Vec<&'static str> {
