@@ -197,7 +197,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{future::Future, sync::Arc};
 
-use crate::tool::extensions::TypeMap;
+use rig_core::tool::context::TypeMap;
 use rig_core::{
     completion::FinishReason,
     message::{AssistantContent, Message, ToolChoice},

@@ -9,11 +9,11 @@ use rmcp::model::{
 use rmcp::service::PeerRequestOptions;
 
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
-use rig_core::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
+use rig_core::tool::{PortableDynamicTool, ToolContext, ToolExecutionError, ToolOutput};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
-/// Re-export of [`rmcp::model::Meta`]: place one in a rig-agent `ToolContext` to
-/// have Rig's MCP registration methods forward it as a call's `_meta`.
+/// Re-export of [`rmcp::model::Meta`]: place one in the per-call [`ToolContext`]
+/// to have MCP tools forward it as the request's `_meta`.
 pub use rmcp::model::Meta;
 
 /// Default per-call timeout applied to MCP tools (see issue #1914).
@@ -232,9 +232,8 @@ impl McpTool {
     /// `meta`, when present, is attached as the MCP request's `_meta`
     /// (SEP-1319) — the idiomatic channel for per-call metadata such as auth
     /// tokens, session ids, or A2A `context_id`/`task_id`. It is supplied by a
-    /// caller that places an [`rmcp::model::Meta`] into rig-agent's
-    /// `ToolContext` (see the `agent` feature); otherwise the call behaves
-    /// exactly as before.
+    /// caller that places an [`rmcp::model::Meta`] into the per-call
+    /// [`ToolContext`]; otherwise the call behaves exactly as before.
     pub fn execute_mcp(
         &self,
         args: String,
@@ -435,6 +434,29 @@ pub fn tools_from_server(
 /// retained (callers that need either drive [`McpTool::execute_mcp`]
 /// themselves). A tool that reports `is_error` becomes a failed call whose
 /// error carries the tool's output.
+/// Keep the MCP response's protocol data on the per-call [`ToolContext`] for
+/// result hooks: the `structuredContent` value, the response [`Meta`], and the
+/// untouched [`CallToolResult`]. Host-only; the model sees only the ordered
+/// presentation content.
+pub fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
+    if let Some(structured) = result.structured_content.clone() {
+        context.insert_result(structured);
+    }
+    if let Some(meta) = result.meta.clone() {
+        context.insert_result(meta);
+    }
+    context.insert_result(result);
+}
+
+/// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
+/// bound to the MCP transport so registries can retire it on disconnect.
+///
+/// Per call: an [`rmcp::model::Meta`] placed in the [`ToolContext`] (re-exported
+/// here as [`Meta`]) is forwarded as the request's `_meta` (SEP-1319), and the
+/// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
+/// are published to the context's result map ([`preserve_mcp_result`]). A tool
+/// that reports `is_error` becomes a failed call whose error carries the tool's
+/// output.
 impl From<McpTool> for PortableDynamicTool {
     fn from(tool: McpTool) -> Self {
         let name = tool.definition.name.to_string();
@@ -447,16 +469,20 @@ impl From<McpTool> for PortableDynamicTool {
         let parameters = tool.definition.schema_as_json_value();
         let liveness_client = tool.client.clone();
         let tool = Arc::new(tool);
-        PortableDynamicTool::new(
+        PortableDynamicTool::new_with_context(
             name,
             description,
             parameters,
-            move |args: serde_json::Value| {
+            move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
+                let meta = context.get::<rmcp::model::Meta>().cloned();
                 Box::pin(async move {
-                    let result = tool.execute_mcp(args.to_string(), None).await?;
-                    let output = mcp_result_output(&result)?;
-                    if result.is_error == Some(true) {
+                    let result = tool.execute_mcp(args.to_string(), meta).await?;
+                    let is_error = result.is_error == Some(true);
+                    let output = mcp_result_output(&result);
+                    preserve_mcp_result(context, result);
+                    let output = output?;
+                    if is_error {
                         Err(ToolExecutionError::other(format!(
                             "MCP tool '{}' reported an execution error",
                             tool.definition.name

@@ -123,14 +123,12 @@ use rig_core::{
 
 use crate::completion::{self, ToolDefinition};
 
-pub(crate) mod extensions;
-
 pub mod server;
 
-pub use extensions::{MissingToolContext, ToolContext};
 pub use rig_core::tool::{
     IntoToolOutput, PortableDynamicTool, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
 };
+pub use rig_core::tool::{MissingToolContext, ToolContext};
 
 /// A typed LLM tool.
 ///
@@ -396,9 +394,11 @@ impl DynamicTool {
         }
     }
 
-    /// Adapt a context-free dynamic tool for the classic contextual registry.
+    /// Adapt a portable dynamic tool for the classic contextual registry.
     ///
-    /// The portable callback receives the same parsed JSON value and its
+    /// The portable callback receives the same parsed JSON value **and the
+    /// dispatch's [`ToolContext`]** (so context-aware portable tools see the
+    /// agent's per-call values and their result inserts reach hooks); its
     /// [`ToolOutput`] or [`ToolExecutionError`] is forwarded unchanged.
     pub fn from_portable(tool: PortableDynamicTool) -> Self {
         let definition = tool.definition();
@@ -407,9 +407,9 @@ impl DynamicTool {
             definition.name,
             definition.description,
             definition.parameters,
-            move |_context, arguments| {
+            move |context, arguments| {
                 let tool = tool.clone();
-                Box::pin(async move { tool.execute(arguments).await })
+                Box::pin(async move { tool.execute_with(context, arguments).await })
             },
         );
         adapted.liveness = Some(probe);

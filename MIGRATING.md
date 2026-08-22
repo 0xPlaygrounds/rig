@@ -818,11 +818,19 @@ unchanged. What changes:
   Register them wherever portable tools go: `builder.portable_dynamic_tool(tool.into())`,
   `ToolServer::new().portable_dynamic_tool(..)`, `ToolServerHandle::add_portable_dynamic_tool`.
   The `rmcp_tool` / `rmcp_tools` / `…_with_timeout` builder methods on `AgentBuilder` and
-  `ToolServer` are **removed** — no replacement method; use the portable registration above.
-- **Two context-dependent conveniences are removed**: MCP `_meta` passthrough from a
-  `ToolContext`, and the raw `CallToolResult` / response `Meta` being preserved on the
-  `ToolContext` for result hooks. Portable tools have no context. A caller that needs to
-  attach `_meta` drives `McpTool::execute_mcp(args, Some(meta))` directly.
+  `ToolServer` are **removed** — no replacement method; use the portable registration above
+  (nothing is lost: the portable adapter is context-aware).
+- **`ToolContext` lives in rig-core, and portable dynamic tools can receive it.**
+  `rig_core::tool::{ToolContext, MissingToolContext}` (module `rig_core::tool::context`,
+  which also exposes the `TypeMap` primitive and the dispatch helpers `for_dispatch` /
+  `accept_dispatch_result` / `clear_dispatch_result` any runtime needs); `rig_agent::tool::ToolContext`
+  and `rig::tool::ToolContext` are re-exports, so existing paths and `#[rig(context)]` keep
+  working. `PortableDynamicTool::new` stays context-free; `new_with_context` /
+  `execute_with` give a dynamic tool the per-call context, and rig-agent's
+  `DynamicTool::from_portable` now threads the agent's context through instead of
+  discarding it. MCP `_meta` passthrough (an `rmcp::model::Meta` placed in the context)
+  and result preservation (`structuredContent`, response `Meta`, raw `CallToolResult`
+  on `context.result::<T>()`) therefore work through the portable path exactly as before.
 - **Direct rig-agent users** depend on `rig-rmcp`; runtimes other than rig-agent implement
   `ManagedToolSink` for their registry to get live refresh.
 - rig-agent's registry support for externally managed tools is public and ungated:

@@ -1,6 +1,8 @@
-//! In-process rmcp suites for the handler, the portable adapter, and the
-//! result mapping. rig-agent is a dev-dependency only: its tool server is the
-//! reference `ManagedToolSink` these tests register into.
+//! In-process rmcp suites for the handler, the portable adapter (including
+//! `_meta` passthrough and result preservation through the per-call
+//! `ToolContext`), and the result mapping. rig-agent is a dev-dependency only:
+//! its tool server is the reference `ManagedToolSink`/runtime these tests
+//! register into.
 
 #[cfg(test)]
 mod dispatch {
@@ -31,7 +33,10 @@ mod dispatch {
     use rmcp::service::RequestContext;
     use rmcp::{RoleServer, ServerHandler, ServiceExt};
     use serde_json::json;
-    use tokio::{sync::Notify, task::JoinHandle};
+    use tokio::{
+        sync::{Notify, RwLock},
+        task::JoinHandle,
+    };
 
     use rig_agent::tool::{
         ToolErrorKind,
@@ -42,14 +47,18 @@ mod dispatch {
     #[derive(Clone)]
     enum Scenario {
         Success,
+        StructuredSuccess,
+        StructuredOnly,
         Hang,
         ServiceError,
         ToolReportedError,
+        ImageToolReportedError,
     }
 
     #[derive(Clone)]
     struct ScenarioServer {
         scenario: Scenario,
+        seen: Arc<RwLock<Option<Meta>>>,
         cancelled: Arc<Notify>,
     }
 
@@ -65,8 +74,29 @@ mod dispatch {
             _request: CallToolRequestParams,
             context: RequestContext<RoleServer>,
         ) -> Result<CallToolResult, ErrorData> {
+            *self.seen.write().await = Some(context.meta.clone());
             match self.scenario {
                 Scenario::Success => Ok(CallToolResult::success(vec![ContentBlock::text("ok")])),
+                Scenario::StructuredSuccess => {
+                    let mut response = CallToolResult::success(vec![
+                        ContentBlock::text("before"),
+                        ContentBlock::image("aGVsbG8=", "image/png"),
+                        ContentBlock::text("after"),
+                    ]);
+                    response.structured_content = Some(json!({
+                        "answer": 42,
+                        "source": "fixture"
+                    }));
+                    let mut meta = Meta::new();
+                    meta.0.insert("response-id".into(), json!("response-123"));
+                    response.meta = Some(meta);
+                    Ok(response)
+                }
+                Scenario::StructuredOnly => {
+                    let mut response = CallToolResult::structured(json!({"answer": 42}));
+                    response.content.clear();
+                    Ok(response)
+                }
                 Scenario::Hang => {
                     context.ct.cancelled().await;
                     self.cancelled.notify_one();
@@ -78,6 +108,12 @@ mod dispatch {
                 Scenario::ToolReportedError => Ok(CallToolResult::error(vec![ContentBlock::text(
                     "tool reported exact failure",
                 )])),
+                Scenario::ImageToolReportedError => {
+                    Ok(CallToolResult::error(vec![ContentBlock::image(
+                        "ZXJyb3ItaW1hZ2U=",
+                        "image/png",
+                    )]))
+                }
             }
         }
     }
@@ -87,17 +123,20 @@ mod dispatch {
         /// The adapter itself, for tests that assert MCP argument semantics
         /// directly (the registry path parses JSON in rig-agent first).
         tool: McpTool,
+        seen: Arc<RwLock<Option<Meta>>>,
         cancelled: Arc<Notify>,
         _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
         server_task: JoinHandle<()>,
     }
 
     async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
+        let seen = Arc::new(RwLock::new(None));
         let cancelled = Arc::new(Notify::new());
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
         let (server_to_client, client_from_server) = tokio::io::duplex(8192);
         let server = ScenarioServer {
             scenario,
+            seen: seen.clone(),
             cancelled: cancelled.clone(),
         };
         let server_task = tokio::spawn(async move {
@@ -124,6 +163,7 @@ mod dispatch {
         Fixture {
             handle,
             tool,
+            seen,
             cancelled,
             _client: client,
             server_task,
@@ -315,6 +355,30 @@ mod dispatch {
     }
 
     #[tokio::test]
+    async fn canonical_dispatch_forwards_context_meta() {
+        let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
+        let mut meta = Meta::new();
+        meta.0.insert("authorization".into(), json!("Bearer test"));
+        let mut context = ToolContext::new();
+        context.insert(meta);
+
+        let result = execute(&fixture, "{}", &mut context).await;
+        assert!(result.is_success());
+        assert_eq!(
+            fixture
+                .seen
+                .read()
+                .await
+                .as_ref()
+                .expect("server observed metadata")
+                .0
+                .get("authorization"),
+            Some(&json!("Bearer test"))
+        );
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
     async fn canonical_dispatch_classifies_timeout() {
         let fixture = fixture(Scenario::Hang, Some(Duration::from_millis(25))).await;
         let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
@@ -355,6 +419,90 @@ mod dispatch {
         assert_eq!(
             result.error().map(ToolExecutionError::message),
             Some("MCP tool 'fixture_tool' reported an execution error")
+        );
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_preserves_non_text_tool_error_content() {
+        let fixture = fixture(
+            Scenario::ImageToolReportedError,
+            Some(Duration::from_secs(1)),
+        )
+        .await;
+        let mut context = ToolContext::new();
+        let result = execute(&fixture, "{}", &mut context).await;
+
+        assert!(result.is_error_kind(ToolErrorKind::Other));
+        assert_eq!(
+            result.output(),
+            &ToolOutput::one(RigToolResultContent::image_base64(
+                "ZXJyb3ItaW1hZ2U=",
+                Some(ImageMediaType::PNG),
+                None,
+            ))
+        );
+        let raw = context
+            .result::<CallToolResult>()
+            .expect("raw MCP error result metadata");
+        assert_eq!(raw.is_error, Some(true));
+        assert!(matches!(raw.content.as_slice(), [ContentBlock::Image(_)]));
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_preserves_ordered_content_and_response_metadata() {
+        let fixture = fixture(Scenario::StructuredSuccess, Some(Duration::from_secs(1))).await;
+        let mut context = ToolContext::new();
+        let result = execute(&fixture, "{}", &mut context).await;
+
+        let mut expected_content = vec![RigToolResultContent::json(json!({
+            "answer": 42,
+            "source": "fixture"
+        }))];
+        expected_content.push(RigToolResultContent::text("before"));
+        expected_content.push(RigToolResultContent::image_base64(
+            "aGVsbG8=",
+            Some(ImageMediaType::PNG),
+            None,
+        ));
+        expected_content.push(RigToolResultContent::text("after"));
+        assert_eq!(
+            result.output(),
+            &ToolOutput::content(expected_content).expect("fixture content is non-empty")
+        );
+
+        let raw = context
+            .result::<CallToolResult>()
+            .expect("raw MCP result metadata");
+        assert_eq!(raw.content.len(), 3);
+        assert_eq!(
+            raw.structured_content,
+            Some(json!({"answer": 42, "source": "fixture"}))
+        );
+        assert_eq!(
+            context.result::<serde_json::Value>(),
+            Some(&json!({"answer": 42, "source": "fixture"}))
+        );
+        assert_eq!(
+            context
+                .result::<Meta>()
+                .and_then(|meta| meta.0.get("response-id")),
+            Some(&json!("response-123"))
+        );
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn canonical_dispatch_uses_structured_content_when_blocks_are_empty() {
+        let fixture = fixture(Scenario::StructuredOnly, Some(Duration::from_secs(1))).await;
+        let mut context = ToolContext::new();
+        let result = execute(&fixture, "{}", &mut context).await;
+
+        assert_eq!(result.output(), &ToolOutput::json(json!({"answer": 42})));
+        assert_eq!(
+            context.result::<serde_json::Value>(),
+            Some(&json!({"answer": 42}))
         );
         fixture.server_task.abort();
     }

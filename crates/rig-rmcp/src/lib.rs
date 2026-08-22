@@ -11,8 +11,10 @@
 //!   `ToolServerHandle`, for example — in sync with the server's tool list,
 //!   reacting to `notifications/tools/list_changed`.
 //!
-//! Calls go out without MCP `_meta`; a caller that needs to attach one drives
-//! `McpTool::execute_mcp` directly.
+//! Per call, an [`rmcp::model::Meta`] placed in the runtime's
+//! [`ToolContext`](rig_core::tool::ToolContext) is forwarded as the request's
+//! `_meta`, and the response's `structuredContent`, `Meta`, and raw result are
+//! published to the context's result map (`preserve_mcp_result`).
 //!
 //! # Example
 //!

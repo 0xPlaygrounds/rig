@@ -4,10 +4,12 @@
 //! without importing a registry, mutable context, lifecycle state, or executor.
 
 pub mod builtin;
+pub mod context;
 pub mod managed;
 mod output;
 pub mod portable;
 mod result;
+pub use context::{MissingToolContext, ToolContext};
 pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};
 pub use portable::{
