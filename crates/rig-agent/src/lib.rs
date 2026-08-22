@@ -100,4 +100,16 @@ const _: fn() = || {
     assert_send_sync_static::<agent::RunEvents>();
     assert_send_sync_static::<agent::PromptResponse>();
     assert_send_sync_static::<tool::server::ToolServerHandle>();
+    // Run identity and its per-run handle/event: the keys and payloads a host
+    // routes by, so they must be plain values it can copy into its own tables.
+    fn assert_copy<T: Copy + std::hash::Hash + Eq>() {}
+    assert_copy::<agent::RunId>();
+    assert_send_sync_static::<agent::RunId>();
+    assert_send_sync_static::<agent::RunHandle>();
+    assert_send_sync_static::<agent::RunEvent>();
+    assert_send_sync_static::<agent::TryNext>();
+    assert_send_sync_static::<agent::RunChannelConfig>();
+    // A live run is owned by one poller: `Send` so it can move to a worker.
+    fn assert_send_static<T: Send + 'static>() {}
+    assert_send_static::<agent::RunFuture>();
 };
