@@ -590,7 +590,7 @@ where
                     // What this request advertises becomes run data, so a
                     // resumed run or another driver can re-pair the calls
                     // that come back with the tools that were offered.
-                    run.advertise_tools(turn, turn_tool_snapshot.definitions().to_vec());
+                    run.advertise_tools(turn, std::mem::take(&mut prepared.advertised_tools));
                     if runner.config.record_telemetry_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
