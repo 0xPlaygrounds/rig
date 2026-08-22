@@ -803,9 +803,11 @@ conversations) and need to route each event to the run it belongs to, cancel a
 run when its owner goes away, and drain feeds once per tick.
 
 - **`RunId`** (`rig_agent::agent::RunId`, still re-exported from `hook`) is now
-  `#[serde(transparent)] struct RunId(u128)` — `Copy + Hash + Eq + Ord +
-  Serialize + Deserialize`, `to_bits()`/`from_bits()`, `Display`/`FromStr` as
-  32 hex digits, public `RunId::new()`. It was an opaque `String` newtype with
+  `#[serde(transparent)] struct RunId(NonZeroU64)` minted from a process-global
+  counter (the `std::thread::ThreadId` / `tokio::task::Id` shape: unique and
+  increasing within the process, no claim beyond it) — `Copy + Hash + Eq + Ord
+  + Serialize + Deserialize`, `to_raw()`/`from_raw()`, `Display`/`FromStr` as
+  the decimal number, public `RunId::new()`, `Option<RunId>` is `u64`-sized. It was an opaque `String` newtype with
   `as_str()` and no public constructor; `as_str()` is gone (use `to_string()`),
   `HookContext::run_id()` returns `RunId` by value.
 - **Caller-chosen ids**: `AgentRunner::with_run_id(id)` (also on

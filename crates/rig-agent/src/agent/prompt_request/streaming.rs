@@ -7932,7 +7932,7 @@ mod migrated_tests {
         }
 
         // Caller-chosen.
-        let chosen = RunId::from_bits(7);
+        let chosen = RunId::from_raw(7).expect("non-zero");
         let seen = Arc::new(SeenIds::default());
         let (handle, run, events) = scripted_tool_agent()
             .stream_prompt("do tool work")
