@@ -211,26 +211,7 @@ use crate::{
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
-/// Opaque process-scoped identifier for one agent run.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RunId(String);
-
-impl RunId {
-    pub(crate) fn generate() -> Self {
-        Self(rig_core::id::generate())
-    }
-
-    /// Identifier as text.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for RunId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+pub use rig_core::id::RunId;
 
 /// Run-scoped typed storage shared by hooks.
 #[derive(Clone, Default)]
@@ -392,7 +373,7 @@ pub struct HookContext {
 impl HookContext {
     pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
         Self {
-            run_id: RunId::generate(),
+            run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
             agent_name,
@@ -406,8 +387,8 @@ impl HookContext {
     }
 
     /// Stable run identifier.
-    pub fn run_id(&self) -> &RunId {
-        &self.run_id
+    pub fn run_id(&self) -> RunId {
+        self.run_id
     }
 
     /// Current one-based model-call index.
@@ -440,29 +421,7 @@ impl HookContext {
     }
 }
 
-/// Diagnostics for an invalid model-emitted tool call.
-#[derive(Debug, Clone)]
-pub struct InvalidToolCallContext {
-    /// Name emitted by the model.
-    pub tool_name: String,
-    /// Durable tool-call id: the provider's when it issued one, else rig's
-    /// minted handle. Absent only when no call object exists at all.
-    pub tool_call_id: Option<String>,
-    /// Rig correlation id, when present.
-    pub internal_call_id: Option<String>,
-    /// Emitted JSON arguments, when present.
-    pub args: Option<String>,
-    /// Executable tools advertised for the turn.
-    pub available_tools: Vec<String>,
-    /// Tools permitted by the active tool choice.
-    pub allowed_tools: Vec<String>,
-    /// Active tool choice.
-    pub tool_choice: Option<ToolChoice>,
-    /// Diagnostic history including the rejected output.
-    pub chat_history: Vec<Message>,
-    /// Whether the call came from the streaming path.
-    pub is_streaming: bool,
-}
+pub use rig_run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 
 /// Completion-call event.
 ///
@@ -648,19 +607,6 @@ pub struct ModelTurnFinished<'a> {
     /// observing it alone sees the payload for every accepted call on both
     /// surfaces.
     pub raw: &'a serde_json::Value,
-}
-
-/// How an accepted, tool-free model turn should be retried.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RetryRequest {
-    /// Discard the rejected response and reuse the same prompt and preceding
-    /// history with fresh request preparation.
-    ///
-    /// Completion-call hooks, retrieval, and dynamic tool resolution run again,
-    /// so the resulting provider request may differ from the rejected attempt.
-    Repeat,
-    /// Preserve the rejected assistant response and append corrective feedback.
-    Feedback(String),
 }
 
 /// Action for the medium-neutral [`ModelTurnFinished`] event.
@@ -1116,68 +1062,6 @@ impl ToolResultAction {
     /// Creates an action that stops the run after result handling.
     pub fn stop(reason: impl Into<String>) -> Self {
         Self::Stop(reason.into())
-    }
-}
-
-/// Action for invalid-tool-call hooks and manual invalid-call resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InvalidToolCallAction {
-    /// Preserve fail-fast behavior.
-    Fail,
-    /// Retry the model with corrective feedback.
-    Retry {
-        /// Feedback appended for the retry.
-        feedback: String,
-    },
-    /// Repair the emitted tool name.
-    Repair {
-        /// Replacement registered tool name.
-        tool_name: String,
-    },
-    /// Treat the invalid call as skipped.
-    Skip {
-        /// Synthetic model feedback.
-        reason: String,
-    },
-    /// Stop the run.
-    Stop {
-        /// Stop reason.
-        reason: String,
-    },
-}
-
-impl InvalidToolCallAction {
-    /// Creates an action that preserves fail-fast invalid-call handling.
-    pub fn fail() -> Self {
-        Self::Fail
-    }
-
-    /// Creates an action that retries the model with corrective feedback.
-    pub fn retry(feedback: impl Into<String>) -> Self {
-        Self::Retry {
-            feedback: feedback.into(),
-        }
-    }
-
-    /// Creates an action that replaces the invalid tool name.
-    pub fn repair(tool_name: impl Into<String>) -> Self {
-        Self::Repair {
-            tool_name: tool_name.into(),
-        }
-    }
-
-    /// Creates an action that treats the invalid call as skipped.
-    pub fn skip(reason: impl Into<String>) -> Self {
-        Self::Skip {
-            reason: reason.into(),
-        }
-    }
-
-    /// Creates an action that stops the run with the supplied reason.
-    pub fn stop(reason: impl Into<String>) -> Self {
-        Self::Stop {
-            reason: reason.into(),
-        }
     }
 }
 
@@ -2654,7 +2538,7 @@ mod migrated_tests {
         assert_eq!(context.agent_name(), Some("agent"));
         context.set_turn(3);
         assert_eq!(context.turn(), 3);
-        assert!(!context.run_id().as_str().is_empty());
+        assert!(context.run_id().to_raw() > 0);
     }
 
     struct RewriteHook(Value);

@@ -651,6 +651,64 @@ impl AgentConfig {
     }
 }
 
+impl AgentConfig {
+    /// The protocol-facing half of this configuration as plain data: what a
+    /// driver needs to shape requests and budget a run, without the model,
+    /// hooks, memory or identity this config also carries.
+    pub(crate) fn run_spec(&self) -> rig_run::RunSpec {
+        rig_run::RunSpec {
+            preamble: self.preamble.clone(),
+            static_context: self.static_context.clone(),
+            additional_params: self.additional_params.clone(),
+            max_tokens: self.max_tokens,
+            temperature: self.temperature,
+            tool_choice: self.tool_choice.clone(),
+            max_turns: Some(self.max_turns),
+            max_invalid_tool_call_retries: 0,
+            output_schema: self
+                .output_schema
+                .as_ref()
+                .map(|schema| schema.as_value().clone()),
+            output_mode: self.output_mode.clone(),
+            output_tool_name: None,
+            output_tool_description: None,
+            augment_output_preamble: true,
+        }
+    }
+
+    /// Overwrite the protocol-facing fields from `spec`, leaving model, hooks,
+    /// memory and identity untouched. Fails only if `spec.output_schema` is
+    /// not a valid JSON schema.
+    pub(crate) fn apply_run_spec(
+        &mut self,
+        spec: &rig_run::RunSpec,
+    ) -> Result<(), serde_json::Error> {
+        self.preamble = spec.preamble.clone();
+        self.static_context = spec.static_context.clone();
+        self.additional_params = spec.additional_params.clone();
+        self.max_tokens = spec.max_tokens;
+        self.temperature = spec.temperature;
+        self.tool_choice = spec.tool_choice.clone();
+        self.max_turns = spec.effective_max_turns();
+        self.output_schema = match &spec.output_schema {
+            Some(value) => Some(schemars::Schema::try_from(value.clone())?),
+            None => None,
+        };
+        self.output_mode = spec.output_mode.clone();
+        Ok(())
+    }
+}
+
+impl Agent {
+    /// The protocol-facing configuration of this agent as plain data
+    /// ([`RunSpec`](rig_run::RunSpec)): preamble, static context, sampling
+    /// parameters, turn budget, tool choice and structured-output policy —
+    /// everything a run needs that is not a model, a tool, a hook or a memory.
+    pub fn run_spec(&self) -> rig_run::RunSpec {
+        self.config.run_spec()
+    }
+}
+
 impl Agent {
     /// The tool server this agent dispatches tool calls through. Cloning the
     /// handle lets external tool sources (an MCP client handler, for example)

@@ -134,5 +134,6 @@ pub use prompt_request::{
     Standard, TypedPromptRequest, TypedPromptResponse,
 };
 pub use rig_core::message::Text;
+pub use rig_run::{RunSpec, TurnTools};
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;

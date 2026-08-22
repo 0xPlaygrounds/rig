@@ -74,6 +74,13 @@ pub mod core {
     pub use rig_core::*;
 }
 
+/// The sans-IO agent-run protocol (`rig-run`): `AgentRun` and the data a
+/// driver needs to step it. Available without the classic runtime, so a host
+/// that drives runs itself (an ECS plugin, a job system) does not need `agent`.
+pub mod run {
+    pub use rig_run::*;
+}
+
 /// Classic agent orchestration and lifecycle APIs.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]

@@ -100,7 +100,7 @@ impl LifecycleRecorder {
         self.run_ids
             .lock()
             .expect("run_ids")
-            .insert(ctx.run_id().as_str().to_string());
+            .insert(ctx.run_id().to_string());
         *self.streaming.lock().expect("streaming") = Some(ctx.is_streaming());
         *self.agent_name.lock().expect("agent_name") = ctx.agent_name().map(str::to_string);
         self.breadcrumbs

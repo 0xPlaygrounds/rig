@@ -29,7 +29,7 @@
 //!    ([`CallTools`](super::AgentRunStep::CallTools) /
 //!    [`Done`](super::AgentRunStep::Done)).
 //!
-//! [`crate::streaming::StreamingPrompt::stream_prompt`] drives this protocol
+//! `StreamingPrompt::stream_prompt` drives this protocol
 //! internally; hand-driven runs can use it to stream any
 //! [`AgentRun`](super::AgentRun).
 
@@ -42,17 +42,15 @@ use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
 
-use crate::{
-    agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
-    completion::{CompletionError, Message, Usage},
-    json_utils,
-    streaming::{StreamedAssistantContent, ToolCallDeltaContent},
-};
+use crate::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
+use rig_core::completion::{CompletionError, Message, Usage};
+use rig_core::json_utils;
+use rig_core::streaming::{StreamedAssistantContent, ToolCallDeltaContent};
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
 /// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
 /// so the result is empty exactly when every input is.
-pub(crate) fn ordered_assistant_content(
+pub fn ordered_assistant_content(
     reasoning_items: impl IntoIterator<Item = Reasoning>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
@@ -68,7 +66,7 @@ pub(crate) fn ordered_assistant_content(
 
 /// [`ordered_assistant_content`], as an `Option` for slots where an empty
 /// assembly means "no message".
-pub(crate) fn ordered_streaming_assistant_content(
+pub fn ordered_streaming_assistant_content(
     reasoning_items: impl IntoIterator<Item = Reasoning>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
@@ -119,9 +117,7 @@ fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool 
         && payload.get("additional_params").is_some()
 }
 
-pub(crate) fn assistant_text_items_from_choice(
-    choice: &[AssistantContent],
-) -> Vec<AssistantContent> {
+pub fn assistant_text_items_from_choice(choice: &[AssistantContent]) -> Vec<AssistantContent> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -170,7 +166,7 @@ impl PartialStreamedTurn {
     /// The assistant message representing this partial turn, in canonical
     /// order, including `current_tool_call` when provided. `None` when the
     /// turn has produced no representable content.
-    pub(crate) fn assistant_message(&self, current_tool_call: Option<ToolCall>) -> Option<Message> {
+    pub fn assistant_message(&self, current_tool_call: Option<ToolCall>) -> Option<Message> {
         let text_items = match &self.text {
             Some(text) if !text.is_empty() => vec![AssistantContent::text(text.clone())],
             _ => Vec::new(),
@@ -199,7 +195,7 @@ impl PartialStreamedTurn {
     /// Rollback messages for a retried or skipped streamed turn: the partial
     /// assistant turn plus a user message carrying `feedback` for the invalid
     /// call and a synthetic "not executed" result for each validated peer.
-    pub(crate) fn rollback_messages(
+    pub fn rollback_messages(
         &self,
         invalid_tool_call: ToolCall,
         feedback: String,
@@ -846,7 +842,7 @@ impl StreamedTurnAssembler {
 
     /// Assemble the completed turn. `final_choice` is the provider's
     /// aggregated choice for the turn
-    /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
+    /// (`StreamingCompletionResponse::choice`).
     pub fn finish(
         mut self,
         message_id: Option<String>,
@@ -931,11 +927,11 @@ impl StreamedTurnAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::hook::InvalidToolCallAction;
-    use crate::agent::run::{AgentRun, AgentRunStep};
-    use crate::completion::PromptError;
-    use crate::test_utils::mock_final;
+    use crate::error::PromptError;
+    use crate::policy::InvalidToolCallAction;
+    use crate::run::{AgentRun, AgentRunStep};
     use rig_core::message::{Text, ToolResultContent, UserContent};
+    use rig_core::test_utils::mock_final;
     use serde_json::json;
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {
