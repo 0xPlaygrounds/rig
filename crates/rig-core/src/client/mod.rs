@@ -34,6 +34,7 @@ pub use audio_generation::{AudioGenerationClient, ConstructAudioGenerationModel}
 use crate::{
     completion::CompletionModel,
     embeddings::EmbeddingModel,
+    http_client::BoxedHttpClient,
     http_client::{
         self, Builder, HttpClientExt, LazyBody, MultipartForm, Request, Response, make_auth_header,
     },
@@ -140,6 +141,29 @@ pub trait ProviderFromEnv: Provider {
     where
         H: HttpClientExt,
         Self::Builder: ProviderBuilder<Extension<H> = Self>;
+
+    /// [`Self::from_env_with`], with the transport erased behind
+    /// [`BoxedHttpClient`] so the returned client names no concrete `H`.
+    fn from_env_boxed<H>(http: H) -> Result<Client<Self, BoxedHttpClient>, ProviderClientError>
+    where
+        H: HttpClientExt + 'static,
+        Self::Builder: ProviderBuilder<Extension<BoxedHttpClient> = Self>,
+    {
+        Self::from_env_with(BoxedHttpClient::new(http))
+    }
+
+    /// [`Self::from_val_with`], with the transport erased behind
+    /// [`BoxedHttpClient`] so the returned client names no concrete `H`.
+    fn from_val_boxed<H>(
+        input: Self::Input,
+        http: H,
+    ) -> Result<Client<Self, BoxedHttpClient>, ProviderClientError>
+    where
+        H: HttpClientExt + 'static,
+        Self::Builder: ProviderBuilder<Extension<BoxedHttpClient> = Self>,
+    {
+        Self::from_val_with(input, BoxedHttpClient::new(http))
+    }
 }
 
 /// A trait for API key inputs accepted by [`ClientBuilder::api_key`].
@@ -185,11 +209,16 @@ impl ApiKey for Nothing {}
 /// `Ext` stores provider-specific behavior such as URL construction, request
 /// customization, and capabilities. `H` is the HTTP backend — any
 /// [`crate::http_client::HttpClientExt`] implementation. rig-core has no
-/// default transport: construct with [`Client::new_with`] /
+/// default *concrete* transport: construct with [`Client::new_with`] /
 /// [`ClientBuilder::http_client`], or use the bundled `reqwest` transport's
 /// conveniences (`rig-reqwest`, re-exported by the `rig` facade) which pin
-/// `H` for you.
-pub struct Client<Ext = Nothing, H = Missing> {
+/// `H` for you. In type position `H` defaults to the erased
+/// [`BoxedHttpClient`], so `Client<Ext>` means "any transport" — the shape a
+/// host that owns one transport for many providers holds (see
+/// [`Client::boxed`] and [`ProviderFromEnv::from_env_boxed`]). The default
+/// does not apply in expression position, so `Client::new_with(..)` still
+/// infers `H` from its argument.
+pub struct Client<Ext = Nothing, H = BoxedHttpClient> {
     base_url: Arc<str>,
     headers: Arc<HeaderMap>,
     http_client: H,
@@ -566,6 +595,28 @@ where
             .api_key(api_key)
             .http_client(http)
             .build()
+    }
+}
+
+impl<Ext, H> Client<Ext, H>
+where
+    H: HttpClientExt + 'static,
+{
+    /// Erase this client's transport behind [`BoxedHttpClient`].
+    ///
+    /// The result is the same client — base URL, headers, extension — sending
+    /// through the same transport, but its type no longer names `H`. A host
+    /// that builds clients for several providers over one transport uses this
+    /// (or [`ProviderFromEnv::from_env_boxed`]) so every client it holds is a
+    /// `Client<Ext>`. Boxing an already boxed client is a no-op clone of the
+    /// transport handle.
+    pub fn boxed(self) -> Client<Ext, BoxedHttpClient> {
+        Client {
+            base_url: self.base_url,
+            headers: self.headers,
+            http_client: BoxedHttpClient::new(self.http_client),
+            ext: self.ext,
+        }
     }
 }
 
@@ -1497,7 +1548,7 @@ mod external_modality_extension_probe {
     #[test]
     fn embedding_hook_receives_the_requested_dims() {
         let client: Client<ExternalExt, crate::test_utils::RecordingHttpClient> =
-            Client::<ExternalExt>::builder()
+            Client::<ExternalExt, Missing>::builder()
                 .api_key("key")
                 .http_client(crate::test_utils::RecordingHttpClient::new(""))
                 .build()

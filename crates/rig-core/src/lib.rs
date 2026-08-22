@@ -212,6 +212,8 @@ const _: fn() = || {
     assert_send_sync_static::<tool::PortableDynamicTool>();
     assert_send_sync_static::<tool::ManagedToolToken>();
     assert_send_sync_static::<streaming::StreamedAssistantContent>();
+    // One erased transport shared by every provider client a host builds.
+    assert_send_sync_static::<http_client::BoxedHttpClient>();
     // A live stream is owned by one poller: `Send` so it can move to a worker,
     // not `Sync`.
     assert_send_static::<streaming::StreamingCompletionResponse>();

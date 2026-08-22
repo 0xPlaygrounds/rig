@@ -2,10 +2,12 @@ use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{HeaderName, StatusCode};
+mod erased;
 pub mod multipart;
 pub mod retry;
 pub mod sse;
 use crate::wasm_compat::*;
+pub use erased::BoxedHttpClient;
 pub use multipart::MultipartForm;
 
 #[derive(Debug, thiserror::Error)]

@@ -796,6 +796,39 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
+
+`rig_core::http_client::BoxedHttpClient` wraps any `H: HttpClientExt + 'static`
+behind one `Arc<dyn …>` and implements `HttpClientExt` itself, so a client can
+hold a transport without naming it. `Clone` is a reference-count bump; boxing
+an already boxed transport is a clone, not a second layer; `Debug` prints only
+the type name. It is for hosts that *hold* one transport for many providers
+(worker pools, ECS resources, registries built at startup) — keep the generic
+`H` when writing a provider or when you want a monomorphized transport.
+
+- `Client<Ext, H>`'s type default is now `H = BoxedHttpClient` (it was the
+  `Missing` typestate placeholder). In **type** position `Client<Ext>` is
+  "any transport"; nothing changes in expression position, where defaults never
+  applied. The one break: `Client::<Ext>::builder()` no longer resolves —
+  `builder()` lives on `Client<Ext, Missing>`, so spell it
+  `Client::<Ext, Missing>::builder()` (or go through a provider's
+  `ClientBuilder`/the rig-reqwest prelude as before).
+- `ProviderFromEnv::from_env_boxed(http)` / `from_val_boxed(input, http)`
+  return `Client<Self, BoxedHttpClient>`; `Client::boxed(self)` erases a built
+  client's transport; `rig_reqwest::ReqwestClient::boxed()` /
+  `impl From<ReqwestClient> for BoxedHttpClient`.
+
+```rust
+use rig::client::ProviderFromEnv as _;
+use rig::http_client::{BoxedHttpClient, ReqwestClient};
+use rig::providers::openai;
+
+let transport: BoxedHttpClient = ReqwestClient::default().boxed();
+let client: openai::Client<BoxedHttpClient> =
+    openai::OpenAIResponsesExt::from_env_boxed(transport.clone())?;
+// …and the same `transport` for every other provider the host talks to.
+```
+
 ### Synchronous, retrieval-free registry reads: `ToolServerHandle::{snapshot, static_tool_defs, toolset}`; `ToolRegistrySnapshot` is public; `ToolSet: Clone`
 
 Additive. The registry lock has been a `std::sync::RwLock` since 0.41 → next's

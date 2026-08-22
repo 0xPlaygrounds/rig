@@ -6,7 +6,9 @@
 //! loop (think: a game frame, an ECS system) drains the events with
 //! `try_next` and never blocks on the run. The HTTP transport (`rig-reqwest`)
 //! brings its own private tokio runtime for the wire; this crate's manifest
-//! depends on neither tokio nor reqwest.
+//! depends on neither tokio nor reqwest. The transport is held erased
+//! ([`rig::http_client::BoxedHttpClient`]), the way a host runtime keeps one
+//! transport for every provider without naming it in its own types.
 //!
 //! Requires `OPENAI_API_KEY`.
 
@@ -15,6 +17,8 @@ use std::{thread, time::Duration};
 use anyhow::Result;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool, futures::check_ready};
 use rig::agent::MultiTurnStreamItem;
+use rig::client::ProviderFromEnv as _;
+use rig::http_client::ReqwestClient;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamedAssistantContent;
@@ -25,7 +29,11 @@ const PROMPT: &str = "Entertain me!";
 const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
+    // A host holds one erased transport for every provider it talks to: the
+    // client is `Client<OpenAIResponsesExt>` — `H` defaults to
+    // `BoxedHttpClient`, so no transport type reaches this crate's signatures.
+    let transport = ReqwestClient::default().boxed();
+    let agent = openai::OpenAIResponsesExt::from_env_boxed(transport)?
         .agent(openai::GPT_4O)
         .preamble(PREAMBLE)
         .build();
