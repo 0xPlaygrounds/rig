@@ -1,511 +1,21 @@
-//! The `agent` layer: contextual MCP tools for rig-agent's tool server.
-
-use std::collections::HashMap;
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
-use std::time::Duration;
-
-use rmcp::ServiceExt;
-use rmcp::model::{
-    CallToolResult, ClientRequest, ListToolsRequest, PaginatedRequestParams, ServerResult,
-};
-use tokio::sync::{Mutex, RwLock};
-
-use rig_agent::agent::{AgentBuilder, NoToolConfig, WithBuilderTools};
-use rig_agent::tool::ErasedTool;
-use rig_agent::tool::server::{ManagedToolToken, ToolServer, ToolServerHandle};
-use rig_agent::tool::{ToolContext, ToolResult};
-use rig_core::tool::ToolExecutionError;
-use rig_core::wasm_compat::WasmBoxedFuture;
-
-use crate::{
-    DEFAULT_MCP_REFRESH_TIMEOUT, DEFAULT_MCP_TOOL_TIMEOUT, McpClientError, McpTool,
-    mcp_result_output, send_mcp_request,
-};
-
-fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
-    if let Some(structured) = result.structured_content.clone() {
-        context.insert_result(structured);
-    }
-    if let Some(meta) = result.meta.clone() {
-        context.insert_result(meta);
-    }
-    context.insert_result(result);
-}
-
-impl ErasedTool for McpTool {
-    fn name(&self) -> String {
-        self.definition.name.to_string()
-    }
-
-    fn description(&self) -> String {
-        self.definition
-            .description
-            .as_deref()
-            .unwrap_or("")
-            .to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        self.definition.schema_as_json_value()
-    }
-
-    fn is_live(&self) -> bool {
-        !self.client.is_transport_closed()
-    }
-
-    fn execute<'a>(
-        &'a self,
-        args: String,
-        context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult> {
-        let meta = context.get::<rmcp::model::Meta>().cloned();
-        Box::pin(async move {
-            match self.execute_mcp(args, meta).await {
-                Ok(result) => {
-                    let is_error = result.is_error == Some(true);
-                    let output = mcp_result_output(&result);
-                    preserve_mcp_result(context, result);
-                    let output = match output {
-                        Ok(output) => output,
-                        Err(error) => return ToolResult::failed(error),
-                    };
-
-                    if is_error {
-                        ToolResult::failed(
-                            ToolExecutionError::other(format!(
-                                "MCP tool '{}' reported an execution error",
-                                self.definition.name
-                            ))
-                            .with_model_output(output),
-                        )
-                    } else {
-                        ToolResult::success(output)
-                    }
-                }
-                Err(error) => ToolResult::failed(error),
-            }
-        })
-    }
-}
-
-#[derive(Default)]
-struct ManagedToolsState {
-    registrations: HashMap<String, ManagedToolToken>,
-    committed_refresh: u64,
-}
-
-#[derive(Default)]
-struct RefreshActivity {
-    active: usize,
-    dirty: bool,
-}
-
-const MAX_CONCURRENT_REFRESHES: usize = 2;
-
-/// An MCP client handler that automatically re-fetches the tool list when the
-/// server sends a `notifications/tools/list_changed` notification.
-///
-/// This handler implements [`rmcp::ClientHandler`] and bridges the MCP
-/// notification lifecycle with Rig's [`ToolServer`].
-/// When the MCP server's available tools change, this handler:
-/// 1. Re-fetches the full tool list from the MCP server
-/// 2. Replaces or removes registrations still owned by this handler
-/// 3. Leaves newer local and peer-handler same-name registrations intact
-///
-/// # Usage
-///
-/// Use [`McpClientHandler::connect`] for a streamlined setup that handles
-/// connection, initial tool fetch, and registration in one call:
-///
-/// ```rust,ignore
-/// let tool_server_handle = ToolServer::new().run();
-/// let handler = McpClientHandler::new(client_info, tool_server_handle.clone());
-/// let mcp_service = handler.connect(transport).await?;
-/// ```
-///
-/// The returned `RunningService` keeps the MCP connection alive. When the
-/// server updates its tools, the handler automatically syncs with the tool server.
-pub struct McpClientHandler {
-    client_info: rmcp::model::ClientInfo,
-    tool_server_handle: ToolServerHandle,
-    /// Per-call timeout applied to every MCP tool this handler registers
-    /// (see issue #1914). Defaults to [`DEFAULT_MCP_TOOL_TIMEOUT`].
-    timeout: Option<Duration>,
-    /// Deadline for initial and list-changed tool-list fetches.
-    refresh_timeout: Duration,
-    /// Tracks the exact registry generation installed for each tool. Refreshes
-    /// only mutate a name while this generation remains current, so a newer
-    /// local or peer-handler registration cannot be deleted or overwritten.
-    managed_tools: Arc<RwLock<ManagedToolsState>>,
-    /// Bounds notification-driven list fetches and coalesces excess signals.
-    refresh_activity: Arc<Mutex<RefreshActivity>>,
-    /// Monotonic identity assigned when each tool-list fetch begins.
-    next_refresh: Arc<AtomicU64>,
-}
-
-impl McpClientHandler {
-    /// Create a new handler with the given client info and tool server handle.
-    ///
-    /// The `tool_server_handle` should be a clone of the handle used by the agent,
-    /// so that tool updates are reflected in agent requests. Registered tools get
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`]; change it with [`McpClientHandler::with_timeout`].
-    pub fn new(client_info: rmcp::model::ClientInfo, tool_server_handle: ToolServerHandle) -> Self {
-        Self {
-            client_info,
-            tool_server_handle,
-            timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
-            refresh_timeout: DEFAULT_MCP_REFRESH_TIMEOUT,
-            managed_tools: Arc::new(RwLock::new(ManagedToolsState::default())),
-            refresh_activity: Arc::new(Mutex::new(RefreshActivity::default())),
-            next_refresh: Arc::new(AtomicU64::new(0)),
-        }
-    }
-
-    /// Set (or clear) the per-call timeout applied to every MCP tool this handler
-    /// registers. Pass a [`Duration`] to bound calls, or `None` to disable.
-    ///
-    /// This applies the same setting to every tool managed by the handler.
-    pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
-        self.timeout = timeout.into();
-        self
-    }
-
-    /// Set the deadline for initial and list-changed tool-list fetches.
-    pub fn with_refresh_timeout(mut self, timeout: Duration) -> Self {
-        self.refresh_timeout = timeout;
-        self
-    }
-
-    /// Build the internal MCP adapter with this handler's configured timeout.
-    fn build_tool(&self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> McpTool {
-        McpTool::from_mcp_server(tool, client).with_timeout(self.timeout)
-    }
-
-    fn begin_refresh(&self) -> u64 {
-        self.next_refresh.fetch_add(1, Ordering::SeqCst) + 1
-    }
-
-    async fn fetch_tools(
-        &self,
-        peer: &rmcp::service::ServerSink,
-    ) -> Result<Vec<Arc<dyn ErasedTool>>, McpClientError> {
-        let deadline = tokio::time::Instant::now() + self.refresh_timeout;
-        let mut tools = Vec::new();
-        let mut cursor = None;
-
-        loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                return Err(McpClientError::ToolFetchTimeout(self.refresh_timeout));
-            }
-            let mut params = PaginatedRequestParams::default();
-            params.cursor = cursor;
-            let response = send_mcp_request(
-                peer,
-                ClientRequest::ListToolsRequest(ListToolsRequest::with_param(params)),
-                Some((deadline, self.refresh_timeout)),
-            )
-            .await
-            .map_err(|error| match error {
-                rmcp::ServiceError::Timeout { .. } => {
-                    McpClientError::ToolFetchTimeout(self.refresh_timeout)
-                }
-                error => McpClientError::ToolFetchError(error),
-            })?;
-            let page = match response {
-                ServerResult::ListToolsResult(page) => page,
-                _ => {
-                    return Err(McpClientError::ToolFetchError(
-                        rmcp::ServiceError::UnexpectedResponse,
-                    ));
-                }
-            };
-            tools.extend(page.tools);
-            cursor = page.next_cursor;
-            if cursor.is_none() {
-                break;
-            }
-        }
-
-        Ok(tools
-            .into_iter()
-            .map(|tool| Arc::new(self.build_tool(tool, peer.clone())) as Arc<dyn ErasedTool>)
-            .collect())
-    }
-
-    async fn try_start_refresh(&self) -> bool {
-        let mut activity = self.refresh_activity.lock().await;
-        if activity.active >= MAX_CONCURRENT_REFRESHES {
-            activity.dirty = true;
-            false
-        } else {
-            activity.active += 1;
-            true
-        }
-    }
-
-    async fn finish_or_restart_refresh(&self) -> bool {
-        let mut activity = self.refresh_activity.lock().await;
-        if activity.dirty {
-            activity.dirty = false;
-            true
-        } else {
-            activity.active -= 1;
-            false
-        }
-    }
-
-    async fn commit_initial(&self, refresh: u64, tools: Vec<Arc<dyn ErasedTool>>) {
-        let mut managed = self.managed_tools.write().await;
-        if refresh <= managed.committed_refresh {
-            tracing::debug!(refresh, "discarding stale initial MCP tool list");
-            return;
-        }
-        managed.registrations = self.tool_server_handle.add_managed_erased_tools(tools);
-        managed.committed_refresh = refresh;
-    }
-
-    async fn commit_refresh(&self, refresh: u64, tools: Vec<Arc<dyn ErasedTool>>) -> bool {
-        let mut managed = self.managed_tools.write().await;
-        if refresh <= managed.committed_refresh {
-            tracing::debug!(refresh, "discarding stale MCP tool-list response");
-            return false;
-        }
-        let expected = managed.registrations.clone();
-        managed.registrations = self
-            .tool_server_handle
-            .reconcile_managed_erased_tools(expected, tools);
-        managed.committed_refresh = refresh;
-        true
-    }
-
-    /// Connect to an MCP server, fetch the initial tool list, and register
-    /// all tools with the tool server.
-    ///
-    /// Returns the running MCP service. The connection stays alive as long as the
-    /// returned `RunningService` is held. When the server sends
-    /// `notifications/tools/list_changed`, this handler automatically re-fetches
-    /// and re-registers tools.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`McpClientError`] if the connection or initial tool fetch fails.
-    pub async fn connect<T, E, A>(
-        self,
-        transport: T,
-    ) -> Result<rmcp::service::RunningService<rmcp::service::RoleClient, Self>, McpClientError>
-    where
-        T: rmcp::transport::IntoTransport<rmcp::service::RoleClient, E, A>,
-        E: std::error::Error + Send + Sync + 'static,
-    {
-        let service = ServiceExt::serve(self, transport)
-            .await
-            .map_err(|e| McpClientError::ConnectionError(e.to_string()))?;
-
-        let handler = service.service();
-        let refresh = handler.begin_refresh();
-        let tools = handler.fetch_tools(service.peer()).await?;
-        handler.commit_initial(refresh, tools).await;
-
-        Ok(service)
-    }
-}
-
-impl rmcp::handler::client::ClientHandler for McpClientHandler {
-    fn get_info(&self) -> rmcp::model::ClientInfo {
-        self.client_info.clone()
-    }
-
-    async fn on_tool_list_changed(
-        &self,
-        context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
-    ) {
-        if !self.try_start_refresh().await {
-            return;
-        }
-
-        loop {
-            let refresh = self.begin_refresh();
-            // Network IO is deliberately outside the ownership lock. Up to two
-            // fetches may overlap so a newer snapshot can bypass one stalled
-            // request; further notifications coalesce into one follow-up fetch.
-            match self.fetch_tools(&context.peer).await {
-                Ok(tools) => {
-                    if self.commit_refresh(refresh, tools).await {
-                        let tool_count = self.managed_tools.read().await.registrations.len();
-                        tracing::info!(tool_count, "MCP tool list refreshed successfully");
-                    }
-                }
-                Err(error) => tracing::error!("Failed to re-fetch MCP tool list: {error}"),
-            }
-
-            if !self.finish_or_restart_refresh().await {
-                break;
-            }
-        }
-    }
-}
-
-/// `rmcp_tool*` builders on [`AgentBuilder`]: register MCP tools (from `rmcp`)
-/// with the agent, each bounded by [`DEFAULT_MCP_TOOL_TIMEOUT`] unless a
-/// timeout is given (`None` = unbounded; see issue #1914).
-pub trait RmcpAgentBuilderExt {
-    /// The builder state after adding tools.
-    type Output;
-    /// Add one MCP tool.
-    fn rmcp_tool(self, tool: rmcp::model::Tool, client: &rmcp::service::ServerSink)
-    -> Self::Output;
-    /// Add one MCP tool with an explicit per-call timeout.
-    fn rmcp_tool_with_timeout(
-        self,
-        tool: rmcp::model::Tool,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self::Output;
-    /// Add several MCP tools sharing one client.
-    fn rmcp_tools(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-    ) -> Self::Output;
-    /// Add several MCP tools sharing one client, each with the same per-call timeout.
-    fn rmcp_tools_with_timeout(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self::Output;
-}
-
-fn erased(tool: McpTool) -> Arc<dyn ErasedTool> {
-    Arc::new(tool)
-}
-
-impl RmcpAgentBuilderExt for AgentBuilder<NoToolConfig> {
-    type Output = AgentBuilder<WithBuilderTools>;
-    fn rmcp_tool(
-        self,
-        tool: rmcp::model::Tool,
-        client: &rmcp::service::ServerSink,
-    ) -> Self::Output {
-        self.rmcp_tool_with_timeout(tool, client, DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-    fn rmcp_tool_with_timeout(
-        self,
-        tool: rmcp::model::Tool,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self::Output {
-        self.rmcp_tools_with_timeout(vec![tool], client, timeout)
-    }
-    fn rmcp_tools(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-    ) -> Self::Output {
-        self.rmcp_tools_with_timeout(tools, client, DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-    fn rmcp_tools_with_timeout(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self::Output {
-        let mut tools = crate::tools_from_server(tools, client, timeout).into_iter();
-        let Some(first) = tools.next() else {
-            // No tools: still transition states, with an empty tool server.
-            return self.dynamic_tools(Vec::new());
-        };
-        let builder = self.erased_tool(erased(first));
-        tools.fold(builder, |builder, tool| builder.erased_tool(erased(tool)))
-    }
-}
-
-impl RmcpAgentBuilderExt for AgentBuilder<WithBuilderTools> {
-    type Output = Self;
-    fn rmcp_tool(self, tool: rmcp::model::Tool, client: &rmcp::service::ServerSink) -> Self {
-        self.rmcp_tool_with_timeout(tool, client, DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-    fn rmcp_tool_with_timeout(
-        self,
-        tool: rmcp::model::Tool,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self {
-        self.rmcp_tools_with_timeout(vec![tool], client, timeout)
-    }
-    fn rmcp_tools(self, tools: Vec<rmcp::model::Tool>, client: &rmcp::service::ServerSink) -> Self {
-        self.rmcp_tools_with_timeout(tools, client, DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-    fn rmcp_tools_with_timeout(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self {
-        crate::tools_from_server(tools, client, timeout)
-            .into_iter()
-            .fold(self, |builder, tool| builder.erased_tool(erased(tool)))
-    }
-}
-
-/// `rmcp_tool*` builders on [`ToolServer`] (the tool-server builder).
-pub trait RmcpToolServerExt: Sized {
-    /// Add one MCP tool, bounded by [`DEFAULT_MCP_TOOL_TIMEOUT`].
-    fn rmcp_tool(self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
-        self.rmcp_tool_with_timeout(tool, client, DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-    /// Add one MCP tool with an explicit per-call timeout (`None` = unbounded).
-    fn rmcp_tool_with_timeout(
-        self,
-        tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self;
-    /// Add several MCP tools sharing one client, each bounded by [`DEFAULT_MCP_TOOL_TIMEOUT`].
-    fn rmcp_tools(self, tools: Vec<rmcp::model::Tool>, client: &rmcp::service::ServerSink) -> Self {
-        self.rmcp_tools_with_timeout(tools, client, DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-    /// Add several MCP tools sharing one client, each with the same per-call timeout.
-    fn rmcp_tools_with_timeout(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: &rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self {
-        let timeout = timeout.into();
-        tools.into_iter().fold(self, |server, tool| {
-            server.rmcp_tool_with_timeout(tool, client.clone(), timeout)
-        })
-    }
-}
-
-impl RmcpToolServerExt for ToolServer {
-    fn rmcp_tool_with_timeout(
-        self,
-        tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<Duration>>,
-    ) -> Self {
-        self.erased_tool(erased(
-            McpTool::from_mcp_server(tool, client).with_timeout(timeout),
-        ))
-    }
-}
+//! In-process rmcp suites for the handler, the portable adapter, and the
+//! result mapping. rig-agent is a dev-dependency only: its tool server is the
+//! reference `ManagedToolSink` these tests register into.
 
 #[cfg(test)]
-mod tests {
+mod dispatch {
+    #[allow(unused_imports)]
+    use crate::handler::MAX_CONCURRENT_REFRESHES;
     #[allow(unused_imports)]
     use crate::native::{McpArgumentError, bounded_best_effort_cancellation};
     #[allow(unused_imports)]
-    use crate::prelude::*;
-    #[allow(unused_imports)]
     use crate::*;
     #[allow(unused_imports)]
+    use rig_agent::tool::{ToolContext, ToolResult};
+    #[allow(unused_imports)]
     use rig_core::message::ImageMediaType;
+    #[allow(unused_imports)]
+    use rig_core::tool::ToolExecutionError;
     #[allow(unused_imports)]
     use rig_core::tool::ToolOutput;
     use std::{
@@ -521,12 +31,8 @@ mod tests {
     use rmcp::service::RequestContext;
     use rmcp::{RoleServer, ServerHandler, ServiceExt};
     use serde_json::json;
-    use tokio::{
-        sync::{Notify, RwLock},
-        task::JoinHandle,
-    };
+    use tokio::{sync::Notify, task::JoinHandle};
 
-    use super::*;
     use rig_agent::tool::{
         ToolErrorKind,
         server::{ToolServer, ToolServerHandle},
@@ -536,18 +42,14 @@ mod tests {
     #[derive(Clone)]
     enum Scenario {
         Success,
-        StructuredSuccess,
-        StructuredOnly,
         Hang,
         ServiceError,
         ToolReportedError,
-        ImageToolReportedError,
     }
 
     #[derive(Clone)]
     struct ScenarioServer {
         scenario: Scenario,
-        seen: Arc<RwLock<Option<Meta>>>,
         cancelled: Arc<Notify>,
     }
 
@@ -563,29 +65,8 @@ mod tests {
             _request: CallToolRequestParams,
             context: RequestContext<RoleServer>,
         ) -> Result<CallToolResult, ErrorData> {
-            *self.seen.write().await = Some(context.meta.clone());
             match self.scenario {
                 Scenario::Success => Ok(CallToolResult::success(vec![ContentBlock::text("ok")])),
-                Scenario::StructuredSuccess => {
-                    let mut response = CallToolResult::success(vec![
-                        ContentBlock::text("before"),
-                        ContentBlock::image("aGVsbG8=", "image/png"),
-                        ContentBlock::text("after"),
-                    ]);
-                    response.structured_content = Some(json!({
-                        "answer": 42,
-                        "source": "fixture"
-                    }));
-                    let mut meta = Meta::new();
-                    meta.0.insert("response-id".into(), json!("response-123"));
-                    response.meta = Some(meta);
-                    Ok(response)
-                }
-                Scenario::StructuredOnly => {
-                    let mut response = CallToolResult::structured(json!({"answer": 42}));
-                    response.content.clear();
-                    Ok(response)
-                }
                 Scenario::Hang => {
                     context.ct.cancelled().await;
                     self.cancelled.notify_one();
@@ -597,32 +78,26 @@ mod tests {
                 Scenario::ToolReportedError => Ok(CallToolResult::error(vec![ContentBlock::text(
                     "tool reported exact failure",
                 )])),
-                Scenario::ImageToolReportedError => {
-                    Ok(CallToolResult::error(vec![ContentBlock::image(
-                        "ZXJyb3ItaW1hZ2U=",
-                        "image/png",
-                    )]))
-                }
             }
         }
     }
 
     struct Fixture {
         handle: ToolServerHandle,
-        seen: Arc<RwLock<Option<Meta>>>,
+        /// The adapter itself, for tests that assert MCP argument semantics
+        /// directly (the registry path parses JSON in rig-agent first).
+        tool: McpTool,
         cancelled: Arc<Notify>,
         _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
         server_task: JoinHandle<()>,
     }
 
     async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
-        let seen = Arc::new(RwLock::new(None));
         let cancelled = Arc::new(Notify::new());
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
         let (server_to_client, client_from_server) = tokio::io::duplex(8192);
         let server = ScenarioServer {
             scenario,
-            seen: seen.clone(),
             cancelled: cancelled.clone(),
         };
         let server_task = tokio::spawn(async move {
@@ -641,12 +116,14 @@ mod tests {
             "fixture".to_string(),
             Arc::new(serde_json::Map::new()),
         );
+        let tool =
+            McpTool::from_mcp_server(definition, client.peer().clone()).with_timeout(timeout);
         let handle = ToolServer::new()
-            .rmcp_tool_with_timeout(definition, client.peer().clone(), timeout)
+            .portable_dynamic_tool(tool.clone().into())
             .run();
         Fixture {
             handle,
-            seen,
+            tool,
             cancelled,
             _client: client,
             server_task,
@@ -838,30 +315,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canonical_dispatch_forwards_context_meta() {
-        let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-        let mut meta = Meta::new();
-        meta.0.insert("authorization".into(), json!("Bearer test"));
-        let mut context = ToolContext::new();
-        context.insert(meta);
-
-        let result = execute(&fixture, "{}", &mut context).await;
-        assert!(result.is_success());
-        assert_eq!(
-            fixture
-                .seen
-                .read()
-                .await
-                .as_ref()
-                .expect("server observed metadata")
-                .0
-                .get("authorization"),
-            Some(&json!("Bearer test"))
-        );
-        fixture.server_task.abort();
-    }
-
-    #[tokio::test]
     async fn canonical_dispatch_classifies_timeout() {
         let fixture = fixture(Scenario::Hang, Some(Duration::from_millis(25))).await;
         let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
@@ -907,123 +360,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn canonical_dispatch_preserves_non_text_tool_error_content() {
-        let fixture = fixture(
-            Scenario::ImageToolReportedError,
-            Some(Duration::from_secs(1)),
-        )
-        .await;
-        let mut context = ToolContext::new();
-        let result = execute(&fixture, "{}", &mut context).await;
-
-        assert!(result.is_error_kind(ToolErrorKind::Other));
-        assert_eq!(
-            result.output(),
-            &ToolOutput::one(RigToolResultContent::image_base64(
-                "ZXJyb3ItaW1hZ2U=",
-                Some(ImageMediaType::PNG),
-                None,
-            ))
-        );
-        let raw = context
-            .result::<CallToolResult>()
-            .expect("raw MCP error result metadata");
-        assert_eq!(raw.is_error, Some(true));
-        assert!(matches!(raw.content.as_slice(), [ContentBlock::Image(_)]));
-        fixture.server_task.abort();
-    }
-
-    #[tokio::test]
-    async fn canonical_dispatch_preserves_ordered_content_and_response_metadata() {
-        let fixture = fixture(Scenario::StructuredSuccess, Some(Duration::from_secs(1))).await;
-        let mut context = ToolContext::new();
-        let result = execute(&fixture, "{}", &mut context).await;
-
-        let mut expected_content = vec![RigToolResultContent::json(json!({
-            "answer": 42,
-            "source": "fixture"
-        }))];
-        expected_content.push(RigToolResultContent::text("before"));
-        expected_content.push(RigToolResultContent::image_base64(
-            "aGVsbG8=",
-            Some(ImageMediaType::PNG),
-            None,
-        ));
-        expected_content.push(RigToolResultContent::text("after"));
-        assert_eq!(
-            result.output(),
-            &ToolOutput::content(expected_content).expect("fixture content is non-empty")
-        );
-
-        let raw = context
-            .result::<CallToolResult>()
-            .expect("raw MCP result metadata");
-        assert_eq!(raw.content.len(), 3);
-        assert_eq!(
-            raw.structured_content,
-            Some(json!({"answer": 42, "source": "fixture"}))
-        );
-        assert_eq!(
-            context.result::<serde_json::Value>(),
-            Some(&json!({"answer": 42, "source": "fixture"}))
-        );
-        assert_eq!(
-            context
-                .result::<Meta>()
-                .and_then(|meta| meta.0.get("response-id")),
-            Some(&json!("response-123"))
-        );
-        fixture.server_task.abort();
-    }
-
-    #[tokio::test]
-    async fn canonical_dispatch_uses_structured_content_when_blocks_are_empty() {
-        let fixture = fixture(Scenario::StructuredOnly, Some(Duration::from_secs(1))).await;
-        let mut context = ToolContext::new();
-        let result = execute(&fixture, "{}", &mut context).await;
-
-        assert_eq!(result.output(), &ToolOutput::json(json!({"answer": 42})));
-        assert_eq!(
-            context.result::<serde_json::Value>(),
-            Some(&json!({"answer": 42}))
-        );
-        fixture.server_task.abort();
-    }
-
-    #[tokio::test]
-    async fn canonical_dispatch_classifies_invalid_json_and_preserves_source() {
+    async fn adapter_classifies_invalid_json_and_preserves_source() {
         let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-        let result = execute(&fixture, "{", &mut ToolContext::new()).await;
-        let error = result.error().expect("structured argument error");
+        let error = fixture
+            .tool
+            .execute_mcp("{".to_string(), None)
+            .await
+            .expect_err("structured argument error");
         assert_eq!(error.kind(), ToolErrorKind::InvalidArgs);
         assert!(matches!(
             error.downcast_ref::<McpArgumentError>(),
             Some(McpArgumentError::Json(_))
         ));
-        let output = result.output().render();
-        assert!(output.contains("MCP tool 'fixture_tool' received invalid arguments"));
-        assert!(output.contains("invalid JSON"));
+        let message = error.to_string();
+        assert!(message.contains("MCP tool 'fixture_tool' received invalid arguments"));
+        assert!(message.contains("invalid JSON"));
         fixture.server_task.abort();
     }
 
     #[tokio::test]
-    async fn canonical_dispatch_rejects_non_object_arguments() {
+    async fn adapter_rejects_non_object_arguments() {
         let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
         for args in [r#"[1,2]"#, r#""text""#, "7", "true"] {
-            let result = execute(&fixture, args, &mut ToolContext::new()).await;
-            assert!(
-                result.is_error_kind(ToolErrorKind::InvalidArgs),
-                "{args} must not be coerced into an argument-less MCP call"
-            );
+            let error = fixture
+                .tool
+                .execute_mcp(args.to_string(), None)
+                .await
+                .expect_err("non-object arguments must not become an argument-less MCP call");
+            assert_eq!(error.kind(), ToolErrorKind::InvalidArgs, "{args}");
         }
 
         // Empty input and explicit null remain the documented no-argument forms.
         for args in ["", "null"] {
-            let result = execute(&fixture, args, &mut ToolContext::new()).await;
-            assert!(
-                result.is_success(),
-                "{args:?} should remain a no-argument call"
-            );
+            fixture
+                .tool
+                .execute_mcp(args.to_string(), None)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!("{args:?} should remain a no-argument call: {error}")
+                });
         }
         fixture.server_task.abort();
     }
@@ -1031,16 +406,20 @@ mod tests {
 
 #[cfg(test)]
 mod migrated_tests {
-    use super::{MAX_CONCURRENT_REFRESHES, McpClientError, McpClientHandler};
+    #[allow(unused_imports)]
+    use crate::handler::MAX_CONCURRENT_REFRESHES;
     #[allow(unused_imports)]
     use crate::native::{McpArgumentError, bounded_best_effort_cancellation};
     #[allow(unused_imports)]
-    use crate::prelude::*;
-    #[allow(unused_imports)]
     use crate::*;
+    use crate::{McpClientError, McpClientHandler};
     use rig_agent::tool::{DynamicTool, ToolOutput, server::ToolServer};
     #[allow(unused_imports)]
+    use rig_agent::tool::{ToolContext, ToolResult};
+    #[allow(unused_imports)]
     use rig_core::message::ImageMediaType;
+    #[allow(unused_imports)]
+    use rig_core::tool::ToolExecutionError;
     use rmcp::{
         RoleServer, ServerHandler, ServiceExt, handler::client::ClientHandler, model::*,
         service::RequestContext,
@@ -1187,7 +566,10 @@ mod migrated_tests {
         server: S,
         handle: rig_agent::tool::server::ToolServerHandle,
     ) -> (
-        rmcp::service::RunningService<rmcp::RoleClient, McpClientHandler>,
+        rmcp::service::RunningService<
+            rmcp::RoleClient,
+            McpClientHandler<rig_agent::tool::server::ToolServerHandle>,
+        >,
         tokio::task::JoinHandle<rmcp::service::RunningService<rmcp::RoleServer, S>>,
     )
     where
@@ -1663,7 +1045,7 @@ mod migrated_tests {
         });
         let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
         let handle = ToolServer::new()
-            .rmcp_tool(tool, client.peer().clone())
+            .portable_dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
             .run();
         let defs = handle.get_tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
@@ -1691,7 +1073,7 @@ mod migrated_tests {
         });
         let client = ClientInfo::default().serve((cfs, c2s)).await.unwrap();
         let handle = ToolServer::new()
-            .rmcp_tool(tool, client.peer().clone())
+            .portable_dynamic_tool(McpTool::from_mcp_server(tool, client.peer().clone()).into())
             .run();
 
         client.cancel().await.unwrap();
@@ -1710,16 +1092,16 @@ mod migrated_tests {
         task.abort();
     }
 
-    /// The builder's MCP path registers every requested tool against the shared
-    /// client and threads the configured timeout onto each of them, so a hanging
-    /// call is bounded instead of blocking forever. This covers the plumbing
-    /// behind `rmcp_tool[s]` / `rmcp_tool[s]_with_timeout` (see issue #1914).
+    /// Registering MCP tools into an agent through portable tools keeps the
+    /// configured timeout on each of them, so a hanging call is bounded instead
+    /// of blocking forever (see issue #1914).
     #[tokio::test]
     async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
-        use crate::prelude::*;
         use rig_agent::agent::AgentBuilder;
         use rig_agent::test_utils::MockCompletionModel;
+        use rig_agent::tool::DynamicTool;
         use rig_agent::tool::{ToolContext, ToolErrorKind};
+        use rig_core::tool::PortableDynamicTool;
         use rmcp::model::{
             CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
             ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
@@ -1772,7 +1154,12 @@ mod migrated_tests {
 
         // Every requested tool is registered against the shared client...
         let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
-            .rmcp_tools(vec![tool("a"), tool("b")], &peer)
+            .dynamic_tools(
+                tools_from_server([tool("a"), tool("b")], &peer, DEFAULT_MCP_TOOL_TIMEOUT)
+                    .into_iter()
+                    .map(|tool| DynamicTool::from(PortableDynamicTool::from(tool)))
+                    .collect(),
+            )
             .build();
         let definitions = agent
             .tool_server_handle()
@@ -1789,10 +1176,11 @@ mod migrated_tests {
 
         // ...and the configured timeout actually bounds a hanging call.
         let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
-            .rmcp_tools_with_timeout(
-                vec![tool("hang_forever")],
-                &peer,
-                Duration::from_millis(200),
+            .dynamic_tools(
+                tools_from_server([tool("hang_forever")], &peer, Duration::from_millis(200))
+                    .into_iter()
+                    .map(|tool| DynamicTool::from(PortableDynamicTool::from(tool)))
+                    .collect(),
             )
             .build();
         let timed = tokio::time::timeout(Duration::from_secs(5), async {

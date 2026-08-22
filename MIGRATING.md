@@ -799,28 +799,37 @@ handed back a silently short list.
 ### MCP tool support moves from rig-agent's `rmcp` feature to the `rig-rmcp` crate
 
 rig-agent no longer has an `rmcp` feature or an rmcp dependency; MCP lives in
-the new **`rig-rmcp`** crate. Through the `rig` facade nothing changes for the
-common path — the `rmcp` feature now pulls `rig-rmcp`, `rig::tool::rmcp::*`
-(`McpClientHandler`, `McpTool`, `Meta`, …) keeps resolving, and with
-`use rig::prelude::*` the `rmcp_tool` / `rmcp_tools` / `…_with_timeout` builders
-keep working on `AgentBuilder` and `ToolServer`. What changes:
+the new **`rig-rmcp`** crate, which depends on **rig-core only**. The
+dependency graph is `rig-core ← rig-rmcp` and `rig-core ← rig-agent`, with the
+`rig` facade gluing them behind its `rmcp` feature. Through the facade,
+`rig::tool::rmcp::*` (`McpClientHandler`, `McpTool`, `Meta`, …) keeps resolving
+and `McpClientHandler::new(client_info, tool_server_handle.clone())` works
+unchanged. What changes:
 
-- Those builder methods are now extension traits — `rig_rmcp::RmcpAgentBuilderExt`
-  and `rig_rmcp::RmcpToolServerExt` (in `rig::prelude` / `rig_rmcp::prelude`).
-  Code that called them without the prelude imports the traits.
-- Direct rig-agent users depend on `rig-rmcp` (its default `agent` feature).
-- rig-rmcp with `default-features = false` depends on rig-core only: MCP tools
-  are exposed as `rig_core::tool::PortableDynamicTool`s (`From<McpTool>`,
-  `rig_rmcp::tools_from_server`), usable from any runtime — minus the two
-  context-dependent conveniences (MCP `_meta` passthrough from a `ToolContext`,
-  the raw `CallToolResult` preserved on it), which need rig-agent.
-- rig-agent's registry support for externally managed tools is now public and
-  ungated: `ErasedTool` (and `ErasedTool::is_live`), `ToolSet::add_erased`,
-  `ToolServer::erased_tool`, `AgentBuilder::erased_tool`,
-  `ToolServerHandle::{add_managed_erased_tools, reconcile_managed_erased_tools}`
-  and the opaque `ManagedToolToken`. Nothing about "a remote tool list that can
-  refresh or disconnect" is MCP-specific; rig-rmcp is its first consumer.
-- rig-agent's `tokio` is now optional and enabled only by `discord-bot`.
+- **The registry contract is a rig-core abstraction.** `rig_core::tool::ManagedToolSink`
+  (`add_managed_tools` / `reconcile_managed_tools`, generation-tokened,
+  last-registration-wins, retire-on-disconnect) with `ManagedToolToken`; rig-agent's
+  `ToolServerHandle` implements it, and `McpClientHandler<S: ManagedToolSink>` refreshes
+  into any sink. `PortableDynamicTool` gained `with_liveness` / `is_live` so a sink can
+  retire tools whose remote backing disconnected; rig-agent's `DynamicTool::from_portable`
+  forwards it.
+- **MCP tools are rig-core portable tools.** `McpTool` converts `From<McpTool> for
+  rig_core::tool::PortableDynamicTool` (`rig_rmcp::tools_from_server` for a whole list).
+  Register them wherever portable tools go: `builder.portable_dynamic_tool(tool.into())`,
+  `ToolServer::new().portable_dynamic_tool(..)`, `ToolServerHandle::add_portable_dynamic_tool`.
+  The `rmcp_tool` / `rmcp_tools` / `…_with_timeout` builder methods on `AgentBuilder` and
+  `ToolServer` are **removed** — no replacement method; use the portable registration above.
+- **Two context-dependent conveniences are removed**: MCP `_meta` passthrough from a
+  `ToolContext`, and the raw `CallToolResult` / response `Meta` being preserved on the
+  `ToolContext` for result hooks. Portable tools have no context. A caller that needs to
+  attach `_meta` drives `McpTool::execute_mcp(args, Some(meta))` directly.
+- **Direct rig-agent users** depend on `rig-rmcp`; runtimes other than rig-agent implement
+  `ManagedToolSink` for their registry to get live refresh.
+- rig-agent's registry support for externally managed tools is public and ungated:
+  `ErasedTool` (and `is_live`), `ToolSet::add_erased`, `ToolServer::erased_tool`,
+  `AgentBuilder::erased_tool`, `ToolServerHandle::{add_managed_erased_tools,
+  reconcile_managed_erased_tools}`, `Agent::tool_server_handle()`. rig-agent's `tokio` is
+  optional, enabled only by `discord-bot` (and `test-utils`).
 
 ### rig-core has no default transport; the bundled reqwest transport is the new `rig-reqwest` crate
 

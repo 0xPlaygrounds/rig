@@ -4,7 +4,7 @@ version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
-description = "MCP (Model Context Protocol) tool support for Rig via the rmcp SDK: MCP tools as portable rig-core tools, and (with the `agent` feature) live-refreshing registration into rig-agent's tool server."
+description = "MCP (Model Context Protocol) tool support for Rig via the rmcp SDK: MCP tools as portable rig-core tools, plus a client handler that keeps any ManagedToolSink (rig-agent's tool server, for example) in sync with the server's tool list."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [package.metadata.docs.rs]
@@ -16,7 +16,6 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
-rig-agent = { path = "../rig-agent", version = "0.42.0", default-features = false, optional = true }
 # MCP is native-only: rmcp's `ClientHandler` requires `Send + Sync`
 # unconditionally, which rig's wasm tool registry cannot satisfy. The crate
 # root raises a targeted `compile_error!` on wasm; scoping the SDK out of the
@@ -38,9 +37,3 @@ tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
 serde_json = { workspace = true }
 
-[features]
-default = ["agent"]
-# Contextual MCP tools (`ErasedTool` with `_meta` passthrough and preserved
-# raw results), the live-refreshing `McpClientHandler`, and the
-# `AgentBuilder` / `ToolServer` extension traits.
-agent = ["dep:rig-agent"]

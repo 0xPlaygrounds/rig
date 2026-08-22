@@ -366,6 +366,8 @@ pub struct DynamicTool {
     description: String,
     parameters: serde_json::Value,
     callback: Arc<dyn DynamicCallback>,
+    /// Liveness source inherited from a portable tool, if any.
+    liveness: Option<PortableDynamicTool>,
 }
 
 impl DynamicTool {
@@ -390,6 +392,7 @@ impl DynamicTool {
             description: description.into(),
             parameters,
             callback: Arc::new(callback),
+            liveness: None,
         }
     }
 
@@ -399,7 +402,8 @@ impl DynamicTool {
     /// [`ToolOutput`] or [`ToolExecutionError`] is forwarded unchanged.
     pub fn from_portable(tool: PortableDynamicTool) -> Self {
         let definition = tool.definition();
-        Self::new(
+        let probe = tool.clone();
+        let mut adapted = Self::new(
             definition.name,
             definition.description,
             definition.parameters,
@@ -407,7 +411,9 @@ impl DynamicTool {
                 let tool = tool.clone();
                 Box::pin(async move { tool.execute(arguments).await })
             },
-        )
+        );
+        adapted.liveness = Some(probe);
+        adapted
     }
 
     /// Runtime name.
@@ -434,6 +440,12 @@ impl From<PortableDynamicTool> for DynamicTool {
 impl ErasedTool for DynamicTool {
     fn name(&self) -> String {
         self.name.clone()
+    }
+
+    fn is_live(&self) -> bool {
+        self.liveness
+            .as_ref()
+            .is_none_or(PortableDynamicTool::is_live)
     }
 
     fn description(&self) -> String {

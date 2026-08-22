@@ -102,29 +102,7 @@ impl ToolServerState {
     }
 }
 
-/// Opaque identity for one externally managed registry generation.
-///
-/// Handed out by [`ToolServerHandle::add_managed_erased_tools`] and
-/// [`ToolServerHandle::reconcile_managed_erased_tools`]; a later reconcile
-/// only replaces or removes a name while the generation it holds is still the
-/// current one, so a newer local or peer registration under the same name is
-/// never clobbered by a stale refresh.
-#[derive(Clone, Debug)]
-pub struct ManagedToolToken(Arc<()>);
-
-impl ManagedToolToken {
-    fn new() -> Self {
-        Self(Arc::new(()))
-    }
-}
-
-impl PartialEq for ManagedToolToken {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl Eq for ManagedToolToken {}
+pub use rig_core::tool::{ManagedToolSink, ManagedToolToken};
 
 /// Builder for constructing a [`ToolServerHandle`].
 ///
@@ -540,6 +518,36 @@ pub enum ToolServerError {
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(CompletionError),
 }
+/// The registry contract external tool sources (e.g. `rig-rmcp`'s MCP client
+/// handler) program against: portable tools in, generation tokens out.
+impl ManagedToolSink for ToolServerHandle {
+    fn add_managed_tools(
+        &self,
+        tools: Vec<PortableDynamicTool>,
+    ) -> HashMap<String, ManagedToolToken> {
+        self.add_managed_erased_tools(
+            tools
+                .into_iter()
+                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .collect(),
+        )
+    }
+
+    fn reconcile_managed_tools(
+        &self,
+        expected: HashMap<String, ManagedToolToken>,
+        tools: Vec<PortableDynamicTool>,
+    ) -> HashMap<String, ManagedToolToken> {
+        self.reconcile_managed_erased_tools(
+            expected,
+            tools
+                .into_iter()
+                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{

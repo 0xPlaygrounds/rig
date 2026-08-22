@@ -1,16 +1,18 @@
 //! MCP (Model Context Protocol) tool support for Rig via the `rmcp` crate.
 //!
-//! With default features (`agent`) this crate provides `McpClientHandler`, a
-//! client handler that reacts to `notifications/tools/list_changed` by
-//! re-fetching the tool list and updating rig-agent's `ToolServer`. Individual
-//! MCP tools are registered through the `RmcpAgentBuilderExt` /
-//! `RmcpToolServerExt` `rmcp_tool` builder methods (in `prelude`). (Plain code
-//! spans, not links: these items exist only with the `agent` feature.)
+//! This crate depends on rig-core only. It provides:
 //!
-//! With `default-features = false` the crate depends on rig-core only: MCP
-//! tools are exposed as [`PortableDynamicTool`](rig_core::tool::PortableDynamicTool)s
-//! (`From<McpTool>`), minus the
-//! two context-dependent conveniences (`_meta` passthrough, preserved raw result).
+//! - `McpTool`, one MCP server tool, usable as a rig-core
+//!   [`PortableDynamicTool`](rig_core::tool::PortableDynamicTool) via `From`
+//!   (with a liveness probe bound to the MCP transport), and
+//!   `tools_from_server` for a whole tool list;
+//! - `McpClientHandler`, an rmcp client handler that keeps any
+//!   [`ManagedToolSink`](rig_core::tool::ManagedToolSink) — rig-agent's
+//!   `ToolServerHandle`, for example — in sync with the server's tool list,
+//!   reacting to `notifications/tools/list_changed`.
+//!
+//! Calls go out without MCP `_meta`; a caller that needs to attach one drives
+//! `McpTool::execute_mcp` directly.
 //!
 //! # Example
 //!
@@ -94,18 +96,13 @@ mod native;
 #[cfg(not(target_family = "wasm"))]
 pub use native::*;
 
-#[cfg(all(not(target_family = "wasm"), feature = "agent"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub mod agent;
-#[cfg(all(not(target_family = "wasm"), feature = "agent"))]
-pub use agent::{McpClientHandler, RmcpAgentBuilderExt, RmcpToolServerExt};
+#[cfg(not(target_family = "wasm"))]
+mod handler;
+#[cfg(not(target_family = "wasm"))]
+pub use handler::McpClientHandler;
 
-/// Bring the `rmcp_tool*` builder extension traits into scope.
-#[cfg(all(not(target_family = "wasm"), feature = "agent"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub mod prelude {
-    pub use crate::agent::{RmcpAgentBuilderExt, RmcpToolServerExt};
-}
+#[cfg(all(test, not(target_family = "wasm")))]
+mod tests;
 
 /// The rmcp SDK this crate is built against, so callers and rig agree on one version.
 #[cfg(not(target_family = "wasm"))]

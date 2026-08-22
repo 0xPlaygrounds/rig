@@ -82,6 +82,24 @@ pub struct PortableDynamicTool {
     description: String,
     parameters: serde_json::Value,
     callback: Arc<dyn PortableDynamicCallback>,
+    /// Optional liveness probe for tools backed by a remote transport; `None`
+    /// means always live (the in-process default).
+    liveness: Option<Arc<dyn LivenessProbe>>,
+}
+
+/// Object-safe liveness probe (a `Fn() -> bool` behind the crate's wasm-aware
+/// `Send`/`Sync` markers).
+trait LivenessProbe: WasmCompatSend + WasmCompatSync {
+    fn is_live(&self) -> bool;
+}
+
+impl<F> LivenessProbe for F
+where
+    F: Fn() -> bool + WasmCompatSend + WasmCompatSync,
+{
+    fn is_live(&self) -> bool {
+        self()
+    }
 }
 
 impl std::fmt::Debug for PortableDynamicTool {
@@ -116,7 +134,25 @@ impl PortableDynamicTool {
             description: description.into(),
             parameters,
             callback: Arc::new(callback),
+            liveness: None,
         }
+    }
+
+    /// Attach a liveness probe. Registries use it to retire tools whose remote
+    /// backing (an MCP connection, for example) can no longer accept calls,
+    /// without probing by execution. In-process tools never need one.
+    pub fn with_liveness<F>(mut self, is_live: F) -> Self
+    where
+        F: Fn() -> bool + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.liveness = Some(Arc::new(is_live));
+        self
+    }
+
+    /// Whether the tool's backing can still accept calls (`true` unless a
+    /// liveness probe says otherwise).
+    pub fn is_live(&self) -> bool {
+        self.liveness.as_ref().is_none_or(|probe| probe.is_live())
     }
 
     /// Provider-facing name.

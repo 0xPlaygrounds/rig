@@ -153,9 +153,6 @@ pub mod prelude {
     // `builder().build()` over the bundled reqwest transport.
     #[cfg(feature = "reqwest")]
     pub use rig_reqwest::prelude::*;
-    // `rmcp_tool*` builder extension traits from `rig-rmcp`.
-    #[cfg(all(feature = "agent", feature = "rmcp", not(target_family = "wasm")))]
-    pub use rig_rmcp::prelude::*;
 }
 
 /// Low-level streaming values plus classic streaming traits.
@@ -190,10 +187,12 @@ pub mod tool {
     // Classic contextual tool API (default runtime). `Tool`/`ToolContext` are
     // the classic contextual trait and its mutable context; none of these
     // collide with the portable exports above.
-    // MCP tool support from the companion `rig-rmcp` crate (native-only: the
-    // crate root raises a `compile_error!` on wasm, which CI asserts is the
-    // only error). Kept at `rig::tool::rmcp` so existing paths resolve.
-    #[cfg(all(feature = "agent", feature = "rmcp", not(target_family = "wasm")))]
+    // MCP tool support from the companion `rig-rmcp` crate (rig-core only;
+    // native-only: the crate root raises a `compile_error!` on wasm, which CI
+    // asserts is the only error). Kept at `rig::tool::rmcp` so existing paths
+    // resolve. rig-agent's `ToolServerHandle` implements the
+    // `ManagedToolSink` its `McpClientHandler` registers into.
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub mod rmcp {
         pub use rig_rmcp::*;

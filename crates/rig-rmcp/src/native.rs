@@ -428,13 +428,13 @@ pub fn tools_from_server(
         .collect()
 }
 
-/// An MCP tool as a context-free rig-core dynamic tool.
+/// An MCP tool as a context-free rig-core dynamic tool, with a liveness probe
+/// bound to the MCP transport so registries can retire it on disconnect.
 ///
-/// This is the rig-core-only path (no rig-agent): the call is made with no
-/// MCP `_meta` (there is no context to read it from) and the raw
-/// [`CallToolResult`] is not preserved anywhere; the model-facing output is
-/// the same as the contextual path's. A tool that reports `is_error` becomes
-/// a failed call whose error carries the tool's output.
+/// The call is made with no MCP `_meta` and the raw [`CallToolResult`] is not
+/// retained (callers that need either drive [`McpTool::execute_mcp`]
+/// themselves). A tool that reports `is_error` becomes a failed call whose
+/// error carries the tool's output.
 impl From<McpTool> for PortableDynamicTool {
     fn from(tool: McpTool) -> Self {
         let name = tool.definition.name.to_string();
@@ -445,6 +445,7 @@ impl From<McpTool> for PortableDynamicTool {
             .unwrap_or("")
             .to_string();
         let parameters = tool.definition.schema_as_json_value();
+        let liveness_client = tool.client.clone();
         let tool = Arc::new(tool);
         PortableDynamicTool::new(
             name,
@@ -467,5 +468,6 @@ impl From<McpTool> for PortableDynamicTool {
                 })
             },
         )
+        .with_liveness(move || !liveness_client.is_transport_closed())
     }
 }
