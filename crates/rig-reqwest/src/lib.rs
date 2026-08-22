@@ -474,6 +474,14 @@ impl_http_client_ext_via!(
     ReqwestMiddlewareClient
 );
 
+// Compile-time thread-safety contract: the transport handle is shared across
+// threads by every host runtime.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<ReqwestClient>();
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;

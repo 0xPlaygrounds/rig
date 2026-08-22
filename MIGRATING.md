@@ -796,6 +796,21 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### `AgentRunner::run_channel` / `Agent::run_channel`: a future plus an event feed
+
+Additive. Beside `run()` (fold to a `PromptResponse`) and `stream()` (a
+`Stream` of `MultiTurnStreamItem`), the agent loop now has a third, runtime-
+agnostic shape: `AgentRunner::run_channel(self)` (also on `Agent` and a
+configured `StreamingPromptRequest`) returns `(impl Future<Output =
+Result<PromptResponse, PromptError>>, RunEvents)`. Spawn the future on any
+executor — tokio, `bevy_tasks`, a thread — and consume `RunEvents` wherever the
+events are needed: it implements `Stream` and offers a non-blocking
+`try_next()` / `is_done()` for tick-driven hosts. The feed is bounded
+(`RUN_EVENTS_CAPACITY`, back-pressure rather than drops), and dropping it
+does not cancel the run. `rig_agent::agent::{RunEvents, RUN_EVENTS_CAPACITY}`;
+`RunEvents` is also in the rig-agent and `rig` preludes. See
+`examples/agent_no_tokio` for a `bevy_tasks` host.
+
 ### MCP tool support moves from rig-agent's `rmcp` feature to the `rig-rmcp` crate
 
 rig-agent no longer has an `rmcp` feature or an rmcp dependency; MCP lives in

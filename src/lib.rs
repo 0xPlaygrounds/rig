@@ -145,7 +145,7 @@ pub mod prelude {
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
         Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
-        StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
+        RunEvents, StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
         TypedPrompt,
     };
     pub use rig_core::prelude::*;

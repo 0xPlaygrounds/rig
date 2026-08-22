@@ -126,7 +126,8 @@ pub use hook::{
 };
 pub use model::ModelHandle;
 pub use prompt_request::streaming::{
-    MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
+    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingPromptRequest,
+    StreamingResult, stream_to_stdout,
 };
 pub use prompt_request::{
     CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, ResponseIdentity,

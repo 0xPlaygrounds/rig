@@ -87,3 +87,17 @@ pub use rig_derive::rig_tool;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::rig_tool as tool_macro;
+
+// Compile-time thread-safety contract: the agent surface must be safe to hold
+// in shared host state (worker pools, ECS resources) on native targets.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<Agent>();
+    assert_send_sync_static::<AgentRunner>();
+    assert_send_sync_static::<ModelHandle>();
+    assert_send_sync_static::<agent::MultiTurnStreamItem>();
+    assert_send_sync_static::<agent::RunEvents>();
+    assert_send_sync_static::<agent::PromptResponse>();
+    assert_send_sync_static::<tool::server::ToolServerHandle>();
+};

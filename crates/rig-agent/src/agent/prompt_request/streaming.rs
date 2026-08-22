@@ -24,7 +24,7 @@ use crate::{
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
 };
-use futures::{Stream, StreamExt, stream};
+use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream, stream::FusedStream};
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, pin::Pin, sync::Arc};
 use tracing_futures::Instrument;
@@ -317,6 +317,17 @@ impl StreamingPromptRequest {
 
     async fn send(self) -> StreamingResult {
         self.runner.stream().await
+    }
+
+    /// Split the configured run into a driving future and a [`RunEvents`]
+    /// feed instead of a stream. See [`AgentRunner::run_channel`].
+    pub fn run_channel(
+        self,
+    ) -> (
+        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend,
+        RunEvents,
+    ) {
+        self.runner.run_channel()
     }
 }
 
@@ -1594,6 +1605,137 @@ impl AgentRunner {
         });
 
         Box::pin(driver.instrument(agent_span))
+    }
+}
+
+/// Capacity of the event queue behind [`AgentRunner::run_channel`]: the number
+/// of [`MultiTurnStreamItem`]s the run may buffer ahead of the consumer before
+/// it parks on back-pressure.
+pub const RUN_EVENTS_CAPACITY: usize = 32;
+
+/// Event feed of an agent run started with [`AgentRunner::run_channel`] or
+/// [`Agent::run_channel`].
+///
+/// Every [`MultiTurnStreamItem`] the run would have streamed is delivered here
+/// in order, ending with [`MultiTurnStreamItem::FinalResponse`]. The feed is a
+/// bounded queue ([`RUN_EVENTS_CAPACITY`]): a slow consumer applies
+/// back-pressure to the run instead of losing events. Poll it as a
+/// [`Stream`] from async code, or drain it with the non-blocking
+/// [`try_next`](RunEvents::try_next) from a synchronous tick — a game loop, a
+/// UI frame, an ECS system.
+///
+/// Dropping the feed does not cancel the run; it simply stops receiving events
+/// and the run future still resolves with the final
+/// [`PromptResponse`].
+#[derive(Debug)]
+pub struct RunEvents {
+    receiver: mpsc::Receiver<MultiTurnStreamItem>,
+}
+
+impl RunEvents {
+    /// Take the next buffered event without waiting.
+    ///
+    /// Returns `None` both when no event is queued yet and once the run has
+    /// finished and the feed is drained; use [`is_done`](RunEvents::is_done)
+    /// to tell the two apart.
+    pub fn try_next(&mut self) -> Option<MultiTurnStreamItem> {
+        self.receiver.try_recv().ok()
+    }
+
+    /// Whether the run has finished and every event has been taken.
+    pub fn is_done(&self) -> bool {
+        self.receiver.is_terminated()
+    }
+}
+
+impl Stream for RunEvents {
+    type Item = MultiTurnStreamItem;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        Pin::new(&mut self.receiver).poll_next(cx)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.receiver.size_hint()
+    }
+}
+
+impl FusedStream for RunEvents {
+    fn is_terminated(&self) -> bool {
+        self.receiver.is_terminated()
+    }
+}
+
+impl AgentRunner {
+    /// Split the run into a driving future and a [`RunEvents`] feed.
+    ///
+    /// The future performs the whole agent loop — the same engine as
+    /// [`run`](AgentRunner::run) and [`stream`](AgentRunner::stream) — and
+    /// resolves with the final [`PromptResponse`]; the
+    /// feed receives each intermediate [`MultiTurnStreamItem`] as it happens.
+    /// Spawn the future on any executor and poll the feed from wherever the
+    /// events are consumed; neither side assumes a runtime.
+    ///
+    /// The feed is bounded ([`RUN_EVENTS_CAPACITY`]); when it is full the run
+    /// waits for the consumer rather than dropping events. Dropping the feed
+    /// lets the run continue to completion unobserved.
+    pub fn run_channel(
+        self,
+    ) -> (
+        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend,
+        RunEvents,
+    ) {
+        let (mut sender, receiver) = mpsc::channel(RUN_EVENTS_CAPACITY);
+        let future = async move {
+            let mut stream = self.stream().await;
+            let mut response = None;
+            let mut forward = true;
+            while let Some(item) = stream.next().await {
+                let item = item.map_err(streaming_error_into_prompt)?;
+                match item {
+                    MultiTurnStreamItem::FinalResponse(done) => {
+                        if forward {
+                            // The consumer is gone; nothing left to forward.
+                            let _ = sender
+                                .send(MultiTurnStreamItem::FinalResponse(done.clone()))
+                                .await;
+                        }
+                        response = Some(done);
+                    }
+                    item => {
+                        if forward && sender.send(item).await.is_err() {
+                            forward = false;
+                        }
+                    }
+                }
+            }
+            response.ok_or_else(|| {
+                PromptError::CompletionError(CompletionError::ResponseError(
+                    "agent run ended without producing a final response".to_string(),
+                ))
+            })
+        };
+        (future, RunEvents { receiver })
+    }
+}
+
+impl Agent {
+    /// Run `prompt` with the agent's defaults, returning the driving future and
+    /// a [`RunEvents`] feed. See [`AgentRunner::run_channel`]; to configure the
+    /// run first (history, turn budget, tool context, …), configure a
+    /// [`StreamingPromptRequest`] and call its
+    /// [`run_channel`](StreamingPromptRequest::run_channel).
+    pub fn run_channel<P: Into<Message> + WasmCompatSend>(
+        &self,
+        prompt: P,
+    ) -> (
+        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend + use<P>,
+        RunEvents,
+    ) {
+        AgentRunner::from_agent(self, prompt).run_channel()
     }
 }
 
@@ -7513,6 +7655,108 @@ mod migrated_tests {
         assert!(
             saw_final,
             "FinalResponse must be yielded even when memory.append fails"
+        );
+    }
+
+    /// `run_channel` delivers every event the stream would have produced, in
+    /// order and ending with the final response, while the future resolves
+    /// with that same response.
+    #[tokio::test]
+    async fn run_channel_forwards_events_and_resolves() {
+        let model = streaming_tool_then_text_model();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let (run, events) = agent
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
+        let (response, items) = futures::join!(run, events.collect::<Vec<_>>());
+
+        let response = response.expect("run succeeds");
+        assert_eq!(response.output(), "done");
+        assert!(items.iter().any(|item| matches!(
+            item,
+            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall { .. })
+        )));
+        assert!(items.iter().any(|item| matches!(
+            item,
+            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })
+        )));
+        match items.last() {
+            Some(MultiTurnStreamItem::FinalResponse(last)) => {
+                assert_eq!(last.output(), response.output());
+            }
+            other => panic!("expected FinalResponse last, got {other:?}"),
+        }
+    }
+
+    /// Dropping the event feed does not abort the run: the future still
+    /// drives the loop to completion and resolves.
+    #[tokio::test]
+    async fn run_channel_survives_dropped_events() {
+        let model = streaming_tool_then_text_model();
+        let recorded = model.clone();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let (run, events) = agent
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
+        drop(events);
+
+        let response = run.await.expect("run succeeds without a consumer");
+        assert_eq!(response.output(), "done");
+        assert_eq!(recorded.requests().len(), 2);
+    }
+
+    /// The feed can be drained without awaiting — the shape a frame/tick loop
+    /// uses — and reports completion once the run is over and drained.
+    #[tokio::test]
+    async fn run_channel_try_next_drains_from_a_tick_loop() {
+        let model = streaming_tool_then_text_model();
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+        let (run, mut events) = agent
+            .stream_prompt("do tool work")
+            .max_turns(3)
+            .run_channel();
+        let run = tokio::spawn(run);
+
+        let mut seen = Vec::new();
+        while !events.is_done() {
+            match events.try_next() {
+                Some(item) => seen.push(item),
+                None => tokio::task::yield_now().await,
+            }
+        }
+
+        let response = run.await.expect("join").expect("run succeeds");
+        assert_eq!(response.output(), "done");
+        assert!(matches!(
+            seen.last(),
+            Some(MultiTurnStreamItem::FinalResponse(_))
+        ));
+    }
+
+    /// Load failures surface on the future as a `PromptError`, and the feed
+    /// closes without a final response.
+    #[tokio::test]
+    async fn run_channel_reports_stream_errors_on_the_future() {
+        let model = MockCompletionModel::text("unused");
+        let agent = AgentBuilder::new(model).build();
+
+        let (run, events) = agent
+            .stream_prompt("budget of zero")
+            .max_turns(0)
+            .run_channel();
+        let _: (_, RunEvents) = agent.run_channel("plain entry point type-checks");
+        let (response, items) = futures::join!(run, events.collect::<Vec<_>>());
+
+        assert!(response.is_err(), "zero-turn budget must fail the run");
+        assert!(
+            !items
+                .iter()
+                .any(|item| matches!(item, MultiTurnStreamItem::FinalResponse(_)))
         );
     }
 }

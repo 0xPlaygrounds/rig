@@ -497,3 +497,10 @@ impl From<McpTool> for PortableDynamicTool {
         .with_liveness(move || !liveness_client.is_transport_closed())
     }
 }
+
+// Compile-time thread-safety contract: an `McpTool` is handed to the agent's
+// tool registry and executed from whichever thread the host runs tools on.
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<McpTool>();
+};
