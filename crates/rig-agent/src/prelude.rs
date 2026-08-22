@@ -13,7 +13,7 @@ pub use rig_core::client::image_generation::ImageGenerationClient;
 
 pub use crate::agent::{
     Agent, AgentHook, HookContext, ModelHandle, ModelSelection, ModelSelectionAction,
-    MultiTurnStreamItem, StreamingResult,
+    MultiTurnStreamItem, RunEvents, StreamingResult,
 };
 pub use crate::client::{AgentClientExt, AgentModelExt};
 pub use crate::completion::{
