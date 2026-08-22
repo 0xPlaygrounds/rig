@@ -5,8 +5,9 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-/// Identifier of one agent run: 128 random bits, `Copy`, hashable,
-/// serializable.
+/// Identifier of one agent run: a process-unique 128-bit value (a per-process
+/// nonce in the high word, a creation counter in the low word), `Copy`,
+/// hashable, serializable.
 ///
 /// Every hook event of a run sees the same id through
 /// [`HookContext::run_id`](crate::agent::HookContext::run_id), and every
@@ -14,8 +15,9 @@ use serde::{Deserialize, Serialize};
 /// feed carries it, so a host driving many runs at once can route each event
 /// to the run (entity, job, session) it belongs to without a side table.
 ///
-/// The id is process-minted and not secret. A host that wants to choose the
-/// id itself — to match an entity or job it already created — passes one with
+/// Minted ids never collide within a process and are ordered by creation;
+/// the nonce keeps ids from different processes apart. They are not secret.
+/// A host that wants to choose the id itself — to match an entity or job it already created — passes one with
 /// [`AgentRunner::with_run_id`](crate::agent::AgentRunner::with_run_id)
 /// before the run starts; otherwise one is minted when the run starts.
 ///
@@ -27,10 +29,11 @@ use serde::{Deserialize, Serialize};
 pub struct RunId(u128);
 
 impl RunId {
-    /// Mint a fresh, random id.
+    /// Mint a fresh id: unique within this process, greater than every id
+    /// minted before it.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self(rig_core::id::random_u128())
+        Self(rig_core::id::next_u128())
     }
 
     /// Build an id from its 128-bit representation.
@@ -113,7 +116,10 @@ mod tests {
     }
 
     #[test]
-    fn new_ids_differ() {
-        assert_ne!(RunId::new(), RunId::new());
+    fn new_ids_are_unique_and_increasing() {
+        let a = RunId::new();
+        let b = RunId::new();
+        assert_ne!(a, b);
+        assert!(b > a);
     }
 }

@@ -22,10 +22,24 @@ pub fn generate() -> String {
     generate_with_len(DEFAULT_LEN)
 }
 
-/// 128 non-cryptographic random bits, for compact numeric identifiers (a run
-/// id that has to be `Copy` and hashable rather than a string).
-pub fn random_u128() -> u128 {
-    (u128::from(fastrand::u64(..)) << 64) | u128::from(fastrand::u64(..))
+/// A process-unique 128-bit identifier: `process_nonce << 64 | sequence`.
+///
+/// The high word is drawn once per process (from the same non-cryptographic
+/// source as [`generate`]); the low word is a monotonically increasing
+/// counter. Two calls in one process therefore never collide, ids from one
+/// process are ordered by creation, and ids from different processes differ
+/// in their high word with the same odds as a 64-bit random value — which is
+/// what a routing key for in-flight work (a run, a job) needs; it is not a
+/// secret and makes no cryptographic claim.
+pub fn next_u128() -> u128 {
+    use std::sync::LazyLock;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static PROCESS_NONCE: LazyLock<u64> = LazyLock::new(|| fastrand::u64(..));
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    (u128::from(*PROCESS_NONCE) << 64) | u128::from(sequence)
 }
 
 /// Generate a `len`-character, URL-safe, non-cryptographic identifier.
@@ -63,12 +77,12 @@ mod tests {
     }
 
     #[test]
-    fn random_u128_is_not_degenerate() {
-        let a = random_u128();
-        let b = random_u128();
+    fn next_u128_is_unique_ordered_and_process_stamped() {
+        let a = next_u128();
+        let b = next_u128();
         assert_ne!(a, b);
-        // Both halves are populated: a 64-bit RNG used once would leave the
-        // high word zero.
-        assert!((0..64).any(|_| random_u128() >> 64 != 0));
+        assert!(b > a, "ids are ordered by creation within a process");
+        assert_eq!(a >> 64, b >> 64, "same process, same nonce");
+        assert_eq!((b & u128::from(u64::MAX)) - (a & u128::from(u64::MAX)), 1);
     }
 }
