@@ -158,10 +158,10 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
         match item.expect("stream item should succeed") {
             MultiTurnStreamItem::CompletionCall(call) => run.completion_calls.push(call),
             MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
-                run.finals.push(final_)
+                run.finals.push(final_);
             }
             MultiTurnStreamItem::FinalResponse(response) => {
-                run.output = Some(response.output().to_owned())
+                run.output = Some(response.output().to_owned());
             }
             _ => {}
         }

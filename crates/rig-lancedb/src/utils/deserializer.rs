@@ -722,7 +722,7 @@ mod tests {
                     "uint_8": 1
                 })
             ]
-        )
+        );
     }
 
     #[tokio::test]
@@ -761,7 +761,7 @@ mod tests {
                     }
                 })
             ]
-        )
+        );
     }
 
     #[tokio::test]
@@ -794,7 +794,7 @@ mod tests {
                     ]
                 })
             ]
-        )
+        );
     }
 
     #[tokio::test]
@@ -830,7 +830,7 @@ mod tests {
                     "some_run_end": "abc"
                 })
             ]
-        )
+        );
     }
 
     #[tokio::test]
@@ -876,7 +876,7 @@ mod tests {
                     }
                 })
             ]
-        )
+        );
     }
 
     #[tokio::test]
@@ -1022,6 +1022,6 @@ mod tests {
                     }
                 })
             ]
-        )
+        );
     }
 }

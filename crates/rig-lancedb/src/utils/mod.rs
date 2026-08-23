@@ -84,7 +84,7 @@ mod tests {
                 "my_bool".to_string(),
                 "my_list".to_string()
             ]
-        )
+        );
     }
 
     #[tokio::test]
@@ -106,6 +106,6 @@ mod tests {
 
         let columns = Arc::new(schema).filter_embeddings();
 
-        assert_eq!(columns, vec!["id".to_string(), "my_bool".to_string()])
+        assert_eq!(columns, vec!["id".to_string(), "my_bool".to_string()]);
     }
 }

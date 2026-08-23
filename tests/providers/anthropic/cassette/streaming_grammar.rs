@@ -51,7 +51,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         match item {
             StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
             StreamedAssistantContent::Reasoning { reasoning, .. } => {
-                run.reasoning_blocks.push(reasoning)
+                run.reasoning_blocks.push(reasoning);
             }
             StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
                 run.reasoning_delta.push_str(&reasoning);

@@ -126,7 +126,7 @@ mod tests {
             _ => Err("Invalid content type"),
         };
         assert!(content.is_ok());
-        assert_eq!(content.unwrap().text, "42")
+        assert_eq!(content.unwrap().text, "42");
     }
 
     #[test]
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(
             content.content,
             vec![ToolResultContent::Text("content".into())]
-        )
+        );
     }
 
     #[test]
@@ -178,7 +178,7 @@ mod tests {
                 "ToolResultContentBlock contains unsupported variant".into()
             )
             .to_string()
-        )
+        );
     }
 
     #[test]

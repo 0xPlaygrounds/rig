@@ -1339,10 +1339,10 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 for content in content.into_iter() {
                     match content {
                         crate::message::AssistantContent::Text(text) => {
-                            text_content.push(text.text)
+                            text_content.push(text.text);
                         }
                         crate::message::AssistantContent::ToolCall(tool_call) => {
-                            tool_calls.push(tool_call)
+                            tool_calls.push(tool_call);
                         }
                         crate::message::AssistantContent::Reasoning(reasoning) => {
                             let display = reasoning.display_text();
@@ -2457,7 +2457,7 @@ mod tests {
         // Convert to OllamaCompletionRequest
         let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request));
 
-        assert!(ollama_request.is_err())
+        assert!(ollama_request.is_err());
     }
 
     // Test that `think` is omitted when not specified, so Ollama applies the
@@ -2898,7 +2898,7 @@ mod tests {
             match item {
                 Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
                 Ok(StreamedAssistantContent::Final(final_response)) => {
-                    terminal = Some(final_response)
+                    terminal = Some(final_response);
                 }
                 Ok(_) => {}
                 Err(_) => saw_error = true,

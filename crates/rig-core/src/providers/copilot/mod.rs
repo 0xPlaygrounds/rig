@@ -2163,7 +2163,7 @@ mod tests {
             match item {
                 Ok(StreamedAssistantContent::Text(chunk)) => text.push_str(&chunk.text),
                 Ok(StreamedAssistantContent::Final(final_response)) => {
-                    terminal = Some(final_response)
+                    terminal = Some(final_response);
                 }
                 Ok(other) => panic!("unexpected stream item: {other:?}"),
                 Err(err) => {
@@ -2213,7 +2213,7 @@ mod tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(StreamedAssistantContent::Final(final_response)) => {
-                    terminal = Some(final_response)
+                    terminal = Some(final_response);
                 }
                 Ok(other) => panic!("unexpected stream item: {other:?}"),
                 Err(err) => {

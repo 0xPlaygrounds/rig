@@ -177,17 +177,17 @@ impl ToolServerHandle {
     where
         T: Tool + 'static,
     {
-        self.register(|toolset| toolset.add_tool(tool))
+        self.register(|toolset| toolset.add_tool(tool));
     }
 
     /// Register a runtime-defined static tool.
     pub fn add_dynamic_tool(&self, tool: DynamicTool) {
-        self.register(|toolset| toolset.add_dynamic_tool(tool))
+        self.register(|toolset| toolset.add_dynamic_tool(tool));
     }
 
     /// Register a context-free dynamic tool through the classic adapter.
     pub fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
-        self.register(|toolset| toolset.add_portable_dynamic_tool(tool))
+        self.register(|toolset| toolset.add_portable_dynamic_tool(tool));
     }
 
     /// Atomically install the initial tools owned by one external tool source

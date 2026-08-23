@@ -764,7 +764,7 @@ mod tests {
             match item {
                 Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text.clone()),
                 Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
-                    calls.push(tool_call.clone())
+                    calls.push(tool_call.clone());
                 }
                 _ => {}
             }

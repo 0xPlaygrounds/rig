@@ -589,7 +589,7 @@ mod tests {
             match item {
                 Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
                 Ok(StreamedAssistantContent::Final(final_response)) => {
-                    terminal = Some(final_response)
+                    terminal = Some(final_response);
                 }
                 Ok(_) => {}
                 Err(_) => saw_error = true,
@@ -637,7 +637,7 @@ mod tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(StreamedAssistantContent::Final(final_response)) => {
-                    terminal = Some(final_response)
+                    terminal = Some(final_response);
                 }
                 Ok(_) => {}
                 Err(err) => {

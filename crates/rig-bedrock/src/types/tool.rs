@@ -99,7 +99,7 @@ mod tests {
         let tool = RigToolResultContent(ToolResultContent::Image(image));
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
         assert!(aws_tool.is_ok());
-        assert!(aws_tool.unwrap().is_image())
+        assert!(aws_tool.unwrap().is_image());
     }
 
     #[test]
@@ -155,7 +155,7 @@ mod tests {
             _ => Err("tool doesn't contain text"),
         };
         assert!(tool.is_ok());
-        assert_eq!(tool.unwrap().text, String::from("txt"))
+        assert_eq!(tool.unwrap().text, String::from("txt"));
     }
 
     #[test]
@@ -177,6 +177,6 @@ mod tests {
                 "ToolResultContentBlock contains unsupported variant".into()
             )
             .to_string()
-        )
+        );
     }
 }

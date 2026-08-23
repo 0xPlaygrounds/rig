@@ -384,7 +384,7 @@ mod tests {
         expected.sort();
 
         assert!(!actual.is_empty());
-        assert!(expected == actual)
+        assert!(expected == actual);
     }
 
     #[test]

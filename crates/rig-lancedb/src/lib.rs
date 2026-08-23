@@ -117,7 +117,7 @@ impl LanceDbVectorIndex {
         }
 
         if let Some(column) = column {
-            query = query.column(column.as_str())
+            query = query.column(column.as_str());
         }
 
         query
@@ -411,7 +411,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             ));
 
         if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner()?)
+            query = query.only_if(filter.clone().into_inner()?);
         }
 
         self.build_query(query)
@@ -469,7 +469,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .limit(req.samples() as usize);
 
         if let Some(filter) = req.filter() {
-            query = query.only_if(filter.clone().into_inner()?)
+            query = query.only_if(filter.clone().into_inner()?);
         }
 
         self.build_query(query)

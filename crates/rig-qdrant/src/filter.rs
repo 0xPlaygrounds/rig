@@ -289,7 +289,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.must.extend(conditions)
+                        filter.must.extend(conditions);
                     }
 
                     if let Some(should) = value.get("should")
@@ -300,7 +300,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.should.extend(conditions)
+                        filter.should.extend(conditions);
                     }
 
                     if let Some(must_not) = value.get("must_not")
@@ -311,7 +311,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.must_not.extend(conditions)
+                        filter.must_not.extend(conditions);
                     }
 
                     if filter.must.is_empty()

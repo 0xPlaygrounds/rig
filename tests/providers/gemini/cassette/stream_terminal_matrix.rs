@@ -788,7 +788,7 @@ mod unit {
                         StreamedAssistantContent::ToolCall { .. } => run.tool_calls += 1,
                         StreamedAssistantContent::Unknown(_) => run.unknowns += 1,
                         StreamedAssistantContent::Final(final_record) => {
-                            run.terminals.push(final_record)
+                            run.terminals.push(final_record);
                         }
                         _ => {}
                     }

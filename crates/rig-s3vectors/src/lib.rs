@@ -197,7 +197,7 @@ impl S3VectorsVectorStore {
         }
 
         if let Some(filter) = req.filter() {
-            query_builder = query_builder.filter(filter.inner().clone())
+            query_builder = query_builder.filter(filter.inner().clone());
         }
 
         let query = query_builder

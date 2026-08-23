@@ -1236,7 +1236,7 @@ fn assistant_contents_to_messages(
                                     format,
                                     index: None,
                                     data: signature.clone(),
-                                })
+                                });
                             }
                         }
                     }
@@ -1251,7 +1251,7 @@ fn assistant_contents_to_messages(
                         data: signature.clone(),
                     });
                 }
-                tool_calls.push(tool_call.into())
+                tool_calls.push(tool_call.into());
             }
             message::AssistantContent::Reasoning(r) => {
                 if r.content.is_empty() {
@@ -4203,7 +4203,7 @@ mod tests {
                 // First should be text
                 match content.first() {
                     Some(UserContent::Text { text, .. }) => {
-                        assert_eq!(text, "Summarize this document")
+                        assert_eq!(text, "Summarize this document");
                     }
                     _ => panic!("Expected Text"),
                 }

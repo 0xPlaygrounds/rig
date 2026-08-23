@@ -539,7 +539,7 @@ async fn sys_notools_nocfg_noname_ttl() {
                     expiry: "ttl",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -560,7 +560,7 @@ async fn sys_notools_nocfg_noname_abs() {
                     expiry: "abs",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -581,7 +581,7 @@ async fn sys_notools_nocfg_noname_default() {
                     expiry: "default",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -602,7 +602,7 @@ async fn sys_notools_nocfg_named_ttl() {
                     expiry: "ttl",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -623,7 +623,7 @@ async fn sys_onetool_nocfg_noname_ttl() {
                     expiry: "ttl",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -644,7 +644,7 @@ async fn sys_threetools_autocfg_noname_ttl() {
                     expiry: "ttl",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -665,7 +665,7 @@ async fn contents_notools_nocfg_noname_ttl() {
                     expiry: "ttl",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -686,7 +686,7 @@ async fn both_notools_nocfg_noname_ttl() {
                     expiry: "ttl",
                 },
             )
-            .await
+            .await;
         },
     )
     .await;

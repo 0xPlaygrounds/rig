@@ -260,7 +260,7 @@ mod tests {
             .unwrap();
         match response.choice.first() {
             Some(AssistantContent::ToolCall(tc)) => {
-                assert_eq!(tc.signature, Some(BASE64.encode(raw)))
+                assert_eq!(tc.signature, Some(BASE64.encode(raw)));
             }
             _ => panic!("Expected ToolCall"),
         }

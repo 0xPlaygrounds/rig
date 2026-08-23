@@ -517,7 +517,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 file_data,
                                 file_url,
                                 filename,
-                            }))
+                            }));
                         }
                         crate::message::UserContent::Document(Document {
                             data:

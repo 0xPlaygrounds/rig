@@ -224,10 +224,10 @@ where
             Ok(Some(Ok(item))) => match item {
                 StreamedAssistantContent::Text(text) => output.push_str(&text.text),
                 StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
-                    output.push_str(&reasoning)
+                    output.push_str(&reasoning);
                 }
                 StreamedAssistantContent::Reasoning { reasoning: r, .. } => {
-                    output.push_str(&r.display_text())
+                    output.push_str(&r.display_text());
                 }
                 StreamedAssistantContent::Final(resp) => {
                     // Authoritative usage. A premature clean close (shape #3)

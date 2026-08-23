@@ -996,7 +996,7 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 match item.expect("no stream item should be an error") {
                     StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
                     StreamedAssistantContent::ReasoningDelta { reasoning: r, .. } => {
-                        reasoning.push_str(&r)
+                        reasoning.push_str(&r);
                     }
                     _ => {}
                 }

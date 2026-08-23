@@ -69,7 +69,7 @@ impl Debater {
                 .unwrap_or_default();
             println!("Coral:\n{}", resp_b.output);
             println!("================================================================");
-            last_resp_b = Some(resp_b.output)
+            last_resp_b = Some(resp_b.output);
         }
         Ok(())
     }

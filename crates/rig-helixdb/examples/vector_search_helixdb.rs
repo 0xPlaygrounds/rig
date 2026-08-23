@@ -69,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
             id = doc.1,
             score = doc.0,
             doc = doc.2
-        )
+        );
     }
 
     Ok(())

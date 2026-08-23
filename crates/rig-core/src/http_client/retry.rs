@@ -65,7 +65,7 @@ impl RetryPolicy for ExponentialBackoff {
     fn set_reconnection_time(&mut self, duration: Duration) {
         self.start = duration;
         if let Some(max_duration) = self.max_duration {
-            self.max_duration = Some(max_duration.max(duration))
+            self.max_duration = Some(max_duration.max(duration));
         }
     }
 }

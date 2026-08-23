@@ -122,7 +122,7 @@ mod tests {
             .unwrap()
             .as_ref()
             .to_owned();
-        assert_eq!(aws_image_bytes, img_data)
+        assert_eq!(aws_image_bytes, img_data);
     }
 
     #[test]
@@ -138,6 +138,6 @@ mod tests {
         assert_eq!(
             aws_image.err().unwrap().to_string(),
             CompletionError::ProviderError("Unsupported format image/heic".into()).to_string()
-        )
+        );
     }
 }

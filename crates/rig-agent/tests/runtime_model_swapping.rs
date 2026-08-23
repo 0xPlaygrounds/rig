@@ -1011,7 +1011,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                     internal_call_ids.push(internal_call_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
-                    final_response = Some(response)
+                    final_response = Some(response);
                 }
                 _ => {}
             }
@@ -1235,7 +1235,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
                 StreamedAssistantContent::Final(final_),
             ) => provider_final = Some(final_),
             rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
-                final_response = Some(response)
+                final_response = Some(response);
             }
             _ => {}
         }

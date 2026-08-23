@@ -338,7 +338,7 @@ mod tests {
             Some(
                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy."
             )
-        )
+        );
     }
 
     #[tokio::test]
@@ -371,7 +371,7 @@ mod tests {
             Some(
                 "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
             )
-        )
+        );
     }
 
     #[tokio::test]
@@ -407,7 +407,7 @@ mod tests {
         assert_eq!(
             third_definition.1.first().map(|e| e.document.as_str()),
             Some("Another fake definitions")
-        )
+        );
     }
 
     #[tokio::test]
@@ -439,7 +439,7 @@ mod tests {
             Some(
                 "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy."
             )
-        )
+        );
     }
 
     #[tokio::test]

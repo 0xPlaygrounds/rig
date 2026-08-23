@@ -1483,7 +1483,7 @@ mod tests {
             .expect("thinking block should not be an error")
         {
             RawStreamingChoice::ReasoningEnd { signature, .. } => {
-                assert_eq!(signature.as_deref(), Some("delta_assembled"))
+                assert_eq!(signature.as_deref(), Some("delta_assembled"));
             }
             other => panic!("Expected a signed lifecycle end, got {other:?}"),
         }

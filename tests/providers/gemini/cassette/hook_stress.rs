@@ -559,12 +559,12 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                         StreamedAssistantContent::Text(_) => events.push("text"),
                         StreamedAssistantContent::ToolCall { .. } => events.push("tool_call"),
                         StreamedAssistantContent::ToolCallDelta { .. } => {
-                            events.push("tool_call_delta")
+                            events.push("tool_call_delta");
                         }
                         _ => {}
                     },
                     Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
-                        events.push("tool_execution_committed")
+                        events.push("tool_execution_committed");
                     }
                     Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         ..

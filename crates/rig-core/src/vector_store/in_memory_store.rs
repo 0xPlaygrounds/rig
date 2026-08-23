@@ -649,7 +649,7 @@ mod tests {
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
-        )
+        );
     }
 
     #[test]
@@ -733,7 +733,7 @@ mod tests {
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
-        )
+        );
     }
 
     #[tokio::test]

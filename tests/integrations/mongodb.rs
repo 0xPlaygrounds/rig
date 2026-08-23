@@ -237,7 +237,7 @@ async fn vector_search_test() {
             "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
             "score": score
         })
-    )
+    );
 }
 
 #[tokio::test]
