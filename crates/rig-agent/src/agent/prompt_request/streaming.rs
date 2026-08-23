@@ -468,10 +468,19 @@ where
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
         let hook_ctx = HookContext::new(is_streaming, runner.config.name.clone());
-        // Restore durable hook state a serialized run carried into this drive
-        // (see `Scratchpad`'s "Durable hook state" docs).
-        if let Some(snapshot) = run.take_hook_state() {
-            hook_ctx.scratchpad().restore(snapshot);
+        // Seed the entries a resumed run carried, so `HookContext::entries`
+        // replays the full record from the first hook event on.
+        hook_ctx.seed_entries(run.entries());
+        // Flush hook appends into the run's record. Called at every step
+        // boundary and in the Done arm, so the run — the serializable record
+        // — is current whenever it can be observed. Entries appended by the
+        // terminal `on_run_settled` hook are documented as not persisted.
+        macro_rules! flush_entries {
+            () => {
+                for entry in hook_ctx.drain_pending_entries() {
+                    run.append_entry(entry);
+                }
+            };
         }
         // Rendered terminal-error text, set on every error path before its
         // yield so the run-settled hook below can report the outcome after
@@ -568,6 +577,7 @@ where
         }
 
         'outer: loop {
+            flush_entries!();
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
@@ -713,6 +723,7 @@ where
                     ));
                 }
                 AgentRunStep::Done(response) => {
+                    flush_entries!();
                     // Run-completion marker, unifying the blocking and streaming
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(

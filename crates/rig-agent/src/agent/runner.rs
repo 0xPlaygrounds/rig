@@ -11601,5 +11601,76 @@ mod migrated_tests {
             assert_eq!(settles.len(), 1, "settled exactly once: {settles:?}");
             assert!(settles[0].starts_with("err:"), "error outcome: {settles:?}");
         }
+
+        /// Appends a per-call snapshot entry and captures what the record
+        /// shows at settle — proving appends are flushed into the run and
+        /// replayable through `HookContext::entries` with no export step.
+        #[derive(Clone, Default)]
+        struct EntryProbe {
+            settled: Arc<Mutex<Vec<crate::agent::RunEntry>>>,
+        }
+
+        impl AgentHook for EntryProbe {
+            async fn on_completion_call(
+                &self,
+                ctx: &HookContext,
+                _event: CompletionCallEvent<'_>,
+            ) -> CompletionCallAction {
+                let calls = ctx
+                    .last_entry("calls")
+                    .and_then(|entry| entry.value.as_u64())
+                    .unwrap_or(0)
+                    + 1;
+                ctx.append_entry("calls", &calls).expect("serializable");
+                CompletionCallAction::Continue
+            }
+
+            async fn on_run_settled(
+                &self,
+                ctx: &HookContext,
+                _event: crate::agent::RunSettled<'_>,
+            ) {
+                *self.settled.lock().expect("settled") = ctx.entries("calls");
+            }
+        }
+
+        #[tokio::test]
+        async fn entries_appended_per_turn_are_visible_at_settle() {
+            let probe = EntryProbe::default();
+            let model = MockCompletionModel::from_stream_turns([
+                vec![
+                    MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                    MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
+                    MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                    MockStreamEvent::final_response_with_total_tokens(0),
+                ],
+                vec![
+                    MockStreamEvent::text("5"),
+                    MockStreamEvent::final_response_with_total_tokens(0),
+                ],
+            ]);
+            let mut stream = AgentBuilder::new(model)
+                .tool(crate::test_utils::MockAddTool)
+                .add_hook(probe.clone())
+                .build()
+                .runner(Message::user("add 2 and 3"))
+                .max_turns(3)
+                .stream()
+                .await;
+            while let Some(item) = stream.next().await {
+                item.expect("stream item");
+            }
+
+            let settled = probe.settled.lock().expect("settled").clone();
+            // One snapshot per model call, turn-stamped, in append order;
+            // the last-wins read reports the final count.
+            assert_eq!(
+                settled
+                    .iter()
+                    .map(|entry| (entry.turn, entry.value.as_u64()))
+                    .collect::<Vec<_>>(),
+                [(1, Some(1)), (2, Some(2))]
+            );
+        }
     }
 }

@@ -819,19 +819,26 @@ HTTP transport gained a middleware seam. What breaks:
   `BoxedHttpClient::with_middleware`). Behavior without middleware is
   unchanged. `BoxedHttpClient::ptr_eq` still compares the underlying transport
   only, so two handles differing only in middleware compare equal.
-- **`AgentRun` gained an optional `hook_state` slot** (`hook_state`,
-  `set_hook_state`, `take_hook_state`, carrying the new serializable
-  `rig_run::ScratchpadSnapshot`) plus `initial_prompt`,
-  `rewrite_initial_prompt`, and `input_chat_history`. Runs serialized before
-  this release deserialize unchanged (the field defaults to absent). The agent
-  drivers restore a carried snapshot into the run's `Scratchpad` durable
-  entries at run start.
+- **`AgentRun` gained an append-only entry log** — `rig_run::RunEntry`
+  (`kind`/`turn`/`value`) with `append_entry`, `entries`, `entries_of`, and
+  `last_entry_of` — plus `initial_prompt`, `rewrite_initial_prompt`, and
+  `input_chat_history`. Runs serialized before this release deserialize
+  unchanged (the field defaults to empty). Entries are protocol data like
+  `TurnTools`: never interpreted by the run and never part of a provider
+  request.
 
-New, non-breaking: `Scratchpad::{put_durable, get_durable, remove_durable,
-export, restore}` for hook state that must survive a serialized pause, and the
+New, non-breaking: durable hook state is **event-sourced**. Hooks persist by
+appending entries to the run's record via `HookContext::append_entry` (stamped
+with the current turn, flushed into the `AgentRun` at each step boundary) and
+reconstruct by replaying `HookContext::entries(kind)` — the documented default
+pattern is snapshot + last-wins via `HookContext::last_entry`. State that
+rides the record travels, rewinds, and forks with the record. Also new: the
 `RunStart`/`RunStartAction`/`RunSettled`/`SettledOutcome` hook vocabulary. A
 `RunStartAction::Stop` terminates the run before any provider call with
-`PromptError::PromptCancelled`.
+`PromptError::PromptCancelled`. (A `Scratchpad::put_durable` /
+`ScratchpadSnapshot` / `AgentRun::hook_state` snapshot API existed briefly
+between two unreleased PRs and was replaced by the entry log before release;
+`Scratchpad` remains as the in-process, non-serialized cross-hook channel.)
 
 ### The run protocol is its own crate: `rig-run` (`rig::run`)
 
