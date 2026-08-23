@@ -685,9 +685,7 @@ fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<O
     // id-less (rig-keyed) reasoning item arrives here as `None` and drops
     // from request input, mirroring main's handling. No provenance gate is
     // needed — a fabricated id structurally cannot reach this function.
-    let Some(id) = reasoning.id.clone() else {
-        return None;
-    };
+    let id = reasoning.id.clone()?;
 
     let mut summary = Vec::new();
     let mut reasoning_content = Vec::new();
