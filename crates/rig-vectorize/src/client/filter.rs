@@ -213,20 +213,13 @@ mod tests {
 
         // OR should create an invalid filter
         let result = combined.validate();
-        assert!(result.is_err());
-
-        let Err(err) = result else {
-            panic!("OR filters should fail validation");
-        };
-        match err {
-            VectorizeError::UnsupportedFilterOperation(msg) => {
-                assert!(msg.contains("OR"));
-            }
-            other => assert!(
-                matches!(other, VectorizeError::UnsupportedFilterOperation(_)),
-                "expected UnsupportedFilterOperation error, got {other:?}"
+        assert!(
+            matches!(
+                &result,
+                Err(VectorizeError::UnsupportedFilterOperation(msg)) if msg.contains("OR")
             ),
-        }
+            "expected UnsupportedFilterOperation error mentioning OR, got {result:?}"
+        );
     }
 
     #[test]
