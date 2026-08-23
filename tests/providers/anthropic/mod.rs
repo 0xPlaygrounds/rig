@@ -10,6 +10,7 @@ mod cassette {
     mod error_envelope;
     mod error_identity_edge;
     mod image;
+    mod lifecycle_matrix;
     mod messages_behaviors;
     mod messages_sessions;
     mod messages_strict_tools;

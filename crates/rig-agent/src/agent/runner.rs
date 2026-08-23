@@ -11427,4 +11427,179 @@ mod migrated_tests {
         assert_eq!(stop_calls.load(SeqCst), 1);
         assert_eq!(after_stop_calls.load(SeqCst), 0);
     }
+
+    mod run_lifecycle {
+        use super::*;
+        use crate::agent::hook::{RunSettled, RunStart, RunStartAction, SettledOutcome};
+
+        /// Records run-start firings, the prompt each completion call carried,
+        /// and every settle outcome — enough to pin the whole run lifecycle.
+        #[derive(Clone, Default)]
+        struct LifecycleProbe {
+            starts: Arc<AtomicU32>,
+            seen_prompts: Arc<Mutex<Vec<String>>>,
+            settles: Arc<Mutex<Vec<String>>>,
+            rewrite_on_start: bool,
+            stop_on_start: bool,
+        }
+
+        impl AgentHook for LifecycleProbe {
+            async fn on_run_start(
+                &self,
+                _ctx: &HookContext,
+                event: RunStart<'_>,
+            ) -> RunStartAction {
+                self.starts.fetch_add(1, SeqCst);
+                if self.stop_on_start {
+                    return RunStartAction::stop("vetoed at start");
+                }
+                if self.rewrite_on_start {
+                    let current = event.prompt.rag_text().unwrap_or_default();
+                    return RunStartAction::rewrite(Message::user(format!(
+                        "{current} (rewritten)"
+                    )));
+                }
+                RunStartAction::Continue
+            }
+
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                event: CompletionCallEvent<'_>,
+            ) -> CompletionCallAction {
+                self.seen_prompts
+                    .lock()
+                    .expect("prompts")
+                    .push(event.prompt.rag_text().unwrap_or_default());
+                CompletionCallAction::Continue
+            }
+
+            async fn on_run_settled(&self, _ctx: &HookContext, event: RunSettled<'_>) {
+                let outcome = match event.outcome {
+                    SettledOutcome::Response(_) => "ok".to_string(),
+                    SettledOutcome::Error(reason) => format!("err:{reason}"),
+                };
+                self.settles.lock().expect("settles").push(outcome);
+            }
+        }
+
+        fn probe(rewrite_on_start: bool, stop_on_start: bool) -> LifecycleProbe {
+            LifecycleProbe {
+                rewrite_on_start,
+                stop_on_start,
+                ..LifecycleProbe::default()
+            }
+        }
+
+        #[tokio::test]
+        async fn streamed_run_fires_start_once_rewrites_prompt_and_settles_ok() {
+            let hook = probe(true, false);
+            let model = MockCompletionModel::from_stream_turns([vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ]]);
+            let mut stream = AgentBuilder::new(model)
+                .add_hook(hook.clone())
+                .build()
+                .runner(Message::user("hi"))
+                .stream()
+                .await;
+            while let Some(item) = stream.next().await {
+                item.expect("stream item");
+            }
+
+            assert_eq!(hook.starts.load(SeqCst), 1);
+            // The model call carried the run-start rewrite.
+            assert_eq!(
+                hook.seen_prompts.lock().expect("prompts").as_slice(),
+                ["hi (rewritten)".to_string()]
+            );
+            assert_eq!(hook.settles.lock().expect("settles").as_slice(), ["ok"]);
+        }
+
+        #[tokio::test]
+        async fn blocking_run_fires_start_once_rewrites_prompt_and_settles_ok() {
+            let hook = probe(true, false);
+            let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
+            let response = AgentBuilder::new(model)
+                .add_hook(hook.clone())
+                .build()
+                .prompt("hi")
+                .await
+                .expect("prompt succeeds");
+            assert_eq!(response, "done");
+
+            assert_eq!(hook.starts.load(SeqCst), 1);
+            assert_eq!(
+                hook.seen_prompts.lock().expect("prompts").as_slice(),
+                ["hi (rewritten)".to_string()]
+            );
+            assert_eq!(hook.settles.lock().expect("settles").as_slice(), ["ok"]);
+        }
+
+        #[tokio::test]
+        async fn run_start_stop_terminates_before_any_provider_call_and_settles_err() {
+            let hook = probe(false, true);
+            let model = MockCompletionModel::from_stream_turns([vec![
+                MockStreamEvent::text("never sent"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ]]);
+            let mut stream = AgentBuilder::new(model)
+                .add_hook(hook.clone())
+                .build()
+                .runner(Message::user("hi"))
+                .stream()
+                .await;
+            let first = stream.next().await.expect("terminal item");
+            assert!(matches!(
+                first,
+                Err(StreamingError::Prompt(ref err))
+                    if matches!(**err, PromptError::PromptCancelled { .. })
+            ));
+            assert!(stream.next().await.is_none());
+
+            assert_eq!(hook.starts.load(SeqCst), 1);
+            // No completion call was ever issued.
+            assert!(hook.seen_prompts.lock().expect("prompts").is_empty());
+            let settles = hook.settles.lock().expect("settles").clone();
+            assert_eq!(settles.len(), 1, "settled exactly once");
+            assert!(
+                settles[0].starts_with("err:"),
+                "stop settles as an error outcome: {settles:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn error_termination_settles_exactly_once() {
+            let hook = probe(false, false);
+            // A tool-calling turn with a one-call budget: the run errors after
+            // the turn instead of finishing, exercising the error settle path.
+            let model = MockCompletionModel::from_stream_turns([vec![
+                MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ]]);
+            let mut stream = AgentBuilder::new(model)
+                .tool(crate::test_utils::MockAddTool)
+                .add_hook(hook.clone())
+                .build()
+                .runner(Message::user("add 2 and 3"))
+                .max_turns(1)
+                .stream()
+                .await;
+            let mut saw_error = false;
+            while let Some(item) = stream.next().await {
+                if item.is_err() {
+                    saw_error = true;
+                }
+            }
+            assert!(saw_error, "the exhausted budget surfaces as a stream error");
+
+            assert_eq!(hook.starts.load(SeqCst), 1);
+            let settles = hook.settles.lock().expect("settles").clone();
+            assert_eq!(settles.len(), 1, "settled exactly once: {settles:?}");
+            assert!(settles[0].starts_with("err:"), "error outcome: {settles:?}");
+        }
+    }
 }

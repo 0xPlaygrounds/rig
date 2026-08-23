@@ -40,7 +40,7 @@ pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::id::RunId;
 pub use run::{
     AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall,
-    TurnTools,
+    ScratchpadSnapshot, TurnTools,
 };
 pub use spec::RunSpec;
 pub use streamed::{

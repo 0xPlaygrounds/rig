@@ -33,6 +33,7 @@ mod cassette {
     mod interactions_api;
     mod interactions_raw_capture_matrix;
     mod interactions_raw_stream_capture_matrix;
+    mod lifecycle_matrix;
     mod models;
     mod multi_turn_streaming;
     mod prompt_caching;

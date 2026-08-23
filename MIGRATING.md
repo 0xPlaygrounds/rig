@@ -806,6 +806,33 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Run lifecycle hooks and transport middleware
+
+The agent hook surface gained a pre-run and a terminal event, and the erased
+HTTP transport gained a middleware seam. What breaks:
+
+- **`StepEventKind` gained `RunStart` and `RunSettled`.** Exhaustive `match`es
+  over `StepEventKind` (e.g. in an `AgentHook::observes` implementation) must
+  add the two arms. `AgentHook` itself is unaffected: the new `on_run_start`
+  and `on_run_settled` methods are default-implemented.
+- **`BoxedHttpClient` now applies attached `HttpMiddleware`** (new, opt-in via
+  `BoxedHttpClient::with_middleware`). Behavior without middleware is
+  unchanged. `BoxedHttpClient::ptr_eq` still compares the underlying transport
+  only, so two handles differing only in middleware compare equal.
+- **`AgentRun` gained an optional `hook_state` slot** (`hook_state`,
+  `set_hook_state`, `take_hook_state`, carrying the new serializable
+  `rig_run::ScratchpadSnapshot`) plus `initial_prompt`,
+  `rewrite_initial_prompt`, and `input_chat_history`. Runs serialized before
+  this release deserialize unchanged (the field defaults to absent). The agent
+  drivers restore a carried snapshot into the run's `Scratchpad` durable
+  entries at run start.
+
+New, non-breaking: `Scratchpad::{put_durable, get_durable, remove_durable,
+export, restore}` for hook state that must survive a serialized pause, and the
+`RunStart`/`RunStartAction`/`RunSettled`/`SettledOutcome` hook vocabulary. A
+`RunStartAction::Stop` terminates the run before any provider call with
+`PromptError::PromptCancelled`.
+
 ### The run protocol is its own crate: `rig-run` (`rig::run`)
 
 `AgentRun` — the sans-IO, serializable state machine behind every agent run —

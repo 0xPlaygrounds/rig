@@ -1,13 +1,17 @@
 use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
-pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
-use http::{HeaderName, StatusCode};
+use http::HeaderName;
+pub use http::{
+    HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
+};
 mod erased;
+pub mod middleware;
 pub mod multipart;
 pub mod retry;
 pub mod sse;
 use crate::wasm_compat::*;
 pub use erased::BoxedHttpClient;
+pub use middleware::HttpMiddleware;
 pub use multipart::MultipartForm;
 
 #[derive(Debug, thiserror::Error)]
