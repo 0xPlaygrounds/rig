@@ -241,7 +241,7 @@ impl CompletionModel {
         let messages = request.messages()?;
         converse_builder = converse_builder
             .set_additional_model_request_fields(additional_params)
-            .set_inference_config(inference_config)
+            .set_inference_config(Some(inference_config))
             .set_tool_config(tool_config)
             .set_system(system_prompt)
             .set_messages(Some(messages))

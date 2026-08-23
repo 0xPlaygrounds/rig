@@ -291,9 +291,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
             })
         }
 
-        fn reasoning_item(
-            reasoning: crate::message::Reasoning,
-        ) -> Result<Option<Message>, CompletionError> {
+        fn reasoning_item(reasoning: crate::message::Reasoning) -> Option<Message> {
             let crate::message::Reasoning { id, content } = reasoning;
             // Only wire-genuine ids exist in durable histories (the streaming
             // layer populates `Reasoning::id` exclusively from
@@ -306,7 +304,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                     "xAI: dropping id-less reasoning item from request input \
                      (cross-provider replay; xAI reasoning requires a wire id)"
                 );
-                return Ok(None);
+                return None;
             };
             let mut encrypted_content = None;
             let mut summary = Vec::new();
@@ -329,7 +327,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                 }
             }
 
-            Ok(Some(Message::reasoning(id, summary, encrypted_content)))
+            Some(Message::reasoning(id, summary, encrypted_content))
         }
 
         match msg {
@@ -442,7 +440,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                         }
                         AssistantContent::Reasoning(r) => {
                             flush_assistant_text(&mut items, &mut text_parts);
-                            if let Some(item) = reasoning_item(r)? {
+                            if let Some(item) = reasoning_item(r) {
                                 items.push(item);
                             }
                         }

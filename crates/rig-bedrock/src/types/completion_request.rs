@@ -29,7 +29,7 @@ impl AwsCompletionRequest {
             .map(|doc: AwsDocument| doc.0)
     }
 
-    pub fn inference_config(&self) -> Option<InferenceConfiguration> {
+    pub fn inference_config(&self) -> InferenceConfiguration {
         let mut inference_configuration = InferenceConfiguration::builder();
 
         if let Some(temperature) = &self.inner.temperature {
@@ -42,7 +42,7 @@ impl AwsCompletionRequest {
                 inference_configuration.set_max_tokens(Some(*max_tokens as i32));
         }
 
-        Some(inference_configuration.build())
+        inference_configuration.build()
     }
 
     pub fn tools_config(&self) -> Result<Option<ToolConfiguration>, CompletionError> {

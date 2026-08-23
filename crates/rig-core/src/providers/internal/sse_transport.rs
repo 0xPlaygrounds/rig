@@ -328,13 +328,13 @@ mod tests {
         sse_frames(event_source, options, triage).collect().await
     }
 
-    fn data_chunk(events: &[&str]) -> Result<Bytes, StubError> {
-        Ok(Bytes::from(
+    fn data_chunk(events: &[&str]) -> Bytes {
+        Bytes::from(
             events
                 .iter()
                 .map(|event| format!("data: {event}\n\n"))
                 .collect::<String>(),
-        ))
+        )
     }
 
     fn text_frames(frames: &[Result<WireFrame, CompletionError>]) -> Vec<String> {
@@ -358,7 +358,7 @@ mod tests {
     #[tokio::test]
     async fn yields_frames_and_skips_blanks() {
         let frames = collect_frames(
-            vec![data_chunk(&["one", " ", "two"])],
+            vec![Ok(data_chunk(&["one", " ", "two"]))],
             default_options(),
             skip_blank_frames,
         )
@@ -370,7 +370,7 @@ mod tests {
     #[tokio::test]
     async fn stream_ended_is_a_normal_end_by_default() {
         let frames = collect_frames(
-            vec![data_chunk(&["one"]), Err(StubError::StreamEnded)],
+            vec![Ok(data_chunk(&["one"])), Err(StubError::StreamEnded)],
             default_options(),
             skip_blank_frames,
         )
@@ -382,7 +382,7 @@ mod tests {
     #[tokio::test]
     async fn stream_ended_surfaces_as_error_when_flagged() {
         let frames = collect_frames(
-            vec![data_chunk(&["one"]), Err(StubError::StreamEnded)],
+            vec![Ok(data_chunk(&["one"])), Err(StubError::StreamEnded)],
             SseTransportOptions {
                 stream_ended_is_error: true,
                 ..default_options()
@@ -399,7 +399,7 @@ mod tests {
     #[tokio::test]
     async fn fail_disposition_yields_error_and_ends_the_stream() {
         let frames = collect_frames(
-            vec![data_chunk(&["one", "boom", "after"])],
+            vec![Ok(data_chunk(&["one", "boom", "after"]))],
             default_options(),
             |data| {
                 if data == "boom" {
