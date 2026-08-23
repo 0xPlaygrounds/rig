@@ -1483,7 +1483,7 @@ impl EntryLogProbe {
     pub(crate) fn assert_phases(&self, min_calls: usize) {
         let phases = self.settled_phases();
         assert!(
-            phases.len() >= 1 + min_calls,
+            phases.len() > min_calls,
             "expected run_start plus at least {min_calls} completion calls: {phases:?}"
         );
         assert_eq!(
