@@ -1355,3 +1355,176 @@ pub(crate) fn assert_normalized_embedding_response(
         "every HTTP provider seam populates `raw`"
     );
 }
+
+/// Wire-level probe middleware for the run-lifecycle cassette matrix.
+///
+/// Counts each `HttpMiddleware` phase, records the last observed response
+/// status and request-body length, and injects a benign
+/// `x-rig-lifecycle-probe` header (deliberately outside the harness's
+/// recorded-header allowlist, so cassette matching is identical with and
+/// without it). Everything it observes holds in both cassette modes: on
+/// replay the same phases fire against the replay server.
+#[derive(Clone, Default)]
+pub(crate) struct WireProbe {
+    pub(crate) header_phases: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    pub(crate) body_phases: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    pub(crate) response_phases: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    pub(crate) last_status: std::sync::Arc<std::sync::atomic::AtomicU16>,
+    pub(crate) last_body_len: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl rig::http_client::HttpMiddleware for WireProbe {
+    fn before_request_headers<'a>(
+        &'a self,
+        _method: &'a rig::http_client::Method,
+        _uri: &'a rig::http_client::Uri,
+        headers: &'a mut rig::http_client::HeaderMap,
+    ) -> rig::wasm_compat::WasmBoxedFuture<'a, rig::http_client::Result<()>> {
+        Box::pin(async move {
+            self.header_phases
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            headers.insert(
+                "x-rig-lifecycle-probe",
+                rig::http_client::HeaderValue::from_static("1"),
+            );
+            Ok(())
+        })
+    }
+
+    fn before_request_body<'a>(
+        &'a self,
+        _method: &'a rig::http_client::Method,
+        _uri: &'a rig::http_client::Uri,
+        headers: &'a rig::http_client::HeaderMap,
+        body: bytes::Bytes,
+    ) -> rig::wasm_compat::WasmBoxedFuture<'a, rig::http_client::Result<bytes::Bytes>> {
+        Box::pin(async move {
+            self.body_phases
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            // The body phase runs after the header phase mutated the map.
+            assert!(
+                headers.contains_key("x-rig-lifecycle-probe"),
+                "body hooks see the final headers"
+            );
+            self.last_body_len
+                .store(body.len(), std::sync::atomic::Ordering::SeqCst);
+            Ok(body)
+        })
+    }
+
+    fn after_response<'a>(
+        &'a self,
+        _method: &'a rig::http_client::Method,
+        _uri: &'a rig::http_client::Uri,
+        status: rig::http_client::StatusCode,
+        _headers: &'a rig::http_client::HeaderMap,
+    ) -> rig::wasm_compat::WasmBoxedFuture<'a, rig::http_client::Result<()>> {
+        Box::pin(async move {
+            self.response_phases
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.last_status
+                .store(status.as_u16(), std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        })
+    }
+}
+
+impl WireProbe {
+    /// Assert the counters of a completed single-request exchange.
+    pub(crate) fn assert_single_exchange(&self) {
+        use std::sync::atomic::Ordering::SeqCst;
+        assert_eq!(self.header_phases.load(SeqCst), 1, "one header phase");
+        assert_eq!(self.body_phases.load(SeqCst), 1, "one body phase");
+        assert_eq!(self.response_phases.load(SeqCst), 1, "one response phase");
+        assert_eq!(
+            self.last_status.load(SeqCst),
+            200,
+            "success status observed"
+        );
+        assert!(
+            self.last_body_len.load(SeqCst) > 0,
+            "the serialized provider payload was visible to the body phase"
+        );
+    }
+}
+
+/// Agent-hook probe for the run-lifecycle cassette matrix: counts
+/// `on_run_start` firings (optionally rewriting the prompt), counts
+/// completion calls into a durable scratchpad entry, and records every
+/// `on_run_settled` outcome plus the settled scratchpad export.
+#[derive(Clone, Default)]
+pub(crate) struct LifecycleHookProbe {
+    pub(crate) rewrite_to: Option<String>,
+    pub(crate) starts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    pub(crate) settles: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    pub(crate) exported: std::sync::Arc<std::sync::Mutex<Option<rig::agent::ScratchpadSnapshot>>>,
+}
+
+impl LifecycleHookProbe {
+    pub(crate) fn rewriting_to(prompt: &str) -> Self {
+        Self {
+            rewrite_to: Some(prompt.to_string()),
+            ..Self::default()
+        }
+    }
+
+    /// The settle outcomes observed so far ("response" or "error:…").
+    pub(crate) fn settle_outcomes(&self) -> Vec<String> {
+        self.settles.lock().expect("settles").clone()
+    }
+
+    /// The durable completion-call counter the settled export carried.
+    pub(crate) fn exported_completion_calls(&self) -> Option<u64> {
+        let snapshot = self.exported.lock().expect("export").clone()?;
+        snapshot
+            .entries
+            .get("completion_calls")
+            .and_then(serde_json::Value::as_u64)
+    }
+}
+
+impl rig::agent::AgentHook for LifecycleHookProbe {
+    async fn on_run_start(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        self.starts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        match &self.rewrite_to {
+            Some(prompt) => {
+                rig::agent::RunStartAction::rewrite(rig::completion::Message::user(prompt))
+            }
+            None => rig::agent::RunStartAction::Continue,
+        }
+    }
+
+    async fn on_completion_call(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionCallAction {
+        let calls = ctx
+            .scratchpad()
+            .get_durable::<u64>("completion_calls")
+            .unwrap_or(0)
+            + 1;
+        ctx.scratchpad()
+            .put_durable("completion_calls", &calls)
+            .expect("a u64 serializes");
+        rig::agent::CompletionCallAction::Continue
+    }
+
+    async fn on_run_settled(
+        &self,
+        ctx: &rig::agent::HookContext,
+        event: rig::agent::RunSettled<'_>,
+    ) {
+        *self.exported.lock().expect("export") = Some(ctx.scratchpad().export());
+        let outcome = match event.outcome {
+            rig::agent::SettledOutcome::Response(_) => "response".to_string(),
+            rig::agent::SettledOutcome::Error(reason) => format!("error:{reason}"),
+        };
+        self.settles.lock().expect("settles").push(outcome);
+    }
+}

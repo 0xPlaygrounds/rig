@@ -1,7 +1,9 @@
 use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
-pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
-use http::{HeaderName, StatusCode};
+use http::HeaderName;
+pub use http::{
+    HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
+};
 mod erased;
 pub mod middleware;
 pub mod multipart;

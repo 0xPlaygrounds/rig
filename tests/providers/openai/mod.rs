@@ -24,6 +24,7 @@ mod cassette {
     mod gpt_5_6_reasoning;
     #[cfg(feature = "image")]
     mod image_params_matrix;
+    mod lifecycle_matrix;
     mod max_completion_tokens_matrix;
     mod models;
     mod multi_extract;

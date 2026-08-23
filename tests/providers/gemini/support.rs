@@ -304,6 +304,36 @@ async fn gemini_interactions_cassette(
     (cassette, client.interactions_api())
 }
 
+/// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
+/// through a [`rig::http_client::BoxedHttpClient`] carrying the supplied
+/// [`rig::http_client::HttpMiddleware`], so the same recorded exchange
+/// exercises the transport middleware seam and the run lifecycle hooks
+/// together (see `tests/cassettes/gemini/lifecycle_matrix/`).
+pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    middleware: M,
+    test_body: F,
+) where
+    M: rig::http_client::HttpMiddleware + 'static,
+    F: FnOnce(gemini::Client<rig::http_client::BoxedHttpClient>) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette =
+        ProviderCassette::start("gemini", spec, "https://generativelanguage.googleapis.com").await;
+    let client = gemini::Client::builder()
+        .api_key(cassette.api_key("GEMINI_API_KEY"))
+        .base_url(cassette.base_url())
+        .http_client(
+            rig::http_client::ReqwestClient::default()
+                .boxed()
+                .with_middleware(middleware),
+        )
+        .build()
+        .expect("client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
 pub(super) async fn with_gemini_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(gemini::Client) -> Fut,
