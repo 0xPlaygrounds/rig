@@ -1448,6 +1448,89 @@ impl WireProbe {
     }
 }
 
+/// Entry-log probe for the run-lifecycle cassette matrix: appends one
+/// `"phase"` entry per lifecycle event — `"run_start"` at `on_run_start`
+/// (turn 0, before any model call) and `"completion_call"` per model call —
+/// and captures the full replayed log at settle. What it pins on real
+/// provider traffic: append order across lifecycle events, turn stamping
+/// (0 pre-run, then the one-based call index), and that the entry log is
+/// storage, not context — the replay server matches request bodies
+/// byte-exactly, so replay staying green proves entries never reach the wire.
+#[derive(Clone, Default)]
+pub(crate) struct EntryLogProbe {
+    pub(crate) settled: std::sync::Arc<std::sync::Mutex<Vec<rig::agent::RunEntry>>>,
+}
+
+impl EntryLogProbe {
+    /// The settled `"phase"` log as `(turn, value)` pairs.
+    pub(crate) fn settled_phases(&self) -> Vec<(usize, String)> {
+        self.settled
+            .lock()
+            .expect("settled")
+            .iter()
+            .map(|entry| {
+                (
+                    entry.turn,
+                    entry.value.as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    }
+
+    /// Assert the settled log of a completed run: a turn-0 `run_start` first,
+    /// then one `completion_call` per model call with consecutive one-based
+    /// turn stamps, at least `min_calls` of them.
+    pub(crate) fn assert_phases(&self, min_calls: usize) {
+        let phases = self.settled_phases();
+        assert!(
+            phases.len() >= 1 + min_calls,
+            "expected run_start plus at least {min_calls} completion calls: {phases:?}"
+        );
+        assert_eq!(
+            phases[0],
+            (0, "run_start".to_string()),
+            "the pre-run append is stamped turn 0: {phases:?}"
+        );
+        for (index, (turn, value)) in phases[1..].iter().enumerate() {
+            assert_eq!(
+                (*turn, value.as_str()),
+                (index + 1, "completion_call"),
+                "per-call snapshots are turn-stamped in call order: {phases:?}"
+            );
+        }
+    }
+}
+
+impl rig::agent::AgentHook for EntryLogProbe {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        ctx.append_entry("phase", &"run_start")
+            .expect("a str serializes");
+        rig::agent::RunStartAction::Continue
+    }
+
+    async fn on_completion_call(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionCallAction {
+        ctx.append_entry("phase", &"completion_call")
+            .expect("a str serializes");
+        rig::agent::CompletionCallAction::Continue
+    }
+
+    async fn on_run_settled(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunSettled<'_>,
+    ) {
+        *self.settled.lock().expect("settled") = ctx.entries("phase");
+    }
+}
+
 /// Agent-hook probe for the run-lifecycle cassette matrix: counts
 /// `on_run_start` firings (optionally rewriting the prompt), appends one
 /// `"completion_calls"` snapshot entry to the run's record per model call,

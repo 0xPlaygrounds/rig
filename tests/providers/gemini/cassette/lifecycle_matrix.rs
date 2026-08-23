@@ -103,6 +103,40 @@ async fn run_start_rewrite_reaches_the_provider() {
 }
 
 #[tokio::test]
+async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
+    let probe = crate::support::EntryLogProbe::default();
+    let agent_hook = probe.clone();
+    with_gemini_lifecycle_cassette(
+        "lifecycle_matrix/entry_log_order",
+        WireProbe::default(),
+        |client| async move {
+            let agent = client
+                .agent(MODEL)
+                .preamble("You are a calculator. Use the add tool for arithmetic.")
+                .tool(Adder)
+                .add_hook(agent_hook)
+                .build();
+            let mut stream = agent
+                .stream_prompt("What is 9 + 16? Use the add tool, then reply with just the number.")
+                .max_turns(3)
+                .await;
+            let (response, _final): (_, rig::streaming::StreamFinal) =
+                collect_stream_final_response_and_provider_final(&mut stream)
+                    .await
+                    .expect("streamed tool run should succeed");
+            assert!(
+                response.contains("25"),
+                "the tool result reached the final answer: {response:?}"
+            );
+        },
+    )
+    .await;
+    // Turn-0 run_start append, then one turn-stamped snapshot per model call
+    // (a tool run makes at least two), replayed in append order at settle.
+    probe.assert_phases(2);
+}
+
+#[tokio::test]
 async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
     let hook = LifecycleHookProbe::default();
     let agent_hook = hook.clone();
