@@ -953,10 +953,7 @@ where
 
             while let Some((index, outcome)) = unordered.next().await {
                 // A dropped sibling records nothing.
-                let result = match outcome {
-                    Some(result) => result,
-                    None => continue,
-                };
+                let Some(result) = outcome else { continue };
                 match result {
                     Ok(collected_result) => {
                         if let Some(slot) = collected.get_mut(index) {
@@ -994,16 +991,13 @@ where
         let mut surface_items: Vec<MultiTurnStreamItem> =
             Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
-            let CollectedToolResult { content, internal_call_id, surface } = match slot {
-                Some(collected_result) => collected_result,
-                None => {
-                    yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
-                        CompletionError::ResponseError(
-                            "tool execution finished without producing every result".to_string(),
-                        ),
-                    ))));
-                    return;
-                }
+            let Some(CollectedToolResult { content, internal_call_id, surface }) = slot else {
+                yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
+                    CompletionError::ResponseError(
+                        "tool execution finished without producing every result".to_string(),
+                    ),
+                ))));
+                return;
             };
             if forward_items {
                 // An executed call also surfaces its execution commit; a skipped

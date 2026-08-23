@@ -216,9 +216,8 @@ mod tests {
         function_name: &str,
         args: serde_json::Value,
     ) -> VertexGenerateContentOutput {
-        let struct_args = match args {
-            serde_json::Value::Object(map) => map,
-            _ => panic!("Expected JSON object for Struct conversion"),
+        let serde_json::Value::Object(struct_args) = args else {
+            panic!("Expected JSON object for Struct conversion")
         };
         let function_call = vertexai::model::FunctionCall::new()
             .set_name(function_name.to_string())
@@ -418,9 +417,8 @@ mod tests {
         )
         .set_thought(true)]));
 
-        let error = match result {
-            Err(error) => error,
-            Ok(_) => panic!("thought-image-only response must fail"),
+        let Err(error) = result else {
+            panic!("thought-image-only response must fail")
         };
         // Rejected with the shared empty-response wording via
         // `require_non_empty_response`, like every other wire.
@@ -438,9 +436,8 @@ mod tests {
                 mime_type,
                 vec![0],
             )]));
-            let error = match result {
-                Err(error) => error,
-                Ok(_) => panic!("unsupported inline media must fail"),
+            let Err(error) = result else {
+                panic!("unsupported inline media must fail")
             };
             assert!(matches!(error, CompletionError::ResponseError(_)));
             assert!(error.to_string().contains(mime_type));
@@ -454,9 +451,8 @@ mod tests {
                 mime_type,
                 vec![0],
             )]));
-            let error = match result {
-                Err(error) => error,
-                Ok(_) => panic!("non-replayable inline image must fail"),
+            let Err(error) = result else {
+                panic!("non-replayable inline image must fail")
             };
             assert!(matches!(error, CompletionError::ResponseError(_)));
             assert!(
@@ -471,9 +467,8 @@ mod tests {
     fn signed_inline_image_is_rejected() {
         let part = inline_data_part("image/png", vec![0]).set_thought_signature(vec![1, 2, 3]);
         let result = CompletionResponse::try_from(create_parts_response([part]));
-        let error = match result {
-            Err(error) => error,
-            Ok(_) => panic!("signed inline image must fail"),
+        let Err(error) = result else {
+            panic!("signed inline image must fail")
         };
         assert!(matches!(error, CompletionError::ResponseError(_)));
         assert!(error.to_string().contains("thought_signature"));

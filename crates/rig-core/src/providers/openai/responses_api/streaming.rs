@@ -346,9 +346,8 @@ pub(crate) fn parse_sse_completion_body(
             continue;
         }
 
-        let value = match serde_json::from_str::<serde_json::Value>(data) {
-            Ok(value) => value,
-            Err(_) => continue,
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
+            continue;
         };
 
         match value.get("type").and_then(serde_json::Value::as_str) {

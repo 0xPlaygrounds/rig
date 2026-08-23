@@ -320,14 +320,13 @@ mod test {
             .expect("build client");
         let model = client.transcription_model(VOXTRAL_MINI);
 
-        let error = match model
+        let Err(error) = model
             .transcription_request()
             .data(vec![0u8; 16])
             .send()
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("transcription should fail with non-success status"),
+        else {
+            panic!("transcription should fail with non-success status")
         };
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));

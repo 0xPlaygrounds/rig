@@ -698,7 +698,7 @@ mod azure_tests {
             RecordingHttpClient::with_error_response(http::StatusCode::UNPROCESSABLE_ENTITY, body);
         let model = AudioGenerationModel::new(test_client(http_client), "tts-1");
 
-        let error = match model
+        let Err(error) = model
             .audio_generation(AudioGenerationRequest {
                 text: "hello".to_string(),
                 voice: "alloy".to_string(),
@@ -706,9 +706,8 @@ mod azure_tests {
                 additional_params: None,
             })
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("audio generation should fail with non-success status"),
+        else {
+            panic!("audio generation should fail with non-success status")
         };
 
         assert!(matches!(error, AudioGenerationError::HttpError(_)));
@@ -735,14 +734,13 @@ mod azure_tests {
             .expect("build client");
         let model = TranscriptionModel::new(client, "whisper");
 
-        let error = match model
+        let Err(error) = model
             .transcription_request()
             .data(vec![0u8; 16])
             .send()
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("transcription should fail with non-success status"),
+        else {
+            panic!("transcription should fail with non-success status")
         };
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));
@@ -809,9 +807,8 @@ mod azure_tests {
             .expect("build client");
         let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
 
-        let error = match model.embed_texts(vec!["Hello, world!".to_string()]).await {
-            Err(error) => error,
-            Ok(_) => panic!("embedding should fail with non-success status"),
+        let Err(error) = model.embed_texts(vec!["Hello, world!".to_string()]).await else {
+            panic!("embedding should fail with non-success status")
         };
 
         assert!(matches!(error, EmbeddingError::HttpError(_)));
@@ -935,7 +932,7 @@ mod azure_tests {
             .expect("build client");
         let model = super::CompletionModel::new(client, GPT_4O_MINI);
 
-        let error = match model
+        let Err(error) = model
             .completion(CompletionRequest {
                 model: None,
                 preamble: Some("You are a helpful assistant.".to_string()),
@@ -950,9 +947,8 @@ mod azure_tests {
                 record_telemetry_content: false,
             })
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("completion should fail with non-success status"),
+        else {
+            panic!("completion should fail with non-success status")
         };
 
         assert!(matches!(error, CompletionError::HttpError(_)));

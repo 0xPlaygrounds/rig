@@ -215,12 +215,8 @@ mod tests {
         let result = combined.validate();
         assert!(result.is_err());
 
-        let err = match result {
-            Err(err) => err,
-            Ok(()) => {
-                assert!(result.is_err(), "OR filters should fail validation");
-                return;
-            }
+        let Err(err) = result else {
+            panic!("OR filters should fail validation");
         };
         match err {
             VectorizeError::UnsupportedFilterOperation(msg) => {

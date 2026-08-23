@@ -361,16 +361,14 @@ fn check_response<T>(
         return Err(super::Error::InvalidStatusCode(response.status()));
     };
 
-    let content_type =
-        if let Some(content_type) = response.headers().get(&http::header::CONTENT_TYPE) {
-            content_type
-        } else if allow_missing_content_type {
+    let Some(content_type) = response.headers().get(&http::header::CONTENT_TYPE) else {
+        if allow_missing_content_type {
             return Ok(response);
-        } else {
-            return Err(super::Error::InvalidContentType(HeaderValue::from_static(
-                "",
-            )));
-        };
+        }
+        return Err(super::Error::InvalidContentType(HeaderValue::from_static(
+            "",
+        )));
+    };
 
     if content_type
         .to_str()

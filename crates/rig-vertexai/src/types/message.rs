@@ -104,13 +104,12 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                         }
                         AssistantContent::Image(image) => vertex_assistant_image_part(image),
                         AssistantContent::ToolCall(tool_call) => {
-                            let struct_val = match tool_call.function.arguments {
-                                serde_json::Value::Object(map) => map,
-                                _ => {
-                                    return Err(CompletionError::ProviderError(
-                                        "Expected JSON object for Struct conversion".to_string(),
-                                    ));
-                                }
+                            let serde_json::Value::Object(struct_val) =
+                                tool_call.function.arguments
+                            else {
+                                return Err(CompletionError::ProviderError(
+                                    "Expected JSON object for Struct conversion".to_string(),
+                                ));
                             };
 
                             let function_call = vertexai::model::FunctionCall::new()
@@ -385,9 +384,8 @@ mod tests {
                     content: vec![image],
                 })
                 .try_into();
-            let error = match result {
-                Err(error) => error,
-                Ok(_) => panic!("invalid assistant image must fail"),
+            let Err(error) = result else {
+                panic!("invalid assistant image must fail")
             };
             assert!(matches!(error, CompletionError::RequestError(_)));
             assert!(error.to_string().contains(expected_message));
