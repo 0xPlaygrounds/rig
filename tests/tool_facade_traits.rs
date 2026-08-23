@@ -91,7 +91,7 @@ fn portable_tool_registers_with_classic_toolset() {
     let mut set = ToolSet::default();
     set.add_tool(PortableAdder);
     let names: Vec<String> = set
-        .get_tool_definitions()
+        .tool_definitions()
         .into_iter()
         .map(|definition| definition.name)
         .collect();

@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
     let mut tools = ToolSet::default();
     tools.add_tool(GetBalance);
     tools.add_tool(TransferFunds);
-    let tool_definitions = tools.get_tool_definitions();
+    let tool_definitions = tools.tool_definitions();
 
     let prompt = "Check the balance of account A-1, then transfer $500 to account B-2.";
     println!("User: {prompt}");

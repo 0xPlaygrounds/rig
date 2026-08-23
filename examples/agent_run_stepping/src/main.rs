@@ -98,7 +98,7 @@ async fn main() -> Result<()> {
         .build();
     let mut local_tools = ToolSet::default();
     local_tools.add_tool(Add);
-    let tool_definitions = local_tools.get_tool_definitions();
+    let tool_definitions = local_tools.tool_definitions();
 
     let mut run = AgentRun::new("What is 2 + 5?").max_turns(2);
 

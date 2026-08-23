@@ -228,7 +228,7 @@ impl CompletionModel {
 
         let mut converse_builder = self
             .client
-            .get_inner()
+            .inner()
             .await
             .converse()
             .model_id(request_model.clone());

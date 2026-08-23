@@ -366,7 +366,7 @@ impl Agent {
         &self,
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        self.tool_server_handle.get_tool_defs(prompt).await
+        self.tool_server_handle.tool_defs(prompt).await
     }
 }
 

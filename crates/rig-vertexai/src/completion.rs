@@ -83,7 +83,7 @@ impl CompletionModel {
 
         let mut request_builder = self
             .client
-            .get_inner()
+            .inner()
             .await
             .map_err(|error| CompletionError::ProviderError(error.to_string()))?
             .generate_content()
@@ -162,7 +162,7 @@ impl CompletionModelTrait for CompletionModel {
 /// [`http::StatusCode`] to attach; the error body is preserved via
 /// [`CompletionError::from_provider_body`] (`status: None`) rather than a
 /// Rig-prefixed [`CompletionError::ProviderError`] diagnostic. (The
-/// `get_inner()` client-init failure stays a `ProviderError` because it is a
+/// `inner()` client-init failure stays a `ProviderError` because it is a
 /// Rig-side setup failure, not a provider response.)
 ///
 /// Note: the SDK does not distinguish a server-returned gRPC error from a

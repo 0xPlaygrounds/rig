@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
             .completion_request(current_prompt.clone())
             .preamble(preamble.to_string())
             .messages(history.clone())
-            .tools(local_tools.get_tool_definitions());
+            .tools(local_tools.tool_definitions());
         if round == 1 {
             // Force the first turn through the tool path so the example always demonstrates it.
             request = request.tool_choice(ToolChoice::Required);

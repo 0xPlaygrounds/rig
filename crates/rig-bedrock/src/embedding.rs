@@ -54,7 +54,7 @@ impl EmbeddingModel {
 
         let model_response = self
             .client
-            .get_inner()
+            .inner()
             .await
             .invoke_model()
             .model_id(self.model.as_str())

@@ -140,10 +140,7 @@ mod toolset_clone_tests {
 
         let mut clone = original.clone();
         assert_eq!(erased_ptr(&original, "add"), erased_ptr(&clone, "add"));
-        assert_eq!(
-            original.get_tool_definitions(),
-            clone.get_tool_definitions()
-        );
+        assert_eq!(original.tool_definitions(), clone.tool_definitions());
 
         clone.add_tool(MockSubtractTool);
         assert!(clone.contains("subtract"));
@@ -333,7 +330,7 @@ mod migrated_tests {
     #[test]
     fn test_get_tool_definitions() {
         let toolset = get_test_toolset();
-        let tools = toolset.get_tool_definitions();
+        let tools = toolset.tool_definitions();
         assert_eq!(tools.len(), 2);
         assert_eq!(
             tools
@@ -419,7 +416,7 @@ mod migrated_tests {
             toolset.add_dynamic_tool(named_tool(name, "test tool"));
         }
 
-        let defs = toolset.get_tool_definitions();
+        let defs = toolset.tool_definitions();
         let def_names: Vec<String> = defs.into_iter().map(|def| def.name).collect();
         assert_eq!(def_names, names);
 
@@ -456,7 +453,7 @@ mod migrated_tests {
         let mut toolset = ToolSet::default();
         toolset.add_tool(NamedTool);
 
-        let defs = toolset.get_tool_definitions();
+        let defs = toolset.tool_definitions();
         assert_eq!(defs[0].name, NamedTool::NAME);
 
         let docs = toolset.documents();
@@ -541,7 +538,7 @@ mod migrated_tests {
             )
             .run();
         let definitions = handle
-            .get_tool_defs(Some("find the shared portable tool".to_string()))
+            .tool_defs(Some("find the shared portable tool".to_string()))
             .await
             .unwrap();
 
@@ -603,7 +600,7 @@ mod migrated_tests {
         assert_eq!(registered_name, "portable_runtime_name");
         assert_eq!(
             toolset
-                .get_tool_definitions()
+                .tool_definitions()
                 .iter()
                 .map(|definition| definition.name.as_str())
                 .collect::<Vec<_>>(),
@@ -647,7 +644,7 @@ mod migrated_tests {
         toolset.add_dynamic_tool(named_tool("beta", "beta"));
         toolset.add_dynamic_tool(named_tool("alpha", "second alpha"));
 
-        let defs = toolset.get_tool_definitions();
+        let defs = toolset.tool_definitions();
         assert_eq!(
             defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
             vec!["alpha", "beta"],
@@ -678,7 +675,7 @@ mod migrated_tests {
 
         base.add_tools(incoming);
 
-        let defs = base.get_tool_definitions();
+        let defs = base.tool_definitions();
         assert_eq!(
             defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
             vec!["alpha", "beta", "gamma"],

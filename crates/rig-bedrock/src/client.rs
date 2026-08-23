@@ -77,7 +77,7 @@ impl Client {
         }
     }
 
-    pub async fn get_inner(&self) -> &aws_sdk_bedrockruntime::Client {
+    pub async fn inner(&self) -> &aws_sdk_bedrockruntime::Client {
         self.aws_client
             .get_or_init(|| async {
                 let config = if let Some(profile_name) = &self.profile_name {
