@@ -37,10 +37,7 @@ pub(crate) fn token_expired(expires_at: Option<i64>, skew_seconds: i64) -> bool 
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or_default();
 
-    match expires_at {
-        Some(exp) => now >= exp - skew_seconds,
-        None => true,
-    }
+    expires_at.is_none_or(|exp| now >= exp - skew_seconds)
 }
 
 /// Reads a JSON record from `path`, returning `T::default()` when no path is

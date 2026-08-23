@@ -1642,14 +1642,10 @@ pub mod gemini_api_types {
                 f,
                 "Prompt token count: {}\nCached content token count: {}\nCandidates token count: {}\nTotal token count: {}",
                 self.prompt_token_count,
-                match self.cached_content_token_count {
-                    Some(count) => count.to_string(),
-                    None => "n/a".to_string(),
-                },
-                match self.candidates_token_count {
-                    Some(count) => count.to_string(),
-                    None => "n/a".to_string(),
-                },
+                self.cached_content_token_count
+                    .map_or_else(|| "n/a".to_string(), |count| count.to_string()),
+                self.candidates_token_count
+                    .map_or_else(|| "n/a".to_string(), |count| count.to_string()),
                 self.total_token_count
             )
         }
@@ -2068,11 +2064,10 @@ pub mod gemini_api_types {
     /// schema references.
     pub fn flatten_schema(mut schema: Value) -> Result<Value, CompletionError> {
         // extracting $defs if they exist
-        let defs = if let Some(obj) = schema.as_object() {
-            obj.get("$defs").or_else(|| obj.get("definitions")).cloned()
-        } else {
-            None
-        };
+        let defs = schema
+            .as_object()
+            .and_then(|obj| obj.get("$defs").or_else(|| obj.get("definitions")))
+            .cloned();
 
         let Some(defs_value) = defs else {
             return Ok(schema);

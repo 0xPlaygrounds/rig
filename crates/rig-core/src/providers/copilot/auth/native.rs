@@ -343,10 +343,7 @@ impl ApiKeyRecord {
             return false;
         }
 
-        match bootstrap_token {
-            Some(bootstrap_token) => self.matches_bootstrap_token(bootstrap_token),
-            None => true,
-        }
+        bootstrap_token.is_none_or(|bootstrap_token| self.matches_bootstrap_token(bootstrap_token))
     }
 
     fn can_reuse_for_bootstrap_token(&self, bootstrap_token: &str) -> bool {

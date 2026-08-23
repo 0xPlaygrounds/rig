@@ -55,12 +55,9 @@ where
             role: Some(Role::Model),
         });
 
-        let mime_type =
-            if let Some(mime) = mime_guess::from_path(Path::new(&request.filename)).first() {
-                mime.to_string()
-            } else {
-                "audio/mpeg".to_string()
-            };
+        let mime_type = mime_guess::from_path(Path::new(&request.filename))
+            .first()
+            .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
 
         let request = GenerateContentRequest {
             contents: vec![Content {

@@ -40,10 +40,10 @@ pub struct MilvusVectorStore {
 /// [`rig_core::http_client::Error`]: a status-carrying failure keeps its status
 /// as `InvalidStatusCode`, a response-less one becomes `Instance`.
 fn from_reqwest(err: reqwest::Error) -> rig_core::http_client::Error {
-    match err.status() {
-        Some(status) => rig_core::http_client::Error::InvalidStatusCode(status),
-        None => rig_core::http_client::Error::instance(err),
-    }
+    err.status().map_or_else(
+        || rig_core::http_client::Error::instance(err),
+        rig_core::http_client::Error::InvalidStatusCode,
+    )
 }
 
 #[derive(Debug, Serialize, Deserialize)]

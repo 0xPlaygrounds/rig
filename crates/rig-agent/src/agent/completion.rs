@@ -270,10 +270,11 @@ impl AgentConfig {
         self.temperature = spec.temperature;
         self.tool_choice = spec.tool_choice.clone();
         self.max_turns = spec.effective_max_turns();
-        self.output_schema = match &spec.output_schema {
-            Some(value) => Some(schemars::Schema::try_from(value.clone())?),
-            None => None,
-        };
+        self.output_schema = spec
+            .output_schema
+            .clone()
+            .map(schemars::Schema::try_from)
+            .transpose()?;
         self.output_mode = spec.output_mode.clone();
         Ok(())
     }

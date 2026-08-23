@@ -406,9 +406,7 @@ impl UnknownPayload {
 impl std::fmt::Debug for UnknownPayload {
     /// Structural metadata only — never the payload.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let bytes = serde_json::to_vec(&self.0)
-            .map(|json| json.len())
-            .unwrap_or(0);
+        let bytes = serde_json::to_vec(&self.0).map_or(0, |json| json.len());
         write!(f, "UnknownPayload({bytes} bytes redacted)")
     }
 }

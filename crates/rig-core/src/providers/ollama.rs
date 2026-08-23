@@ -555,10 +555,10 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         crate::providers::internal::resolve_empty_tool_result_names(&mut partial_history);
 
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
+        let mut full_history: Vec<Message> = req
+            .preamble
+            .as_deref()
+            .map_or_else(Vec::new, |preamble| vec![Message::system(preamble)]);
 
         // Convert and extend the rest of the history
         full_history.extend(

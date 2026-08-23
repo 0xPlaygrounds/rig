@@ -457,17 +457,13 @@ impl RawChoiceAccumulator {
 
     /// Open the text block for the message item a text/refusal delta belongs
     /// to, when the wire identifies it and it differs from the open one.
-    fn start_text_item(
-        &mut self,
-        item_id: &Option<String>,
-        immediate: &mut Vec<StreamingRawChoice>,
-    ) {
+    fn start_text_item(&mut self, item_id: Option<&str>, immediate: &mut Vec<StreamingRawChoice>) {
         if let Some(item_id) = item_id
             && self.current_text_item.as_deref() != Some(item_id)
         {
-            self.current_text_item = Some(item_id.clone());
+            self.current_text_item = Some(item_id.to_string());
             immediate.push(streaming::RawStreamingChoice::TextStart {
-                id: crate::streaming::StreamPartId::wire(item_id.clone()),
+                id: crate::streaming::StreamPartId::wire(item_id.to_string()),
                 additional_params: None,
             });
         }
@@ -561,7 +557,7 @@ impl RawChoiceAccumulator {
             // (re)open the item's text block before their fragment.
             ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
             | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
-                self.start_text_item(&outer_item_id, &mut immediate);
+                self.start_text_item(outer_item_id.as_deref(), &mut immediate);
                 immediate.push(streaming::RawStreamingChoice::Message(delta));
             }
             // Summary and raw-reasoning deltas differ only in which wire

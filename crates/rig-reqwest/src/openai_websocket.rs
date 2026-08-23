@@ -388,10 +388,7 @@ where
         }
 
         loop {
-            let message = match self.read_next_message().await {
-                Ok(message) => message,
-                Err(error) => return Err(error),
-            };
+            let message = self.read_next_message().await?;
 
             let Some(message) = message else {
                 self.mark_closed();
