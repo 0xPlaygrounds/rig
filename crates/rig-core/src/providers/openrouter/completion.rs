@@ -381,7 +381,12 @@ impl ProviderPreferences {
     ///     .order(["anthropic", "openai"]);
     /// ```
     pub fn order(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.order = Some(providers.into_iter().map(|p| p.into()).collect());
+        self.order = Some(
+            providers
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        );
         self
     }
 
@@ -397,7 +402,12 @@ impl ProviderPreferences {
     ///     .allow_fallbacks(false);
     /// ```
     pub fn only(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.only = Some(providers.into_iter().map(|p| p.into()).collect());
+        self.only = Some(
+            providers
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        );
         self
     }
 
@@ -412,7 +422,12 @@ impl ProviderPreferences {
     ///     .ignore(["deepinfra"]);
     /// ```
     pub fn ignore(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.ignore = Some(providers.into_iter().map(|p| p.into()).collect());
+        self.ignore = Some(
+            providers
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        );
         self
     }
 
@@ -926,7 +941,7 @@ fn is_openrouter_response_image(image: &message::Image) -> bool {
         .is_some_and(|params| {
             params
                 .get(OPENROUTER_RESPONSE_ONLY_KEY)
-                .and_then(|value| value.as_bool())
+                .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false)
                 && params
                     .get(OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY)
@@ -1008,10 +1023,10 @@ fn user_content_to_openai(
                 },
             }),
             DocumentSourceKind::Base64(data) => {
-                let mime = media_type
-                    .as_ref()
-                    .map(|m| m.to_mime_type())
-                    .unwrap_or("application/pdf");
+                let mime = media_type.as_ref().map_or(
+                    "application/pdf",
+                    crate::completion::message::MimeType::to_mime_type,
+                );
                 let data_uri = format!("data:{mime};base64,{data}");
 
                 Ok(UserContent::File {
@@ -1227,13 +1242,10 @@ fn assistant_contents_to_messages(
                     }
                 } else if let Some(signature) = &tool_call.signature {
                     reasoning_details.push(ReasoningDetails::Encrypted {
-                        id: Some(
-                            tool_call
-                                .provider
-                                .as_ref()
-                                .map(|provider| provider.call_id.clone())
-                                .unwrap_or_else(|| tool_call.id.as_str().to_owned()),
-                        ),
+                        id: Some(tool_call.provider.as_ref().map_or_else(
+                            || tool_call.id.as_str().to_owned(),
+                            |provider| provider.call_id.clone(),
+                        )),
                         format: None,
                         index: None,
                         data: signature.clone(),
@@ -1607,13 +1619,13 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
         // key would restate — i.e. replace — the open text part. Distinct
         // content classes get distinct minted keys.
         let provider_id = id.and_then(crate::streaming::WireId::new);
-        let key = provider_id
-            .as_ref()
-            .map(|id| crate::streaming::StreamPartId::wire(id.as_str()))
-            .unwrap_or(crate::streaming::StreamPartId::minted(
+        let key = provider_id.as_ref().map_or(
+            crate::streaming::StreamPartId::minted(
                 crate::streaming::MintKind::EncryptedReasoning,
                 0,
-            ));
+            ),
+            |id| crate::streaming::StreamPartId::wire(id.as_str()),
+        );
         Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
     }
 

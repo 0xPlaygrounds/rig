@@ -158,7 +158,7 @@ impl Filter {
     pub fn in_values(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
         Self(format!("{key} in [{values_str}]"))
@@ -168,7 +168,7 @@ impl Filter {
     pub fn not_in(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
         Self(format!("{key} not in [{values_str}]"))
@@ -188,7 +188,7 @@ impl Filter {
     pub fn array_contains_all(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
         Self(format!("array_contains_all({key}, [{values_str}])"))
@@ -198,7 +198,7 @@ impl Filter {
     pub fn array_contains_any(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
         Self(format!("array_contains_any({key}, [{values_str}])"))

@@ -1878,7 +1878,7 @@ mod tests {
         assert_eq!(restored.last_entry_of("absent"), None);
 
         // A cloned ("forked") run carries the entries verbatim.
-        assert_eq!(restored.clone().entries(), run.entries());
+        assert_eq!(restored.entries(), run.entries());
     }
 
     #[test]

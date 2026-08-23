@@ -1447,8 +1447,7 @@ pub mod interactions_api_types {
                     let index = source_order
                         .iter()
                         .position(|source| source == &citation.source)
-                        .map(|idx| idx + 1)
-                        .unwrap_or(0);
+                        .map_or(0, |idx| idx + 1);
                     (
                         citation.start_index,
                         citation.end_index,

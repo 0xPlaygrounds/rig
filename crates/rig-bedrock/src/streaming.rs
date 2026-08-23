@@ -1072,7 +1072,7 @@ mod tests {
             message_stop_event(aws_bedrock::StopReason::ToolUse),
         ]);
 
-        assert!(items.iter().all(|item| item.is_ok()));
+        assert!(items.iter().all(std::result::Result::is_ok));
         // The terminal reports tool use with the calls actually delivered.
         assert_eq!(state.final_stop_reason, Some(StopReason::ToolUse));
         assert_eq!(
@@ -1193,7 +1193,7 @@ mod tests {
         ]);
 
         assert!(
-            items.iter().all(|item| item.is_ok()),
+            items.iter().all(std::result::Result::is_ok),
             "truncation must not surface as an error item"
         );
         assert_eq!(state.final_stop_reason, Some(StopReason::MaxTokens));
@@ -1218,7 +1218,7 @@ mod tests {
         ]);
 
         assert!(
-            items.iter().all(|item| item.is_ok()),
+            items.iter().all(std::result::Result::is_ok),
             "a truncated partial-JSON block must not yield an error item"
         );
         assert_eq!(state.final_stop_reason, Some(StopReason::MaxTokens));

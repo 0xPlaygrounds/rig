@@ -1773,12 +1773,7 @@ mod tests {
             self.seen.lock().unwrap().len()
         }
         fn last_demoted_count(&self) -> usize {
-            self.seen
-                .lock()
-                .unwrap()
-                .last()
-                .map(|(_, m)| m.len())
-                .unwrap_or(0)
+            self.seen.lock().unwrap().last().map_or(0, |(_, m)| m.len())
         }
     }
 
@@ -2500,7 +2495,7 @@ mod tests {
                     .lock()
                     .unwrap()
                     .push((evicted.len(), carry_over.is_some()));
-                let prev = carry_over.map(|s| s.as_str()).unwrap_or("");
+                let prev = carry_over.map_or("", super::TextSummary::as_str);
                 Ok(TextSummary(format!("{prev}|{}", evicted.len())))
             })
         }

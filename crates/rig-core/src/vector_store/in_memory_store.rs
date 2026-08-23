@@ -292,8 +292,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             .values()
             .next()
             .and_then(|(_, embeddings)| embeddings.iter().next())
-            .map(|e| e.vec.len())
-            .unwrap_or(0);
+            .map_or(0, |e| e.vec.len());
 
         if first_embedding == 0 {
             return;

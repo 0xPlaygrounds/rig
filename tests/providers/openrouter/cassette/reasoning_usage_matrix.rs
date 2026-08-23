@@ -749,8 +749,7 @@ async fn blocking_cost_and_cache_details_still_map() {
                 usage
                     .prompt_tokens_details
                     .as_ref()
-                    .map(|d| d.cached_tokens as u64)
-                    .unwrap_or(0)
+                    .map_or(0, |d| d.cached_tokens as u64)
             );
             // These two do carry weight: the new field must not have displaced
             // the cost mapping, and the reasoning share must still arrive.

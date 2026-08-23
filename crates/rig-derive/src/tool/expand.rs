@@ -259,7 +259,7 @@ pub(crate) fn expand_rig_tool(
     let explicit_required: Option<Vec<String>> = args
         .required
         .as_ref()
-        .map(|list| list.iter().map(|ident| ident.to_string()).collect());
+        .map(|list| list.iter().map(std::string::ToString::to_string).collect());
 
     let field_tokens: Vec<TokenStream> = model_params
         .iter()

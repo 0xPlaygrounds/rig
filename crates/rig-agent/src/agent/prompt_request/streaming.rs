@@ -440,7 +440,9 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     if let Some(usage) = &runner.error_usage {
-        *usage.lock().unwrap_or_else(|error| error.into_inner()) = run.usage();
+        *usage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = run.usage();
     }
 }
 
@@ -4007,7 +4009,9 @@ mod migrated_tests {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                     saw_final_response = true;
                     final_response_text = Some(res.output().to_owned());
-                    final_history = res.messages().map(|history| history.to_vec());
+                    final_history = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Ok(_) => {}
@@ -7487,7 +7491,9 @@ mod migrated_tests {
                     response_text.push_str(&text.text);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    final_history = res.messages().map(|h| h.to_vec());
+                    final_history = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Err(e) => {
@@ -7541,7 +7547,9 @@ mod migrated_tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    history_in_final = res.messages().map(|h| h.to_vec());
+                    history_in_final = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Ok(_) => {}
@@ -7579,7 +7587,9 @@ mod migrated_tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    history_in_final = res.messages().map(|h| h.to_vec());
+                    history_in_final = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Ok(_) => {}

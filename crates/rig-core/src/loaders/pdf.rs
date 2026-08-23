@@ -114,7 +114,7 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// ```
     pub fn load(self) -> PdfFileLoader<'a, Result<Document, PdfLoaderError>> {
         PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load())),
+            iterator: Box::new(self.iterator.map(Loadable::load)),
         }
     }
 
@@ -140,7 +140,7 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// ```
     pub fn load_with_path(self) -> PdfFileLoader<'a, Result<(PathBuf, Document), PdfLoaderError>> {
         PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load_with_path())),
+            iterator: Box::new(self.iterator.map(Loadable::load_with_path)),
         }
     }
 }

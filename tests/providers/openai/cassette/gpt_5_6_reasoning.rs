@@ -374,7 +374,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                             ..
                         } => {
                             reasoning_blocks.push(AssistantContent::Reasoning(reasoning_block(
-                                provider_id.map(|id| id.into_string()),
+                                provider_id.map(rig::streaming::WireId::into_string),
                                 content,
                             )));
                         }

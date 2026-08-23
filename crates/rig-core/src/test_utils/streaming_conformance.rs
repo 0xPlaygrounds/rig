@@ -218,7 +218,7 @@ pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
             }
             None => true,
         })
-        .map(|entry| entry.to_string())
+        .map(std::string::ToString::to_string)
         .collect()
 }
 
@@ -593,7 +593,7 @@ impl DrainedStream {
 
     /// Index of the first `Err` item, if any.
     fn first_error_index(&self) -> Option<usize> {
-        self.items.iter().position(|item| item.is_err())
+        self.items.iter().position(std::result::Result::is_err)
     }
 
     /// Text blocks in the aggregated choice, in order.

@@ -638,8 +638,7 @@ fn assert_identical(provider: &str, bodies: &[String]) {
             .char_indices()
             .zip(body.chars())
             .find(|((_, a), b)| a != b)
-            .map(|((index, _), _)| index)
-            .unwrap_or_else(|| first.len().min(body.len()));
+            .map_or_else(|| first.len().min(body.len()), |((index, _), _)| index);
         let window = |text: &str| {
             let start = diverges_at.saturating_sub(60);
             let end = (diverges_at + 120).min(text.len());

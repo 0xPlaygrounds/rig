@@ -278,15 +278,15 @@ async fn long_text_stream_preserves_order() {
             let mut last_index = 0;
             for number in 1..=12 {
                 let needle = format!("{number}.");
-                let position = run.text[last_index..]
-                    .find(&needle)
-                    .map(|offset| last_index + offset)
-                    .unwrap_or_else(|| {
+                let position = run.text[last_index..].find(&needle).map_or_else(
+                    || {
                         panic!(
                             "list item {number} missing or out of order in {:?}",
                             run.text
                         )
-                    });
+                    },
+                    |offset| last_index + offset,
+                );
                 last_index = position;
             }
         },

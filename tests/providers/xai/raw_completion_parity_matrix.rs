@@ -63,13 +63,11 @@ fn recorded_json(scenario: &str) -> Vec<(Value, Value)> {
 fn recorded_request_id(scenario: &str, index: usize) -> String {
     recorded_response_headers(scenario)[index]
         .iter()
-        .find(|(name, _)| name == "x-request-id")
-        .map(|(_, value)| value.clone())
-        .unwrap_or_else(|| {
+        .find(|(name, _)| name == "x-request-id").map_or_else(|| {
             panic!(
                 "interaction {index} of {scenario} must carry the x-request-id header xAI contracts"
             )
-        })
+        }, |(_, value)| value.clone())
 }
 
 fn recorded_message_id(body: &Value) -> &str {

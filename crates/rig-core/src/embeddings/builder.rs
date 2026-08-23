@@ -81,7 +81,7 @@ where
     pub fn documents(self, documents: impl IntoIterator<Item = T>) -> Result<Self, EmbedError> {
         let builder = documents
             .into_iter()
-            .try_fold(self, |builder, doc| builder.document(doc))?;
+            .try_fold(self, EmbeddingsBuilder::document)?;
 
         Ok(builder)
     }

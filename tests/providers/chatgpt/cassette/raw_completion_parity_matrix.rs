@@ -107,10 +107,10 @@ fn recorded_terminal_responses(scenario: &str) -> Vec<Value> {
                 .find(|frame| {
                     frame.get("type").and_then(Value::as_str) == Some("response.completed")
                 })
-                .map(|frame| frame["response"].clone())
-                .unwrap_or_else(|| {
-                    panic!("{scenario}: each interaction must end with response.completed")
-                });
+                .map_or_else(
+                    || panic!("{scenario}: each interaction must end with response.completed"),
+                    |frame| frame["response"].clone(),
+                );
             assert!(
                 terminal.pointer("/usage/total_tokens").is_some(),
                 "{scenario}: the terminal envelope must report usage"

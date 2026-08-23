@@ -37,17 +37,16 @@ fn parse_api<T: DeserializeOwned>(text: &str, what: &str) -> Result<T, Vectorize
     let api_response: ApiResponse<T> = serde_json::from_str(text)?;
 
     if !api_response.success {
-        let error = api_response
-            .errors
-            .first()
-            .map(|e| VectorizeError::ApiError {
-                code: e.code,
-                message: e.message.clone(),
-            })
-            .unwrap_or_else(|| VectorizeError::ApiError {
+        let error = api_response.errors.first().map_or_else(
+            || VectorizeError::ApiError {
                 code: 0,
                 message: "Unknown error".to_string(),
-            });
+            },
+            |e| VectorizeError::ApiError {
+                code: e.code,
+                message: e.message.clone(),
+            },
+        );
         return Err(error);
     }
 

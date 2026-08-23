@@ -370,7 +370,7 @@ async fn gemma_family_has_no_tool_calling_in_its_template() {
     assert_eq!(
         request["tools"]
             .as_array()
-            .map(|tools| tools.len())
+            .map(std::vec::Vec::len)
             .unwrap_or_default(),
         1,
         "the tool definition must reach the wire: {request}"

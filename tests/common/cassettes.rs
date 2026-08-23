@@ -2171,8 +2171,7 @@ impl CassetteScrubber {
                 }
 
                 self.scrub_event_stream_body(bytes)
-                    .map(|bytes| BASE64_STANDARD.encode(bytes))
-                    .unwrap_or_else(|| body.to_string())
+                    .map_or_else(|| body.to_string(), |bytes| BASE64_STANDARD.encode(bytes))
             }
         }
     }
@@ -2217,12 +2216,10 @@ impl CassetteScrubber {
         for line in body.split_inclusive('\n') {
             let (line_without_newline, newline) = line
                 .strip_suffix('\n')
-                .map(|line| (line, "\n"))
-                .unwrap_or((line, ""));
+                .map_or((line, ""), |line| (line, "\n"));
             let (line_without_cr, cr) = line_without_newline
                 .strip_suffix('\r')
-                .map(|line| (line, "\r"))
-                .unwrap_or((line_without_newline, ""));
+                .map_or((line_without_newline, ""), |line| (line, "\r"));
             let trimmed = line_without_cr.trim_start();
             let indentation_len = line_without_cr.len() - trimmed.len();
 
@@ -2253,7 +2250,7 @@ impl CassetteScrubber {
     }
 
     fn scrub_json_value(&mut self, key: Option<&str>, value: &mut Value) {
-        let key_lower = key.map(|key| key.to_ascii_lowercase());
+        let key_lower = key.map(str::to_ascii_lowercase);
 
         match value {
             Value::Object(map) => {

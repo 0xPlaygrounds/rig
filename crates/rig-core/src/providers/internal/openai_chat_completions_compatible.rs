@@ -334,8 +334,7 @@ impl CompatibleToolCallChunk {
             && self
                 .arguments
                 .as_ref()
-                .map(|arguments| arguments.is_empty())
-                .unwrap_or(true)
+                .is_none_or(std::string::String::is_empty)
     }
 
     fn is_complete_single_chunk(&self) -> bool {

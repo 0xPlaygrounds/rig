@@ -32,7 +32,7 @@ impl VectorizeFilter {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.as_object().is_none_or(|obj| obj.is_empty())
+        self.0.as_object().is_none_or(serde_json::Map::is_empty)
     }
 }
 

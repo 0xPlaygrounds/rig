@@ -864,7 +864,7 @@ where
                 let usage = response
                     .usage
                     .as_ref()
-                    .map(|usage| usage.to_normalized())
+                    .map(super::openai::completion::Usage::to_normalized)
                     .unwrap_or_default();
                 span.record_token_usage(&usage);
             },
@@ -1154,7 +1154,7 @@ impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
         let usage = self
             .usage
             .as_ref()
-            .map(|usage| usage.to_normalized())
+            .map(super::openai::completion::Usage::to_normalized)
             .unwrap_or_default();
 
         let embeddings = self

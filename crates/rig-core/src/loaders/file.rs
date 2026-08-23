@@ -113,7 +113,7 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     /// ```
     pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
         FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read())),
+            iterator: Box::new(self.iterator.map(Readable::read)),
         }
     }
     /// Reads the contents of the files within the iterator returned by [FileLoader::with_glob] or
@@ -138,7 +138,7 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     /// ```
     pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
         FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read_with_path())),
+            iterator: Box::new(self.iterator.map(Readable::read_with_path)),
         }
     }
 }

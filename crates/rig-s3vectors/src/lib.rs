@@ -305,8 +305,7 @@ fn document_to_json_value(value: &Document) -> Value {
         Document::Bool(b) => Value::Bool(*b),
         Document::Number(n) => match n {
             aws_smithy_types::Number::Float(f) => serde_json::Number::from_f64(*f)
-                .map(Value::Number)
-                .unwrap_or_else(|| Value::String(f.to_string())),
+                .map_or_else(|| Value::String(f.to_string()), Value::Number),
             aws_smithy_types::Number::NegInt(i) => {
                 serde_json::Value::Number(serde_json::Number::from(*i))
             }

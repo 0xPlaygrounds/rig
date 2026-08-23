@@ -17,7 +17,7 @@ pub struct SearchResults<'a>(pub &'a Vec<SearchResult>);
 
 impl<'a> Display for SearchResults<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let width = term_size::dimensions().map(|(w, _)| w).unwrap_or(150);
+        let width = term_size::dimensions().map_or(150, |(w, _)| w);
         let title_width = 40;
         let id_width = 10;
         let description_width = width - title_width - id_width - 2; // 2 for spaces

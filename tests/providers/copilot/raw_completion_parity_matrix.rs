@@ -109,13 +109,15 @@ fn recorded_request_id(scenario: &str, index: usize) -> String {
     interaction
         .iter()
         .find(|(name, _)| name == REQUEST_ID_HEADER)
-        .map(|(_, value)| value.clone())
-        .unwrap_or_else(|| {
-            panic!(
-                "{scenario}: interaction {index} must have recorded an `{REQUEST_ID_HEADER}` \
+        .map_or_else(
+            || {
+                panic!(
+                    "{scenario}: interaction {index} must have recorded an `{REQUEST_ID_HEADER}` \
                  response header — without it this cell proves nothing about the transport id"
-            )
-        })
+                )
+            },
+            |(_, value)| value.clone(),
+        )
 }
 
 /// Replay reads the placeholdered header back, so the id compares exactly; a

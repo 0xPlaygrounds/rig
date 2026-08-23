@@ -82,9 +82,8 @@ fn main() -> io::Result<()> {
         env::var_os("OUT_DIR")
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "OUT_DIR is not set"))?,
     );
-    let model_dir = env::var_os("MODEL_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("model"));
+    let model_dir =
+        env::var_os("MODEL_DIR").map_or_else(|| manifest_dir.join("model"), PathBuf::from);
     let present_artifacts = ARTIFACTS
         .iter()
         .filter(|artifact| model_dir.join(artifact.name).is_file())

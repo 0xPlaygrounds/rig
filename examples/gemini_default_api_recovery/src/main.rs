@@ -184,7 +184,7 @@ impl WorkspaceStreamObservation {
     fn final_response_text(&self) -> Option<&str> {
         self.final_response
             .as_ref()
-            .map(|response| response.output())
+            .map(rig::run::PromptResponse::output)
     }
 
     fn diagnostic_summary(&self) -> String {
@@ -203,7 +203,7 @@ impl WorkspaceStreamObservation {
             self.final_response_text(),
             self.final_response
                 .as_ref()
-                .map(|response| response.usage())
+                .map(rig::run::PromptResponse::usage)
         )
     }
 }

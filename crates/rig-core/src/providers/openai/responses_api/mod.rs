@@ -990,15 +990,13 @@ impl From<&ResponsesUsage> for crate::completion::Usage {
             cached_input_tokens: usage
                 .input_tokens_details
                 .as_ref()
-                .map(|details| details.cached_tokens)
-                .unwrap_or(0),
+                .map_or(0, |details| details.cached_tokens),
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
             reasoning_tokens: usage
                 .output_tokens_details
                 .as_ref()
-                .map(|details| details.reasoning_tokens)
-                .unwrap_or(0),
+                .map_or(0, |details| details.reasoning_tokens),
         }
     }
 }

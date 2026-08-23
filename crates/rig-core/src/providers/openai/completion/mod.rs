@@ -1050,7 +1050,7 @@ pub fn assistant_content_to_messages(
         name: None,
         tool_calls: tool_calls
             .into_iter()
-            .map(|tool_call| tool_call.into())
+            .map(std::convert::Into::into)
             .collect::<Vec<_>>(),
         reasoning_details: Vec::new(),
         images: Vec::new(),
@@ -1104,7 +1104,7 @@ impl TryFrom<Message> for message::Message {
     fn try_from(message: Message) -> Result<Self, Self::Error> {
         Ok(match message {
             Message::User { content, .. } => message::Message::User {
-                content: content.into_iter().map(|content| content.into()).collect(),
+                content: content.into_iter().map(std::convert::Into::into).collect(),
             },
             Message::Assistant {
                 content,
@@ -1597,14 +1597,12 @@ impl Usage {
             self.total_tokens as u64,
             self.prompt_tokens_details
                 .as_ref()
-                .map(|d| d.cached_tokens as u64)
-                .unwrap_or(0),
+                .map_or(0, |d| d.cached_tokens as u64),
         );
         usage.reasoning_tokens = self
             .completion_tokens_details
             .as_ref()
-            .map(|d| d.reasoning_tokens as u64)
-            .unwrap_or(0);
+            .map_or(0, |d| d.reasoning_tokens as u64);
         usage
     }
 }

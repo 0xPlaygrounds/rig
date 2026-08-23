@@ -29,7 +29,7 @@ impl RecordBatchDeserializer for Vec<RecordBatch> {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
         Ok(self
             .iter()
-            .map(|record_batch| record_batch.deserialize())
+            .map(RecordBatchDeserializer::deserialize)
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .flatten()

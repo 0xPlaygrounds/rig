@@ -495,9 +495,10 @@ impl RawChoiceAccumulator {
         // could collide with an assembly the bridge minted the same value
         // for. The per-slot map above, not the mint, is what keeps the key
         // stable across the slot's frames.
-        let key = item_id
-            .map(crate::streaming::StreamPartId::wire)
-            .unwrap_or_else(|| self.tool_slots.minted_ids().mint());
+        let key = item_id.map_or_else(
+            || self.tool_slots.minted_ids().mint(),
+            crate::streaming::StreamPartId::wire,
+        );
         self.reasoning_slots.insert(output_index, key.clone());
         key
     }
@@ -985,10 +986,10 @@ pub async fn completion_response_from_raw_choices(
     }
 
     let terminal = stream.response.clone();
-    let usage = terminal
-        .as_ref()
-        .map(|terminal| terminal.usage)
-        .unwrap_or_else(|| usage_from_raw_response(raw_response));
+    let usage = terminal.as_ref().map_or_else(
+        || usage_from_raw_response(raw_response),
+        |terminal| terminal.usage,
+    );
     let message_id = stream
         .message_id
         .clone()
@@ -1240,8 +1241,7 @@ impl WireAdapter for ResponsesAdapter {
         let cached_tokens = final_usage
             .input_tokens_details
             .as_ref()
-            .map(|d| d.cached_tokens)
-            .unwrap_or(0);
+            .map_or(0, |d| d.cached_tokens);
         span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
     }
 

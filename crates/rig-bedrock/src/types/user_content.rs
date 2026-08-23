@@ -22,7 +22,7 @@ impl TryFrom<ContentBlock> for RigUserContent {
                 let tool_result_contents = tool_result
                     .content
                     .into_iter()
-                    .map(|tool| tool.try_into())
+                    .map(std::convert::TryInto::try_into)
                     .collect::<Result<Vec<RigToolResultContent>, _>>()?
                     .into_iter()
                     .map(|rt| rt.0)

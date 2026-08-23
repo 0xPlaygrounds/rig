@@ -1069,7 +1069,11 @@ impl AgentRunner {
         self.error_usage = Some(usage.clone());
         let result = self.run().await;
         let observed = result.as_ref().map_or_else(
-            |_| *usage.lock().unwrap_or_else(|error| error.into_inner()),
+            |_| {
+                *usage
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+            },
             |response| response.usage,
         );
         (result, observed)
@@ -8178,7 +8182,10 @@ mod migrated_tests {
             // last and therefore wins conflicts.
             let params = req.additional_params.as_ref().expect("additional_params");
             assert_eq!(params.get("runner").and_then(|v| v.as_str()), Some("keep"));
-            assert_eq!(params.get("injected").and_then(|v| v.as_bool()), Some(true));
+            assert_eq!(
+                params.get("injected").and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
             assert!(params.get("baseline").is_none());
         }
 

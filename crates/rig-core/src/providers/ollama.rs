@@ -1370,7 +1370,7 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                     name: None,
                     tool_calls: tool_calls
                         .into_iter()
-                        .map(|tool_call| tool_call.into())
+                        .map(std::convert::Into::into)
                         .collect::<Vec<_>>(),
                 }])
             }

@@ -25,7 +25,7 @@ impl AwsCompletionRequest {
         self.inner
             .additional_params
             .clone()
-            .map(|params| params.into())
+            .map(std::convert::Into::into)
             .map(|doc: AwsDocument| doc.0)
     }
 
@@ -181,7 +181,7 @@ impl AwsCompletionRequest {
                 .inner
                 .documents
                 .iter()
-                .map(|doc| doc.to_string())
+                .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(" | ");
 

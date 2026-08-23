@@ -105,7 +105,7 @@ pub async fn chat(message: String) -> Result<String, JsValue> {
     }
 
     let mut state = CHAT_STATE
-        .with(|slot| slot.take())
+        .with(std::cell::RefCell::take)
         .ok_or_else(|| js_error(BrowserModelError::NotInitialized))?;
     trim_history(&mut state.history);
     let result = state.agent.chat(message, &mut state.history).await;

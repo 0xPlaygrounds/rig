@@ -66,7 +66,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
                 let assistant_content = message
                     .content
                     .into_iter()
-                    .map(|c| c.try_into())
+                    .map(std::convert::TryInto::try_into)
                     .collect::<Result<Vec<RigAssistantContent>, _>>()?
                     .into_iter()
                     .map(|rig_assistant_content| rig_assistant_content.0)
@@ -80,7 +80,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
                 let user_content = message
                     .content
                     .into_iter()
-                    .map(|c| c.try_into())
+                    .map(std::convert::TryInto::try_into)
                     .collect::<Result<Vec<RigUserContent>, _>>()?
                     .into_iter()
                     .map(|user_content| user_content.0)

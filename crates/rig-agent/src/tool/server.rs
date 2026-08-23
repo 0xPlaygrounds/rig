@@ -1192,10 +1192,10 @@ mod tests {
                 let result_value = value.value;
                 context.insert_result(result_value);
             }
-            Ok(context
-                .get::<SessionId>()
-                .map(|session| format!("session:{}", session.0))
-                .unwrap_or_else(|| "no session".to_string()))
+            Ok(context.get::<SessionId>().map_or_else(
+                || "no session".to_string(),
+                |session| format!("session:{}", session.0),
+            ))
         }
     }
 

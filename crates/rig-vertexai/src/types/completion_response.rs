@@ -28,8 +28,7 @@ pub fn map_finish_reason(
     // `Debug` would silently drop the underscores.
     let wire_name = reason
         .name()
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| reason.to_string());
+        .map_or_else(|| reason.to_string(), ToOwned::to_owned);
 
     map_google_finish_reason(&wire_name)
 }
@@ -62,11 +61,10 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 .then(|| BASE64.encode(&part.thought_signature));
 
             if let Some(function_call) = part.function_call() {
-                let args_json = function_call
-                    .args
-                    .as_ref()
-                    .map(|s| serde_json::Value::Object(s.clone()))
-                    .unwrap_or_else(|| serde_json::json!({}));
+                let args_json = function_call.args.as_ref().map_or_else(
+                    || serde_json::json!({}),
+                    |s| serde_json::Value::Object(s.clone()),
+                );
 
                 // Vertex function calls carry no identifier: mint the
                 // correlation handle — never name-as-id, which collides two

@@ -76,7 +76,7 @@ pub(crate) async fn build_prepared_completion_request(
         chat_history
             .iter()
             .rev()
-            .find_map(|message| message.rag_text())
+            .find_map(rig_core::completion::Message::rag_text)
     });
 
     let mut tool_snapshot = tool_server_handle

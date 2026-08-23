@@ -15,7 +15,7 @@ async fn context_smoke() {
         .copied()
         .fold(
             client.agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
-            |builder, doc| builder.context(doc),
+            rig::AgentBuilder::context,
         )
         .build();
 

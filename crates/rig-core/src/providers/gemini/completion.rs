@@ -774,11 +774,10 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             .content
             .as_ref()
             .ok_or_else(|| {
-                let reason = candidate
-                    .finish_reason
-                    .as_ref()
-                    .map(|r| format!("finish_reason={r:?}"))
-                    .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
+                let reason = candidate.finish_reason.as_ref().map_or_else(
+                    || "finish_reason=<unknown>".to_string(),
+                    |r| format!("finish_reason={r:?}"),
+                );
                 let message = candidate
                     .finish_message
                     .as_deref()
@@ -991,7 +990,7 @@ pub mod gemini_api_types {
                 message::Message::User { content } => Content {
                     parts: content
                         .into_iter()
-                        .map(|c| c.try_into())
+                        .map(std::convert::TryInto::try_into)
                         .collect::<Result<Vec<_>, _>>()?,
                     role: Some(Role::User),
                 },
@@ -999,7 +998,7 @@ pub mod gemini_api_types {
                     role: Some(Role::Model),
                     parts: content
                         .into_iter()
-                        .map(|content| content.try_into())
+                        .map(std::convert::TryInto::try_into)
                         .collect::<Result<Vec<_>, _>>()?,
                 },
             })
@@ -2183,7 +2182,7 @@ pub mod gemini_api_types {
 
     fn schema_is_nullable(obj: &serde_json::Map<String, Value>) -> bool {
         obj.get("nullable")
-            .and_then(|v| v.as_bool())
+            .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
             || obj
                 .get("type")
@@ -2358,11 +2357,11 @@ pub mod gemini_api_types {
                         }),
                     max_items: obj
                         .get("maxItems")
-                        .and_then(|v| v.as_i64())
+                        .and_then(serde_json::Value::as_i64)
                         .map(|v| v as i32),
                     min_items: obj
                         .get("minItems")
-                        .and_then(|v| v.as_i64())
+                        .and_then(serde_json::Value::as_i64)
                         .map(|v| v as i32),
                     properties: props_source
                         .get("properties")

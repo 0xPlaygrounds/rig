@@ -1443,7 +1443,7 @@ impl TryFrom<Message> for message::Message {
                                 // and never carries the tool name; this
                                 // conversion is lossy for name-keyed wires.
                                 "",
-                                content.into_iter().map(|content| content.into()).collect(),
+                                content.into_iter().map(std::convert::Into::into).collect(),
                             ),
                             Content::Image { source, .. } => match source {
                                 ImageSource::Base64 { data, media_type } => {
@@ -1522,7 +1522,7 @@ impl TryFrom<Message> for message::Message {
                 content: message
                     .content
                     .into_iter()
-                    .map(|content| content.try_into())
+                    .map(std::convert::TryInto::try_into)
                     .collect::<Result<Vec<_>, _>>()?,
             },
             Role::System => {
