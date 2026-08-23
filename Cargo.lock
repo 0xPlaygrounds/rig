@@ -5526,6 +5526,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "http_middleware"
+version = "0.42.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "http 1.4.2",
+ "rig",
+ "tokio",
+]
+
+[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

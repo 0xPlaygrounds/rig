@@ -213,15 +213,88 @@ use crate::{
 
 pub use rig_core::id::RunId;
 
+pub use rig_run::ScratchpadSnapshot;
+
 /// Run-scoped typed storage shared by hooks.
+///
+/// # Durable hook state
+///
+/// The typed entries ([`insert`](Self::insert)/[`get`](Self::get)) live only
+/// as long as the run's process. Hooks whose state must survive a durable
+/// pause — an out-of-process approval, a serialized [`AgentRun`] resumed
+/// later, possibly elsewhere — store that state as **durable entries**
+/// instead: string-keyed JSON via [`put_durable`](Self::put_durable) /
+/// [`get_durable`](Self::get_durable). [`export`](Self::export) collects the
+/// durable entries into a serializable [`ScratchpadSnapshot`] to carry with
+/// the run (see [`AgentRun::set_hook_state`]), and the driver restores a
+/// carried snapshot into the live scratchpad at run start via
+/// [`restore`](Self::restore). Typed entries are deliberately not exported:
+/// a `TypeMap` has no serialization story, and durable state should be an
+/// explicit, named contract.
+///
+/// [`AgentRun`]: crate::agent::AgentRun
+/// [`AgentRun::set_hook_state`]: crate::agent::AgentRun::set_hook_state
 #[derive(Clone, Default)]
 pub struct Scratchpad {
     inner: Arc<std::sync::Mutex<TypeMap>>,
+    durable: Arc<std::sync::Mutex<std::collections::BTreeMap<String, serde_json::Value>>>,
 }
 
 impl Scratchpad {
     fn lock(&self) -> std::sync::MutexGuard<'_, TypeMap> {
         self.inner.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn lock_durable(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::BTreeMap<String, serde_json::Value>> {
+        self.durable
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+    }
+
+    /// Store a durable entry under `key`, replacing any previous value.
+    ///
+    /// Durable entries survive a serialized pause via [`export`](Self::export)
+    /// / [`restore`](Self::restore); see the type docs. Returns an error when
+    /// `value` cannot be represented as JSON.
+    pub fn put_durable<T: serde::Serialize>(
+        &self,
+        key: impl Into<String>,
+        value: &T,
+    ) -> Result<(), serde_json::Error> {
+        let value = serde_json::to_value(value)?;
+        self.lock_durable().insert(key.into(), value);
+        Ok(())
+    }
+
+    /// Read a durable entry, deserialized as `T`.
+    ///
+    /// `None` when the key is absent or its value does not deserialize as `T`.
+    pub fn get_durable<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+        let value = self.lock_durable().get(key).cloned()?;
+        serde_json::from_value(value).ok()
+    }
+
+    /// Remove a durable entry, returning its raw JSON value.
+    pub fn remove_durable(&self, key: &str) -> Option<serde_json::Value> {
+        self.lock_durable().remove(key)
+    }
+
+    /// Collect the durable entries into a serializable snapshot.
+    pub fn export(&self) -> ScratchpadSnapshot {
+        ScratchpadSnapshot {
+            entries: self.lock_durable().clone(),
+        }
+    }
+
+    /// Merge a snapshot's entries into the durable store.
+    ///
+    /// Snapshot entries replace same-keyed existing entries; other existing
+    /// entries are kept. The driver calls this at run start with the snapshot
+    /// a resumed [`AgentRun`](crate::agent::AgentRun) carried.
+    pub fn restore(&self, snapshot: ScratchpadSnapshot) {
+        self.lock_durable().extend(snapshot.entries);
     }
 
     /// Insert a value.
@@ -751,9 +824,80 @@ pub struct StreamResponseFinish<'a> {
     pub raw: &'a serde_json::Value,
 }
 
+/// Pre-run event: the run's initial prompt, before any model call.
+///
+/// Fired exactly once per run, before the first completion-call hook. The
+/// composition rules mirror an input-transform chain: in a [`HookStack`],
+/// rewrites chain in registration order — each hook sees the prompt as
+/// rewritten by earlier hooks — and the first [`RunStartAction::Stop`] wins,
+/// short-circuiting the remaining hooks and terminating the run before any
+/// provider call.
+#[derive(Clone, Copy)]
+pub struct RunStart<'a> {
+    /// The prompt the run will send on its first model call, including
+    /// earlier hooks' rewrites.
+    pub prompt: &'a Message,
+    /// The input chat history preceding the prompt.
+    pub history: &'a [Message],
+}
+
+/// Action for the pre-run [`RunStart`] event.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RunStartAction {
+    /// Start the run with the current prompt.
+    Continue,
+    /// Replace the prompt and pass it to later hooks.
+    Rewrite(Message),
+    /// Stop the run before any model call, with a reason.
+    Stop(String),
+}
+
+impl RunStartAction {
+    /// Starts the run with the current prompt.
+    pub fn continue_run() -> Self {
+        Self::Continue
+    }
+
+    /// Replaces the prompt; later hooks in a [`HookStack`] see the rewrite.
+    pub fn rewrite(prompt: impl Into<Message>) -> Self {
+        Self::Rewrite(prompt.into())
+    }
+
+    /// Stops the run before any provider call.
+    pub fn stop(reason: impl Into<String>) -> Self {
+        Self::Stop(reason.into())
+    }
+}
+
+/// Terminal run event: the run has settled and nothing follows automatically.
+///
+/// Fired exactly once per run, after the outcome is decided — no retry,
+/// further turn, or tool execution will run. This is deliberately distinct
+/// from per-turn finishes ([`ModelTurnFinished`], [`StreamResponseFinish`]):
+/// those can be followed by hook-driven retries or tool turns, while
+/// `RunSettled` cannot. On the streaming surface the success case coincides
+/// with the run's `FinalResponse` stream item; `RunSettled` additionally
+/// covers error termination, which the stream reports as its `Err` item.
+#[derive(Clone, Copy)]
+pub struct RunSettled<'a> {
+    /// How the run ended.
+    pub outcome: SettledOutcome<'a>,
+}
+
+/// The outcome carried by [`RunSettled`].
+#[derive(Clone, Copy)]
+pub enum SettledOutcome<'a> {
+    /// The run completed with this final response.
+    Response(&'a rig_run::PromptResponse),
+    /// The run terminated with an error, rendered via its `Display` form.
+    Error(&'a str),
+}
+
 /// Hook event kind used only as an observation performance hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StepEventKind {
+    RunStart,
+    RunSettled,
     CompletionCall,
     CompletionResponse,
     ModelTurnFinished,
@@ -930,6 +1074,31 @@ impl ObservationAction {
 
 /// Per-run lifecycle observer and steerer.
 pub trait AgentHook: WasmCompatSend + WasmCompatSync {
+    /// Runs once before the run's first model call, seeing the initial prompt.
+    ///
+    /// The hook may rewrite the prompt or stop the run before any provider
+    /// call. In a [`HookStack`], rewrites chain in registration order and the
+    /// first stop wins — see [`RunStart`]. The default action starts the run
+    /// with the current prompt.
+    fn on_run_start(
+        &self,
+        _ctx: &HookContext,
+        _event: RunStart<'_>,
+    ) -> impl Future<Output = RunStartAction> + WasmCompatSend {
+        async { RunStartAction::Continue }
+    }
+
+    /// Runs once after the run settles: its outcome — final response or
+    /// terminal error — is decided, and no retry, further turn, or tool
+    /// execution will follow. Observe-only; the run is already over.
+    fn on_run_settled(
+        &self,
+        _ctx: &HookContext,
+        _event: RunSettled<'_>,
+    ) -> impl Future<Output = ()> + WasmCompatSend {
+        async {}
+    }
+
     /// Selects the model for the pending model-call boundary.
     ///
     /// Selection is synchronous, local, and non-blocking: it operates only on
@@ -1158,6 +1327,16 @@ macro_rules! erased_hook_forward {
 }
 
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
+    fn run_start<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunStart<'a>,
+    ) -> WasmBoxedFuture<'a, RunStartAction>;
+    fn run_settled<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunSettled<'a>,
+    ) -> WasmBoxedFuture<'a, ()>;
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
     fn invalid_tool_call<'a>(
         &'a self,
@@ -1177,6 +1356,22 @@ impl<H> DynAgentHook for H
 where
     H: AgentHook,
 {
+    fn run_start<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunStart<'a>,
+    ) -> WasmBoxedFuture<'a, RunStartAction> {
+        Box::pin(self.on_run_start(ctx, event))
+    }
+
+    fn run_settled<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunSettled<'a>,
+    ) -> WasmBoxedFuture<'a, ()> {
+        Box::pin(self.on_run_settled(ctx, event))
+    }
+
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction {
         self.on_model_select(ctx, event)
     }
@@ -1338,6 +1533,30 @@ macro_rules! stack_first_non_continue {
 }
 
 impl AgentHook for HookStack {
+    async fn on_run_start(&self, ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+        let mut rewritten: Option<Message> = None;
+        for hook in &self.hooks {
+            let current = RunStart {
+                prompt: rewritten.as_ref().unwrap_or(event.prompt),
+                ..event
+            };
+            match hook.run_start(ctx, current).await {
+                RunStartAction::Continue => {}
+                RunStartAction::Rewrite(prompt) => rewritten = Some(prompt),
+                stop @ RunStartAction::Stop(_) => return stop,
+            }
+        }
+        rewritten.map_or(RunStartAction::Continue, RunStartAction::Rewrite)
+    }
+
+    async fn on_run_settled(&self, ctx: &HookContext, event: RunSettled<'_>) {
+        // Every hook observes the terminal event; there is nothing to
+        // short-circuit on since the run is already over.
+        for hook in &self.hooks {
+            hook.run_settled(ctx, event).await;
+        }
+    }
+
     fn on_model_select(
         &self,
         ctx: &HookContext,
@@ -1443,6 +1662,109 @@ impl AgentHook for HookStack {
 mod tests {
     use super::*;
     use crate::tool::{ToolErrorKind, ToolExecutionError};
+
+    /// Rewrites the run-start prompt by appending its tag; used to observe
+    /// rewrite chaining across a stack.
+    struct StartRewriter(&'static str);
+    impl AgentHook for StartRewriter {
+        async fn on_run_start(&self, _ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+            let current = match event.prompt {
+                Message::User { .. } => event.prompt.rag_text().expect("test prompts carry text"),
+                _ => panic!("run-start prompts are user messages"),
+            };
+            RunStartAction::rewrite(Message::user(format!("{current}{}", self.0)))
+        }
+    }
+
+    struct StartStopper;
+    impl AgentHook for StartStopper {
+        async fn on_run_start(&self, _ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+            RunStartAction::stop("blocked at start")
+        }
+    }
+
+    #[tokio::test]
+    async fn run_start_rewrites_chain_in_registration_order() {
+        let mut stack = HookStack::with(StartRewriter("-a"));
+        stack.push(StartRewriter("-b"));
+        let ctx = HookContext::new(false, None);
+        let prompt = Message::user("p");
+        let action = stack
+            .on_run_start(
+                &ctx,
+                RunStart {
+                    prompt: &prompt,
+                    history: &[],
+                },
+            )
+            .await;
+        match action {
+            RunStartAction::Rewrite(message) => {
+                // The second hook saw the first hook's rewrite.
+                assert_eq!(message.rag_text().expect("text"), "p-a-b");
+            }
+            other => panic!("expected a chained rewrite, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_start_first_stop_wins_and_short_circuits() {
+        let mut stack = HookStack::with(StartRewriter("-a"));
+        stack.push(StartStopper);
+        // This rewriter must never run.
+        struct Panicker;
+        impl AgentHook for Panicker {
+            async fn on_run_start(
+                &self,
+                _ctx: &HookContext,
+                _event: RunStart<'_>,
+            ) -> RunStartAction {
+                panic!("a stop must short-circuit later hooks");
+            }
+        }
+        stack.push(Panicker);
+        let ctx = HookContext::new(false, None);
+        let prompt = Message::user("p");
+        let action = stack
+            .on_run_start(
+                &ctx,
+                RunStart {
+                    prompt: &prompt,
+                    history: &[],
+                },
+            )
+            .await;
+        assert_eq!(action, RunStartAction::Stop("blocked at start".into()));
+    }
+
+    #[test]
+    fn scratchpad_durable_entries_round_trip_through_snapshot() {
+        let pad = Scratchpad::default();
+        pad.put_durable("approvals", &vec!["tool-1".to_string()])
+            .expect("serializable");
+        pad.put_durable("retries", &2u32).expect("serializable");
+        // Typed entries never reach the snapshot.
+        pad.insert(42usize);
+
+        let snapshot = pad.export();
+        assert_eq!(snapshot.entries.len(), 2);
+        let serialized = serde_json::to_string(&snapshot).expect("snapshot serializes");
+        let restored: ScratchpadSnapshot =
+            serde_json::from_str(&serialized).expect("snapshot deserializes");
+
+        let fresh = Scratchpad::default();
+        fresh.put_durable("local", &true).expect("serializable");
+        fresh.restore(restored);
+        assert_eq!(
+            fresh.get_durable::<Vec<String>>("approvals").as_deref(),
+            Some(["tool-1".to_string()].as_slice())
+        );
+        assert_eq!(fresh.get_durable::<u32>("retries"), Some(2));
+        // Restore merges: unrelated existing entries survive.
+        assert_eq!(fresh.get_durable::<bool>("local"), Some(true));
+        // The typed entry stayed local to the original pad.
+        assert!(fresh.export().entries.len() == 3);
+    }
 
     struct Patcher(f64);
     impl AgentHook for Patcher {

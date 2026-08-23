@@ -8,8 +8,9 @@ use crate::{
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
         AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
-        ModelSelectionAction, ModelTurnFinished, ReasoningDelta, StepEventKind,
-        StreamResponseFinish, TextDelta, ToolCallDelta,
+        ModelSelectionAction, ModelTurnFinished, ReasoningDelta, RunSettled, RunStart,
+        RunStartAction, SettledOutcome, StepEventKind, StreamResponseFinish, TextDelta,
+        ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -123,6 +124,12 @@ pub enum MultiTurnStreamItem {
     },
     /// The final result from the stream: the unified [`PromptResponse`] shared
     /// with the blocking surface.
+    ///
+    /// Terminal for the run: nothing follows it automatically — no retry,
+    /// further turn, or tool execution — so this item is the stream-side
+    /// counterpart of the `on_run_settled` hook's success outcome. Error
+    /// termination surfaces as the stream's `Err` item instead, which is
+    /// equally terminal.
     FinalResponse(PromptResponse),
 }
 
@@ -461,6 +468,15 @@ where
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
         let hook_ctx = HookContext::new(is_streaming, runner.config.name.clone());
+        // Restore durable hook state a serialized run carried into this drive
+        // (see `Scratchpad`'s "Durable hook state" docs).
+        if let Some(snapshot) = run.take_hook_state() {
+            hook_ctx.scratchpad().restore(snapshot);
+        }
+        // Rendered terminal-error text, set on every error path before its
+        // yield so the run-settled hook below can report the outcome after
+        // the error itself has been moved into the stream.
+        let mut settled_error: Option<String> = None;
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
@@ -471,6 +487,58 @@ where
         // is invoked, so a completion-call stop, selection stop, or preparation
         // failure leaves it unchanged while a provider error still counts.
         let mut previous_model: Option<ModelHandle> = None;
+
+        // Pre-run hook: fired once with the initial prompt before any model
+        // call. Rewrites chain across the stack in registration order; the
+        // first stop wins and terminates the run before any provider work.
+        if runner.config.hooks.observes(StepEventKind::RunStart) {
+            let action = match run.initial_prompt() {
+                Some(prompt) => {
+                    runner
+                        .config
+                        .hooks
+                        .on_run_start(
+                            &hook_ctx,
+                            RunStart {
+                                prompt,
+                                history: run.input_chat_history(),
+                            },
+                        )
+                        .await
+                }
+                // A run resumed past its first model call has no pending
+                // initial prompt to steer.
+                None => RunStartAction::Continue,
+            };
+            let early_stop = match action {
+                RunStartAction::Continue => None,
+                RunStartAction::Rewrite(prompt) => run
+                    .rewrite_initial_prompt(prompt)
+                    .err()
+                    .map(|err| StreamingError::Prompt(Box::new(err))),
+                RunStartAction::Stop(reason) => {
+                    Some(StreamingError::Prompt(Box::new(run.cancel_error(reason))))
+                }
+            };
+            if let Some(err) = early_stop {
+                store_error_usage(&runner, &run);
+                let reason = err.to_string();
+                yield Err(err);
+                if runner.config.hooks.observes(StepEventKind::RunSettled) {
+                    runner
+                        .config
+                        .hooks
+                        .on_run_settled(
+                            &hook_ctx,
+                            RunSettled {
+                                outcome: SettledOutcome::Error(&reason),
+                            },
+                        )
+                        .await;
+                }
+                return;
+            }
+        }
 
         // Drive one medium-specific step stream: forward its items, and on the
         // first error store error usage, surface it, and end the run. A macro
@@ -492,6 +560,7 @@ where
                 drop(step_stream);
                 if let Some(err) = step_error {
                     store_error_usage(&runner, &run);
+                    settled_error = Some(err.to_string());
                     yield Err(err);
                     break $label;
                 }
@@ -503,7 +572,9 @@ where
                 Ok(step) => step,
                 Err(err) => {
                     store_error_usage(&runner, &run);
-                    yield Err(Box::new(err).into());
+                    let err: StreamingError = Box::new(err).into();
+                    settled_error = Some(err.to_string());
+                    yield Err(err);
                     break 'outer;
                 }
             };
@@ -523,7 +594,9 @@ where
                         match resolve_completion_call(&runner.config.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
                                 store_error_usage(&runner, &run);
-                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                                let err = StreamingError::Prompt(Box::new(run.cancel_error(reason)));
+                                settled_error = Some(err.to_string());
+                                yield Err(err);
                                 break 'outer;
                             }
                             CompletionCallOutcome::Proceed(request_patch) => request_patch,
@@ -549,7 +622,9 @@ where
                         ModelSelectionAction::Select(model) => model,
                         ModelSelectionAction::Stop(reason) => {
                             store_error_usage(&runner, &run);
-                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                            let err = StreamingError::Prompt(Box::new(run.cancel_error(reason)));
+                            settled_error = Some(err.to_string());
+                            yield Err(err);
                             break 'outer;
                         }
                     };
@@ -581,7 +656,9 @@ where
                         Ok(prepared) => prepared,
                         Err(err) => {
                             store_error_usage(&runner, &run);
-                            yield Err(err.into());
+                            let err: StreamingError = err.into();
+                            settled_error = Some(err.to_string());
+                            yield Err(err);
                             break 'outer;
                         }
                     };
@@ -619,10 +696,12 @@ where
                 AgentRunStep::CallTools { calls } => {
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
-                        yield Err(StreamingError::Completion(CompletionError::ResponseError(
+                        let err = StreamingError::Completion(CompletionError::ResponseError(
                             "agent requested tool execution without a prepared registry snapshot"
                                 .to_string(),
-                        )));
+                        ));
+                        settled_error = Some(err.to_string());
+                        yield Err(err);
                         break 'outer;
                     };
                     drive_step!('outer, source.run_tool_calls(
@@ -647,6 +726,20 @@ where
                         response.messages.as_deref().unwrap_or_default(),
                     )
                     .await;
+                    // The run has settled successfully: nothing follows this
+                    // response — the error endings settle after the loop.
+                    if runner.config.hooks.observes(StepEventKind::RunSettled) {
+                        runner
+                            .config
+                            .hooks
+                            .on_run_settled(
+                                &hook_ctx,
+                                RunSettled {
+                                    outcome: SettledOutcome::Response(&response),
+                                },
+                            )
+                            .await;
+                    }
                     // Build the final item only when the surface forwards it
                     // (streaming). The blocking fold discards it, so its source
                     // returns `None` and the extra full-response clone is skipped.
@@ -657,6 +750,23 @@ where
                     break 'outer;
                 }
             }
+        }
+
+        // Terminal settle for the error endings; the success ending settles in
+        // the `Done` arm above, so exactly one settle fires per run.
+        if let Some(reason) = settled_error
+            && runner.config.hooks.observes(StepEventKind::RunSettled)
+        {
+            runner
+                .config
+                .hooks
+                .on_run_settled(
+                    &hook_ctx,
+                    RunSettled {
+                        outcome: SettledOutcome::Error(&reason),
+                    },
+                )
+                .await;
         }
     }
 }

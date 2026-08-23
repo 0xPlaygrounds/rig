@@ -426,7 +426,33 @@ pub struct AgentRun {
     /// driver (or a resumed run) can re-pair tool calls with what was offered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn_tools: Option<TurnTools>,
+    /// Serialized hook state carried with the run — see [`ScratchpadSnapshot`].
+    /// Protocol data like [`TurnTools`]: the run does not interpret it, but a
+    /// driver that pauses a run out of process can round-trip its hooks' state
+    /// through it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hook_state: Option<ScratchpadSnapshot>,
     state: RunState,
+}
+
+/// Serializable hook state carried by an [`AgentRun`].
+///
+/// A driver with stateful hooks (a retry counter, an approval ledger) stores
+/// their durable entries here before serializing the run, and restores them
+/// into the live hook context when the run resumes — possibly in another
+/// process. The run itself never reads the entries; they are opaque
+/// driver/hook data keyed by string.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ScratchpadSnapshot {
+    /// Durable entries, keyed by the name each hook chose.
+    pub entries: BTreeMap<String, serde_json::Value>,
+}
+
+impl ScratchpadSnapshot {
+    /// Whether the snapshot carries no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 /// The tools advertised to the model for one turn — what the request carried,
@@ -471,8 +497,60 @@ impl AgentRun {
             rollback_pending: false,
             streamed_completion_call_recorded: false,
             turn_tools: None,
+            hook_state: None,
             state: RunState::PreparingRequest,
         }
+    }
+
+    /// The prompt this run will send on its first model call, while the run
+    /// has not yet started. `None` once the first
+    /// [`AgentRunStep::CallModel`] has been emitted (the prompt is then run
+    /// history, no longer pending input).
+    pub fn initial_prompt(&self) -> Option<&Message> {
+        (self.current_turn == 0 && matches!(self.state, RunState::PreparingRequest))
+            .then(|| self.new_messages.last())
+            .flatten()
+    }
+
+    /// Replace the pending prompt before the run starts.
+    ///
+    /// This is the run-start steering point: a driver's pre-run hook may
+    /// rewrite the user prompt here, before any model call. Valid only while
+    /// [`initial_prompt`](Self::initial_prompt) is `Some`; once the first
+    /// [`AgentRunStep::CallModel`] has been emitted the prompt is committed
+    /// and rewriting returns [`PromptError::PromptCancelled`].
+    pub fn rewrite_initial_prompt(
+        &mut self,
+        prompt: impl Into<Message>,
+    ) -> Result<(), PromptError> {
+        let started = self.current_turn != 0 || !matches!(self.state, RunState::PreparingRequest);
+        match self.new_messages.last_mut() {
+            Some(slot) if !started => {
+                *slot = prompt.into();
+                Ok(())
+            }
+            _ => Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "the initial prompt can only be rewritten before the run starts",
+            )),
+        }
+    }
+
+    /// Serialized hook state carried by this run, if any. See
+    /// [`ScratchpadSnapshot`].
+    pub fn hook_state(&self) -> Option<&ScratchpadSnapshot> {
+        self.hook_state.as_ref()
+    }
+
+    /// Attach serialized hook state to carry with the run. `None` clears it.
+    pub fn set_hook_state(&mut self, state: Option<ScratchpadSnapshot>) {
+        self.hook_state = state;
+    }
+
+    /// Remove and return the carried hook state, if any. Drivers call this at
+    /// run start to restore the state into their live hook context.
+    pub fn take_hook_state(&mut self) -> Option<ScratchpadSnapshot> {
+        self.hook_state.take()
     }
 
     /// Record the tool definitions advertised to the model for `turn` (the
@@ -550,6 +628,13 @@ impl AgentRun {
         serde_json::from_str::<serde_json::Value>(text.trim())
             .ok()
             .is_some_and(|value| self.missing_required_output_fields(&value).is_empty())
+    }
+
+    /// The input chat history this run was created with, empty when none was
+    /// set. This is the history preceding the initial prompt, not the run's
+    /// accumulated messages.
+    pub fn input_chat_history(&self) -> &[Message] {
+        self.chat_history.as_deref().unwrap_or_default()
     }
 
     /// Whether the run may re-prompt for valid Tool-mode output: both the
@@ -1721,6 +1806,63 @@ mod tests {
     use super::*;
     use rig_core::message::{ToolFunction, ToolResultContent};
     use serde_json::json;
+
+    #[test]
+    fn initial_prompt_is_rewritable_only_before_the_run_starts() {
+        let mut run = AgentRun::new("original").max_turns(2);
+        assert!(run.initial_prompt().is_some());
+        run.rewrite_initial_prompt("rewritten")
+            .expect("rewrite before start");
+
+        let step = run.next_step().expect("first step");
+        let AgentRunStep::CallModel {
+            prompt, history, ..
+        } = step
+        else {
+            panic!("expected CallModel");
+        };
+        assert_eq!(prompt, Message::user("rewritten"));
+        assert!(history.is_empty());
+
+        // Once the run has started, the prompt is committed.
+        assert!(run.initial_prompt().is_none());
+        assert!(run.rewrite_initial_prompt("too late").is_err());
+    }
+
+    #[test]
+    fn input_chat_history_reflects_the_configured_history() {
+        let run = AgentRun::new("p");
+        assert!(run.input_chat_history().is_empty());
+        let run = AgentRun::new("p").with_history(vec![Message::user("earlier")]);
+        assert_eq!(run.input_chat_history(), [Message::user("earlier")]);
+    }
+
+    #[test]
+    fn hook_state_round_trips_through_serialization_and_take() {
+        let mut run = AgentRun::new("p");
+        assert!(run.hook_state().is_none());
+        let mut snapshot = ScratchpadSnapshot::default();
+        snapshot
+            .entries
+            .insert("approvals".into(), json!(["tool-1"]));
+        run.set_hook_state(Some(snapshot.clone()));
+
+        let serialized = serde_json::to_string(&run).expect("run serializes");
+        let mut restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        assert_eq!(restored.hook_state(), Some(&snapshot));
+        assert_eq!(restored.take_hook_state(), Some(snapshot));
+        assert!(restored.hook_state().is_none());
+    }
+
+    #[test]
+    fn runs_serialized_without_hook_state_still_deserialize() {
+        let run = AgentRun::new("p");
+        let mut value = serde_json::to_value(&run).expect("serializes");
+        let object = value.as_object_mut().expect("object");
+        assert!(!object.contains_key("hook_state"), "absent when unset");
+        let restored: AgentRun = serde_json::from_value(value).expect("deserializes");
+        assert!(restored.hook_state().is_none());
+    }
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_string()).collect()
