@@ -8,6 +8,8 @@
 
 mod filter;
 
+pub use filter::{Filter, MilvusValue};
+
 use reqwest::StatusCode;
 use rig_core::{
     Embed,
@@ -18,8 +20,6 @@ use rig_core::{
     },
 };
 use serde::{Deserialize, Serialize};
-
-use crate::filter::Filter;
 
 /// Represents a vector store implementation using Milvus - <https://milvus.io/> as the backend.
 ///
