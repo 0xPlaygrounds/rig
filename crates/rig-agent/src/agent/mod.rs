@@ -120,7 +120,7 @@ pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
     HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
     ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
-    RetryRequest, RunId, RunSettled, RunStart, RunStartAction, Scratchpad, ScratchpadSnapshot,
+    RetryRequest, RunEntry, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
     SettledOutcome, StepEventKind, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction,
     ToolCallDelta, ToolResultAction, ToolResultEvent,
 };

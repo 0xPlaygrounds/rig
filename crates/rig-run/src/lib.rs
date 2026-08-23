@@ -40,7 +40,7 @@ pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::id::RunId;
 pub use run::{
     AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall,
-    ScratchpadSnapshot, TurnTools,
+    RunEntry, TurnTools,
 };
 pub use spec::RunSpec;
 pub use streamed::{
@@ -65,6 +65,7 @@ const _: fn() = || {
     assert_send_sync_static::<PromptError>();
     assert_send_sync_static::<RunSpec>();
     assert_send_sync_static::<TurnTools>();
+    assert_send_sync_static::<RunEntry>();
     assert_send_sync_static::<RequestPatch>();
     assert_send_sync_static::<PreparedRequest>();
 };

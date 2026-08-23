@@ -1449,15 +1449,16 @@ impl WireProbe {
 }
 
 /// Agent-hook probe for the run-lifecycle cassette matrix: counts
-/// `on_run_start` firings (optionally rewriting the prompt), counts
-/// completion calls into a durable scratchpad entry, and records every
-/// `on_run_settled` outcome plus the settled scratchpad export.
+/// `on_run_start` firings (optionally rewriting the prompt), appends one
+/// `"completion_calls"` snapshot entry to the run's record per model call,
+/// and records every `on_run_settled` outcome plus the entries visible at
+/// settle time.
 #[derive(Clone, Default)]
 pub(crate) struct LifecycleHookProbe {
     pub(crate) rewrite_to: Option<String>,
     pub(crate) starts: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     pub(crate) settles: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-    pub(crate) exported: std::sync::Arc<std::sync::Mutex<Option<rig::agent::ScratchpadSnapshot>>>,
+    pub(crate) settled_entries: std::sync::Arc<std::sync::Mutex<Vec<rig::agent::RunEntry>>>,
 }
 
 impl LifecycleHookProbe {
@@ -1473,13 +1474,17 @@ impl LifecycleHookProbe {
         self.settles.lock().expect("settles").clone()
     }
 
-    /// The durable completion-call counter the settled export carried.
+    /// The durable completion-call counter as seen at settle time: the
+    /// last-wins read of the `"completion_calls"` snapshot entries the hook
+    /// appended to the run's record.
     pub(crate) fn exported_completion_calls(&self) -> Option<u64> {
-        let snapshot = self.exported.lock().expect("export").clone()?;
-        snapshot
-            .entries
-            .get("completion_calls")
-            .and_then(serde_json::Value::as_u64)
+        self.settled_entries
+            .lock()
+            .expect("entries")
+            .iter()
+            .rev()
+            .find(|entry| entry.kind == "completion_calls")
+            .and_then(|entry| entry.value.as_u64())
     }
 }
 
@@ -1504,13 +1509,17 @@ impl rig::agent::AgentHook for LifecycleHookProbe {
         ctx: &rig::agent::HookContext,
         _event: rig::agent::CompletionCallEvent<'_>,
     ) -> rig::agent::CompletionCallAction {
+        // Snapshot + last-wins: append the running count per model call; the
+        // settle-time read takes the most recent snapshot. Entries land in
+        // the run's serializable record — and never on the wire, which the
+        // cassette replay proves byte-exactly (the replay server matches
+        // request bodies).
         let calls = ctx
-            .scratchpad()
-            .get_durable::<u64>("completion_calls")
+            .last_entry("completion_calls")
+            .and_then(|entry| entry.value.as_u64())
             .unwrap_or(0)
             + 1;
-        ctx.scratchpad()
-            .put_durable("completion_calls", &calls)
+        ctx.append_entry("completion_calls", &calls)
             .expect("a u64 serializes");
         rig::agent::CompletionCallAction::Continue
     }
@@ -1520,7 +1529,7 @@ impl rig::agent::AgentHook for LifecycleHookProbe {
         ctx: &rig::agent::HookContext,
         event: rig::agent::RunSettled<'_>,
     ) {
-        *self.exported.lock().expect("export") = Some(ctx.scratchpad().export());
+        *self.settled_entries.lock().expect("entries") = ctx.entries("completion_calls");
         let outcome = match event.outcome {
             rig::agent::SettledOutcome::Response(_) => "response".to_string(),
             rig::agent::SettledOutcome::Error(reason) => format!("error:{reason}"),

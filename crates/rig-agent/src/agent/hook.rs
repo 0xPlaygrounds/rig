@@ -213,88 +213,35 @@ use crate::{
 
 pub use rig_core::id::RunId;
 
-pub use rig_run::ScratchpadSnapshot;
+pub use rig_run::RunEntry;
 
-/// Run-scoped typed storage shared by hooks.
+/// Run-scoped typed storage shared by hooks — the in-process cross-hook
+/// channel.
 ///
-/// # Durable hook state
+/// # Where hook state belongs
 ///
-/// The typed entries ([`insert`](Self::insert)/[`get`](Self::get)) live only
-/// as long as the run's process. Hooks whose state must survive a durable
-/// pause — an out-of-process approval, a serialized [`AgentRun`] resumed
-/// later, possibly elsewhere — store that state as **durable entries**
-/// instead: string-keyed JSON via [`put_durable`](Self::put_durable) /
-/// [`get_durable`](Self::get_durable). [`export`](Self::export) collects the
-/// durable entries into a serializable [`ScratchpadSnapshot`] to carry with
-/// the run (see [`AgentRun::set_hook_state`]), and the driver restores a
-/// carried snapshot into the live scratchpad at run start via
-/// [`restore`](Self::restore). Typed entries are deliberately not exported:
-/// a `TypeMap` has no serialization story, and durable state should be an
-/// explicit, named contract.
+/// - **A hook's own private state** belongs in the hook's own fields
+///   (`Arc<AtomicUsize>`, `Arc<Mutex<…>>` — the pattern this crate's test
+///   probes use). Key by [`HookContext::run_id`] when one instance serves
+///   many runs.
+/// - **Transient cross-hook state** — one hook writing, another reading,
+///   within one run — goes here. Typed entries live only as long as the
+///   run's process; a `TypeMap` has no serialization story on purpose.
+/// - **Anything that must survive serialization** — an out-of-process
+///   approval, a run resumed later, possibly elsewhere — or that must rewind
+///   correctly when a host clones/forks a run, goes through
+///   [`HookContext::append_entry`]: state that rides the run's record
+///   travels, rewinds, and forks with the record; out-of-band state does not.
 ///
 /// [`AgentRun`]: crate::agent::AgentRun
-/// [`AgentRun::set_hook_state`]: crate::agent::AgentRun::set_hook_state
 #[derive(Clone, Default)]
 pub struct Scratchpad {
     inner: Arc<std::sync::Mutex<TypeMap>>,
-    durable: Arc<std::sync::Mutex<std::collections::BTreeMap<String, serde_json::Value>>>,
 }
 
 impl Scratchpad {
     fn lock(&self) -> std::sync::MutexGuard<'_, TypeMap> {
         self.inner.lock().unwrap_or_else(|error| error.into_inner())
-    }
-
-    fn lock_durable(
-        &self,
-    ) -> std::sync::MutexGuard<'_, std::collections::BTreeMap<String, serde_json::Value>> {
-        self.durable
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-    }
-
-    /// Store a durable entry under `key`, replacing any previous value.
-    ///
-    /// Durable entries survive a serialized pause via [`export`](Self::export)
-    /// / [`restore`](Self::restore); see the type docs. Returns an error when
-    /// `value` cannot be represented as JSON.
-    pub fn put_durable<T: serde::Serialize>(
-        &self,
-        key: impl Into<String>,
-        value: &T,
-    ) -> Result<(), serde_json::Error> {
-        let value = serde_json::to_value(value)?;
-        self.lock_durable().insert(key.into(), value);
-        Ok(())
-    }
-
-    /// Read a durable entry, deserialized as `T`.
-    ///
-    /// `None` when the key is absent or its value does not deserialize as `T`.
-    pub fn get_durable<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-        let value = self.lock_durable().get(key).cloned()?;
-        serde_json::from_value(value).ok()
-    }
-
-    /// Remove a durable entry, returning its raw JSON value.
-    pub fn remove_durable(&self, key: &str) -> Option<serde_json::Value> {
-        self.lock_durable().remove(key)
-    }
-
-    /// Collect the durable entries into a serializable snapshot.
-    pub fn export(&self) -> ScratchpadSnapshot {
-        ScratchpadSnapshot {
-            entries: self.lock_durable().clone(),
-        }
-    }
-
-    /// Merge a snapshot's entries into the durable store.
-    ///
-    /// Snapshot entries replace same-keyed existing entries; other existing
-    /// entries are kept. The driver calls this at run start with the snapshot
-    /// a resumed [`AgentRun`](crate::agent::AgentRun) carried.
-    pub fn restore(&self, snapshot: ScratchpadSnapshot) {
-        self.lock_durable().extend(snapshot.entries);
     }
 
     /// Insert a value.
@@ -441,6 +388,13 @@ pub struct HookContext {
     agent_name: Option<String>,
     scratchpad: Scratchpad,
     tool_call_rewrite_frames: ToolCallRewriteFrames,
+    /// Every [`RunEntry`] visible to this run — the entries the run carried
+    /// in (seeded by the driver at run start) followed by this run's appends,
+    /// in append order.
+    entries: std::sync::Mutex<Vec<RunEntry>>,
+    /// Appends not yet flushed into the [`AgentRun`](crate::agent::AgentRun)
+    /// by the driver.
+    pending_entries: std::sync::Mutex<Vec<RunEntry>>,
 }
 
 impl HookContext {
@@ -452,7 +406,29 @@ impl HookContext {
             agent_name,
             scratchpad: Scratchpad::default(),
             tool_call_rewrite_frames: ToolCallRewriteFrames::default(),
+            entries: std::sync::Mutex::new(Vec::new()),
+            pending_entries: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// Seed the entries a resumed run carried; called by the driver at run
+    /// start, before any hook fires.
+    pub(crate) fn seed_entries(&self, entries: &[RunEntry]) {
+        self.entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .extend_from_slice(entries);
+    }
+
+    /// Drain the appends not yet flushed into the run; called by the driver
+    /// at each step boundary.
+    pub(crate) fn drain_pending_entries(&self) -> Vec<RunEntry> {
+        std::mem::take(
+            &mut *self
+                .pending_entries
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+        )
     }
 
     pub(crate) fn set_turn(&self, turn: usize) {
@@ -482,6 +458,73 @@ impl HookContext {
     /// Shared run scratchpad.
     pub fn scratchpad(&self) -> &Scratchpad {
         &self.scratchpad
+    }
+
+    /// Append a durable entry to the run's record.
+    ///
+    /// The entry is stamped with the current [`turn`](Self::turn) and lands
+    /// in the serializable [`AgentRun`](crate::agent::AgentRun) at the next
+    /// step boundary — durability holds by construction, with no snapshot or
+    /// export moment. Serialization failures surface immediately; nothing is
+    /// silently dropped. Fire-and-forget beyond that: no id or handle comes
+    /// back.
+    ///
+    /// The intended default pattern is **snapshot + last-wins**: append a
+    /// full state snapshot whenever your state changes, and reconstruct by
+    /// reading the most recent one with [`last_entry`](Self::last_entry).
+    /// Delta entries folded over [`entries`](Self::entries) fit genuinely
+    /// event-shaped state (an approval ledger); the snapshot pattern needs no
+    /// fold logic and tolerates replay trivially.
+    ///
+    /// An entry appended inside `on_run_settled` is not persisted — the run
+    /// is already finished; it remains visible to same-process reads only.
+    pub fn append_entry<T: serde::Serialize>(
+        &self,
+        kind: impl Into<String>,
+        value: &T,
+    ) -> Result<(), serde_json::Error> {
+        let entry = RunEntry {
+            kind: kind.into(),
+            turn: self.turn(),
+            value: serde_json::to_value(value)?,
+        };
+        self.entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(entry.clone());
+        self.pending_entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(entry);
+        Ok(())
+    }
+
+    /// All entries of `kind` visible to this run: the entries a resumed run
+    /// carried in, followed by this run's appends, in append order.
+    ///
+    /// This *is* the replay: a hook reconstructs state by folding over this
+    /// list — and because every read traverses the full list, re-reading is
+    /// idempotent by construction.
+    pub fn entries(&self, kind: &str) -> Vec<RunEntry> {
+        self.entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .filter(|entry| entry.kind == kind)
+            .cloned()
+            .collect()
+    }
+
+    /// The most recent entry of `kind`, if any — the read for the
+    /// snapshot-and-read-the-last pattern.
+    pub fn last_entry(&self, kind: &str) -> Option<RunEntry> {
+        self.entries
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .rev()
+            .find(|entry| entry.kind == kind)
+            .cloned()
     }
 
     fn begin_tool_call_resolution(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
@@ -1091,6 +1134,10 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// Runs once after the run settles: its outcome — final response or
     /// terminal error — is decided, and no retry, further turn, or tool
     /// execution will follow. Observe-only; the run is already over.
+    ///
+    /// [`HookContext::entries`] sees every entry appended during the run
+    /// (the driver flushes before settling), but an entry appended *inside*
+    /// this hook is not persisted — the run is finished.
     fn on_run_settled(
         &self,
         _ctx: &HookContext,
@@ -1738,32 +1785,41 @@ mod tests {
     }
 
     #[test]
-    fn scratchpad_durable_entries_round_trip_through_snapshot() {
-        let pad = Scratchpad::default();
-        pad.put_durable("approvals", &vec!["tool-1".to_string()])
-            .expect("serializable");
-        pad.put_durable("retries", &2u32).expect("serializable");
-        // Typed entries never reach the snapshot.
-        pad.insert(42usize);
+    fn append_entry_stamps_the_current_turn_and_reads_replay_in_order() {
+        let ctx = HookContext::new(false, None);
+        // A resumed run's carried entries come first.
+        ctx.seed_entries(&[RunEntry {
+            kind: "counter".into(),
+            turn: 2,
+            value: serde_json::json!(2),
+        }]);
 
-        let snapshot = pad.export();
-        assert_eq!(snapshot.entries.len(), 2);
-        let serialized = serde_json::to_string(&snapshot).expect("snapshot serializes");
-        let restored: ScratchpadSnapshot =
-            serde_json::from_str(&serialized).expect("snapshot deserializes");
+        ctx.set_turn(3);
+        ctx.append_entry("counter", &3u64).expect("serializable");
+        ctx.append_entry("other", &()).expect("null marker");
 
-        let fresh = Scratchpad::default();
-        fresh.put_durable("local", &true).expect("serializable");
-        fresh.restore(restored);
+        let counters = ctx.entries("counter");
         assert_eq!(
-            fresh.get_durable::<Vec<String>>("approvals").as_deref(),
-            Some(["tool-1".to_string()].as_slice())
+            counters.iter().map(|e| e.turn).collect::<Vec<_>>(),
+            [2, 3],
+            "seeded entries precede this run's appends"
         );
-        assert_eq!(fresh.get_durable::<u32>("retries"), Some(2));
-        // Restore merges: unrelated existing entries survive.
-        assert_eq!(fresh.get_durable::<bool>("local"), Some(true));
-        // The typed entry stayed local to the original pad.
-        assert!(fresh.export().entries.len() == 3);
+        // Last-wins snapshot read.
+        let last = ctx.last_entry("counter").expect("appended");
+        assert_eq!(last.turn, 3);
+        assert_eq!(last.value, serde_json::json!(3));
+        assert!(ctx.last_entry("absent").is_none());
+
+        // Only this run's appends are pending for the driver to flush —
+        // seeded entries are already in the run.
+        let pending = ctx.drain_pending_entries();
+        assert_eq!(
+            pending.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(),
+            ["counter", "other"]
+        );
+        // Draining does not affect reads, and is not repeatable.
+        assert_eq!(ctx.entries("counter").len(), 2);
+        assert!(ctx.drain_pending_entries().is_empty());
     }
 
     struct Patcher(f64);

@@ -426,33 +426,38 @@ pub struct AgentRun {
     /// driver (or a resumed run) can re-pair tool calls with what was offered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     turn_tools: Option<TurnTools>,
-    /// Serialized hook state carried with the run — see [`ScratchpadSnapshot`].
-    /// Protocol data like [`TurnTools`]: the run does not interpret it, but a
-    /// driver that pauses a run out of process can round-trip its hooks' state
-    /// through it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    hook_state: Option<ScratchpadSnapshot>,
+    /// Hook- and driver-appended records — see [`RunEntry`]. Protocol data
+    /// like [`TurnTools`]: append-only, stored verbatim, never interpreted by
+    /// the run and never part of a provider request. Vec order is append
+    /// order, which is also the replay order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    entries: Vec<RunEntry>,
     state: RunState,
 }
 
-/// Serializable hook state carried by an [`AgentRun`].
+/// One hook- or driver-appended record in an [`AgentRun`]'s log.
 ///
-/// A driver with stateful hooks (a retry counter, an approval ledger) stores
-/// their durable entries here before serializing the run, and restores them
-/// into the live hook context when the run resumes — possibly in another
-/// process. The run itself never reads the entries; they are opaque
-/// driver/hook data keyed by string.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ScratchpadSnapshot {
-    /// Durable entries, keyed by the name each hook chose.
-    pub entries: BTreeMap<String, serde_json::Value>,
-}
-
-impl ScratchpadSnapshot {
-    /// Whether the snapshot carries no entries.
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
+/// Protocol data like [`TurnTools`]: the run stores it verbatim and never
+/// interprets it, and it never reaches a provider request — state in the
+/// record is invisible to the model. Durability holds by construction:
+/// whatever the run's serialized form is, the entries appended so far are in
+/// it, and a driver rebuilds hook state on resume by replaying them (the
+/// usual pattern is *snapshot + last-wins*: append a full state snapshot per
+/// change, read back the most recent one with [`AgentRun::last_entry_of`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RunEntry {
+    /// Hook-chosen namespace (e.g. `"approval"`, `"retry_budget"`).
+    /// Unregistered and unvalidated: the kind string is the whole contract
+    /// and the collision boundary, so hooks should pick specific names.
+    pub kind: String,
+    /// One-based model-call index current when the entry was appended
+    /// (0 before the first call). Deliberately not a wall-clock timestamp:
+    /// [`AgentRun`] is deterministic, serializable state — no clocks in
+    /// rig-run. A host that wants timestamps puts them in [`value`](Self::value).
+    pub turn: usize,
+    /// The appended value, verbatim JSON. `Value::Null` marker entries are
+    /// legitimate.
+    pub value: serde_json::Value,
 }
 
 /// The tools advertised to the model for one turn — what the request carried,
@@ -497,7 +502,7 @@ impl AgentRun {
             rollback_pending: false,
             streamed_completion_call_recorded: false,
             turn_tools: None,
-            hook_state: None,
+            entries: Vec::new(),
             state: RunState::PreparingRequest,
         }
     }
@@ -536,21 +541,26 @@ impl AgentRun {
         }
     }
 
-    /// Serialized hook state carried by this run, if any. See
-    /// [`ScratchpadSnapshot`].
-    pub fn hook_state(&self) -> Option<&ScratchpadSnapshot> {
-        self.hook_state.as_ref()
+    /// Append one [`RunEntry`] to the run's record. Append-only: the log has
+    /// no removal or mutation API — the log is the record.
+    pub fn append_entry(&mut self, entry: RunEntry) {
+        self.entries.push(entry);
     }
 
-    /// Attach serialized hook state to carry with the run. `None` clears it.
-    pub fn set_hook_state(&mut self, state: Option<ScratchpadSnapshot>) {
-        self.hook_state = state;
+    /// Every appended [`RunEntry`], in append order.
+    pub fn entries(&self) -> &[RunEntry] {
+        &self.entries
     }
 
-    /// Remove and return the carried hook state, if any. Drivers call this at
-    /// run start to restore the state into their live hook context.
-    pub fn take_hook_state(&mut self) -> Option<ScratchpadSnapshot> {
-        self.hook_state.take()
+    /// The entries of one `kind`, in append order.
+    pub fn entries_of<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = &'a RunEntry> {
+        self.entries.iter().filter(move |entry| entry.kind == kind)
+    }
+
+    /// The most recent entry of `kind`, if any — the read for the
+    /// snapshot-and-read-the-last pattern that most durable state uses.
+    pub fn last_entry_of(&self, kind: &str) -> Option<&RunEntry> {
+        self.entries.iter().rev().find(|entry| entry.kind == kind)
     }
 
     /// Record the tool definitions advertised to the model for `turn` (the
@@ -1837,31 +1847,79 @@ mod tests {
         assert_eq!(run.input_chat_history(), [Message::user("earlier")]);
     }
 
-    #[test]
-    fn hook_state_round_trips_through_serialization_and_take() {
-        let mut run = AgentRun::new("p");
-        assert!(run.hook_state().is_none());
-        let mut snapshot = ScratchpadSnapshot::default();
-        snapshot
-            .entries
-            .insert("approvals".into(), json!(["tool-1"]));
-        run.set_hook_state(Some(snapshot.clone()));
-
-        let serialized = serde_json::to_string(&run).expect("run serializes");
-        let mut restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
-        assert_eq!(restored.hook_state(), Some(&snapshot));
-        assert_eq!(restored.take_hook_state(), Some(snapshot));
-        assert!(restored.hook_state().is_none());
+    fn entry(kind: &str, turn: usize, value: serde_json::Value) -> RunEntry {
+        RunEntry {
+            kind: kind.to_string(),
+            turn,
+            value,
+        }
     }
 
     #[test]
-    fn runs_serialized_without_hook_state_still_deserialize() {
+    fn entries_round_trip_through_serialization_in_append_order() {
+        let mut run = AgentRun::new("p");
+        run.append_entry(entry("approval", 1, json!({"tool": "add"})));
+        run.append_entry(entry("counter", 1, json!(1)));
+        run.append_entry(entry("counter", 2, json!(2)));
+
+        let serialized = serde_json::to_string(&run).expect("run serializes");
+        let restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        assert_eq!(restored.entries(), run.entries());
+        assert_eq!(
+            restored.entries_of("counter").count(),
+            2,
+            "kind filter sees both counter snapshots"
+        );
+        // Last-wins: the snapshot pattern reads the most recent entry.
+        assert_eq!(
+            restored.last_entry_of("counter"),
+            Some(&entry("counter", 2, json!(2)))
+        );
+        assert_eq!(restored.last_entry_of("absent"), None);
+
+        // A cloned ("forked") run carries the entries verbatim.
+        assert_eq!(restored.clone().entries(), run.entries());
+    }
+
+    #[test]
+    fn runs_serialized_without_entries_still_deserialize() {
         let run = AgentRun::new("p");
         let mut value = serde_json::to_value(&run).expect("serializes");
         let object = value.as_object_mut().expect("object");
-        assert!(!object.contains_key("hook_state"), "absent when unset");
+        assert!(!object.contains_key("entries"), "absent when empty");
         let restored: AgentRun = serde_json::from_value(value).expect("deserializes");
-        assert!(restored.hook_state().is_none());
+        assert!(restored.entries().is_empty());
+    }
+
+    #[test]
+    fn entries_never_reach_the_protocol_steps() {
+        // The no-context-leakage guarantee at the protocol level: two
+        // identical runs, one carrying entries, emit identical CallModel
+        // steps — entries are storage, not context.
+        let mut plain = AgentRun::new("p").max_turns(2);
+        let mut logged = AgentRun::new("p").max_turns(2);
+        logged.append_entry(entry("state", 0, json!({"visible": "never"})));
+
+        let plain_step = plain.next_step().expect("step");
+        let logged_step = logged.next_step().expect("step");
+        let (
+            AgentRunStep::CallModel {
+                prompt: plain_prompt,
+                history: plain_history,
+                turn: plain_turn,
+            },
+            AgentRunStep::CallModel {
+                prompt: logged_prompt,
+                history: logged_history,
+                turn: logged_turn,
+            },
+        ) = (plain_step, logged_step)
+        else {
+            panic!("both runs emit CallModel first");
+        };
+        assert_eq!(plain_prompt, logged_prompt);
+        assert_eq!(plain_history, logged_history);
+        assert_eq!(plain_turn, logged_turn);
     }
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {
