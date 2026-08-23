@@ -1263,7 +1263,6 @@ mod wasm_model_listing_compile_checks {
             .map(assert_model_listing_client);
     }
 
-    #[allow(dead_code)]
     fn compile_assertions() {
         assert_simple_model_listers_accept_wasm_only_http_clients();
     }
