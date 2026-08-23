@@ -86,7 +86,7 @@ impl CliChat for AgentImpl {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
                     Text { text, .. },
                 ))) => {
-                    print!("{}", text);
+                    print!("{text}");
                     acc.push_str(&text);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {

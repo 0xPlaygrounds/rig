@@ -204,7 +204,7 @@ where
         match tokio::time::timeout(READ_TIMEOUT, stream.next()).await {
             // (4) Stall / half-open: no bytes within the read window.
             Err(_elapsed) => {
-                reason = Some(format!("stall: no data within {:?}", READ_TIMEOUT));
+                reason = Some(format!("stall: no data within {READ_TIMEOUT:?}"));
                 break;
             }
             // Stream ended.

@@ -160,7 +160,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 We have 25 employees in a 5000 sq ft office space and a small fleet of 5 delivery vehicles. \
                 What are the most cost-effective sustainability measures we could implement in the next 6-12 months? Try to stay concise.";
 
-    println!("Query: {}", query);
+    println!("Query: {query}");
     println!("\nProcessing...\n");
 
     // Send the query to the orchestrator agent with extended details to get chat history

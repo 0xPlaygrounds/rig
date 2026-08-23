@@ -2111,7 +2111,7 @@ pub mod gemini_api_types {
                     let def_name = parse_ref_path(ref_str)?;
 
                     let def = defs.get(&def_name).ok_or_else(|| {
-                        CompletionError::ResponseError(format!("Reference not found: {}", ref_str))
+                        CompletionError::ResponseError(format!("Reference not found: {ref_str}"))
                     })?;
 
                     let mut resolved = def.clone();
@@ -2148,14 +2148,12 @@ pub mod gemini_api_types {
                 Ok(name.to_string())
             } else {
                 Err(CompletionError::ResponseError(format!(
-                    "Unsupported reference format: {}",
-                    ref_str
+                    "Unsupported reference format: {ref_str}"
                 )))
             }
         } else {
             Err(CompletionError::ResponseError(format!(
-                "Only fragment references (#/...) are supported: {}",
-                ref_str
+                "Only fragment references (#/...) are supported: {ref_str}"
             )))
         }
     }
@@ -3520,7 +3518,7 @@ mod tests {
                     panic!("Schema should have items field for array type");
                 }
             }
-            Err(e) => println!("Schema conversion failed: {:?}", e),
+            Err(e) => println!("Schema conversion failed: {e:?}"),
         }
     }
 
@@ -4274,7 +4272,7 @@ mod tests {
                     "Document should contain note metadata"
                 );
             } else {
-                panic!("Document parts should be text, not {:?}", part);
+                panic!("Document parts should be text, not {part:?}");
             }
         }
 

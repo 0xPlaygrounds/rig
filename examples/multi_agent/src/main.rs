@@ -89,9 +89,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble(&format!(
             "You are a helpful assistant that can work with text in any language. \
             When you receive input that is not in English, or contains grammatical errors \
-            use the {} tool first to ensure proper English, then provide your response. \
-            Always show both the translated text and your final response.",
-            TRANSLATOR_TOOL_NAME
+            use the {TRANSLATOR_TOOL_NAME} tool first to ensure proper English, then provide your response. \
+            Always show both the translated text and your final response."
         ))
         .tool(translator_tool)
         .build();

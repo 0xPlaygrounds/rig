@@ -173,10 +173,10 @@ impl VectorizeClient {
 
         let mut query_params = Vec::new();
         if let Some(limit) = limit {
-            query_params.push(format!("count={}", limit));
+            query_params.push(format!("count={limit}"));
         }
         if let Some(cursor) = cursor {
-            query_params.push(format!("cursor={}", cursor));
+            query_params.push(format!("cursor={cursor}"));
         }
         if !query_params.is_empty() {
             url = format!("{}?{}", url, query_params.join("&"));

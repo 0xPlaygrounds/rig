@@ -265,7 +265,7 @@ pub(crate) fn create_grpc_request(
     };
 
     Ok(GenerateContentRequest {
-        model: format!("models/{}", model),
+        model: format!("models/{model}"),
         contents,
         tools,
         safety_settings: vec![],

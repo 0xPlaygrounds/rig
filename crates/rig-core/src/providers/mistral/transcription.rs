@@ -36,7 +36,7 @@ impl std::fmt::Display for TranscriptionUsage {
         writeln!(f, "  completion_tokens: {}", self.completion_tokens)?;
         writeln!(f, "  total_tokens:      {}", self.total_tokens)?;
         if let Some(details) = &self.prompt_tokens_details {
-            writeln!(f, "  prompt_token_details: {:?}", details)?;
+            writeln!(f, "  prompt_token_details: {details:?}")?;
         } else {
             writeln!(f, "  prompt_token_details: N/A")?;
         }

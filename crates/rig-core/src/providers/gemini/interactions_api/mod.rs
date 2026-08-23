@@ -1465,7 +1465,7 @@ pub mod interactions_api_types {
                 if index == 0 {
                     continue;
                 }
-                let citation = format!("[{}]({})", index, source);
+                let citation = format!("[{index}]({source})");
                 text.insert_str(end, &citation);
             }
 

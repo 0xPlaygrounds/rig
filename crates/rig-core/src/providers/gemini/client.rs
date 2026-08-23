@@ -93,12 +93,12 @@ impl Provider for GeminiInteractionsExt {
         match transport {
             Transport::Sse => {
                 if trimmed.contains('?') {
-                    format!("{}/{}&alt=sse", base_url, trimmed)
+                    format!("{base_url}/{trimmed}&alt=sse")
                 } else {
-                    format!("{}/{}?alt=sse", base_url, trimmed)
+                    format!("{base_url}/{trimmed}?alt=sse")
                 }
             }
-            _ => format!("{}/{}", base_url, trimmed),
+            _ => format!("{base_url}/{trimmed}"),
         }
     }
 

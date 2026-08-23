@@ -54,7 +54,7 @@ impl EventHandler for Handler {
 
         match command {
             Ok(cmd) => println!("Registered global command: {}", cmd.name),
-            Err(e) => eprintln!("Failed to register command: {}", e),
+            Err(e) => eprintln!("Failed to register command: {e}"),
         }
     }
 
@@ -84,7 +84,7 @@ impl Handler {
         if command.data.name.as_str() == "new" {
             // Defer the response to prevent timeout
             if let Err(e) = command.defer(&ctx.http).await {
-                eprintln!("Failed to defer command: {}", e);
+                eprintln!("Failed to defer command: {e}");
                 return;
             }
 
@@ -103,7 +103,7 @@ impl Handler {
             {
                 Ok(t) => t,
                 Err(e) => {
-                    eprintln!("Failed to create thread: {}", e);
+                    eprintln!("Failed to create thread: {e}");
                     let _ = command
                         .edit_response(
                             &ctx.http,
@@ -132,7 +132,7 @@ impl Handler {
                 )
                 .await
             {
-                eprintln!("Failed to edit response: {}", e);
+                eprintln!("Failed to edit response: {e}");
             }
 
             // Send welcome message to the thread
@@ -144,7 +144,7 @@ impl Handler {
                 )
                 .await
             {
-                eprintln!("Failed to send welcome message: {}", e);
+                eprintln!("Failed to send welcome message: {e}");
             }
         }
     }
@@ -169,7 +169,7 @@ impl Handler {
         let response = match self.state.agent.chat(&msg.content, &mut history).await {
             Ok(resp) => resp,
             Err(e) => {
-                eprintln!("Agent error: {}", e);
+                eprintln!("Agent error: {e}");
                 let _ = msg
                     .channel_id
                     .say(
@@ -197,7 +197,7 @@ impl Handler {
 
         for chunk in chunks {
             if let Err(e) = msg.channel_id.say(&ctx.http, &chunk).await {
-                eprintln!("Failed to send message: {}", e);
+                eprintln!("Failed to send message: {e}");
             }
         }
     }

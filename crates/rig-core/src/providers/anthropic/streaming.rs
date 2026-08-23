@@ -1679,7 +1679,7 @@ mod tests {
                     _ => panic!("Expected Delta content"),
                 }
             }
-            _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),
+            _ => panic!("Expected ToolCallDelta choice, got {choice:?}"),
         }
 
         // The open block stays open; assembly of the fragment happens in the
@@ -1740,7 +1740,7 @@ mod tests {
                     crate::streaming::UnparseableToolInput::Error
                 ));
             }
-            other => panic!("Expected ToolInputEnd, got {:?}", other),
+            other => panic!("Expected ToolInputEnd, got {other:?}"),
         }
 
         // Tool call state should be taken

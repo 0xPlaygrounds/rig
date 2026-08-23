@@ -373,8 +373,7 @@ async fn gemma_family_has_no_tool_calling_in_its_template() {
             .map(|tools| tools.len())
             .unwrap_or_default(),
         1,
-        "the tool definition must reach the wire: {}",
-        request
+        "the tool definition must reach the wire: {request}"
     );
     assert!(
         recorded_tool_calls("model_family_matrix/gemma_tool_request_degrades_to_text").is_empty(),

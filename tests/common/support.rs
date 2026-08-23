@@ -372,8 +372,7 @@ pub(crate) fn assert_contains_any_case_insensitive(response: &str, expected: &[&
 
     assert!(
         matched,
-        "Response {:?} did not contain any of {:?}.",
-        response, expected
+        "Response {response:?} did not contain any of {expected:?}."
     );
 }
 
@@ -389,10 +388,7 @@ pub(crate) fn assert_contains_all_case_insensitive(response: &str, expected: &[&
 
     assert!(
         missing.is_empty(),
-        "Response {:?} did not contain all of {:?}; missing {:?}.",
-        response,
-        expected,
-        missing
+        "Response {response:?} did not contain all of {expected:?}; missing {missing:?}."
     );
 }
 
@@ -414,8 +410,7 @@ pub(crate) fn assert_mentions_expected_number(response: &str, expected: i32) {
 
     assert!(
         matched,
-        "Response {:?} did not mention the expected number {:?}.",
-        response, expected
+        "Response {response:?} did not mention the expected number {expected:?}."
     );
 }
 
@@ -430,15 +425,12 @@ pub(crate) fn assert_weather_tool_roundtrip_response(
     assert_eq!(
         city.trim().to_ascii_lowercase(),
         expected_city.trim().to_ascii_lowercase(),
-        "expected city {:?}, got {:?}",
-        expected_city,
-        city
+        "expected city {expected_city:?}, got {city:?}"
     );
 
     assert!(
         weather.to_ascii_lowercase().contains("fire and brimstone"),
-        "expected the weather description to preserve the tool result, got {:?}",
-        weather
+        "expected the weather description to preserve the tool result, got {weather:?}"
     );
 }
 
@@ -962,8 +954,7 @@ pub(crate) fn assert_two_tool_roundtrip_contract(
                 .iter()
                 .take(expected_tools.len())
                 .any(|name| name == expected_tool),
-            "expected the initial unique tool-call phase to include {expected_tool}, saw {:?}",
-            first_unique
+            "expected the initial unique tool-call phase to include {expected_tool}, saw {first_unique:?}"
         );
     }
 
@@ -1107,8 +1098,7 @@ pub(crate) fn assert_raw_stream_contains_distinct_tool_calls_before_text(
     for expected_tool in expected_tools {
         assert!(
             tool_call_names.iter().any(|name| name == expected_tool),
-            "expected raw stream tool call for {expected_tool}, saw {:?}",
-            tool_call_names
+            "expected raw stream tool call for {expected_tool}, saw {tool_call_names:?}"
         );
     }
 
@@ -1126,8 +1116,7 @@ pub(crate) fn assert_raw_stream_contains_distinct_tool_calls_before_text(
                 .iter()
                 .take(expected_tools.len())
                 .any(|name| name == expected_tool),
-            "expected the initial unique raw tool-call phase to include {expected_tool}, saw {:?}",
-            first_unique
+            "expected the initial unique raw tool-call phase to include {expected_tool}, saw {first_unique:?}"
         );
     }
 

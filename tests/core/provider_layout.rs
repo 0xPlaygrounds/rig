@@ -53,13 +53,11 @@ fn provider_local_tests_do_not_use_legacy_prefixes() {
 
             assert!(
                 !stem.starts_with(&format!("{provider}_")),
-                "provider-local test file {:?} still uses a provider prefix",
-                path
+                "provider-local test file {path:?} still uses a provider prefix"
             );
             assert!(
                 !stem.starts_with("agent_with_"),
-                "provider-local test file {:?} still uses an agent_with_* name",
-                path
+                "provider-local test file {path:?} still uses an agent_with_* name"
             );
         }
     }

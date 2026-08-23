@@ -1072,7 +1072,7 @@ mod tests {
 
         // All calls should succeed
         for res in result.unwrap() {
-            assert!(res.is_ok(), "Tool call failed: {:?}", res);
+            assert!(res.is_ok(), "Tool call failed: {res:?}");
             assert_eq!(res.unwrap(), "done");
         }
     }

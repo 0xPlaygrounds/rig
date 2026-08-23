@@ -676,8 +676,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                 calls.len() == 2
                     && call_names.contains(&AlphaSignal::NAME)
                     && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools, saw {:?}",
-                call_names
+                "expected both zero-argument tools, saw {call_names:?}"
             );
             anyhow::ensure!(
                 calls[0].message_index == calls[1].message_index,
@@ -887,8 +886,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 .collect::<Vec<_>>();
             anyhow::ensure!(
                 specific_calls == vec![BetaSignal::NAME],
-                "specific tool choice should force only lookup_orchard_label, saw {:?}",
-                specific_calls
+                "specific tool choice should force only lookup_orchard_label, saw {specific_calls:?}"
             );
 
             let none = model
@@ -1034,8 +1032,7 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
             anyhow::ensure!(usage.output_tokens > 0, "stream usage should include output tokens");
             anyhow::ensure!(
                 usage.total_tokens >= usage.input_tokens + usage.output_tokens,
-                "stream usage totals should cover input + output tokens: {:?}",
-                usage
+                "stream usage totals should cover input + output tokens: {usage:?}"
             );
 
             Ok(())

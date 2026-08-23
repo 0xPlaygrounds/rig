@@ -85,8 +85,7 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                                 .set_function_response(function_response))
                         }
                         _ => Err(CompletionError::ProviderError(format!(
-                            "Unsupported user content type: {:?}",
-                            user_content
+                            "Unsupported user content type: {user_content:?}"
                         ))),
                     })
                     .collect();

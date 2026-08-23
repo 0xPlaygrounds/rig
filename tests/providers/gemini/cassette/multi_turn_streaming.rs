@@ -53,8 +53,7 @@ async fn runner_driven_multi_turn_streaming_loop() {
             assert_nonempty_response(&response);
             assert!(
                 response.trim().len() >= 30,
-                "expected a substantial streamed response, got {:?}",
-                response
+                "expected a substantial streamed response, got {response:?}"
             );
             assert_mentions_expected_number(&response, MULTI_TURN_STREAMING_EXPECTED_RESULT);
             assert!(

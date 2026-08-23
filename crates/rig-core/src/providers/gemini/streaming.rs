@@ -696,7 +696,7 @@ mod tests {
             {
                 assert_eq!(text, expected_text);
             } else {
-                panic!("Expected text part at index {}", i);
+                panic!("Expected text part at index {i}");
             }
         }
     }

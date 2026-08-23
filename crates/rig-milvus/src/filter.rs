@@ -161,7 +161,7 @@ impl Filter {
             .map(|v| v.escaped())
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("{} in [{}]", key, values_str))
+        Self(format!("{key} in [{values_str}]"))
     }
 
     /// NOT IN operator
@@ -171,12 +171,12 @@ impl Filter {
             .map(|v| v.escaped())
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("{} not in [{}]", key, values_str))
+        Self(format!("{key} not in [{values_str}]"))
     }
 
     /// LIKE operator (string pattern matching)
     pub fn like(key: &str, pattern: &str) -> Self {
-        Self(format!("{} like '{}'", key, pattern))
+        Self(format!("{key} like '{pattern}'"))
     }
 
     /// Array contains
@@ -191,7 +191,7 @@ impl Filter {
             .map(|v| v.escaped())
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("array_contains_all({}, [{}])", key, values_str))
+        Self(format!("array_contains_all({key}, [{values_str}])"))
     }
 
     /// Array contains any
@@ -201,12 +201,12 @@ impl Filter {
             .map(|v| v.escaped())
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("array_contains_any({}, [{}])", key, values_str))
+        Self(format!("array_contains_any({key}, [{values_str}])"))
     }
 
     /// Array length comparison
     pub fn array_length_eq(key: &str, length: i32) -> Self {
-        Self(format!("array_length({}) == {}", key, length))
+        Self(format!("array_length({key}) == {length}"))
     }
 
     pub fn into_inner(self) -> String {

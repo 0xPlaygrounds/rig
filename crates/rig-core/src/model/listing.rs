@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn test_model_display() {
         let model = Model::new("gpt-4", "GPT-4");
-        assert_eq!(format!("{}", model), "GPT-4");
+        assert_eq!(format!("{model}"), "GPT-4");
     }
 
     #[test]

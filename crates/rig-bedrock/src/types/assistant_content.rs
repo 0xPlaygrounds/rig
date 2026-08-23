@@ -361,10 +361,7 @@ impl RigAssistantContent {
                 }
 
                 let reasoning_text_block = reasoning_block.build().map_err(|e| {
-                    CompletionError::ProviderError(format!(
-                        "Failed to build reasoning block: {}",
-                        e
-                    ))
+                    CompletionError::ProviderError(format!("Failed to build reasoning block: {e}"))
                 })?;
 
                 Ok(Some(aws_bedrock::ContentBlock::ReasoningContent(

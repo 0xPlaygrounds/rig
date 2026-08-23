@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
         .build();
 
     let response = agent.prompt("What is 2 + 2?").await?;
-    println!("Response: {}", response);
+    println!("Response: {response}");
 
     Ok(())
 }
