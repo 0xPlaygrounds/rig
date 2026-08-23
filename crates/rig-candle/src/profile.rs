@@ -7,14 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::CandleError;
 
-pub const BEGIN_OF_TEXT: &str = "<|begin_of_text|>";
-pub const START_HEADER: &str = "<|start_header_id|>";
-pub const END_HEADER: &str = "<|end_header_id|>";
-pub const END_OF_TURN: &str = "<|eot_id|>";
-pub const IM_START: &str = "<|im_start|>";
-pub const IM_END: &str = "<|im_end|>";
+pub(crate) const BEGIN_OF_TEXT: &str = "<|begin_of_text|>";
+pub(crate) const START_HEADER: &str = "<|start_header_id|>";
+pub(crate) const END_HEADER: &str = "<|end_header_id|>";
+pub(crate) const END_OF_TURN: &str = "<|eot_id|>";
+pub(crate) const IM_START: &str = "<|im_start|>";
+pub(crate) const IM_END: &str = "<|im_end|>";
 pub(crate) const END_OF_TEXT: &str = "<|endoftext|>";
-pub const SMOLLM2_DEFAULT_SYSTEM_PROMPT: &str =
+pub(crate) const SMOLLM2_DEFAULT_SYSTEM_PROMPT: &str =
     "You are a helpful AI assistant named SmolLM, trained by Hugging Face";
 
 /// Explicit conversation and generated-output protocol selected from validated artifacts.
