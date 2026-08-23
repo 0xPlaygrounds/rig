@@ -70,10 +70,7 @@ pub type CompletionsImageGenerationModel<T> = GenericImageGenerationModel<OpenAI
 /// endpoint reached through the same client may still take the field, and may
 /// need it to answer with base64 rather than a URL; such a caller passes it
 /// explicitly through `additional_params`, which the merge below now honors.
-fn build_request(
-    model: &str,
-    generation_request: ImageGenerationRequest,
-) -> Result<serde_json::Value, ImageGenerationError> {
+fn build_request(model: &str, generation_request: ImageGenerationRequest) -> serde_json::Value {
     let mut request = json!({
         "model": model,
         "prompt": generation_request.prompt,
@@ -96,7 +93,7 @@ fn build_request(
         merge_inplace(&mut request, additional_params);
     }
 
-    Ok(request)
+    request
 }
 
 impl JsonImageGenerationProvider for OpenAIResponsesExt {
@@ -109,7 +106,7 @@ impl JsonImageGenerationProvider for OpenAIResponsesExt {
         model: &str,
         request: ImageGenerationRequest,
     ) -> Result<serde_json::Value, ImageGenerationError> {
-        build_request(model, request)
+        Ok(build_request(model, request))
     }
 }
 
@@ -123,7 +120,7 @@ impl JsonImageGenerationProvider for OpenAICompletionsExt {
         model: &str,
         request: ImageGenerationRequest,
     ) -> Result<serde_json::Value, ImageGenerationError> {
-        build_request(model, request)
+        Ok(build_request(model, request))
     }
 }
 
@@ -152,7 +149,6 @@ mod tests {
                 ..request()
             },
         )
-        .expect("body should build")
     }
 
     /// The field is not in the endpoint's request schema, so no model may be

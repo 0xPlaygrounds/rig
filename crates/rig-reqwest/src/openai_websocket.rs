@@ -1826,9 +1826,8 @@ mod tests {
             message: "the model failed to generate a response".to_string(),
         });
 
-        let err = match terminal_response_result(response) {
-            Ok(_) => panic!("failed response with an error object should fail"),
-            Err(e) => e,
+        let Err(err) = terminal_response_result(response) else {
+            panic!("failed response with an error object should fail")
         };
 
         // The full failed-response envelope is preserved as a ProviderResponse with
@@ -1850,9 +1849,8 @@ mod tests {
 
     #[test]
     fn terminal_failed_response_without_error_is_rig_diagnostic() {
-        let err = match terminal_response_result(sample_response(ResponseStatus::Failed)) {
-            Ok(_) => panic!("failed response should fail"),
-            Err(e) => e,
+        let Err(err) = terminal_response_result(sample_response(ResponseStatus::Failed)) else {
+            panic!("failed response should fail")
         };
 
         // No provider error object, so this is a Rig-authored diagnostic and exposes

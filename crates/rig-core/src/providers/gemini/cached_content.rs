@@ -1204,7 +1204,7 @@ mod exhaustive_validation_tests {
             match ordering.last().expect("non-empty") {
                 CacheExpiry::Ttl(_) => assert!(object.contains_key("ttl"), "{body}"),
                 CacheExpiry::ExpireTime(_) => {
-                    assert!(object.contains_key("expireTime"), "{body}")
+                    assert!(object.contains_key("expireTime"), "{body}");
                 }
             }
         }

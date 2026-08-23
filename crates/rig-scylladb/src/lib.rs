@@ -110,7 +110,7 @@ pub struct ScyllaSearchFilter(SqlCondition<CqlValue>);
 /// keyed on, and the bound parameters do not change the statement text.
 impl std::hash::Hash for ScyllaSearchFilter {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.condition().hash(state)
+        self.0.condition().hash(state);
     }
 }
 

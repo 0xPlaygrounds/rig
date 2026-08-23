@@ -52,8 +52,7 @@ pub(crate) mod shared_parts {
         let tool_id = wire_id.and_then(crate::streaming::WireId::new);
         let id = tool_id
             .as_ref()
-            .map(|id| StreamPartId::wire(id.as_str()))
-            .unwrap_or_else(|| tool_ids.mint());
+            .map_or_else(|| tool_ids.mint(), |id| StreamPartId::wire(id.as_str()));
         let tool_call = RawStreamingToolCall {
             id,
             tool_id,
@@ -696,7 +695,7 @@ mod tests {
             {
                 assert_eq!(text, expected_text);
             } else {
-                panic!("Expected text part at index {}", i);
+                panic!("Expected text part at index {i}");
             }
         }
     }

@@ -155,7 +155,7 @@ async fn specific_tool_targets_named_tool() {
                     .function
                     .arguments
                     .get("x")
-                    .and_then(|value| value.as_f64()),
+                    .and_then(serde_json::Value::as_f64),
                 Some(9.0),
                 "arguments should reflect the prompt: {:?}",
                 tool_call.function.arguments
@@ -165,7 +165,7 @@ async fn specific_tool_targets_named_tool() {
                     .function
                     .arguments
                     .get("y")
-                    .and_then(|value| value.as_f64()),
+                    .and_then(serde_json::Value::as_f64),
                 Some(4.0),
                 "arguments should reflect the prompt: {:?}",
                 tool_call.function.arguments

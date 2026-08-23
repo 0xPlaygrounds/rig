@@ -109,10 +109,10 @@ impl TryFrom<aws_sdk_bedrockruntime::operation::converse::ConverseOutput>
         } = value;
 
         Ok(Self {
-            output: output.map(|x| x.try_into()).transpose()?,
+            output: output.map(std::convert::TryInto::try_into).transpose()?,
             stop_reason: stop_reason.try_into()?,
-            usage: usage.map(|x| x.try_into()).transpose()?,
-            metrics: metrics.map(|x| x.try_into()).transpose()?,
+            usage: usage.map(std::convert::TryInto::try_into).transpose()?,
+            metrics: metrics.map(std::convert::TryInto::try_into).transpose()?,
             additional_model_response_fields: additional_model_response_fields
                 .map(|doc| AwsDocument(doc).into()),
             request_id,

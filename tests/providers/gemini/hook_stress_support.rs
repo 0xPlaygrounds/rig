@@ -287,11 +287,7 @@ impl AgentHook for ScratchpadReader {
         ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        let tally = ctx
-            .scratchpad()
-            .get::<ToolCallTally>()
-            .map(|t| t.0)
-            .unwrap_or(0);
+        let tally = ctx.scratchpad().get::<ToolCallTally>().map_or(0, |t| t.0);
         self.tallies.lock().expect("tallies").push(tally);
         ModelTurnAction::continue_run()
     }

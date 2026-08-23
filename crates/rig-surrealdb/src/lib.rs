@@ -295,8 +295,7 @@ where
                 "filter",
                 req.filter()
                     .clone()
-                    .map(SurrealSearchFilter::inner)
-                    .unwrap_or("true".into()),
+                    .map_or("true".into(), SurrealSearchFilter::inner),
             ))
             .await
             .map_err(VectorStoreError::datastore)

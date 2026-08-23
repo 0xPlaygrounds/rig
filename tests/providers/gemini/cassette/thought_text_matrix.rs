@@ -996,7 +996,7 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 match item.expect("no stream item should be an error") {
                     StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
                     StreamedAssistantContent::ReasoningDelta { reasoning: r, .. } => {
-                        reasoning.push_str(&r)
+                        reasoning.push_str(&r);
                     }
                     _ => {}
                 }
@@ -1067,12 +1067,11 @@ async fn blocking_keeps_a_trailing_thought_signature() {
                 .candidates
                 .first()
                 .and_then(|candidate| candidate.content.as_ref())
-                .map(|content| {
+                .is_some_and(|content| {
                     content.parts.iter().any(|part| {
                         part.thought_signature.is_some() && !part.thought.unwrap_or(false)
                     })
-                })
-                .unwrap_or(false);
+                });
             assert!(
                 signed_text_part,
                 "this cell's premise is a signed part with no thought flag"

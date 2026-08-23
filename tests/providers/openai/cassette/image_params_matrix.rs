@@ -87,8 +87,7 @@ const SIDE: u32 = 1024;
 fn rejection_body(error: &ImageGenerationError) -> String {
     error
         .provider_response_body()
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| error.to_string())
+        .map_or_else(|| error.to_string(), ToOwned::to_owned)
 }
 
 // ---------------------------------------------------------------------------

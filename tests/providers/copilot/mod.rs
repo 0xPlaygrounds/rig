@@ -50,14 +50,14 @@ pub(crate) fn copilot_github_access_token() -> Option<String> {
 
 pub(crate) fn live_responses_model() -> Cow<'static, str> {
     first_env_value(&["GITHUB_COPILOT_RESPONSES_MODEL", "COPILOT_RESPONSES_MODEL"])
-        .map(Cow::Owned)
-        .unwrap_or_else(|| Cow::Borrowed(copilot::GPT_5_3_CODEX))
+        .map_or_else(|| Cow::Borrowed(copilot::GPT_5_3_CODEX), Cow::Owned)
 }
 
 pub(crate) fn live_embedding_model() -> Cow<'static, str> {
-    first_env_value(&["GITHUB_COPILOT_EMBEDDING_MODEL", "COPILOT_EMBEDDING_MODEL"])
-        .map(Cow::Owned)
-        .unwrap_or_else(|| Cow::Borrowed(copilot::TEXT_EMBEDDING_3_SMALL))
+    first_env_value(&["GITHUB_COPILOT_EMBEDDING_MODEL", "COPILOT_EMBEDDING_MODEL"]).map_or_else(
+        || Cow::Borrowed(copilot::TEXT_EMBEDDING_3_SMALL),
+        Cow::Owned,
+    )
 }
 
 fn env_base_url() -> Option<String> {

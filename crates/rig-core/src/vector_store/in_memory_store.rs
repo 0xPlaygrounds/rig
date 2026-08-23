@@ -292,8 +292,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             .values()
             .next()
             .and_then(|(_, embeddings)| embeddings.iter().next())
-            .map(|e| e.vec.len())
-            .unwrap_or(0);
+            .map_or(0, |e| e.vec.len());
 
         if first_embedding == 0 {
             return;
@@ -650,7 +649,7 @@ mod tests {
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
-        )
+        );
     }
 
     #[test]
@@ -734,7 +733,7 @@ mod tests {
                 "doc1".to_string(),
                 "glarb-garb".to_string()
             )]
-        )
+        );
     }
 
     #[tokio::test]

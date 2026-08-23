@@ -177,17 +177,17 @@ impl ToolServerHandle {
     where
         T: Tool + 'static,
     {
-        self.register(|toolset| toolset.add_tool(tool))
+        self.register(|toolset| toolset.add_tool(tool));
     }
 
     /// Register a runtime-defined static tool.
     pub fn add_dynamic_tool(&self, tool: DynamicTool) {
-        self.register(|toolset| toolset.add_dynamic_tool(tool))
+        self.register(|toolset| toolset.add_dynamic_tool(tool));
     }
 
     /// Register a context-free dynamic tool through the classic adapter.
     pub fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
-        self.register(|toolset| toolset.add_portable_dynamic_tool(tool))
+        self.register(|toolset| toolset.add_portable_dynamic_tool(tool));
     }
 
     /// Atomically install the initial tools owned by one external tool source
@@ -1072,7 +1072,7 @@ mod tests {
 
         // All calls should succeed
         for res in result.unwrap() {
-            assert!(res.is_ok(), "Tool call failed: {:?}", res);
+            assert!(res.is_ok(), "Tool call failed: {res:?}");
             assert_eq!(res.unwrap(), "done");
         }
     }
@@ -1192,10 +1192,10 @@ mod tests {
                 let result_value = value.value;
                 context.insert_result(result_value);
             }
-            Ok(context
-                .get::<SessionId>()
-                .map(|session| format!("session:{}", session.0))
-                .unwrap_or_else(|| "no session".to_string()))
+            Ok(context.get::<SessionId>().map_or_else(
+                || "no session".to_string(),
+                |session| format!("session:{}", session.0),
+            ))
         }
     }
 

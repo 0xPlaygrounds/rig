@@ -316,7 +316,7 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
                         terminal,
                     )) => observation.finals.push(terminal.raw.clone()),
                     MultiTurnStreamItem::CompletionCall(call) => {
-                        observation.stream_calls.push(call.raw.clone())
+                        observation.stream_calls.push(call.raw.clone());
                     }
                     MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
                     _ => {}

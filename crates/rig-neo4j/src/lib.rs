@@ -253,7 +253,7 @@ where
                 serde_json::Value::String(s) => BoltType::String(BoltString::new(&s)),
                 serde_json::Value::Array(arr) => BoltType::List(
                     arr.iter()
-                        .map(|v| v.to_bolt_type())
+                        .map(ToBoltType::to_bolt_type)
                         .collect::<Vec<BoltType>>()
                         .into(),
                 ),

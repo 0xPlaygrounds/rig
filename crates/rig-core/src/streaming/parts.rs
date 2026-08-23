@@ -478,9 +478,8 @@ impl PartsAccumulator {
                     .iter()
                     .enumerate()
                     .filter(|(_, input)| input.id.is_minted());
-                let candidate = match (minted.next(), minted.next()) {
-                    (Some(candidate), None) => candidate,
-                    _ => return None,
+                let (Some(candidate), None) = (minted.next(), minted.next()) else {
+                    return None;
                 };
                 let (index, input) = candidate;
                 // An assembly opened by args-only deltas never saw a name

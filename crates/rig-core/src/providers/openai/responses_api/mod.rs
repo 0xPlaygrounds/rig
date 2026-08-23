@@ -517,7 +517,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 file_data,
                                 file_url,
                                 filename,
-                            }))
+                            }));
                         }
                         crate::message::UserContent::Document(Document {
                             data:
@@ -606,9 +606,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             });
                         }
                         crate::message::AssistantContent::Reasoning(reasoning) => {
-                            let openai_reasoning = openai_reasoning_from_core(&reasoning)
-                                .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
-                            if let Some(openai_reasoning) = openai_reasoning {
+                            if let Some(openai_reasoning) = openai_reasoning_from_core(&reasoning) {
                                 reasoning_items.push(InputItem {
                                     role: None,
                                     input: InputContent::Reasoning(openai_reasoning),
@@ -681,17 +679,13 @@ pub(crate) fn reasoning_content_blocks(
     blocks
 }
 
-fn openai_reasoning_from_core(
-    reasoning: &crate::message::Reasoning,
-) -> Result<Option<OpenAIReasoning>, MessageError> {
+fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<OpenAIReasoning> {
     // Only wire-genuine ids exist in durable histories: the streaming layer
     // populates `Reasoning::id` exclusively from `StreamPartId::Wire`, so an
     // id-less (rig-keyed) reasoning item arrives here as `None` and drops
     // from request input, mirroring main's handling. No provenance gate is
     // needed — a fabricated id structurally cannot reach this function.
-    let Some(id) = reasoning.id.clone() else {
-        return Ok(None);
-    };
+    let id = reasoning.id.clone()?;
 
     let mut summary = Vec::new();
     let mut reasoning_content = Vec::new();
@@ -713,13 +707,13 @@ fn openai_reasoning_from_core(
         }
     }
 
-    Ok(Some(OpenAIReasoning {
+    Some(OpenAIReasoning {
         id,
         summary,
         content: reasoning_content,
         encrypted_content,
         status: None,
-    }))
+    })
 }
 
 /// The definition of a tool response, repurposed for OpenAI's Responses API.
@@ -990,15 +984,13 @@ impl From<&ResponsesUsage> for crate::completion::Usage {
             cached_input_tokens: usage
                 .input_tokens_details
                 .as_ref()
-                .map(|details| details.cached_tokens)
-                .unwrap_or(0),
+                .map_or(0, |details| details.cached_tokens),
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
             reasoning_tokens: usage
                 .output_tokens_details
                 .as_ref()
-                .map(|details| details.reasoning_tokens)
-                .unwrap_or(0),
+                .map_or(0, |details| details.reasoning_tokens),
         }
     }
 }

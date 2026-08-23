@@ -127,7 +127,7 @@ mod tests {
     fn test_dot_product() {
         let (embedding_1, embedding_2) = embeddings();
 
-        assert_eq!(embedding_1.dot_product(&embedding_2), 32.0)
+        assert_eq!(embedding_1.dot_product(&embedding_2), 32.0);
     }
 
     #[test]
@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(
             embedding_1.cosine_similarity(&embedding_2, false),
             0.9875414397573881
-        )
+        );
     }
 
     #[test]
@@ -147,27 +147,27 @@ mod tests {
         assert_eq!(
             embedding_1.angular_distance(&embedding_2, false),
             0.0502980301830343
-        )
+        );
     }
 
     #[test]
     fn test_euclidean_distance() {
         let (embedding_1, embedding_2) = embeddings();
 
-        assert_eq!(embedding_1.euclidean_distance(&embedding_2), 5.0)
+        assert_eq!(embedding_1.euclidean_distance(&embedding_2), 5.0);
     }
 
     #[test]
     fn test_manhattan_distance() {
         let (embedding_1, embedding_2) = embeddings();
 
-        assert_eq!(embedding_1.manhattan_distance(&embedding_2), 7.0)
+        assert_eq!(embedding_1.manhattan_distance(&embedding_2), 7.0);
     }
 
     #[test]
     fn test_chebyshev_distance() {
         let (embedding_1, embedding_2) = embeddings();
 
-        assert_eq!(embedding_1.chebyshev_distance(&embedding_2), 4.0)
+        assert_eq!(embedding_1.chebyshev_distance(&embedding_2), 4.0);
     }
 }

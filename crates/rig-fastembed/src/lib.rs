@@ -191,11 +191,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
             rig_core::telemetry::ModalityOperation::Embeddings,
             async {
                 let Some(embedder) = &self.embedder else {
-                    let message = self
-                        .init_error
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(|| "FastEmbed model initialization failed".to_string());
+                    let message = self.init_error.as_ref().map_or_else(
+                        || "FastEmbed model initialization failed".to_string(),
+                        ToString::to_string,
+                    );
                     return Err(EmbeddingError::ProviderError(message));
                 };
 

@@ -51,7 +51,7 @@ async fn strict_tools_opt_in_roundtrip() {
                     .function
                     .arguments
                     .get("x")
-                    .and_then(|value| value.as_f64()),
+                    .and_then(serde_json::Value::as_f64),
                 Some(7.0),
                 "strict-mode arguments should carry both required fields: {:?}",
                 tool_call.function.arguments
@@ -61,7 +61,7 @@ async fn strict_tools_opt_in_roundtrip() {
                     .function
                     .arguments
                     .get("y")
-                    .and_then(|value| value.as_f64()),
+                    .and_then(serde_json::Value::as_f64),
                 Some(5.0),
                 "strict-mode arguments should carry both required fields: {:?}",
                 tool_call.function.arguments

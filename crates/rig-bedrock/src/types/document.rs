@@ -135,7 +135,7 @@ mod tests {
 
         let doc_name = aws_document.name;
         assert!(doc_name.starts_with("document-"));
-        assert_eq!(aws_document_bytes, document_data)
+        assert_eq!(aws_document_bytes, document_data);
     }
 
     #[test]
@@ -157,7 +157,7 @@ mod tests {
             .unwrap()
             .as_ref()
             .to_owned();
-        assert_eq!(aws_document_bytes, document_data)
+        assert_eq!(aws_document_bytes, document_data);
     }
 
     #[test]
@@ -174,7 +174,7 @@ mod tests {
                 "Unsupported media type application/x-javascript".into()
             )
             .to_string()
-        )
+        );
     }
 
     #[test]
@@ -190,7 +190,7 @@ mod tests {
         let rig_document: Result<RigDocument, _> = mirrored(aws_document).try_into();
         assert!(rig_document.is_ok());
         let rig_document = rig_document.unwrap().0;
-        assert_eq!(rig_document.media_type.unwrap(), DocumentMediaType::PDF)
+        assert_eq!(rig_document.media_type.unwrap(), DocumentMediaType::PDF);
     }
 
     #[test]
@@ -208,6 +208,6 @@ mod tests {
         assert_eq!(
             rig_document.err().unwrap().to_string(),
             CompletionError::ProviderError("Unsupported media type xlsx".into()).to_string()
-        )
+        );
     }
 }

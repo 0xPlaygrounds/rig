@@ -154,13 +154,10 @@ where
                 }
                 error => McpClientError::ToolFetchError(error),
             })?;
-            let page = match response {
-                ServerResult::ListToolsResult(page) => page,
-                _ => {
-                    return Err(McpClientError::ToolFetchError(
-                        rmcp::ServiceError::UnexpectedResponse,
-                    ));
-                }
+            let ServerResult::ListToolsResult(page) = response else {
+                return Err(McpClientError::ToolFetchError(
+                    rmcp::ServiceError::UnexpectedResponse,
+                ));
             };
             tools.extend(page.tools);
             cursor = page.next_cursor;

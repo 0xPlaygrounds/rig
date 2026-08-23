@@ -242,17 +242,13 @@ impl From<&Usage> for crate::completion::Usage {
                 .prompt_tokens_details
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
-                .map(u64::from)
-                // DeepSeek's native usage reports cache hits outside the
-                // OpenAI-style details object.
-                .unwrap_or(u64::from(usage.prompt_cache_hit_tokens)),
+                .map_or(u64::from(usage.prompt_cache_hit_tokens), u64::from),
         );
         normalized.reasoning_tokens = usage
             .completion_tokens_details
             .as_ref()
             .and_then(|details| details.reasoning_tokens)
-            .map(u64::from)
-            .unwrap_or(0);
+            .map_or(0, u64::from);
         normalized
     }
 }

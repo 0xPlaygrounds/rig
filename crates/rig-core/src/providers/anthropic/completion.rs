@@ -1287,14 +1287,12 @@ impl TryFrom<message::Message> for Message {
                                 }
                             },
                             DocumentMediaType::TXT => {
-                                let data = match data {
-                                    DocumentSourceKind::String(data)
-                                    | DocumentSourceKind::Base64(data) => data,
-                                    _ => {
-                                        return Err(MessageError::ConversionError(
-                                            "Only string or base64 data is supported for plain text documents".into(),
-                                        ));
-                                    }
+                                let (DocumentSourceKind::String(data)
+                                | DocumentSourceKind::Base64(data)) = data
+                                else {
+                                    return Err(MessageError::ConversionError(
+                                        "Only string or base64 data is supported for plain text documents".into(),
+                                    ));
                                 };
                                 DocumentSource::Text {
                                     data,
@@ -1443,7 +1441,7 @@ impl TryFrom<Message> for message::Message {
                                 // and never carries the tool name; this
                                 // conversion is lossy for name-keyed wires.
                                 "",
-                                content.into_iter().map(|content| content.into()).collect(),
+                                content.into_iter().map(std::convert::Into::into).collect(),
                             ),
                             Content::Image { source, .. } => match source {
                                 ImageSource::Base64 { data, media_type } => {
@@ -1522,7 +1520,7 @@ impl TryFrom<Message> for message::Message {
                 content: message
                     .content
                     .into_iter()
-                    .map(|content| content.try_into())
+                    .map(std::convert::TryInto::try_into)
                     .collect::<Result<Vec<_>, _>>()?,
             },
             Role::System => {
@@ -3405,14 +3403,14 @@ mod tests {
 
         match converted_tool_message.clone() {
             message::Message::User { content } => {
-                let message::ToolResult {
+                let Some(message::UserContent::ToolResult(message::ToolResult {
                     call,
                     name,
                     content,
                     ..
-                } = match content.first() {
-                    Some(message::UserContent::ToolResult(tool_result)) => tool_result,
-                    _ => panic!("Expected tool result content"),
+                })) = content.first()
+                else {
+                    panic!("Expected tool result content")
                 };
                 assert_eq!(call, "toolu_01A09q90qw90lq917835lq9");
                 // The Anthropic wire carries no tool name on `tool_result`

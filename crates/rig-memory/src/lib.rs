@@ -1115,16 +1115,13 @@ where
             let in_flight_guard =
                 InFlightGuard::new(&self.state, conversation_id, reservation.clone());
 
-            let new_slice = match demoted.get(skip..) {
-                Some(s) => s,
-                None => {
-                    // Drop the guard explicitly so the gate is released
-                    // before we surface the invariant break.
-                    drop(in_flight_guard);
-                    return Err(MemoryError::Internal(
-                        "compaction watermark exceeds demoted slice length".into(),
-                    ));
-                }
+            let Some(new_slice) = demoted.get(skip..) else {
+                // Drop the guard explicitly so the gate is released
+                // before we surface the invariant break.
+                drop(in_flight_guard);
+                return Err(MemoryError::Internal(
+                    "compaction watermark exceeds demoted slice length".into(),
+                ));
             };
 
             let result = self
@@ -1350,9 +1347,8 @@ fn truncate_summary(buf: &str, cap: usize) -> String {
     // Number of bytes of the body we can keep after the marker.
     let keep_bytes = cap.saturating_sub(preserved);
     let body_start = header_prefix_len;
-    let body = match buf.get(body_start..) {
-        Some(b) => b,
-        None => return buf.to_string(),
+    let Some(body) = buf.get(body_start..) else {
+        return buf.to_string();
     };
     // Take the suffix of `body` whose length is at most `keep_bytes`,
     // walking forward to a UTF-8 char boundary.
@@ -1361,9 +1357,8 @@ fn truncate_summary(buf: &str, cap: usize) -> String {
         cut += 1;
     }
     let suffix: &str = body.get(cut..).unwrap_or_default();
-    let header_with_nl = match buf.get(..header_prefix_len) {
-        Some(h) => h,
-        None => return buf.to_string(),
+    let Some(header_with_nl) = buf.get(..header_prefix_len) else {
+        return buf.to_string();
     };
     let mut out = String::with_capacity(header_prefix_len + MARKER.len() + suffix.len());
     out.push_str(header_with_nl);
@@ -1773,12 +1768,7 @@ mod tests {
             self.seen.lock().unwrap().len()
         }
         fn last_demoted_count(&self) -> usize {
-            self.seen
-                .lock()
-                .unwrap()
-                .last()
-                .map(|(_, m)| m.len())
-                .unwrap_or(0)
+            self.seen.lock().unwrap().last().map_or(0, |(_, m)| m.len())
         }
     }
 
@@ -2500,7 +2490,7 @@ mod tests {
                     .lock()
                     .unwrap()
                     .push((evicted.len(), carry_over.is_some()));
-                let prev = carry_over.map(|s| s.as_str()).unwrap_or("");
+                let prev = carry_over.map_or("", super::TextSummary::as_str);
                 Ok(TextSummary(format!("{prev}|{}", evicted.len())))
             })
         }

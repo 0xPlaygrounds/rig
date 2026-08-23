@@ -32,7 +32,7 @@ impl VectorizeFilter {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.as_object().is_none_or(|obj| obj.is_empty())
+        self.0.as_object().is_none_or(serde_json::Map::is_empty)
     }
 }
 
@@ -213,24 +213,13 @@ mod tests {
 
         // OR should create an invalid filter
         let result = combined.validate();
-        assert!(result.is_err());
-
-        let err = match result {
-            Err(err) => err,
-            Ok(()) => {
-                assert!(result.is_err(), "OR filters should fail validation");
-                return;
-            }
-        };
-        match err {
-            VectorizeError::UnsupportedFilterOperation(msg) => {
-                assert!(msg.contains("OR"));
-            }
-            other => assert!(
-                matches!(other, VectorizeError::UnsupportedFilterOperation(_)),
-                "expected UnsupportedFilterOperation error, got {other:?}"
+        assert!(
+            matches!(
+                &result,
+                Err(VectorizeError::UnsupportedFilterOperation(msg)) if msg.contains("OR")
             ),
-        }
+            "expected UnsupportedFilterOperation error mentioning OR, got {result:?}"
+        );
     }
 
     #[test]

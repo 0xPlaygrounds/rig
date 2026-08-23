@@ -240,7 +240,7 @@ async fn vector_search_test() {
             "document": "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
             "embedding": serde_json::Value::Null
         })
-    )
+    );
 }
 
 async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, Vec<Embedding>)> {

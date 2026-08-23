@@ -204,7 +204,7 @@ where
         match tokio::time::timeout(READ_TIMEOUT, stream.next()).await {
             // (4) Stall / half-open: no bytes within the read window.
             Err(_elapsed) => {
-                reason = Some(format!("stall: no data within {:?}", READ_TIMEOUT));
+                reason = Some(format!("stall: no data within {READ_TIMEOUT:?}"));
                 break;
             }
             // Stream ended.
@@ -224,10 +224,10 @@ where
             Ok(Some(Ok(item))) => match item {
                 StreamedAssistantContent::Text(text) => output.push_str(&text.text),
                 StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
-                    output.push_str(&reasoning)
+                    output.push_str(&reasoning);
                 }
                 StreamedAssistantContent::Reasoning { reasoning: r, .. } => {
-                    output.push_str(&r.display_text())
+                    output.push_str(&r.display_text());
                 }
                 StreamedAssistantContent::Final(resp) => {
                     // Authoritative usage. A premature clean close (shape #3)

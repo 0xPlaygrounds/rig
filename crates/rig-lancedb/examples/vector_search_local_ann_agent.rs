@@ -86,7 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let response = agent.prompt(query).await?;
 
-    println!("Response: {}", response);
+    println!("Response: {response}");
 
     Ok(())
 }

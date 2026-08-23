@@ -106,11 +106,10 @@ impl std::fmt::Display for Usage {
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(value: &Usage) -> crate::completion::Usage {
-        let (cached_input, cache_creation) = value
-            .prompt_tokens_details
-            .as_ref()
-            .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
-            .unwrap_or((0, 0));
+        let (cached_input, cache_creation) =
+            value.prompt_tokens_details.as_ref().map_or((0, 0), |d| {
+                (d.cached_tokens as u64, d.cache_write_tokens as u64)
+            });
         crate::completion::Usage {
             input_tokens: value.prompt_tokens as u64,
             // Reported completion tokens, falling back to saturating
@@ -128,8 +127,7 @@ impl From<&Usage> for crate::completion::Usage {
             reasoning_tokens: value
                 .completion_tokens_details
                 .as_ref()
-                .map(|d| d.reasoning_tokens as u64)
-                .unwrap_or(0),
+                .map_or(0, |d| d.reasoning_tokens as u64),
         }
     }
 }
@@ -170,7 +168,7 @@ impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {
         let joined = categories
             .iter()
             .take(2)
-            .map(|c| c.as_ref())
+            .map(std::convert::AsRef::as_ref)
             .collect::<Vec<_>>()
             .join(",");
         if !joined.is_empty()

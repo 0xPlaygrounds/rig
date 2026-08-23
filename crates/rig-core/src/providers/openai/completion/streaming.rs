@@ -1309,11 +1309,11 @@ mod tests {
         while let Some(chunk) = stream.next().await {
             match chunk.unwrap() {
                 streaming::StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
-                    reasoning_chunks.push(reasoning)
+                    reasoning_chunks.push(reasoning);
                 }
                 streaming::StreamedAssistantContent::Text(text) => text_chunks.push(text.text),
                 streaming::StreamedAssistantContent::Final(response) => {
-                    final_response = Some(response)
+                    final_response = Some(response);
                 }
                 _ => {}
             }

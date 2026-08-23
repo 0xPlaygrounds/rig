@@ -604,8 +604,7 @@ where
             let id_value = values
                 .iter()
                 .find(|(name, _)| *name == "id")
-                .map(|(_, value)| value.to_sql_value())
-                .unwrap_or_else(|| Value::Text(doc.id()));
+                .map_or_else(|| Value::Text(doc.id()), |(_, value)| value.to_sql_value());
             if let Some(existing_rowid) = txn
                 .query_row(&existing_rowid_sql, rusqlite::params![id_value], |row| {
                     row.get::<_, i64>(0)

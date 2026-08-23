@@ -344,7 +344,7 @@ const MOTTO_OUTPUT: &str = "steady hands\ncalm waters";
 fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn tool_result_values(message: &Message) -> Vec<serde_json::Value> {

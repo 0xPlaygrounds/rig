@@ -300,7 +300,7 @@ async fn test_query_with_eq_filter() {
             }
         }
         Err(e) => {
-            eprintln!("Filter test skipped - metadata may not be indexed: {:?}", e);
+            eprintln!("Filter test skipped - metadata may not be indexed: {e:?}");
         }
     }
 }
@@ -379,7 +379,7 @@ async fn test_query_with_combined_filters() {
             }
         }
         Err(e) => {
-            eprintln!("Filter test skipped - metadata may not be indexed: {:?}", e);
+            eprintln!("Filter test skipped - metadata may not be indexed: {e:?}");
         }
     }
 }
@@ -462,7 +462,7 @@ async fn test_query_with_in_filter() {
             }
         }
         Err(e) => {
-            eprintln!("Filter test skipped - metadata may not be indexed: {:?}", e);
+            eprintln!("Filter test skipped - metadata may not be indexed: {e:?}");
         }
     }
 }
@@ -569,7 +569,7 @@ async fn clear_test_index() {
         let result = match client.list_vectors(Some(1000), cursor.as_deref()).await {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("Warning: Failed to list vectors: {:?}", e);
+                eprintln!("Warning: Failed to list vectors: {e:?}");
                 return;
             }
         };
@@ -580,7 +580,7 @@ async fn clear_test_index() {
 
         let ids: Vec<String> = result.vectors.into_iter().map(|v| v.id).collect();
         if let Err(e) = client.delete_by_ids(ids).await {
-            eprintln!("Warning: Failed to delete vectors: {:?}", e);
+            eprintln!("Warning: Failed to delete vectors: {e:?}");
             return;
         }
 

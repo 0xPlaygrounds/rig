@@ -96,7 +96,7 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
         match item.expect("streaming prompt should succeed") {
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response.output().to_owned());
-                final_history = response.messages().map(|history| history.to_vec());
+                final_history = response.messages().map(<[rig::completion::Message]>::to_vec);
                 break;
             }
             MultiTurnStreamItem::StreamAssistantItem(_)

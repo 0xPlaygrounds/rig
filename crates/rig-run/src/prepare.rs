@@ -235,13 +235,16 @@ pub fn prepare_request(
     // In Tool mode, reuse the run's committed name or pick a collision-safe one
     // against the full pre-filter set (or the executable set when unfiltered).
     let output_tool_name = matches!(resolved_mode, OutputMode::Tool).then(|| {
-        committed_output_tool.map(str::to_owned).unwrap_or_else(|| {
-            pick_output_tool_name(
-                pre_filter_tool_names
-                    .as_ref()
-                    .unwrap_or(&executable_tool_names),
-            )
-        })
+        committed_output_tool.map_or_else(
+            || {
+                pick_output_tool_name(
+                    pre_filter_tool_names
+                        .as_ref()
+                        .unwrap_or(&executable_tool_names),
+                )
+            },
+            str::to_owned,
+        )
     });
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a

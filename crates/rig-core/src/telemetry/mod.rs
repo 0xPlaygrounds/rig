@@ -360,7 +360,7 @@ fn warn_once_on_completion_parent_verdict(
             let first_sighting = {
                 let mut warned = NEAR_MISS_WARNED
                     .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 warned.insert(metadata.callsite())
             };
             // The guard is released above, before `warn!`, and that scoping is

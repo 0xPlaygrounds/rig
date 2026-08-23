@@ -101,10 +101,10 @@ impl HelixDBClient for HelixDB {
             code => match response.text().await {
                 Ok(details) => Err(HelixError::RemoteError { details }),
                 Err(_) => Err(HelixError::RemoteError {
-                    details: code
-                        .canonical_reason()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(|| format!("unknown error with code: {code}")),
+                    details: code.canonical_reason().map_or_else(
+                        || format!("unknown error with code: {code}"),
+                        ToString::to_string,
+                    ),
                 }),
             },
         }
@@ -272,22 +272,18 @@ where
             .await?
             .into_iter()
             .filter(|x| {
-                let is_threshold = req
-                    .threshold()
-                    .map(|t| -(x.score - 1.) >= t)
-                    .unwrap_or(true);
+                let is_threshold = req.threshold().is_none_or(|t| -(x.score - 1.) >= t);
 
                 is_threshold
                     && req
                         .filter()
                         .clone()
                         .zip(serde_json::from_str(&x.json_payload).ok())
-                        .map(
+                        .is_none_or(
                             |(filter, payload): (Filter<serde_json::Value>, serde_json::Value)| {
                                 filter.satisfies(&payload)
                             },
                         )
-                        .unwrap_or(true)
             })
             .map(|x| {
                 let doc: T = serde_json::from_str(&x.json_payload)?;

@@ -462,7 +462,7 @@ async fn unicode_input_at_a_requested_width() {
     let calls = with_doubleword_embedding_cassette(
         "embedding_dimensions/unicode_input_at_a_requested_width",
         |client| async move {
-            embed_one(&client, Some(512), "こんにちは 🌍 café — naïve résumé").await
+            embed_one(&client, Some(512), "こんにちは 🌍 café — naïve résumé").await;
         },
     )
     .await;
@@ -497,7 +497,7 @@ async fn long_input_at_a_requested_width() {
         "embedding_dimensions/long_input_at_a_requested_width",
         |client| async move {
             let long = "Doubleword fronts heterogeneous open-weight backends. ".repeat(64);
-            embed_one(&client, Some(512), &long).await
+            embed_one(&client, Some(512), &long).await;
         },
     )
     .await;

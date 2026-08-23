@@ -265,7 +265,7 @@ pub(crate) fn create_grpc_request(
     };
 
     Ok(GenerateContentRequest {
-        model: format!("models/{}", model),
+        model: format!("models/{model}"),
         contents,
         tools,
         safety_settings: vec![],
@@ -432,7 +432,9 @@ fn rig_assistant_content_to_grpc_part(
             data: Some(proto::part::Data::Text(reasoning.display_text())),
             thought: true,
             thought_signature: decode_optional_base64(
-                reasoning.first_signature().map(|s| s.to_string()),
+                reasoning
+                    .first_signature()
+                    .map(std::string::ToString::to_string),
             )?,
             part_metadata: None,
         }),
@@ -501,11 +503,10 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                     }
                 }
                 Some(proto::part::Data::FunctionCall(function_call)) => {
-                    let args = function_call
-                        .args
-                        .as_ref()
-                        .map(prost_struct_to_json)
-                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+                    let args = function_call.args.as_ref().map_or(
+                        serde_json::Value::Object(serde_json::Map::new()),
+                        prost_struct_to_json,
+                    );
 
                     // An id-less call mints its correlation handle —
                     // never name-as-id, which collides two same-tool calls.
@@ -619,7 +620,7 @@ fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, CompletionError> {
 
     // Allow `data:<mime>;base64,<data>` inputs.
     let data = if let Some(rest) = data.strip_prefix("data:") {
-        rest.split_once(',').map(|(_, b64)| b64).unwrap_or(data)
+        rest.split_once(',').map_or(data, |(_, b64)| b64)
     } else {
         data
     };
@@ -739,8 +740,7 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
         None | Some(proto::value::Kind::NullValue(_)) => serde_json::Value::Null,
         Some(proto::value::Kind::BoolValue(b)) => serde_json::Value::Bool(*b),
         Some(proto::value::Kind::NumberValue(n)) => serde_json::Number::from_f64(*n)
-            .map(serde_json::Value::Number)
-            .unwrap_or(serde_json::Value::Null),
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
         Some(proto::value::Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
         Some(proto::value::Kind::StructValue(st)) => prost_struct_to_json(st),
         Some(proto::value::Kind::ListValue(list)) => {

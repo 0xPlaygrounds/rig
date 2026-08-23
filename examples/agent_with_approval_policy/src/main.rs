@@ -128,7 +128,7 @@ impl AgentHook for ApprovalPolicy {
         if tool_name == TransferFunds::NAME {
             let amount = serde_json::from_str::<serde_json::Value>(event.args)
                 .ok()
-                .and_then(|value| value.get("amount").and_then(|amount| amount.as_u64()));
+                .and_then(|value| value.get("amount").and_then(serde_json::Value::as_u64));
             return match amount {
                 Some(amount) if amount <= self.max_auto_transfer => {
                     println!(

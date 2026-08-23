@@ -176,14 +176,13 @@ impl QdrantFilter {
                         ),
                     })
                 } else if let Some(is_null) = value.get("is_null") {
-                    let is_null_value =
-                        is_null
-                            .get("value")
-                            .and_then(|v| v.as_bool())
-                            .ok_or(FilterError::Must(
-                                "is_null".into(),
-                                "have a 'value' field".into(),
-                            ))?;
+                    let is_null_value = is_null
+                        .get("value")
+                        .and_then(serde_json::Value::as_bool)
+                        .ok_or(FilterError::Must(
+                        "is_null".into(),
+                        "have a 'value' field".into(),
+                    ))?;
 
                     // Get the key from the parent object
                     let key = value
@@ -219,15 +218,9 @@ impl QdrantFilter {
                             condition_one_of: Some(ConditionOneOf::Filter(filter)),
                         })
                     }
-                } else if value
-                    .as_object()
-                    .map(|o| {
-                        o.contains_key("must")
-                            || o.contains_key("must_not")
-                            || o.contains_key("should")
-                    })
-                    .unwrap_or(false)
-                {
+                } else if value.as_object().is_some_and(|o| {
+                    o.contains_key("must") || o.contains_key("must_not") || o.contains_key("should")
+                }) {
                     let filter = QdrantFilter(value).interpret()?;
 
                     Ok(Condition {
@@ -296,7 +289,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.must.extend(conditions)
+                        filter.must.extend(conditions);
                     }
 
                     if let Some(should) = value.get("should")
@@ -307,7 +300,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.should.extend(conditions)
+                        filter.should.extend(conditions);
                     }
 
                     if let Some(must_not) = value.get("must_not")
@@ -318,7 +311,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.must_not.extend(conditions)
+                        filter.must_not.extend(conditions);
                     }
 
                     if filter.must.is_empty()

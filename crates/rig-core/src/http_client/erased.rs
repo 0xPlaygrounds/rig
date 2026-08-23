@@ -487,9 +487,8 @@ mod tests {
         fn request_side_failure_aborts_before_sending() {
             let inner = RecordingHttpClient::new("ok");
             let boxed = BoxedHttpClient::new(inner.clone()).with_middleware(FailAt("headers"));
-            let err = match block_on(boxed.send::<_, Bytes>(request("hello"))) {
-                Ok(_) => panic!("must abort"),
-                Err(err) => err,
+            let Err(err) = block_on(boxed.send::<_, Bytes>(request("hello"))) else {
+                panic!("must abort")
             };
             assert_eq!(err.non_success_status(), Some(StatusCode::BAD_REQUEST));
             assert!(inner.requests().is_empty(), "nothing reached the transport");
@@ -499,9 +498,8 @@ mod tests {
         fn response_hook_failure_surfaces_as_the_request_error() {
             let inner = RecordingHttpClient::new("ok");
             let boxed = BoxedHttpClient::new(inner.clone()).with_middleware(FailAt("response"));
-            let err = match block_on(boxed.send::<_, Bytes>(request("hello"))) {
-                Ok(_) => panic!("must fail"),
-                Err(err) => err,
+            let Err(err) = block_on(boxed.send::<_, Bytes>(request("hello"))) else {
+                panic!("must fail")
             };
             assert_eq!(
                 err.non_success_status(),
@@ -575,9 +573,8 @@ mod tests {
     fn transport_errors_surface_unchanged() {
         let inner = RecordingHttpClient::with_error(http::StatusCode::TOO_MANY_REQUESTS, "slow");
         let boxed = BoxedHttpClient::new(inner);
-        let err = match block_on(boxed.send::<_, Bytes>(request(""))) {
-            Ok(_) => panic!("expected a transport error"),
-            Err(err) => err,
+        let Err(err) = block_on(boxed.send::<_, Bytes>(request(""))) else {
+            panic!("expected a transport error")
         };
         assert_eq!(
             err.non_success_status(),

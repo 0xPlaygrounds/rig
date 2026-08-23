@@ -1107,7 +1107,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     pub fn documents(self, documents: impl IntoIterator<Item = Document>) -> Self {
         documents
             .into_iter()
-            .fold(self, |builder, doc| builder.document(doc))
+            .fold(self, CompletionRequestBuilder::document)
     }
 
     /// Adds a tool to the completion request.
@@ -1118,9 +1118,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Adds a list of tools to the completion request.
     pub fn tools(self, tools: Vec<ToolDefinition>) -> Self {
-        tools
-            .into_iter()
-            .fold(self, |builder, tool| builder.tool(tool))
+        tools.into_iter().fold(self, CompletionRequestBuilder::tool)
     }
 
     /// Adds a provider-hosted tool to the completion request.
@@ -1133,7 +1131,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     pub fn provider_tools(self, tools: Vec<ProviderToolDefinition>) -> Self {
         tools
             .into_iter()
-            .fold(self, |builder, tool| builder.provider_tool(tool))
+            .fold(self, CompletionRequestBuilder::provider_tool)
     }
 
     /// Adds additional parameters to the completion request.

@@ -328,11 +328,10 @@ async fn long_history_replay_nonstreaming() {
                     _ => None,
                 })
                 .expect("first turn should call lookup_harbor_label");
-            let call_id = tool_call
-                .provider
-                .as_ref()
-                .map(|provider| provider.call_id.clone())
-                .unwrap_or_else(|| tool_call.id.to_string());
+            let call_id = tool_call.provider.as_ref().map_or_else(
+                || tool_call.id.to_string(),
+                |provider| provider.call_id.clone(),
+            );
 
             // Follow-up: replay a long client-owned history around that tool
             // roundtrip. The tool call is re-tagged with a local item ID (not

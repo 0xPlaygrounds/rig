@@ -440,7 +440,9 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     if let Some(usage) = &runner.error_usage {
-        *usage.lock().unwrap_or_else(|error| error.into_inner()) = run.usage();
+        *usage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = run.usage();
     }
 }
 
@@ -951,10 +953,7 @@ where
 
             while let Some((index, outcome)) = unordered.next().await {
                 // A dropped sibling records nothing.
-                let result = match outcome {
-                    Some(result) => result,
-                    None => continue,
-                };
+                let Some(result) = outcome else { continue };
                 match result {
                     Ok(collected_result) => {
                         if let Some(slot) = collected.get_mut(index) {
@@ -992,16 +991,13 @@ where
         let mut surface_items: Vec<MultiTurnStreamItem> =
             Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
-            let CollectedToolResult { content, internal_call_id, surface } = match slot {
-                Some(collected_result) => collected_result,
-                None => {
-                    yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
-                        CompletionError::ResponseError(
-                            "tool execution finished without producing every result".to_string(),
-                        ),
-                    ))));
-                    return;
-                }
+            let Some(CollectedToolResult { content, internal_call_id, surface }) = slot else {
+                yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
+                    CompletionError::ResponseError(
+                        "tool execution finished without producing every result".to_string(),
+                    ),
+                ))));
+                return;
             };
             if forward_items {
                 // An executed call also surfaces its execution commit; a skipped
@@ -4007,7 +4003,9 @@ mod migrated_tests {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                     saw_final_response = true;
                     final_response_text = Some(res.output().to_owned());
-                    final_history = res.messages().map(|history| history.to_vec());
+                    final_history = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Ok(_) => {}
@@ -7487,7 +7485,9 @@ mod migrated_tests {
                     response_text.push_str(&text.text);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    final_history = res.messages().map(|h| h.to_vec());
+                    final_history = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Err(e) => {
@@ -7541,7 +7541,9 @@ mod migrated_tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    history_in_final = res.messages().map(|h| h.to_vec());
+                    history_in_final = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Ok(_) => {}
@@ -7579,7 +7581,9 @@ mod migrated_tests {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                    history_in_final = res.messages().map(|h| h.to_vec());
+                    history_in_final = res
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                     break;
                 }
                 Ok(_) => {}

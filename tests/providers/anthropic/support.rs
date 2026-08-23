@@ -220,8 +220,7 @@ pub(super) fn recorded_response_body(scenario: &str) -> serde_json::Value {
     let json = line
         .strip_prefix('\'')
         .and_then(|rest| rest.strip_suffix('\''))
-        .map(|body| body.replace("''", "'"))
-        .unwrap_or_else(|| line.to_string());
+        .map_or_else(|| line.to_string(), |body| body.replace("''", "'"));
 
     serde_json::from_str(&json).unwrap_or_else(|err| {
         panic!(

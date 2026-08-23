@@ -36,7 +36,7 @@ impl std::fmt::Display for TranscriptionUsage {
         writeln!(f, "  completion_tokens: {}", self.completion_tokens)?;
         writeln!(f, "  total_tokens:      {}", self.total_tokens)?;
         if let Some(details) = &self.prompt_tokens_details {
-            writeln!(f, "  prompt_token_details: {:?}", details)?;
+            writeln!(f, "  prompt_token_details: {details:?}")?;
         } else {
             writeln!(f, "  prompt_token_details: N/A")?;
         }
@@ -320,14 +320,13 @@ mod test {
             .expect("build client");
         let model = client.transcription_model(VOXTRAL_MINI);
 
-        let error = match model
+        let Err(error) = model
             .transcription_request()
             .data(vec![0u8; 16])
             .send()
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("transcription should fail with non-success status"),
+        else {
+            panic!("transcription should fail with non-success status")
         };
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));

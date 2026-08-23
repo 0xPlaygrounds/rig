@@ -22,7 +22,7 @@ impl TryFrom<ContentBlock> for RigUserContent {
                 let tool_result_contents = tool_result
                     .content
                     .into_iter()
-                    .map(|tool| tool.try_into())
+                    .map(std::convert::TryInto::try_into)
                     .collect::<Result<Vec<RigToolResultContent>, _>>()?
                     .into_iter()
                     .map(|rt| rt.0)
@@ -126,7 +126,7 @@ mod tests {
             _ => Err("Invalid content type"),
         };
         assert!(content.is_ok());
-        assert_eq!(content.unwrap().text, "42")
+        assert_eq!(content.unwrap().text, "42");
     }
 
     #[test]
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(
             content.content,
             vec![ToolResultContent::Text("content".into())]
-        )
+        );
     }
 
     #[test]
@@ -178,7 +178,7 @@ mod tests {
                 "ToolResultContentBlock contains unsupported variant".into()
             )
             .to_string()
-        )
+        );
     }
 
     #[test]

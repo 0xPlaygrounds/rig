@@ -1069,7 +1069,11 @@ impl AgentRunner {
         self.error_usage = Some(usage.clone());
         let result = self.run().await;
         let observed = result.as_ref().map_or_else(
-            |_| *usage.lock().unwrap_or_else(|error| error.into_inner()),
+            |_| {
+                *usage
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+            },
             |response| response.usage,
         );
         (result, observed)
@@ -5528,7 +5532,7 @@ mod migrated_tests {
                         StreamedAssistantContent::ToolCall { .. },
                     ) => markers.push("model-call"),
                     MultiTurnStreamItem::ToolExecutionCommitted { .. } => {
-                        markers.push("exec-commit")
+                        markers.push("exec-commit");
                     }
                     MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         ..
@@ -6207,7 +6211,7 @@ mod migrated_tests {
                     ..
                 }) => model_args = Some(tool_call.function.arguments),
                 MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
-                    exec_args = Some(tool_call.function.arguments)
+                    exec_args = Some(tool_call.function.arguments);
                 }
                 _ => {}
             }
@@ -6274,7 +6278,7 @@ mod migrated_tests {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
                 MultiTurnStreamItem::ToolExecutionCommitted { .. } => exec_commits += 1,
                 MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
-                    results += 1
+                    results += 1;
                 }
                 MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
                 _ => {}
@@ -8178,7 +8182,10 @@ mod migrated_tests {
             // last and therefore wins conflicts.
             let params = req.additional_params.as_ref().expect("additional_params");
             assert_eq!(params.get("runner").and_then(|v| v.as_str()), Some("keep"));
-            assert_eq!(params.get("injected").and_then(|v| v.as_bool()), Some(true));
+            assert_eq!(
+                params.get("injected").and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
             assert!(params.get("baseline").is_none());
         }
 
@@ -10797,7 +10804,7 @@ mod migrated_tests {
                 MultiTurnStreamItem::ModelTurnRetried { turn } => retries.push(turn),
                 MultiTurnStreamItem::CompletionCall(_) => completion_calls += 1,
                 MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_)) => {
-                    provider_finals += 1
+                    provider_finals += 1;
                 }
                 MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
                 _ => {}

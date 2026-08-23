@@ -380,7 +380,7 @@ pub(super) async fn with_gemini_code_execution_cassette<F, Fut>(
     F: FnOnce(gemini::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    with_gemini_cassette(spec, test_body).await
+    with_gemini_cassette(spec, test_body).await;
 }
 
 /// Stream-terminal edge matrix (`tests/cassettes/gemini/stream_terminal_matrix/`).
@@ -391,7 +391,7 @@ pub(super) async fn with_gemini_stream_terminal_cassette<F, Fut>(
     F: FnOnce(gemini::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    with_gemini_cassette(spec, test_body).await
+    with_gemini_cassette(spec, test_body).await;
 }
 
 /// Thought-text edge matrix (`tests/cassettes/gemini/thought_text_matrix/`).
@@ -405,7 +405,7 @@ pub(super) async fn with_gemini_thought_text_cassette<F, Fut>(
     F: FnOnce(gemini::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    with_gemini_cassette(spec, test_body).await
+    with_gemini_cassette(spec, test_body).await;
 }
 
 /// Bogus-key variant for recording real 401/403s (rig#2314 error matrix).
@@ -698,7 +698,7 @@ mod always_deleting_cached_contents_tests {
                 collected
                     .lock()
                     .expect("warning sink should not be poisoned")
-                    .push(warning)
+                    .push(warning);
             },
         ))
         .catch_unwind()
@@ -752,7 +752,7 @@ mod always_deleting_cached_contents_tests {
                 collected
                     .lock()
                     .expect("warning sink should not be poisoned")
-                    .push(warning)
+                    .push(warning);
             },
         ))
         .catch_unwind()

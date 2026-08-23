@@ -12,7 +12,7 @@ fn provider_dirs() -> Vec<PathBuf> {
     let tests_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/providers");
     let mut dirs = fs::read_dir(tests_dir)
         .expect("tests directory should exist")
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .map(|entry| entry.path())
         .filter(|path| path.is_dir())
         .filter(|path| {
@@ -36,7 +36,7 @@ fn provider_local_tests_do_not_use_legacy_prefixes() {
 
         for entry in fs::read_dir(&dir)
             .expect("provider directory should be readable")
-            .filter_map(|entry| entry.ok())
+            .filter_map(std::result::Result::ok)
         {
             let path = entry.path();
             if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
@@ -53,13 +53,11 @@ fn provider_local_tests_do_not_use_legacy_prefixes() {
 
             assert!(
                 !stem.starts_with(&format!("{provider}_")),
-                "provider-local test file {:?} still uses a provider prefix",
-                path
+                "provider-local test file {path:?} still uses a provider prefix"
             );
             assert!(
                 !stem.starts_with("agent_with_"),
-                "provider-local test file {:?} still uses an agent_with_* name",
-                path
+                "provider-local test file {path:?} still uses an agent_with_* name"
             );
         }
     }

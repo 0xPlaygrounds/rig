@@ -155,8 +155,7 @@ impl GrpcAdapter {
                 let args_json = function_call
                     .args
                     .as_ref()
-                    .map(prost_struct_to_json)
-                    .unwrap_or_else(|| Value::Object(Map::new()));
+                    .map_or_else(|| Value::Object(Map::new()), prost_struct_to_json);
 
                 // The wire's id when present; never the tool name — a
                 // name-as-id would collide two calls to the same tool in one

@@ -48,7 +48,7 @@ fn main() -> Result<()> {
         while let Some(event) = events.try_next() {
             match event {
                 MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
-                    print!("{}", text.text)
+                    print!("{}", text.text);
                 }
                 MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                     println!("\n[tool {}]", tool_call.function.name);

@@ -143,7 +143,7 @@ impl MultipartForm {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        format!("----boundary{}", timestamp)
+        format!("----boundary{timestamp}")
     }
 
     /// Get or generate boundary

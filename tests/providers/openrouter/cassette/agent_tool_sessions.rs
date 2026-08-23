@@ -525,8 +525,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                 calls.len() == 2
                     && call_names.contains(&AlphaSignal::NAME)
                     && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools in one model turn, saw {:?}",
-                call_names
+                "expected both zero-argument tools in one model turn, saw {call_names:?}"
             );
             anyhow::ensure!(
                 calls[0].message_index == calls[1].message_index,

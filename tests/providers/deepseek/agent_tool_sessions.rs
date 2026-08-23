@@ -590,8 +590,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                 calls.len() == 2
                     && call_names.contains(&AlphaSignal::NAME)
                     && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools, saw {:?}",
-                call_names
+                "expected both zero-argument tools, saw {call_names:?}"
             );
             anyhow::ensure!(
                 calls[0].message_index == calls[1].message_index,
@@ -788,8 +787,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                 .collect::<Vec<_>>();
             anyhow::ensure!(
                 specific_calls == vec![BetaSignal::NAME],
-                "specific tool choice should force only lookup_orchard_label, saw {:?}",
-                specific_calls
+                "specific tool choice should force only lookup_orchard_label, saw {specific_calls:?}"
             );
 
             let none = model

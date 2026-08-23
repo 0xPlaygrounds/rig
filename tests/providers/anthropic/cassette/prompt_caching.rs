@@ -385,7 +385,7 @@ async fn manual_prefix_unset_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -404,7 +404,7 @@ async fn manual_prefix_unset_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -423,7 +423,7 @@ async fn manual_prefix_5m_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -442,7 +442,7 @@ async fn manual_prefix_5m_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -461,7 +461,7 @@ async fn manual_prefix_5m_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -480,7 +480,7 @@ async fn manual_prefix_5m_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -499,7 +499,7 @@ async fn manual_prefix_1h_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -518,7 +518,7 @@ async fn manual_prefix_1h_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -537,7 +537,7 @@ async fn manual_prefix_1h_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -556,7 +556,7 @@ async fn manual_prefix_1h_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -575,7 +575,7 @@ async fn automatic_prefix_unset_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -594,7 +594,7 @@ async fn automatic_prefix_unset_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -613,7 +613,7 @@ async fn automatic_prefix_unset_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -632,7 +632,7 @@ async fn automatic_prefix_unset_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -651,7 +651,7 @@ async fn automatic_prefix_5m_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -670,7 +670,7 @@ async fn automatic_prefix_5m_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -689,7 +689,7 @@ async fn automatic_prefix_5m_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -708,7 +708,7 @@ async fn automatic_prefix_5m_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -727,7 +727,7 @@ async fn automatic_prefix_1h_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -746,7 +746,7 @@ async fn automatic_prefix_1h_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -765,7 +765,7 @@ async fn automatic_prefix_1h_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -784,7 +784,7 @@ async fn automatic_prefix_1h_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -803,7 +803,7 @@ async fn automatic_1h_prefix_unset_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -822,7 +822,7 @@ async fn automatic_1h_prefix_unset_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -841,7 +841,7 @@ async fn automatic_1h_prefix_unset_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -860,7 +860,7 @@ async fn automatic_1h_prefix_unset_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -879,7 +879,7 @@ async fn automatic_1h_prefix_1h_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -898,7 +898,7 @@ async fn automatic_1h_prefix_1h_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -917,7 +917,7 @@ async fn automatic_1h_prefix_1h_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -936,7 +936,7 @@ async fn automatic_1h_prefix_1h_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -955,7 +955,7 @@ async fn manual_automatic_prefix_unset_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -974,7 +974,7 @@ async fn manual_automatic_prefix_unset_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -993,7 +993,7 @@ async fn manual_automatic_prefix_unset_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1012,7 +1012,7 @@ async fn manual_automatic_prefix_5m_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1031,7 +1031,7 @@ async fn manual_automatic_prefix_5m_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1050,7 +1050,7 @@ async fn manual_automatic_prefix_5m_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1069,7 +1069,7 @@ async fn manual_automatic_prefix_5m_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1088,7 +1088,7 @@ async fn manual_automatic_prefix_1h_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1107,7 +1107,7 @@ async fn manual_automatic_prefix_1h_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1126,7 +1126,7 @@ async fn manual_automatic_prefix_1h_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1145,7 +1145,7 @@ async fn manual_automatic_prefix_1h_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1164,7 +1164,7 @@ async fn manual_automatic_1h_prefix_unset_tools_nonstreaming() {
                 true,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1183,7 +1183,7 @@ async fn manual_automatic_1h_prefix_unset_tools_streaming() {
                 true,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1202,7 +1202,7 @@ async fn manual_automatic_1h_prefix_unset_no_tools_nonstreaming() {
                 false,
                 false,
             )
-            .await
+            .await;
         },
     )
     .await;
@@ -1221,7 +1221,7 @@ async fn manual_automatic_1h_prefix_unset_no_tools_streaming() {
                 false,
                 true,
             )
-            .await
+            .await;
         },
     )
     .await;

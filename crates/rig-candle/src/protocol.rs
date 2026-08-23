@@ -163,7 +163,11 @@ fn validate_protocol_inputs(
                             for item in result.content.iter() {
                                 match item {
                                     ToolResultContent::Text(text) => {
-                                        validate_protocol_text(&text.text, "tool result", protocol)?
+                                        validate_protocol_text(
+                                            &text.text,
+                                            "tool result",
+                                            protocol,
+                                        )?;
                                     }
                                     ToolResultContent::Json { value } => validate_protocol_text(
                                         &serde_json::to_string(value).map_err(|_| {
@@ -660,7 +664,7 @@ fn render_qwen_message(
                                         } else {
                                             "invalid JSON tool result"
                                         })
-                                    })?)
+                                    })?);
                                 }
                                 ToolResultContent::Image(_) => {
                                     return Err(CandleError::UnsupportedPromptContent(

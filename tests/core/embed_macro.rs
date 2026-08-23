@@ -45,7 +45,7 @@ fn test_custom_embed() {
     assert_eq!(
         embeddings::to_texts(definition).unwrap(),
             vec!["{\"word\":\"a building in which people live; residence for human beings.\",\"link\":\"https://www.dictionary.com/browse/house\",\"speech\":\"noun\"}".to_string()]
-        )
+        );
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn test_single_embed() {
     assert_eq!(
         embeddings::to_texts(word_definition).unwrap(),
         vec![definition]
-    )
+    );
 }
 
 #[test]

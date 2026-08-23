@@ -241,7 +241,9 @@ pub struct Scratchpad {
 
 impl Scratchpad {
     fn lock(&self) -> std::sync::MutexGuard<'_, TypeMap> {
-        self.inner.lock().unwrap_or_else(|error| error.into_inner())
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Insert a value.
@@ -310,7 +312,9 @@ struct ToolCallRewriteFrames {
 
 impl ToolCallRewriteFrames {
     fn lock(&self) -> std::sync::MutexGuard<'_, ToolCallRewriteFrameMap> {
-        self.inner.lock().unwrap_or_else(|error| error.into_inner())
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn begin(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
@@ -337,13 +341,13 @@ impl ToolCallRewriteFrames {
 
     fn finish(&self, internal_call_id: &str) -> Option<serde_json::Value> {
         let mut frames = self.lock();
-        let (rewrite, remove_entry) = frames
-            .get_mut(internal_call_id)
-            .map(|frames| {
-                let rewrite = frames.pop().flatten();
-                (rewrite, frames.is_empty())
-            })
-            .unwrap_or((None, false));
+        let (rewrite, remove_entry) =
+            frames
+                .get_mut(internal_call_id)
+                .map_or((None, false), |frames| {
+                    let rewrite = frames.pop().flatten();
+                    (rewrite, frames.is_empty())
+                });
         if remove_entry {
             frames.remove(internal_call_id);
         }
@@ -416,7 +420,7 @@ impl HookContext {
     pub(crate) fn seed_entries(&self, entries: &[RunEntry]) {
         self.entries
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .extend_from_slice(entries);
     }
 
@@ -427,7 +431,7 @@ impl HookContext {
             &mut *self
                 .pending_entries
                 .lock()
-                .unwrap_or_else(|error| error.into_inner()),
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
         )
     }
 
@@ -490,11 +494,11 @@ impl HookContext {
         };
         self.entries
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(entry.clone());
         self.pending_entries
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(entry);
         Ok(())
     }
@@ -508,7 +512,7 @@ impl HookContext {
     pub fn entries(&self, kind: &str) -> Vec<RunEntry> {
         self.entries
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .filter(|entry| entry.kind == kind)
             .cloned()
@@ -520,7 +524,7 @@ impl HookContext {
     pub fn last_entry(&self, kind: &str) -> Option<RunEntry> {
         self.entries
             .lock()
-            .unwrap_or_else(|error| error.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .iter()
             .rev()
             .find(|entry| entry.kind == kind)
@@ -1640,7 +1644,7 @@ impl AgentHook for HookStack {
             match hook.completion_call(ctx, event).await {
                 CompletionCallAction::Continue => {}
                 CompletionCallAction::Patch(patch) => {
-                    merged = Some(merged.map_or(patch.clone(), |value| value.merge(patch)))
+                    merged = Some(merged.map_or(patch.clone(), |value| value.merge(patch)));
                 }
                 stop @ CompletionCallAction::Stop(_) => return stop,
             }

@@ -86,7 +86,7 @@ impl MockContextProbeTool {
     pub fn observed(&self) -> Option<String> {
         self.seen
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .last()
             .cloned()
     }
@@ -95,7 +95,7 @@ impl MockContextProbeTool {
     pub fn observations(&self) -> Vec<String> {
         self.seen
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
     }
 }
@@ -125,7 +125,7 @@ impl Tool for MockContextProbeTool {
         };
         self.seen
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(observed.clone());
         Ok(observed)
     }

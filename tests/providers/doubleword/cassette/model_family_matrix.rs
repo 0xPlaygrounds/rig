@@ -52,7 +52,9 @@ fn assert_recorded_model(scenario: &str, requested_model: &str, streaming: bool)
     assert_eq!(call.status, 200);
     assert_eq!(call.request["model"], requested_model);
     assert_eq!(
-        call.request.get("stream").and_then(|v| v.as_bool()),
+        call.request
+            .get("stream")
+            .and_then(serde_json::Value::as_bool),
         streaming.then_some(true)
     );
 
@@ -82,7 +84,11 @@ fn assert_recorded_model(scenario: &str, requested_model: &str, streaming: bool)
                 .as_array()
                 .is_some_and(|choices| !choices.is_empty())
         );
-        assert!(response.get("usage").is_some_and(|usage| usage.is_object()));
+        assert!(
+            response
+                .get("usage")
+                .is_some_and(serde_json::Value::is_object)
+        );
     }
 }
 

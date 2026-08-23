@@ -251,10 +251,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
             let url = match img.data {
                 DocumentSourceKind::Url(u) => u,
                 DocumentSourceKind::Base64(data) => {
-                    let mime = img
-                        .media_type
-                        .map(|m| m.to_mime_type())
-                        .unwrap_or("image/png");
+                    let mime = img.media_type.map_or("image/png", |m| m.to_mime_type());
                     format!("data:{mime};base64,{data}")
                 }
                 _ => {
@@ -275,8 +272,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                 DocumentSourceKind::Base64(data) => {
                     let mime = doc
                         .media_type
-                        .map(|m| m.to_mime_type())
-                        .unwrap_or("application/pdf");
+                        .map_or("application/pdf", |m| m.to_mime_type());
                     (Some(format!("data:{mime};base64,{data}")), None)
                 }
                 DocumentSourceKind::String(text) => {
@@ -295,9 +291,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
             })
         }
 
-        fn reasoning_item(
-            reasoning: crate::message::Reasoning,
-        ) -> Result<Option<Message>, CompletionError> {
+        fn reasoning_item(reasoning: crate::message::Reasoning) -> Option<Message> {
             let crate::message::Reasoning { id, content } = reasoning;
             // Only wire-genuine ids exist in durable histories (the streaming
             // layer populates `Reasoning::id` exclusively from
@@ -310,7 +304,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                     "xAI: dropping id-less reasoning item from request input \
                      (cross-provider replay; xAI reasoning requires a wire id)"
                 );
-                return Ok(None);
+                return None;
             };
             let mut encrypted_content = None;
             let mut summary = Vec::new();
@@ -333,7 +327,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                 }
             }
 
-            Ok(Some(Message::reasoning(id, summary, encrypted_content)))
+            Some(Message::reasoning(id, summary, encrypted_content))
         }
 
         match msg {
@@ -446,7 +440,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                         }
                         AssistantContent::Reasoning(r) => {
                             flush_assistant_text(&mut items, &mut text_parts);
-                            if let Some(item) = reasoning_item(r)? {
+                            if let Some(item) = reasoning_item(r) {
                                 items.push(item);
                             }
                         }

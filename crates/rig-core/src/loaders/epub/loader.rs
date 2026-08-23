@@ -127,7 +127,7 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// ```
     pub fn load(self) -> EpubFileLoader<'a, Result<EpubDoc<BufReader<File>>, EpubLoaderError>, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load())),
+            iterator: Box::new(self.iterator.map(Loadable::load)),
             _processor: PhantomData,
         }
     }
@@ -155,7 +155,7 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// ```
     pub fn load_with_path(self) -> EpubFileLoader<'a, EpubLoaded, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load_with_path())),
+            iterator: Box::new(self.iterator.map(Loadable::load_with_path)),
             _processor: PhantomData,
         }
     }

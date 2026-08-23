@@ -334,8 +334,7 @@ impl CompatibleToolCallChunk {
             && self
                 .arguments
                 .as_ref()
-                .map(|arguments| arguments.is_empty())
-                .unwrap_or(true)
+                .is_none_or(std::string::String::is_empty)
     }
 
     fn is_complete_single_chunk(&self) -> bool {
@@ -1581,9 +1580,8 @@ mod tests {
             .await
             .expect("stream should start");
 
-        let err = match stream.next().await {
-            Some(Err(err)) => err,
-            _ => panic!("expected HTTP transport error"),
+        let Some(Err(err)) = stream.next().await else {
+            panic!("expected HTTP transport error")
         };
         assert_eq!(err.provider_response_body(), Some("not json"));
         assert!(err.provider_response_json().is_err());
