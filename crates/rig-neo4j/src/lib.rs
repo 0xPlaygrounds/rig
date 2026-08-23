@@ -82,7 +82,7 @@
 //!         plot: String,
 //!     }
 //!     let results = index.top_n::<Movie>("Batman", 3).await.unwrap();
-//!     println!("{:#?}", results);
+//!     println!("{results:#?}");
 //! }
 //! ```
 pub mod vector_index;

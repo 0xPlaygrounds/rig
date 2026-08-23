@@ -34,7 +34,7 @@
 //!     "Why is the sky blue?".to_owned(),
 //!     "Why is the grass green?".to_owned()
 //! ]).await?;
-//! println!("Embedding response: {:?}", embeddings);
+//! println!("Embedding response: {embeddings:?}");
 //! # Ok(())
 //! # }
 //! ```
