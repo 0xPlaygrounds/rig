@@ -334,7 +334,7 @@ pub enum StreamedTurnEvent {
     },
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 struct ToolCallDeltaState {
     name_validated: bool,
     buffered_arguments: Vec<String>,
@@ -344,13 +344,14 @@ struct ToolCallDeltaState {
 /// delta text keyed by the stream's rig-generated correlator and is
 /// superseded in place when a completed block restating the same part
 /// arrives; a completed block matching no open part occupies its own slot.
+#[derive(Clone, Serialize, Deserialize)]
 struct ReasoningPart {
     correlator: Option<String>,
     provider_id: Option<String>,
     state: ReasoningPartState,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 enum ReasoningPartState {
     /// Delta text accumulated so far for a part with no completed block.
     Pending(String),
@@ -378,6 +379,7 @@ fn reasoning_from_part(
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 enum PendingInvalid {
     /// A complete tool call with a disallowed name.
     FullCall {
@@ -390,6 +392,13 @@ enum PendingInvalid {
 
 /// Sans-IO accumulator that assembles one streamed model turn. See the
 /// [module docs](self) for the driving protocol.
+///
+/// `Clone + Serialize + Deserialize`, like [`AgentRun`](crate::AgentRun): a
+/// mid-stream assembler can be persisted and resumed (same caveats — no
+/// cross-version format stability). Dropping one mid-turn is a normal
+/// cancellation path and is silent unless replayed assistant content was
+/// excluded from assembly, which warns once on drop.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StreamedTurnAssembler {
     executable_tool_names: BTreeSet<String>,
     allowed_tool_names: BTreeSet<String>,
@@ -415,7 +424,11 @@ pub struct StreamedTurnAssembler {
 /// abandonment, truncation — exactly once, and zero exclusions stay silent.
 /// A dedicated one-field guard (not a `Drop` impl on the assembler itself)
 /// keeps the assembler's fields freely movable.
-#[derive(Default)]
+/// `Clone` copies the count: each lineage owns its exclusions and warns on
+/// its own drop. Serde carries the count so a persisted mid-stream assembler
+/// resumes with its loudness contract intact.
+#[derive(Default, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
 struct ExclusionCount(usize);
 
 impl Drop for ExclusionCount {
@@ -937,6 +950,44 @@ mod tests {
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    /// A mid-stream assembler survives a serde round trip: feeding the rest
+    /// of the stream to the restored assembler produces the same turn as an
+    /// uninterrupted run — a saved world can resume a streamed turn.
+    #[test]
+    fn assembler_round_trips_mid_stream() {
+        let items = [
+            text_item("thinking "),
+            name_delta("tc1", "add"),
+            args_delta("tc1", "{\"x\":"),
+            args_delta("tc1", "1}"),
+            tool_call_item("tc1", "add"),
+        ];
+
+        let mut uninterrupted = assembler();
+        for item in &items {
+            uninterrupted.ingest(item).expect("ingest");
+        }
+
+        let mut first_half = assembler();
+        for item in &items[..2] {
+            first_half.ingest(item).expect("ingest");
+        }
+        let json = serde_json::to_string(&first_half).expect("serialize");
+        drop(first_half);
+        let mut restored: StreamedTurnAssembler = serde_json::from_str(&json).expect("deserialize");
+        for item in &items[2..] {
+            restored.ingest(item).expect("ingest");
+        }
+
+        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc1", "add"))];
+        let direct = uninterrupted.finish(Some("msg".to_string()), &final_choice);
+        let resumed = restored.finish(Some("msg".to_string()), &final_choice);
+        assert_eq!(resumed.choice, direct.choice);
+        assert_eq!(resumed.internal_call_ids, direct.internal_call_ids);
+        assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
+        assert_eq!(resumed.allowed_tool_names, direct.allowed_tool_names);
     }
 
     fn assembler() -> StreamedTurnAssembler {
