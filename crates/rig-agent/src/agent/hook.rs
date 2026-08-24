@@ -1644,7 +1644,10 @@ impl AgentHook for HookStack {
             match hook.completion_call(ctx, event).await {
                 CompletionCallAction::Continue => {}
                 CompletionCallAction::Patch(patch) => {
-                    merged = Some(merged.map_or(patch.clone(), |value| value.merge(patch)));
+                    merged = Some(match merged {
+                        None => patch,
+                        Some(value) => value.merge(patch),
+                    });
                 }
                 stop @ CompletionCallAction::Stop(_) => return stop,
             }

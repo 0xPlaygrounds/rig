@@ -38,8 +38,8 @@ impl Agent {
             Agent system prompt: {sysprompt}
             ",
             name = name,
-            description = self.config.description.clone().unwrap_or_default(),
-            sysprompt = self.config.preamble.clone().unwrap_or_default()
+            description = self.config.description.as_deref().unwrap_or_default(),
+            sysprompt = self.config.preamble.as_deref().unwrap_or_default()
         );
         let parameters = json!(schema_for!(AgentToolArgs));
         let agent = Arc::new(self);

@@ -353,7 +353,7 @@ where
             model,
             TranscriptionRequest {
                 data: data.0,
-                filename: filename.unwrap_or("file".to_string()),
+                filename: filename.unwrap_or_else(|| "file".to_string()),
                 language,
                 prompt,
                 temperature,

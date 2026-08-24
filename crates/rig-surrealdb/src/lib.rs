@@ -119,7 +119,7 @@ where
 
         for record in records {
             self.surreal
-                .create::<Option<CreateRecord>>(self.documents_table.clone())
+                .create::<Option<CreateRecord>>(self.documents_table.as_str())
                 .content(record)
                 .await
                 .map_err(VectorStoreError::datastore)?;
@@ -264,7 +264,7 @@ where
         Self {
             model: EmbeddingModelHandle::new(model),
             surreal,
-            documents_table: documents_table.unwrap_or(String::from("documents")),
+            documents_table: documents_table.unwrap_or_else(|| String::from("documents")),
             distance_function,
         }
     }

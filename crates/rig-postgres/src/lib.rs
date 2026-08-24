@@ -227,7 +227,7 @@ impl PostgresVectorStore {
         Self {
             model: EmbeddingModelHandle::new(model),
             pg_pool,
-            documents_table: documents_table.unwrap_or(String::from("documents")),
+            documents_table: documents_table.unwrap_or_else(|| String::from("documents")),
             distance_function,
         }
     }
