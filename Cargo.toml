@@ -61,6 +61,10 @@ exclude = [
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
+    # Its own workspace: `serenity` is the only published Discord client and
+    # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
+    # Excluding it keeps that subtree out of the workspace lockfile.
+    "examples/discord_bot",
 ]
 
 [workspace.lints.clippy]
@@ -199,7 +203,6 @@ sqlx = "0.9"
 # 3.2: 3.0/3.1 no longer build against `surrealdb-core ^3` as published.
 surrealdb = "3.2"
 syn = "2"
-serenity = "0.12"
 term_size = "0.3"
 testcontainers = "0.27"
 textwrap = "0.16"
@@ -366,7 +369,6 @@ vertexai = ["dep:rig-vertexai"]
 audio = ["rig-core/audio", "rig-agent?/audio", "rig-reqwest?/audio"]
 image = ["rig-core/image", "rig-agent?/image", "rig-reqwest?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
-discord-bot = ["agent", "rig-agent/discord-bot"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
 rayon = ["rig-core/rayon"]

@@ -6,6 +6,10 @@ Each example is its own package. Run one with:
 cargo run -p <example-name>
 ```
 
+`discord_bot` is the exception: it is excluded from the workspace and carries
+its own lockfile, so run it with
+`cargo run --manifest-path examples/discord_bot/Cargo.toml`.
+
 Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `COHERE_API_KEY`). See each example's source for specifics.
 
@@ -37,7 +41,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `complex_agentic_loop_claude` | See source. |
 | `custom_vector_store` | Example: Implementing a custom vector store backend |
 | `debate` | See source. |
-| `discord_bot` | See source. |
+| `discord_bot` | Deploys an agent as a Discord bot. Its own workspace — run it with `cargo run --manifest-path examples/discord_bot/Cargo.toml`, not `-p discord_bot`. |
 | `enum_dispatch` | See source. |
 | `extractor` | Demonstrates typed extraction and extraction with usage metadata. |
 | `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so an `AgentHook` gates the patch on `ctx.turn() == 1` to force the tool only up front. |
