@@ -45,6 +45,8 @@ const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 #[derive(Clone)]
 pub struct McpTool {
     pub(crate) definition: rmcp::model::Tool,
+    /// The name exposed to the model and used by Rig tool lookup.
+    pub(crate) model_name: String,
     pub(crate) client: rmcp::service::ServerSink,
     /// Per-call timeout. When `Some`, an MCP `call_tool` that does not complete
     /// within this duration resolves to a [`ToolExecutionError`] instead of blocking
@@ -64,11 +66,37 @@ impl McpTool {
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
     ) -> Self {
+        let model_name = definition.name.to_string();
+        Self::from_mcp_server_with_name(model_name, definition, client)
+    }
+
+    /// Create an adapter with a model-visible name separate from the MCP wire
+    /// name in `definition.name`.
+    ///
+    /// The model name is used for provider definitions and Rig tool lookup;
+    /// MCP requests always retain the server-advertised wire name.
+    pub fn from_mcp_server_with_name(
+        model_name: impl Into<String>,
+        definition: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+    ) -> Self {
         Self {
             definition,
+            model_name: model_name.into(),
             client,
             timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
         }
+    }
+
+    /// Change the model-visible name while preserving the MCP wire name.
+    pub fn with_model_name(mut self, model_name: impl Into<String>) -> Self {
+        self.model_name = model_name.into();
+        self
+    }
+
+    /// The name exposed to the model and Rig tool lookup.
+    pub fn model_name(&self) -> &str {
+        &self.model_name
     }
 
     /// Set (or clear) the per-call timeout, consuming and returning the tool.
@@ -459,7 +487,7 @@ pub fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
 /// output.
 impl From<McpTool> for PortableDynamicTool {
     fn from(tool: McpTool) -> Self {
-        let name = tool.definition.name.to_string();
+        let name = tool.model_name.clone();
         let description = tool
             .definition
             .description

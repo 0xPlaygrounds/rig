@@ -81,6 +81,16 @@ async fn mcp_tool_runs_as_a_portable_dynamic_tool_without_rig_agent() {
         .expect("greet succeeds");
     assert!(output.render().contains("hello rig"), "{output:?}");
 
+    // The model-visible alias must not replace the server's wire name.
+    let aliased: PortableDynamicTool =
+        McpTool::from_mcp_server_with_name("safe_greet", tool("greet"), peer.clone()).into();
+    assert_eq!(aliased.name(), "safe_greet");
+    let aliased_output = aliased
+        .execute(serde_json::json!({ "who": "alias" }))
+        .await
+        .expect("aliased greet succeeds using the original MCP name");
+    assert!(aliased_output.render().contains("hello alias"));
+
     // A tool the server reports as an error becomes a failed call that still
     // carries the tool's output.
     let mut many = tools_from_server([tool("greet"), tool("missing")], &peer, None)
