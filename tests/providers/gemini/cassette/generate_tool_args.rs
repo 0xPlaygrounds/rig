@@ -126,7 +126,7 @@ fn assert_expected_plan_trip_arguments(arguments: &serde_json::Value) {
         "nested city should survive the wire format: {arguments:?}"
     );
     assert_eq!(
-        itinerary.get("days").and_then(|value| value.as_u64()),
+        itinerary.get("days").and_then(serde_json::Value::as_u64),
         Some(3),
         "nested integer should survive the wire format: {arguments:?}"
     );
@@ -144,7 +144,7 @@ fn assert_expected_plan_trip_arguments(arguments: &serde_json::Value) {
         "doubly nested string should survive the wire format: {arguments:?}"
     );
     assert_eq!(
-        lodging.get("rooms").and_then(|value| value.as_u64()),
+        lodging.get("rooms").and_then(serde_json::Value::as_u64),
         Some(2),
         "doubly nested integer should survive the wire format: {arguments:?}"
     );

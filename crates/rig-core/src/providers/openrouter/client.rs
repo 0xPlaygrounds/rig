@@ -1,10 +1,4 @@
-use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client,
-};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use http::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -21,7 +15,7 @@ pub struct OpenRouterExtBuilder;
 
 type OpenRouterApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<OpenRouterExt, H>;
+pub type Client<H> = client::Client<OpenRouterExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
 
@@ -31,57 +25,30 @@ impl Provider for OpenRouterExt {
     const VERIFY_PATH: &'static str = "/key";
 }
 
-impl<H> Capabilities<H> for OpenRouterExt {
-    type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenRouterModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenRouterExt,
+    completion = super::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = super::OpenRouterModelLister<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
 impl DebugExt for OpenRouterExt {}
 
-impl ProviderBuilder for OpenRouterExtBuilder {
-    type Extension<H>
-        = OpenRouterExt
-    where
-        H: http_client::HttpClientExt;
-    type ApiKey = OpenRouterApiKey;
+client::impl_default_provider_builder!(
+    OpenRouterExtBuilder => OpenRouterExt,
+    api_key = OpenRouterApiKey,
+    base_url = OPENROUTER_API_BASE_URL,
+);
 
-    const BASE_URL: &'static str = OPENROUTER_API_BASE_URL;
+client::impl_provider_from_env!(
+    OpenRouterExt,
+    input = OpenRouterApiKey,
+    api_key_env = "OPENROUTER_API_KEY",
+);
 
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: http_client::HttpClientExt,
-    {
-        Ok(OpenRouterExt)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = OpenRouterApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new openrouter client from the `OPENROUTER_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("OPENROUTER_API_KEY")?;
-
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub struct Usage {
     pub prompt_tokens: usize,
     #[serde(default)]
@@ -94,12 +61,17 @@ pub struct Usage {
     /// with server-side automatic caching).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
+    /// OpenAI-compatible completion-token breakdown. OpenRouter includes full
+    /// usage accounting on every response, so a reasoning-capable route
+    /// reports here how much of `completion_tokens` went to hidden reasoning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
 }
 
 /// Prompt-token breakdown reported by OpenRouter for cached requests.
 // `usize` matches the parent `Usage` struct in this module; the streaming counterpart
 // in `streaming.rs` uses `u32` to match its own parent.
-#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
 pub struct PromptTokensDetails {
     /// Tokens served from cache (cache hit).
     #[serde(default)]
@@ -107,6 +79,19 @@ pub struct PromptTokensDetails {
     /// Tokens written to cache on this call (cache miss that populated the cache).
     #[serde(default)]
     pub cache_write_tokens: usize,
+}
+
+/// Completion-token breakdown reported by OpenRouter.
+///
+/// Only the reasoning share is modeled: it is the one entry rig's normalized
+/// [`crate::completion::Usage`] has a slot for, and OpenRouter documents usage
+/// accounting as always present (on the final SSE message when streaming).
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
+pub struct CompletionTokensDetails {
+    /// Tokens the upstream spent on hidden reasoning, counted inside
+    /// `completion_tokens`.
+    #[serde(default)]
+    pub reasoning_tokens: usize,
 }
 
 impl std::fmt::Display for Usage {
@@ -121,11 +106,10 @@ impl std::fmt::Display for Usage {
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(value: &Usage) -> crate::completion::Usage {
-        let (cached_input, cache_creation) = value
-            .prompt_tokens_details
-            .as_ref()
-            .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
-            .unwrap_or((0, 0));
+        let (cached_input, cache_creation) =
+            value.prompt_tokens_details.as_ref().map_or((0, 0), |d| {
+                (d.cached_tokens as u64, d.cache_write_tokens as u64)
+            });
         crate::completion::Usage {
             input_tokens: value.prompt_tokens as u64,
             // Reported completion tokens, falling back to saturating
@@ -140,7 +124,10 @@ impl From<&Usage> for crate::completion::Usage {
             cached_input_tokens: cached_input,
             cache_creation_input_tokens: cache_creation,
             tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            reasoning_tokens: value
+                .completion_tokens_details
+                .as_ref()
+                .map_or(0, |d| d.reasoning_tokens as u64),
         }
     }
 }
@@ -181,7 +168,7 @@ impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {
         let joined = categories
             .iter()
             .take(2)
-            .map(|c| c.as_ref())
+            .map(std::convert::AsRef::as_ref)
             .collect::<Vec<_>>()
             .join(",");
         if !joined.is_empty()
@@ -198,12 +185,18 @@ impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {
 
 #[cfg(test)]
 mod tests {
+    use super::Usage;
+
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::openrouter::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::openrouter::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }
@@ -213,6 +206,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_identity("My App", "https://myapp.example.com")
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -233,6 +227,7 @@ mod tests {
     fn test_without_app_identity_no_extra_headers() {
         let client = crate::providers::openrouter::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -246,6 +241,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_categories(&["cli-agent", "ide-extension"])
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -263,6 +259,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_categories(&["cli-agent", "ide-extension", "chat"])
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -281,6 +278,7 @@ mod tests {
         let client = crate::providers::openrouter::Client::builder()
             .with_app_categories(&empty)
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
@@ -291,9 +289,95 @@ mod tests {
     fn test_without_app_categories_no_header() {
         let client = crate::providers::openrouter::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
 
         assert!(client.headers().get("x-openrouter-categories").is_none());
+    }
+
+    /// A real usage object, copied verbatim out of
+    /// `tests/cassettes/openrouter/reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens.yaml`:
+    /// the breakdown must survive deserialization and reach the normalized
+    /// `reasoning_tokens` slot, unmodeled siblings and all.
+    #[test]
+    fn completion_tokens_details_reaches_normalized_usage() {
+        let usage: Usage = serde_json::from_str(
+            r#"{"completion_tokens":540,
+                "completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":531},
+                "cost":0.002794,
+                "cost_details":{"upstream_inference_completions_cost":0.0027,"upstream_inference_cost":0.002794,"upstream_inference_prompt_cost":0.000094},
+                "is_byok":false,
+                "prompt_tokens":94,
+                "prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},
+                "total_tokens":634}"#,
+        )
+        .expect("recorded usage should deserialize");
+
+        let normalized = crate::completion::Usage::from(&usage);
+        assert_eq!(normalized.reasoning_tokens, 531);
+        assert_eq!(normalized.output_tokens, 540);
+        assert_eq!(normalized.input_tokens, 94);
+        assert_eq!(normalized.total_tokens, 634);
+        // The reasoning share is counted *inside* the completion tokens.
+        assert!(normalized.reasoning_tokens <= normalized.output_tokens);
+    }
+
+    /// A non-reasoning route reports the object with a zero share; a gateway
+    /// that omits it entirely, or sends it as `null`, must read the same.
+    #[test]
+    fn completion_tokens_details_absent_null_or_zero_all_read_zero() {
+        for body in [
+            r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}"#,
+            r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":null}"#,
+            r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{"reasoning_tokens":0}}"#,
+            r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{}}"#,
+        ] {
+            let usage: Usage = serde_json::from_str(body).expect("usage should deserialize");
+            let normalized = crate::completion::Usage::from(&usage);
+            assert_eq!(normalized.reasoning_tokens, 0, "body: {body}");
+            assert_eq!(normalized.output_tokens, 3, "body: {body}");
+        }
+    }
+
+    /// Unknown siblings inside the breakdown (OpenRouter sends `audio_tokens`
+    /// and `image_tokens`) must not fail the decode — the object is read for
+    /// the one entry rig has a slot for.
+    #[test]
+    fn completion_tokens_details_tolerates_unmodeled_siblings() {
+        let usage: Usage = serde_json::from_str(
+            r#"{"prompt_tokens":9,"completion_tokens":1291,"total_tokens":1300,
+                "completion_tokens_details":{"audio_tokens":0,"image_tokens":1290,"reasoning_tokens":7}}"#,
+        )
+        .expect("usage should deserialize");
+
+        assert_eq!(crate::completion::Usage::from(&usage).reasoning_tokens, 7);
+    }
+
+    /// The completion-token fallback (`total - prompt` for gateways that omit
+    /// `completion_tokens`) must stay independent of the new field.
+    #[test]
+    fn completion_tokens_details_does_not_disturb_the_output_token_fallback() {
+        let usage: Usage = serde_json::from_str(
+            r#"{"prompt_tokens":10,"total_tokens":30,
+                "completion_tokens_details":{"reasoning_tokens":12}}"#,
+        )
+        .expect("usage should deserialize");
+
+        let normalized = crate::completion::Usage::from(&usage);
+        assert_eq!(normalized.output_tokens, 20);
+        assert_eq!(normalized.reasoning_tokens, 12);
+    }
+
+    /// Round-tripping the type must not start sending a breakdown rig never
+    /// received: the field is skipped when absent.
+    #[test]
+    fn completion_tokens_details_is_omitted_when_absent() {
+        let usage: Usage =
+            serde_json::from_str(r#"{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}"#)
+                .expect("usage should deserialize");
+        let encoded = serde_json::to_string(&usage).expect("usage should serialize");
+
+        assert!(!encoded.contains("completion_tokens_details"), "{encoded}");
     }
 }

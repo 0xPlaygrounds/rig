@@ -1,7 +1,7 @@
 //! Moonshot AI (Kimi) API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::providers::moonshot;
 //! use rig_core::client::CompletionClient;
 //!
@@ -13,7 +13,7 @@
 //! # Custom base URL
 //! The default base URL is `https://api.moonshot.ai/v1`. For China access,
 //! use `https://api.moonshot.cn/v1`:
-//! ```no_run
+//! ```ignore
 //! use rig_core::providers::moonshot;
 //!
 //! let client = moonshot::Client::builder()
@@ -22,14 +22,9 @@
 //!     .build()
 //!     .expect("Failed to build Moonshot client");
 //! ```
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client;
-use crate::http_client::HttpClientExt;
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
+use crate::client;
+use crate::providers::internal::anthropic_compatible::{
+    AnthropicBaseUrl, impl_dual_dialect_provider,
 };
 use crate::{completion::CompletionError, providers::openai};
 
@@ -43,149 +38,39 @@ pub const CHINA_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 /// Anthropic-compatible base URL.
 pub const ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.ai/anthropic";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotBuilder;
-#[derive(Debug, Default, Clone)]
-pub struct MoonshotAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotAnthropicExt;
+impl_dual_dialect_provider!(
+    ext = MoonshotExt,
+    builder = MoonshotBuilder,
+    anthropic_ext = MoonshotAnthropicExt,
+    anthropic_builder = MoonshotAnthropicBuilder,
+    client_input = String,
+    api_key_env = "MOONSHOT_API_KEY",
+    base_url = GLOBAL_API_BASE_URL,
+    base_url_env = "MOONSHOT_API_BASE",
+    anthropic_provider_name = "moonshot",
+    anthropic_base_url = ANTHROPIC_API_BASE_URL,
+    anthropic_base_url_env = "MOONSHOT_ANTHROPIC_API_BASE",
+);
 
-type MoonshotApiKey = BearerAuth;
+client::impl_capabilities!(
+    MoonshotExt,
+    completion = CompletionModel<H>,
+    model_listing = MoonshotModelLister<H>,
+);
 
-impl Provider for MoonshotExt {
-    type Builder = MoonshotBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for MoonshotAnthropicExt {
-    type Builder = MoonshotAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
-
-impl DebugExt for MoonshotExt {}
-impl DebugExt for MoonshotAnthropicExt {}
-
-impl ProviderBuilder for MoonshotBuilder {
-    type Extension<H>
-        = MoonshotExt
-    where
-        H: HttpClientExt;
-    type ApiKey = MoonshotApiKey;
-
-    const BASE_URL: &'static str = GLOBAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MoonshotExt)
-    }
-}
-
-impl ProviderBuilder for MoonshotAnthropicBuilder {
-    type Extension<H>
-        = MoonshotAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MoonshotAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
-
-impl<H> Capabilities<H> for MoonshotExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for MoonshotAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<MoonshotAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
-pub type AnthropicClient<H = reqwest::Client> = client::Client<MoonshotAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotAnthropicBuilder, AnthropicKey, H>;
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
-        let mut builder = Self::builder().api_key(&api_key);
-        if let Some(base_url) = crate::client::optional_env_var("MOONSHOT_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-        if let Some(base_url) =
-            anthropic_base_override("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")?
-        {
-            builder = builder.base_url(base_url);
-        }
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// Moonshot API (`GET /models`).
+    ///
+    /// Moonshot documents the OpenAI-style `{"object":"list","data":[…]}`
+    /// envelope; its entries carry extra fields (`context_length`,
+    /// `supports_image_in`, …) that the shared entry ignores.
+    MoonshotModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "Moonshot",
+    "/models"
+);
 
 impl<H> ClientBuilder<H> {
     pub fn global(self) -> Self {
@@ -201,73 +86,16 @@ impl<H> AnthropicClientBuilder<H> {
     pub fn global(self) -> Self {
         self.base_url(ANTHROPIC_API_BASE_URL)
     }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
 }
 
-impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthropicExt {
-    const PROVIDER_NAME: &'static str = "moonshot";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
-}
-
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-fn resolve_anthropic_base_override(
-    primary: Option<&str>,
-    fallback: Option<&str>,
-) -> Option<String> {
-    primary
-        .map(str::to_owned)
-        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
-}
-
-fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
-    if base_url.contains("/anthropic") {
-        return Some(base_url.to_owned());
-    }
-
-    let mut url = url::Url::parse(base_url).ok()?;
-    if !matches!(url.path(), "/v1" | "/v1/") {
-        return None;
-    }
-    url.set_path("/anthropic");
-    Some(url.to_string())
-}
+const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
+    &[
+        (GLOBAL_API_BASE_URL, ANTHROPIC_API_BASE_URL),
+        (CHINA_API_BASE_URL, "https://api.moonshot.cn/anthropic"),
+    ],
+    &["/v1", "/v1/"],
+    "/anthropic",
+);
 
 // ================================================================
 // Moonshot Completion API
@@ -283,8 +111,7 @@ pub const KIMI_K2: &str = "kimi-k2";
 pub const KIMI_K2_5: &str = "kimi-k2.5";
 
 /// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<MoonshotExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<MoonshotExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
     const PROVIDER_NAME: &'static str = "moonshot";
@@ -326,9 +153,9 @@ impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
             );
             request.tool_choice = Some(openai::completion::ToolChoice::Auto);
             request.messages.push(openai::Message::User {
-                content: crate::OneOrMany::one(openai::UserContent::Text {
+                content: vec![openai::UserContent::Text {
                     text: "Please select a tool to handle the current issue.".to_string(),
-                }),
+                }],
                 name: None,
             });
         }
@@ -339,7 +166,7 @@ impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
 
 #[cfg(test)]
 mod tests {
-    use super::{MoonshotExt, normalize_anthropic_base_url, resolve_anthropic_base_override};
+    use super::{ANTHROPIC_BASE_URLS, MoonshotExt};
     use crate::completion::CompletionRequest;
     use crate::message::{
         AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction,
@@ -355,6 +182,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
@@ -366,16 +194,24 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::moonshot::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::moonshot::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
-        let _anthropic_client = crate::providers::moonshot::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new() failed");
+        let _anthropic_client = crate::providers::moonshot::AnthropicClient::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("AnthropicClient::new() failed");
         let _anthropic_client_from_builder = crate::providers::moonshot::AnthropicClient::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("AnthropicClient::builder() failed");
     }
@@ -384,26 +220,22 @@ mod tests {
     fn moonshot_preserves_reasoning_content_in_assistant_history() {
         let assistant = Message::Assistant {
             id: None,
-            content: crate::OneOrMany::many(vec![
+            content: vec![
                 AssistantContent::Reasoning(Reasoning::new("tool planning")),
-                AssistantContent::ToolCall(ToolCall {
-                    id: "call_1".to_string(),
-                    call_id: None,
-                    function: ToolFunction {
+                AssistantContent::ToolCall(ToolCall::from_wire(
+                    "call_1",
+                    ToolFunction {
                         name: "lookup".to_string(),
                         arguments: serde_json::json!({}),
                     },
-                    signature: None,
-                    additional_params: None,
-                }),
-            ])
-            .expect("assistant content"),
+                )),
+            ],
         };
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(assistant),
+            chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -427,18 +259,17 @@ mod tests {
         // keep them newline-separated on the wire, not glued together.
         let assistant = Message::Assistant {
             id: None,
-            content: crate::OneOrMany::many(vec![
+            content: vec![
                 AssistantContent::Reasoning(Reasoning::new("first thought")),
                 AssistantContent::Reasoning(Reasoning::new("second thought")),
                 AssistantContent::Text("done".into()),
-            ])
-            .expect("assistant content"),
+            ],
         };
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(assistant),
+            chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -461,7 +292,7 @@ mod tests {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
+            chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -480,6 +311,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
@@ -495,7 +327,7 @@ mod tests {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
+            chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -521,15 +353,21 @@ mod tests {
     #[test]
     fn normalize_openai_style_base_to_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url("https://api.moonshot.ai/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://api.moonshot.ai/v1")
+                .as_deref(),
             Some("https://api.moonshot.ai/anthropic")
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://api.moonshot.cn/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://api.moonshot.cn/v1")
+                .as_deref(),
             Some("https://api.moonshot.cn/anthropic")
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/v1")
+                .as_deref(),
             Some("https://proxy.example.com/anthropic")
         );
     }
@@ -537,14 +375,16 @@ mod tests {
     #[test]
     fn normalize_preserves_existing_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/anthropic").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/anthropic")
+                .as_deref(),
             Some("https://proxy.example.com/anthropic")
         );
     }
 
     #[test]
     fn anthropic_primary_override_wins() {
-        let override_url = resolve_anthropic_base_override(
+        let override_url = ANTHROPIC_BASE_URLS.resolve(
             Some("https://primary.example.com/anthropic"),
             Some("https://api.moonshot.cn/v1"),
         );

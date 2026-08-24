@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rig::client::{ProviderClient, image_generation::ImageGenerationClient};
+use rig::client::{DefaultTransportClient, image_generation::ImageGenerationClient};
 use rig::image_generation::ImageGenerationModel;
 use rig::providers::gemini;
 

@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the provided tool to answer arithmetic questions.","type":"text"}],"role":"system"},{"content":"/no_think Calculate 2 + 3.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 3}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":0,"predicted_ms":500.937,"predicted_n":29,"predicted_per_second":55.89525229719506,"predicted_per_token_ms":17.890607142857142,"prompt_ms":379.484,"prompt_n":196,"prompt_per_second":516.4908138419538,"prompt_per_token_ms":1.936142857142857},"usage":{"completion_tokens":29,"prompt_tokens":196,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":225}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the provided tool to answer arithmetic questions.","type":"text"}],"role":"system"},{"content":"/no_think Calculate 2 + 3.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":3}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"5","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen3-1.7B-Q4_K_M","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The result of 2 + 3 is 5.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":196,"predicted_ms":288.363,"predicted_n":17,"predicted_per_second":55.485620554648136,"predicted_per_token_ms":18.0226875,"prompt_ms":127.695,"prompt_n":39,"prompt_per_second":305.4152472688829,"prompt_per_token_ms":3.274230769230769},"usage":{"completion_tokens":17,"prompt_tokens":235,"prompt_tokens_details":{"cached_tokens":196},"total_tokens":252}}'

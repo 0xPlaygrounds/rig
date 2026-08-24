@@ -25,27 +25,20 @@ fastrand = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 indexmap = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
-rig-derive = { path = "../rig-derive", version = "0.41.0", optional = true }
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+rig-derive = { path = "../rig-derive", version = "0.42.0", optional = true }
+rig-run = { path = "../rig-run", version = "0.42.0" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serenity = { workspace = true, optional = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync"], optional = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
-# MCP is native-only. rmcp's `ClientHandler` requires `Send + Sync`
-# unconditionally (its `local` feature relaxes only the future bounds), which
-# rig's tool registry cannot satisfy on wasm, where `WasmCompatSend`/
-# `WasmCompatSync` are no-op markers. Scoping the dependency out of the wasm
-# graph keeps the wasm dependency tree honest; `tool/mod.rs` raises a targeted
-# `compile_error!` if the feature is requested there anyway.
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-rmcp = { workspace = true, optional = true, features = ["client"] }
-
 [dev-dependencies]
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }
 # `cargo test -p rig-agent` needs rig-core's mock models even when the
 # `test-utils` feature is not requested explicitly.
@@ -59,6 +52,5 @@ default = ["derive"]
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
-test-utils = ["rig-core/test-utils"]
-discord-bot = ["dep:serenity"]
-rmcp = ["dep:rmcp"]
+test-utils = ["rig-core/test-utils", "dep:tokio"]
+discord-bot = ["dep:serenity", "dep:tokio"]

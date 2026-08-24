@@ -1,0 +1,16 @@
+when:
+  path: /v1/rerank
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"model":"bge-reranker-v2-m3-Q4_K_M","query":"what is a panda?"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":400,"message":"\"documents\" must be a non-empty string array","type":"invalid_request_error"}}'

@@ -1,68 +1,33 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
-use tokio::sync::RwLock;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 use crate::tool::ErasedTool;
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{
-        DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolContext, ToolDispatch,
-        ToolResult, ToolSet, dispatch_tool,
+        DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext,
+        ToolDispatch, ToolResult, ToolSet, dispatch_tool,
     },
 };
 use rig_core::vector_store::{
     VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter,
 };
 
-/// One turn's provider definitions and the exact registry entries behind them.
+/// A pinned view of the tool registry: provider definitions plus the exact
+/// implementations behind them — [`rig_core::tool::ToolCatalog`] under the
+/// name the agent runtime has always used.
 ///
-/// Registration changes after this snapshot is built take effect on the next
-/// turn. Calls from the current turn dispatch through these pinned handles, so
-/// the implementation cannot drift from the schema the provider received.
-#[derive(Clone)]
-pub(crate) struct ToolRegistrySnapshot {
-    definitions: Vec<ToolDefinition>,
-    tools: IndexMap<String, RegisteredTool>,
-}
-
-impl ToolRegistrySnapshot {
-    fn new(tools: IndexMap<String, RegisteredTool>) -> Self {
-        let definitions = tools
-            .iter()
-            .map(|(name, tool)| tool.definition_with_name(name.clone()))
-            .collect();
-        Self { definitions, tools }
-    }
-
-    /// Provider-facing definitions in the same order as their pinned handles.
-    pub(crate) fn definitions(&self) -> &[ToolDefinition] {
-        &self.definitions
-    }
-
-    /// Narrow both provider exposure and dispatch to one per-turn allow-list.
-    pub(crate) fn retain_names(&mut self, names: &BTreeSet<String>) {
-        self.definitions
-            .retain(|definition| names.contains(&definition.name));
-        self.tools.retain(|name, _| names.contains(name));
-    }
-
-    /// Dispatch through the exact implementation advertised for this turn.
-    pub(crate) async fn dispatch(
-        &self,
-        tool_name: &str,
-        args: &str,
-        context: &ToolContext,
-    ) -> ToolDispatch {
-        let tool = self.tools.get(tool_name).cloned();
-        dispatch_tool(tool_name, args.to_string(), tool, context).await
-    }
-}
+/// The agent loop takes one per turn ([`ToolServerHandle::snapshot`] for the
+/// registry as it stands, the retrieval-aware `snapshot_tool_defs` for a
+/// prompt), so registration changes after a snapshot is built take effect on
+/// the next turn and calls from the current turn dispatch through these
+/// pinned handles.
+pub type ToolRegistrySnapshot = ToolCatalog;
 
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
@@ -70,14 +35,12 @@ struct ToolServerState {
     retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
     /// The authoritative ordered registry for execution and exposure.
     toolset: ToolSet,
-    /// Generation tokens for registrations managed by MCP client handlers.
+    /// Generation tokens for registrations owned by external tool sources.
     /// A normal registration clears the token, preventing a stale handler
     /// refresh from replacing or removing the newer tool.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     managed_generations: HashMap<String, ManagedToolToken>,
 }
 
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 impl ToolServerState {
     /// Remove remote registrations whose transport can no longer accept calls.
     /// In-process tools use the default live state, while both handler-managed
@@ -85,41 +48,20 @@ impl ToolServerState {
     fn retire_disconnected_tools(&mut self) {
         let disconnected = self
             .toolset
-            .tools
-            .keys()
+            .names()
             .filter(|name| self.toolset.get(name).is_none_or(|tool| !tool.is_live()))
-            .cloned()
+            .map(str::to_owned)
             .collect::<Vec<_>>();
 
         for name in disconnected {
             self.toolset.delete_tool(&name);
             self.managed_generations.remove(&name);
-            tracing::debug!(tool_name = %name, "retired disconnected MCP tool registration");
+            tracing::debug!(tool_name = %name, "retired disconnected tool registration");
         }
     }
 }
 
-/// Opaque identity for one MCP-managed registry generation.
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-#[derive(Clone, Debug)]
-pub(crate) struct ManagedToolToken(Arc<()>);
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-impl ManagedToolToken {
-    fn new() -> Self {
-        Self(Arc::new(()))
-    }
-}
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-impl PartialEq for ManagedToolToken {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-impl Eq for ManagedToolToken {}
+pub use rig_core::tool::{ManagedToolSink, ManagedToolToken};
 
 /// Builder for constructing a [`ToolServerHandle`].
 ///
@@ -144,19 +86,6 @@ impl ToolServer {
         }
     }
 
-    pub(crate) fn add_tools(mut self, tools: ToolSet) -> Self {
-        self.toolset = tools;
-        self
-    }
-
-    pub(crate) fn add_retrieval_indexes(
-        mut self,
-        indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    ) -> Self {
-        self.retrieval_indexes = indexes;
-        self
-    }
-
     /// Add a static tool to the agent. Re-registering an existing name
     /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
@@ -171,57 +100,22 @@ impl ToolServer {
         self
     }
 
+    /// Add several runtime-defined tools in order.
+    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> Self {
+        tools.into_iter().fold(self, Self::dynamic_tool)
+    }
+
     /// Add a context-free dynamic tool through the classic registry adapter.
     pub fn portable_dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
         self.toolset.add_portable_dynamic_tool(tool);
         self
     }
 
-    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
-    /// to change or disable it.
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub fn rmcp_tool(self, tool: rmcp::model::Tool, client: rmcp::service::ServerSink) -> Self {
-        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-
-    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
-    ///
-    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
-    /// disable the timeout (unbounded).
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub fn rmcp_tool_with_timeout(
-        self,
-        tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> Self {
-        use crate::tool::rmcp::RmcpToolRegistration;
-
-        let model_name = tool.name.to_string();
-        self.rmcp_tool_registration(
-            RmcpToolRegistration::new(model_name, tool, client).with_timeout(timeout),
-        )
-    }
-
-    /// Add an MCP tool with a separate model-visible name.
-    ///
-    /// The registration's `model_name` is used for provider-facing tool
-    /// definitions and tool lookup. The original `definition.name` is kept for
-    /// MCP `tools/call` requests.
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub fn rmcp_tool_registration(
-        mut self,
-        registration: crate::tool::rmcp::RmcpToolRegistration,
-    ) -> Self {
-        use crate::tool::rmcp::McpTool;
-
-        self.toolset
-            .add_erased(Arc::new(McpTool::from_registration(registration)));
+    /// Register a pre-erased tool — the extension point for adapters that
+    /// implement [`ErasedTool`] directly (remote tool protocols such as MCP,
+    /// provided by companion crates).
+    pub fn erased_tool(mut self, tool: Arc<dyn ErasedTool>) -> Self {
+        self.toolset.add_erased(tool);
         self
     }
 
@@ -242,7 +136,6 @@ impl ToolServer {
         ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
             retrieval_indexes: self.retrieval_indexes,
             toolset: self.toolset,
-            #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
             managed_generations: HashMap::new(),
         })))
     }
@@ -257,49 +150,56 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
+    /// Shared registry state under the single poisoning policy: a panic
+    /// inside one of the short sync critical sections cannot leave the
+    /// registry logically torn, so a poisoned lock is recovered rather than
+    /// propagated.
+    fn state(&self) -> RwLockReadGuard<'_, ToolServerState> {
+        self.0.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Exclusive registry state; same poisoning policy as [`Self::state`].
+    fn state_mut(&self) -> RwLockWriteGuard<'_, ToolServerState> {
+        self.0.write().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Register through `add`, then drop any stale managed-generation
+    /// entry so the (re)registered name follows last-registration-wins.
+    fn register(&self, add: impl FnOnce(&mut ToolSet) -> String) {
+        let mut state = self.state_mut();
+        let _name = add(&mut state.toolset);
+        state.managed_generations.remove(&_name);
+    }
+
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
-    pub async fn add_tool<T>(&self, tool: T)
+    pub fn add_tool<T>(&self, tool: T)
     where
         T: Tool + 'static,
     {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+        self.register(|toolset| toolset.add_tool(tool));
     }
 
     /// Register a runtime-defined static tool.
-    pub async fn add_dynamic_tool(&self, tool: DynamicTool) {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_dynamic_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+    pub fn add_dynamic_tool(&self, tool: DynamicTool) {
+        self.register(|toolset| toolset.add_dynamic_tool(tool));
     }
 
     /// Register a context-free dynamic tool through the classic adapter.
-    pub async fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_portable_dynamic_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+    pub fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
+        self.register(|toolset| toolset.add_portable_dynamic_tool(tool));
     }
 
-    #[cfg(all(feature = "rmcp", test))]
-    pub(crate) async fn add_erased_tool(&self, tool: Arc<dyn ErasedTool>) {
-        let mut state = self.0.write().await;
-        let name = state.toolset.add_erased(tool);
-        state.managed_generations.remove(&name);
-    }
-
-    /// Atomically install the initial tools owned by one MCP handler.
-    /// Initial connection retains the registry's last-registration-wins policy.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub(crate) async fn add_managed_erased_tools(
+    /// Atomically install the initial tools owned by one external tool source
+    /// (an MCP client handler, for example). Last-registration-wins: an existing
+    /// name is replaced. Tools that report `!is_live()` are skipped. Returns the
+    /// generation token per installed name, to hand back to
+    /// [`Self::reconcile_managed_erased_tools`] on refresh.
+    pub fn add_managed_erased_tools(
         &self,
         tools: Vec<Arc<dyn ErasedTool>>,
     ) -> HashMap<String, ManagedToolToken> {
-        let mut state = self.0.write().await;
+        let mut state = self.state_mut();
         let mut managed = HashMap::with_capacity(tools.len());
 
         for tool in tools {
@@ -324,16 +224,17 @@ impl ToolServerHandle {
         managed
     }
 
-    /// Atomically reconcile one handler's MCP registrations with a refreshed
-    /// tool list. Existing names are changed only when their expected generation
-    /// remains current; newer local or peer-handler registrations win.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    pub(crate) async fn reconcile_managed_erased_tools(
+    /// Atomically reconcile one external source's registrations with a
+    /// refreshed tool list. Existing names are changed only when their expected
+    /// generation remains current; newer local or peer-source registrations
+    /// win. Names missing from the new list (and owned by this source) are
+    /// removed. Returns the new generation tokens.
+    pub fn reconcile_managed_erased_tools(
         &self,
         mut expected: HashMap<String, ManagedToolToken>,
         tools: Vec<Arc<dyn ErasedTool>>,
     ) -> HashMap<String, ManagedToolToken> {
-        let mut state = self.0.write().await;
+        let mut state = self.state_mut();
         let mut refreshed = HashMap::with_capacity(tools.len());
         let mut managed_order = Vec::with_capacity(tools.len());
         let mut seen = std::collections::HashSet::with_capacity(tools.len());
@@ -398,14 +299,8 @@ impl ToolServerHandle {
         // A full MCP list is ordered. Move only entries this handler actually
         // owns to the end in that order, matching remove/re-register semantics;
         // live local or peer-handler competitors retain their relative slots.
-        let mut ordered_entries = Vec::with_capacity(managed_order.len());
         for name in managed_order {
-            if let Some(entry) = state.toolset.tools.shift_remove_entry(&name) {
-                ordered_entries.push(entry);
-            }
-        }
-        for (name, registration) in ordered_entries {
-            state.toolset.tools.insert(name, registration);
+            state.toolset.move_to_end(&name);
         }
 
         refreshed
@@ -413,22 +308,19 @@ impl ToolServerHandle {
 
     /// Merge an entire toolset into the server in registration order.
     /// Existing names are replaced (last wins) and keep their position.
-    pub async fn append_toolset(&self, toolset: ToolSet) {
-        let mut state = self.0.write().await;
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        let names = toolset.tools.keys().cloned().collect::<Vec<_>>();
+    pub fn append_toolset(&self, toolset: ToolSet) {
+        let mut state = self.state_mut();
+        let names = toolset.names().map(str::to_owned).collect::<Vec<_>>();
         state.toolset.add_tools(toolset);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         for name in names {
             state.managed_generations.remove(&name);
         }
     }
 
     /// Remove a tool by name.
-    pub async fn remove_tool(&self, tool_name: &str) {
-        let mut state = self.0.write().await;
+    pub fn remove_tool(&self, tool_name: &str) {
+        let mut state = self.state_mut();
         state.toolset.delete_tool(tool_name);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
         state.managed_generations.remove(tool_name);
     }
 
@@ -446,12 +338,16 @@ impl ToolServerHandle {
         context: &mut ToolContext,
     ) -> ToolResult {
         context.clear_dispatch_result();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = self.dispatch(tool_name, args, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        let dispatch = self.dispatch(tool_name, args, context).await;
+        dispatch.publish_to(context)
+    }
+
+    /// Run `f` against the registry state, first retiring disconnected MCP
+    /// tools (which needs a write lock) when that feature is compiled in.
+    fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
+        let mut state = self.state_mut();
+        state.retire_disconnected_tools();
+        f(&state)
     }
 
     /// Run one isolated dispatch and retain its full context for agent hooks.
@@ -461,27 +357,53 @@ impl ToolServerHandle {
         args: &str,
         context: &ToolContext,
     ) -> ToolDispatch {
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        let tool = {
-            let mut state = self.0.write().await;
-            state.retire_disconnected_tools();
-            state.toolset.get(tool_name).cloned()
-        };
-        #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
-        let tool = {
-            let state = self.0.read().await;
-            state.toolset.get(tool_name).cloned()
-        };
+        let tool = self.with_registry(|state| state.toolset.get(tool_name).cloned());
         dispatch_tool(tool_name, args.to_string(), tool, context).await
+    }
+
+    /// The registry as it stands, synchronously: every always-exposed
+    /// registration in registration order, after retiring tools whose remote
+    /// backing disconnected — the same path [`execute`](Self::execute) and
+    /// the agent loop resolve through. No retrieval, no executor, no `.await`,
+    /// so a tick-driven host can call it every frame.
+    ///
+    /// For the retrieval-aware view that also selects dynamic tools for a
+    /// prompt, use the async [`tool_defs`](Self::tool_defs).
+    pub fn snapshot(&self) -> ToolRegistrySnapshot {
+        let tools = self.with_registry(|state| snapshot_registered_tools(state, &[]));
+        ToolCatalog::from_registered(tools)
+    }
+
+    /// Provider definitions of the registry as it stands — the definitions of
+    /// [`snapshot`](Self::snapshot), synchronously. Equivalent to
+    /// `tool_defs(None)` without the future.
+    pub fn static_tool_defs(&self) -> Vec<ToolDefinition> {
+        let mut snapshot = self.snapshot();
+        snapshot.take_definitions()
+    }
+
+    /// A clone of the current registry as a [`ToolSet`]: shares the tool
+    /// implementations (they are `Arc`s) and copies names, ordering, and
+    /// exposure flags. Use it to fork the registry — build a second server
+    /// with the same tools — or inspect it outside the lock. Disconnected
+    /// tools are retired first.
+    pub fn toolset(&self) -> ToolSet {
+        self.with_registry(|state| state.toolset.clone())
     }
 
     /// Retrieve tool definitions, optionally using a prompt to select
     /// dynamic tools from configured vector stores.
-    pub async fn get_tool_defs(
+    ///
+    /// This is the retrieval-aware, async read: with a prompt it runs the
+    /// configured vector-store lookups to pick dynamic tools. If you only need
+    /// the registry as it stands, [`static_tool_defs`](Self::static_tool_defs)
+    /// / [`snapshot`](Self::snapshot) give the same always-exposed definitions
+    /// synchronously.
+    pub async fn tool_defs(
         &self,
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
-        Ok(self.snapshot_tool_defs(prompt).await?.definitions.clone())
+        Ok(self.snapshot_tool_defs(prompt).await?.take_definitions())
     }
 
     /// Resolve one ordered provider/dispatch snapshot for an agent turn.
@@ -495,7 +417,7 @@ impl ToolServerHandle {
         prompt: Option<String>,
     ) -> Result<ToolRegistrySnapshot, ToolServerError> {
         let retrieval_indexes = {
-            let state = self.0.read().await;
+            let state = self.state();
             state.retrieval_indexes.clone()
         };
 
@@ -537,68 +459,93 @@ impl ToolServerHandle {
             Vec::new()
         };
 
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        let tools = {
-            let mut state = self.0.write().await;
-            state.retire_disconnected_tools();
-            snapshot_registered_tools(&state, dynamic_tool_ids)
-        };
-        #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
-        let tools = {
-            let state = self.0.read().await;
-            snapshot_registered_tools(&state, dynamic_tool_ids)
-        };
+        let tools = self.with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids));
 
-        Ok(ToolRegistrySnapshot::new(tools))
+        Ok(ToolCatalog::from_registered(tools))
     }
 }
 
 fn snapshot_registered_tools(
     state: &ToolServerState,
-    dynamic_tool_ids: Vec<String>,
+    dynamic_tool_ids: &[String],
 ) -> IndexMap<String, RegisteredTool> {
     let mut tools = IndexMap::new();
-
-    // Retrieved tools remain first, in index/result order. Duplicate IDs and
-    // dynamic/static overlap retain the first provider declaration.
-    for name in dynamic_tool_ids {
-        if tools.contains_key(&name) {
-            tracing::debug!(
-                tool_name = %name,
-                "dropping duplicate tool definition from the request"
-            );
-            continue;
-        }
-        match state.toolset.get(&name).cloned() {
-            Some(tool) => {
-                tools.insert(name, tool);
-            }
-            None => {
-                tracing::warn!("Tool implementation not found in toolset: {name}");
-            }
-        }
-    }
-
-    for name in state.toolset.always_exposed_names() {
+    let insert = |tools: &mut IndexMap<String, RegisteredTool>, name: &str, warn_missing| {
         if tools.contains_key(name) {
             tracing::debug!(
                 tool_name = %name,
                 "dropping duplicate tool definition from the request"
             );
-            continue;
+            return;
         }
-        if let Some(tool) = state.toolset.get(name).cloned() {
-            tools.insert(name.clone(), tool);
+        match state.toolset.get(name).cloned() {
+            Some(tool) => {
+                tools.insert(name.to_string(), tool);
+            }
+            // A dynamic ID the model asked for but the toolset lacks is worth
+            // an operator warning; a retired always-exposed tool is not.
+            None if warn_missing => {
+                tracing::warn!("Tool implementation not found in toolset: {name}");
+            }
+            None => {}
         }
+    };
+
+    // Retrieved tools remain first, in index/result order. Duplicate IDs and
+    // dynamic/static overlap retain the first provider declaration.
+    for name in dynamic_tool_ids {
+        insert(&mut tools, name, true);
+    }
+    for name in state.toolset.always_exposed_names() {
+        insert(&mut tools, name, false);
     }
     tools
 }
+
+// Compile-time thread-safety contract: a registry snapshot or a forked
+// `ToolSet` is held in shared host state on native targets.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<ToolSet>();
+    assert_send_sync_static::<ToolRegistrySnapshot>();
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolServerError {
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(CompletionError),
 }
+/// The registry contract external tool sources (e.g. `rig-rmcp`'s MCP client
+/// handler) program against: portable tools in, generation tokens out.
+impl ManagedToolSink for ToolServerHandle {
+    fn add_managed_tools(
+        &self,
+        tools: Vec<PortableDynamicTool>,
+    ) -> HashMap<String, ManagedToolToken> {
+        self.add_managed_erased_tools(
+            tools
+                .into_iter()
+                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .collect(),
+        )
+    }
+
+    fn reconcile_managed_tools(
+        &self,
+        expected: HashMap<String, ManagedToolToken>,
+        tools: Vec<PortableDynamicTool>,
+    ) -> HashMap<String, ManagedToolToken> {
+        self.reconcile_managed_erased_tools(
+            expected,
+            tools
+                .into_iter()
+                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -628,6 +575,128 @@ mod tests {
         args: &str,
     ) -> Result<String, ToolExecutionError> {
         execute_tool_with_context(handle, name, args, &mut ToolContext::new()).await
+    }
+
+    /// A portable tool whose liveness follows `live`, standing in for a remote
+    /// tool whose transport can disconnect.
+    fn liveness_gated_tool(name: &str, live: Arc<AtomicBool>) -> crate::tool::PortableDynamicTool {
+        crate::tool::PortableDynamicTool::new(
+            name,
+            "gated",
+            serde_json::json!({"type": "object"}),
+            |_| Box::pin(async { Ok(crate::tool::ToolOutput::text("ok")) }),
+        )
+        .with_liveness(move || live.load(Ordering::SeqCst))
+    }
+
+    /// The sync snapshot and the async, prompt-less `tool_defs` read the
+    /// same always-exposed registry in the same order.
+    #[tokio::test]
+    async fn sync_snapshot_matches_async_prompt_less_read() {
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .run();
+
+        let sync_defs = handle.static_tool_defs();
+        let async_defs = handle.tool_defs(None).await.unwrap();
+        assert_eq!(sync_defs.len(), 2);
+        assert_eq!(sync_defs, async_defs);
+
+        let snapshot = handle.snapshot();
+        assert_eq!(snapshot.definitions(), sync_defs.as_slice());
+        assert_eq!(
+            snapshot.names().collect::<Vec<_>>(),
+            vec!["add", "subtract"]
+        );
+        assert_eq!(snapshot.len(), 2);
+        assert!(!snapshot.is_empty());
+    }
+
+    /// A tool whose remote backing disconnected is retired by every read path —
+    /// sync snapshot, sync definitions, forked toolset, and the async read.
+    #[tokio::test]
+    async fn retired_tools_are_absent_from_every_read_path() {
+        let live = Arc::new(AtomicBool::new(true));
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .portable_dynamic_tool(liveness_gated_tool("remote", live.clone()))
+            .run();
+        assert_eq!(
+            handle.snapshot().names().collect::<Vec<_>>(),
+            vec!["add", "remote"]
+        );
+
+        live.store(false, Ordering::SeqCst);
+
+        assert_eq!(handle.snapshot().names().collect::<Vec<_>>(), vec!["add"]);
+        assert_eq!(handle.static_tool_defs().len(), 1);
+        assert!(!handle.toolset().contains("remote"));
+        assert_eq!(handle.tool_defs(None).await.unwrap().len(), 1);
+    }
+
+    /// A snapshot pins implementations: it keeps executing the tool it was
+    /// taken with after the registry replaces or removes that name.
+    #[tokio::test]
+    async fn snapshot_executes_pinned_implementation() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let snapshot = handle.snapshot();
+        handle.remove_tool("add");
+        assert!(handle.snapshot().is_empty());
+
+        let mut context = ToolContext::new();
+        let result = snapshot
+            .execute("add", r#"{"x": 2, "y": 3}"#, &mut context)
+            .await;
+        assert_eq!(result.output().render(), "5");
+    }
+
+    /// `toolset()` forks the registry: the fork shares implementations but
+    /// later changes on either side stay local.
+    #[tokio::test]
+    async fn toolset_forks_the_registry() {
+        let handle = ToolServer::new().tool(MockAddTool).run();
+        let mut fork = handle.toolset();
+        assert!(fork.contains("add"));
+
+        fork.add_tool(MockSubtractTool);
+        assert!(!handle.snapshot().names().any(|name| name == "subtract"));
+
+        handle.remove_tool("add");
+        assert!(fork.contains("add"));
+
+        // The fork builds a second, independent server with the same tools.
+        let second = ToolServer::new().run();
+        second.append_toolset(fork);
+        assert_eq!(
+            execute_tool(&second, "add", r#"{"x": 1, "y": 1}"#)
+                .await
+                .unwrap(),
+            "2"
+        );
+    }
+
+    /// The sync read needs no executor: a plain test reads definitions that
+    /// another thread registered, with no runtime in sight.
+    #[test]
+    fn static_tool_defs_reads_without_a_runtime() {
+        let handle = ToolServer::new().run();
+        assert!(handle.static_tool_defs().is_empty());
+
+        let writer = handle.clone();
+        std::thread::spawn(move || {
+            writer.add_tool(MockAddTool);
+            writer.add_tool(MockSubtractTool);
+        })
+        .join()
+        .expect("registering thread");
+
+        let names = handle
+            .static_tool_defs()
+            .into_iter()
+            .map(|definition| definition.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["add", "subtract"]);
     }
 
     async fn execute_tool_with_context(
@@ -728,8 +797,8 @@ mod tests {
 
         let handle = server.run();
 
-        handle.add_tool(MockAddTool).await;
-        let res = handle.get_tool_defs(None).await.unwrap();
+        handle.add_tool(MockAddTool);
+        let res = handle.tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 1);
 
@@ -740,8 +809,8 @@ mod tests {
             .unwrap();
         assert_eq!(res, "7");
 
-        handle.remove_tool("add").await;
-        let res = handle.get_tool_defs(None).await.unwrap();
+        handle.remove_tool("add");
+        let res = handle.tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
     }
@@ -756,12 +825,10 @@ mod tests {
             .run();
         let snapshot = handle.snapshot_tool_defs(None).await.unwrap();
 
-        handle
-            .add_tool(ReplacementTool {
-                description: "second schema",
-                output: "second implementation",
-            })
-            .await;
+        handle.add_tool(ReplacementTool {
+            description: "second schema",
+            output: "second implementation",
+        });
 
         assert_eq!(snapshot.definitions()[0].description, "first schema");
         let dispatch = snapshot
@@ -786,9 +853,9 @@ mod tests {
     pub async fn test_toolserver_append_toolset_matches_add_tool() {
         let mut via_add_tool = {
             let handle = ToolServer::new().run();
-            handle.add_tool(MockAddTool).await;
-            handle.add_tool(MockSubtractTool).await;
-            handle.get_tool_defs(None).await.unwrap()
+            handle.add_tool(MockAddTool);
+            handle.add_tool(MockSubtractTool);
+            handle.tool_defs(None).await.unwrap()
         };
         via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -797,8 +864,8 @@ mod tests {
             let mut toolset = ToolSet::default();
             toolset.add_tool(MockAddTool);
             toolset.add_tool(MockSubtractTool);
-            handle.append_toolset(toolset).await;
-            handle.get_tool_defs(None).await.unwrap()
+            handle.append_toolset(toolset);
+            handle.tool_defs(None).await.unwrap()
         };
         via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -816,7 +883,7 @@ mod tests {
     pub async fn builder_tool_uses_canonical_static_name() {
         let handle = ToolServer::new().tool(NamedTool::new()).run();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, NamedTool::NAME);
     }
@@ -824,22 +891,23 @@ mod tests {
     #[tokio::test]
     pub async fn handle_add_tool_uses_canonical_static_name() {
         let handle = ToolServer::new().run();
-        handle.add_tool(NamedTool::new()).await;
+        handle.add_tool(NamedTool::new());
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, NamedTool::NAME);
     }
 
     #[tokio::test]
     pub async fn retrieval_resolves_canonical_key() {
-        let toolset = ToolSet::builder().retrieved_tool(NamedTool::new()).build();
+        let mut toolset = ToolSet::default();
+        toolset.add_retrieved_tool(NamedTool::new());
         let handle = ToolServer::new()
             .retrieved_tools(1, MockToolIndex::new([NamedTool::NAME]), toolset)
             .run();
 
         let defs = handle
-            .get_tool_defs(Some("use the changing tool".to_string()))
+            .tool_defs(Some("use the changing tool".to_string()))
             .await
             .unwrap();
         assert_eq!(defs.len(), 1);
@@ -849,10 +917,10 @@ mod tests {
     #[tokio::test]
     pub async fn get_tool_defs_preserves_static_registration_order() {
         let handle = ToolServer::new().run();
-        handle.add_tool(MockSubtractTool).await;
-        handle.add_tool(MockAddTool).await;
+        handle.add_tool(MockSubtractTool);
+        handle.add_tool(MockAddTool);
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(
             defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
             vec!["subtract", "add"]
@@ -869,7 +937,7 @@ mod tests {
             .run();
 
         let defs = handle
-            .get_tool_defs(Some("add two numbers".to_string()))
+            .tool_defs(Some("add two numbers".to_string()))
             .await
             .unwrap();
         assert_eq!(
@@ -892,7 +960,7 @@ mod tests {
             )
             .run();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(
             defs.iter()
                 .map(|definition| definition.name.as_str())
@@ -905,13 +973,13 @@ mod tests {
     #[tokio::test]
     pub async fn duplicate_registration_advertises_one_definition() {
         let handle = ToolServer::new().tool(MockAddTool).run();
-        handle.add_tool(MockAddTool).await;
+        handle.add_tool(MockAddTool);
 
         let mut toolset = ToolSet::default();
         toolset.add_tool(MockAddTool);
-        handle.append_toolset(toolset).await;
+        handle.append_toolset(toolset);
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(
             defs.len(),
             1,
@@ -940,13 +1008,13 @@ mod tests {
         let handle = server.run();
 
         // Test with None prompt - should only return static tools
-        let res = handle.get_tool_defs(None).await.unwrap();
+        let res = handle.tool_defs(None).await.unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].name, "add");
 
         // Test with Some prompt - should return both static and dynamic tools
         let res = handle
-            .get_tool_defs(Some("calculate difference".to_string()))
+            .tool_defs(Some("calculate difference".to_string()))
             .await
             .unwrap();
         assert_eq!(res.len(), 2);
@@ -972,7 +1040,7 @@ mod tests {
 
         // Test with Some prompt - should only return static tool since dynamic tool is missing
         let res = handle
-            .get_tool_defs(Some("some query".to_string()))
+            .tool_defs(Some("some query".to_string()))
             .await
             .unwrap();
         assert_eq!(res.len(), 1);
@@ -1004,7 +1072,7 @@ mod tests {
 
         // All calls should succeed
         for res in result.unwrap() {
-            assert!(res.is_ok(), "Tool call failed: {:?}", res);
+            assert!(res.is_ok(), "Tool call failed: {res:?}");
             assert_eq!(res.unwrap(), "done");
         }
     }
@@ -1028,15 +1096,10 @@ mod tests {
         // Wait until we are strictly inside `call()`
         started.notified().await;
 
-        // Try to write to the state (add a tool) while the tool call is mid-execution.
-        // If the read lock is incorrectly held across tool execution, this will deadlock.
-        let add_result =
-            tokio::time::timeout(Duration::from_secs(1), handle.add_tool(MockAddTool)).await;
-
-        assert!(
-            add_result.is_ok(),
-            "Writing to ToolServer deadlocked! The read lock is being held across tool execution."
-        );
+        // Write to the state (add a tool) while the tool call is mid-execution.
+        // If the read lock were incorrectly held across tool execution, this
+        // sync call would block forever and the test harness would time out.
+        handle.add_tool(MockAddTool);
 
         // Allow the background tool to finish and clean up
         allow_finish.notify_one();
@@ -1067,7 +1130,7 @@ mod tests {
         // If fetched sequentially, the first index will wait at the barrier forever.
         let get_defs = tokio::time::timeout(
             std::time::Duration::from_secs(1),
-            handle.get_tool_defs(Some("do math".to_string())),
+            handle.tool_defs(Some("do math".to_string())),
         )
         .await;
 
@@ -1129,10 +1192,10 @@ mod tests {
                 let result_value = value.value;
                 context.insert_result(result_value);
             }
-            Ok(context
-                .get::<SessionId>()
-                .map(|session| format!("session:{}", session.0))
-                .unwrap_or_else(|| "no session".to_string()))
+            Ok(context.get::<SessionId>().map_or_else(
+                || "no session".to_string(),
+                |session| format!("session:{}", session.0),
+            ))
         }
     }
 

@@ -23,7 +23,7 @@
 //! - Integrate LLMs in your app with minimal boilerplate
 //!
 //! # Simple example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::{AssistantContent, CompletionModel},
@@ -99,7 +99,7 @@
 //! - Groq
 //! - Hugging Face
 //! - Hyperbolic
-//! - Llamafile
+//! - llama.cpp (`llama-server`, and llamafile)
 //! - MiniMax
 //! - Mira
 //! - Mistral
@@ -163,7 +163,6 @@ pub mod loaders;
 pub mod markers;
 pub mod memory;
 pub mod model;
-pub mod one_or_many;
 pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
@@ -181,7 +180,6 @@ pub mod wasm_compat;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
-pub use one_or_many::{EmptyListError, OneOrMany};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of
@@ -202,3 +200,29 @@ pub use rig_derive::Embed;
 pub use rig_derive::{rig_tool, rig_tool as tool_macro};
 
 pub mod telemetry;
+
+// Compile-time thread-safety contract. These types cross threads in host
+// runtimes (worker pools, ECS resources); on native they must stay
+// `Send + Sync + 'static`, and losing it is an API break that should fail the
+// build here rather than in a downstream crate.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    fn assert_send_static<T: Send + 'static>() {}
+    assert_send_sync_static::<tool::PortableDynamicTool>();
+    assert_send_sync_static::<tool::ManagedToolToken>();
+    assert_send_sync_static::<streaming::StreamedAssistantContent>();
+    // The erased model every driver (futures agent, systems runtime, registry)
+    // holds, and the serializable identity it is resolved from.
+    assert_send_sync_static::<completion::ModelHandle>();
+    assert_send_sync_static::<completion::ModelRef>();
+    // The erased tool set a driver forks and the per-turn catalog it pins.
+    assert_send_sync_static::<tool::ToolSet>();
+    assert_send_sync_static::<tool::ToolCatalog>();
+    assert_send_sync_static::<tool::DynamicTool>();
+    // One erased transport shared by every provider client a host builds.
+    assert_send_sync_static::<http_client::BoxedHttpClient>();
+    // A live stream is owned by one poller: `Send` so it can move to a worker,
+    // not `Sync`.
+    assert_send_static::<streaming::StreamingCompletionResponse>();
+};

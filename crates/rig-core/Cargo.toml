@@ -37,15 +37,14 @@ mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
-reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
-rig-derive = { version = "0.41.0", path = "../rig-derive", optional = true }
+rig-derive = { version = "0.42.0", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 fastrand = { workspace = true }
@@ -53,18 +52,6 @@ eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
 mime = { workspace = true }
-reqwest-middleware = { workspace = true, optional = true, features = [
-  "json",
-  "multipart",
-  "charset",
-  "http2",
-] }
-
-# Native-only dependency for OpenAI Responses websocket mode.
-# Keeping it target-scoped avoids pulling a tokio socket transport into wasm builds.
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokio-tungstenite = { workspace = true, optional = true }
-
 # futures-timer's default backend uses a background timer thread, which cannot
 # drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
 # the target is browser wasm — regardless of feature flags — so
@@ -74,25 +61,31 @@ tokio-tungstenite = { workspace = true, optional = true }
 # would be wrong-by-construction on WASI.
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+# `lopdf` pulls `getrandom` through its PDF encryption support. Browser WASM
+# cannot select a randomness backend from the target triple alone, so opt in to
+# lopdf's Web Crypto backend only for Rig's supported browser target.
+lopdf = { workspace = true, optional = true, features = ["wasm_js"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+# Self-dependency: feature unification compiles the lib with `test-utils`
+# for every rig-core test target (unit, integration, doctest), so the
+# sequence laws panic in ALL of rig's own suites while staying log-only in
+# downstream builds.
+rig-core = { path = ".", features = ["test-utils"] }
+# identity-leak compile-fail tests (tests/identity_leak.rs)
+# 1.0.111: the compiler-output normalization the trybuild cases were written against.
+trybuild = "1.0.111"
+# streaming identity/merge law property tests
+proptest = "1"
 assert_fs = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
 redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
-reqwest-retry = { workspace = true }
-reqwest-middleware = { workspace = true, features = [
-  "json",
-  "multipart",
-  "charset",
-  "http2",
-  "rustls",
-] }
-
 # required for otel
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
@@ -101,7 +94,7 @@ tracing-opentelemetry = { workspace = true }
 
 
 [features]
-default = ["reqwest", "derive", "rustls"]
+default = ["derive"]
 audio = []
 image = []
 derive = ["dep:rig-derive"]
@@ -109,25 +102,3 @@ test-utils = []
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
-socks = ["reqwest/socks"]
-reqwest = [
-  "reqwest/charset",
-  "reqwest/http2",
-  "reqwest/system-proxy",
-]
-websocket = ["websocket-rustls"]
-websocket-rustls = [
-  "dep:tokio-tungstenite",
-  "tokio-tungstenite/connect",
-  "rustls",
-]
-websocket-native-tls = [
-  "dep:tokio-tungstenite",
-  "tokio-tungstenite/connect",
-  "native-tls",
-]
-rustls = ["reqwest/rustls", "tokio-tungstenite?/rustls-tls-webpki-roots"]
-native-tls = ["reqwest/native-tls", "tokio-tungstenite?/native-tls"]
-reqwest-middleware = ["reqwest-middleware-rustls"]
-reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
-reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]

@@ -47,7 +47,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
                 .raw_completion(request)
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
-            let raw_text = raw.get_text_response();
+            let raw_text = raw.text_response();
             let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER)
                 .expect("Opus 4.8 dynamic web-search response should normalize");
 
@@ -89,7 +89,7 @@ async fn messages_preserve_mid_conversation_system_role() {
                 .raw_completion(request)
                 .await
                 .expect("Opus 4.8 system-role request should succeed");
-            let raw_text = raw.get_text_response();
+            let raw_text = raw.text_response();
             let response: RigCompletionResponse = raw
                 .normalize(ANTHROPIC_PROVIDER)
                 .expect("Opus 4.8 system-role response should normalize");
@@ -143,7 +143,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
             let raw = model.raw_completion(request).await.expect(
                 "Opus 4.8 request with system role after server tool result should succeed",
             );
-            let raw_text = raw.get_text_response();
+            let raw_text = raw.text_response();
             let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
                 "Opus 4.8 response with system role after server tool result should normalize",
             );
@@ -186,7 +186,7 @@ async fn documents_keep_leading_system_message_top_level() {
             let raw = model.raw_completion(request).await.expect(
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );
-            let raw_text = raw.get_text_response();
+            let raw_text = raw.text_response();
             let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
                 "Opus 4.8 response with documents and a leading system message should normalize",
             );
@@ -209,9 +209,7 @@ async fn documents_keep_leading_system_message_top_level() {
     );
 }
 
-fn server_tool_assistant_message_from_response(
-    content: rig::OneOrMany<AssistantContent>,
-) -> Message {
+fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -> Message {
     let raw_blocks = content
         .into_iter()
         .filter_map(|content| match content {
@@ -237,8 +235,7 @@ fn server_tool_assistant_message_from_response(
 
     Message::Assistant {
         id: None,
-        content: rig::OneOrMany::many(raw_blocks)
-            .expect("server tool assistant message should be non-empty"),
+        content: raw_blocks,
     }
 }
 

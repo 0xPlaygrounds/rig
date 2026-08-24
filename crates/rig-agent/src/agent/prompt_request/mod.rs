@@ -1,18 +1,19 @@
 pub mod streaming;
 
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
-use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, ToolResultContent, UserContent},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
-};
+use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 
 use crate::{
     completion::{Message, PromptError, Usage},
-    tool::{ToolContext, ToolOutput},
+    tool::ToolContext,
 };
 use serde::{Deserialize, Serialize};
 use std::{future::IntoFuture, marker::PhantomData};
+
+/// The provider-neutral identity carrier, re-exported from rig-core so agent
+/// callers name one type across core responses, stream terminals, completion
+/// calls, and hook events.
+pub use rig_core::completion::ResponseIdentity;
 
 /// Generate the request-builder setters that forward verbatim to an inner
 /// receiver — `AgentRunner` for the blocking builder, the wrapped
@@ -317,220 +318,12 @@ impl PromptRequest<Standard> {
     }
 }
 
+pub(crate) use rig_run::transcript::{
+    assistant_text_from_choice, is_empty_assistant_turn, tool_result_output,
+};
 /// Details for one successfully completed completion request made by an agent run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct CompletionCall {
-    /// Zero-based index of the completion request within this agent run.
-    pub call_index: usize,
-    /// Token usage reported for this completion request.
-    ///
-    /// Zero-valued usage is [`Usage`]'s documented sentinel for missing
-    /// provider usage metrics; rig does not distinguish "reported all zeros"
-    /// from "unreported".
-    #[serde(default, deserialize_with = "usage_null_as_default")]
-    pub usage: Usage,
-}
-
-impl CompletionCall {
-    /// Create details for one completion request in an agent run.
-    pub fn new(call_index: usize, usage: Usage) -> Self {
-        Self { call_index, usage }
-    }
-}
-
-/// Tolerate `null` usage from data serialized before rig dropped the
-/// `Option<Usage>` encoding of missing provider usage metrics.
-///
-/// This tolerance requires a self-describing format such as JSON; data
-/// serialized with non-self-describing formats (e.g. bincode) from before the
-/// change cannot round-trip.
-fn usage_null_as_default<'de, D>(deserializer: D) -> Result<Usage, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<Usage>::deserialize(deserializer)?.unwrap_or_default())
-}
-
-/// The result of an agent run, returned by **both** the blocking
-/// ([`PromptRequest`]) and streaming ([`StreamingPromptRequest`]) surfaces so a
-/// call site reads identically whether it used `.prompt()` or `.stream_prompt()`.
-///
-/// On the streaming surface this is the payload of the terminal
-/// [`MultiTurnStreamItem::FinalResponse`] item.
-///
-/// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
-/// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
+pub use rig_run::{CompletionCall, PromptResponse};
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// Serialize *and* deserialize both go through `PromptResponseRepr` so the two
-// directions agree on `content`'s wire shape (an `Option`). Routing only
-// deserialize through the shadow would make serialize write a bare `OneOrMany`
-// while deserialize expects an `Option`, breaking round-trips for positional /
-// non-self-describing formats (e.g. bincode). The repr carries the field serde
-// attributes, so the JSON shape is unchanged.
-#[serde(from = "PromptResponseRepr", into = "PromptResponseRepr")]
-#[non_exhaustive]
-pub struct PromptResponse {
-    /// Concatenated assistant text for the final turn.
-    pub output: String,
-    /// Aggregated token usage across the whole run.
-    pub usage: Usage,
-    /// Successfully completed completion requests made by this agent run.
-    ///
-    /// `usage` remains the aggregate across the whole run. Use the last
-    /// entry's usage to inspect the final completion request's prompt/context
-    /// length. Zero-valued entry usage means the provider reported no usage
-    /// metrics for that request.
-    pub completion_calls: Vec<CompletionCall>,
-    /// Accumulated message history for the run (the run's persisted transcript),
-    /// unless memory/history bookkeeping was disabled for the request.
-    pub messages: Option<Vec<Message>>,
-    /// Structured assistant content for the final turn.
-    ///
-    /// Where [`output`](Self::output) is the concatenated text, this preserves
-    /// the individual content parts (text, reasoning, images, …).
-    pub content: OneOrMany<AssistantContent>,
-    /// Number of synthetic output-tool calls in the turn that finalized this
-    /// response. Kept crate-private because it is runner bookkeeping rather
-    /// than provider-facing response content.
-    output_tool_calls: usize,
-}
-
-/// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
-/// serialized before the field existed still deserialize: a missing `content`
-/// reconstructs the structured final turn from `output` (a single text part),
-/// keeping [`PromptResponse::output`] and [`PromptResponse::content`] consistent
-/// for legacy data rather than defaulting to empty text. It carries the field
-/// serde attributes for both directions, keeping the serialized shape identical
-/// (`completion_calls` omitted when empty; `messages`/`content` always present).
-#[derive(Serialize, Deserialize)]
-struct PromptResponseRepr {
-    output: String,
-    usage: Usage,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    completion_calls: Vec<CompletionCall>,
-    messages: Option<Vec<Message>>,
-    #[serde(default)]
-    content: Option<OneOrMany<AssistantContent>>,
-    #[serde(skip)]
-    output_tool_calls: usize,
-}
-
-impl From<PromptResponseRepr> for PromptResponse {
-    fn from(repr: PromptResponseRepr) -> Self {
-        let content = repr
-            .content
-            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(repr.output.clone())));
-        Self {
-            output: repr.output,
-            usage: repr.usage,
-            completion_calls: repr.completion_calls,
-            messages: repr.messages,
-            content,
-            output_tool_calls: repr.output_tool_calls,
-        }
-    }
-}
-
-impl From<PromptResponse> for PromptResponseRepr {
-    fn from(response: PromptResponse) -> Self {
-        Self {
-            output: response.output,
-            usage: response.usage,
-            completion_calls: response.completion_calls,
-            messages: response.messages,
-            content: Some(response.content),
-            output_tool_calls: response.output_tool_calls,
-        }
-    }
-}
-
-impl std::fmt::Display for PromptResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.output.fmt(f)
-    }
-}
-
-impl PromptResponse {
-    pub fn new(output: impl Into<String>, usage: Usage) -> Self {
-        let output = output.into();
-        Self {
-            content: OneOrMany::one(AssistantContent::text(output.clone())),
-            output,
-            usage,
-            completion_calls: Vec::new(),
-            messages: None,
-            output_tool_calls: 0,
-        }
-    }
-
-    /// An empty run result (empty output, zero usage, no history).
-    pub fn empty() -> Self {
-        Self::new(String::new(), Usage::new())
-    }
-
-    pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
-        self.messages = Some(messages);
-        self
-    }
-
-    /// Attach completion call details to this response.
-    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
-        self.completion_calls = completion_calls;
-        self
-    }
-
-    /// Set the structured assistant content for the final turn.
-    pub fn with_content(mut self, content: OneOrMany<AssistantContent>) -> Self {
-        self.content = content;
-        self
-    }
-
-    pub(crate) fn with_output_tool_calls(mut self, count: usize) -> Self {
-        self.output_tool_calls = count;
-        self
-    }
-
-    pub(crate) fn output_tool_calls(&self) -> usize {
-        self.output_tool_calls
-    }
-
-    /// The concatenated assistant text for the final turn.
-    pub fn output(&self) -> &str {
-        &self.output
-    }
-
-    /// Aggregated token usage across the whole run.
-    pub fn usage(&self) -> Usage {
-        self.usage
-    }
-
-    /// The run's accumulated message history, if tracked.
-    pub fn messages(&self) -> Option<&[Message]> {
-        self.messages.as_deref()
-    }
-
-    /// The structured assistant content for the final turn.
-    pub fn content(&self) -> &OneOrMany<AssistantContent> {
-        &self.content
-    }
-
-    /// Returns successfully completed completion requests made by this agent run.
-    ///
-    /// Zero-valued entry usage means the provider reported no usage metrics
-    /// for that request.
-    pub fn completion_calls(&self) -> &[CompletionCall] {
-        &self.completion_calls
-    }
-
-    /// Number of completion requests this agent run made.
-    pub fn requests(&self) -> usize {
-        self.completion_calls.len()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,
@@ -571,113 +364,6 @@ impl<T> TypedPromptResponse<T> {
     pub fn requests(&self) -> usize {
         self.completion_calls.len()
     }
-}
-
-pub(crate) const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
-    "Tool not executed because another tool call in the same assistant turn was invalid.";
-
-/// Combine input history with new messages for building completion requests.
-pub(crate) fn build_history_for_request(
-    chat_history: Option<&[Message]>,
-    new_messages: &[Message],
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().chain(new_messages.iter()).cloned().collect()
-}
-
-/// Build the full history for error reporting (input + new messages).
-pub(crate) fn build_full_history(
-    chat_history: Option<&[Message]>,
-    new_messages: Vec<Message>,
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().cloned().chain(new_messages).collect()
-}
-
-/// Wrap already-shaped tool-result content for the model (see
-/// [`tool_result_output`] / [`tool_result_message`]).
-fn tool_result_with(
-    id: String,
-    call_id: Option<String>,
-    content: OneOrMany<ToolResultContent>,
-) -> UserContent {
-    match call_id {
-        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
-        None => UserContent::tool_result(id, content),
-    }
-}
-
-/// Shape a canonical real tool output as a tool result without reparsing text.
-pub(crate) fn tool_result_output(
-    id: String,
-    call_id: Option<String>,
-    output: ToolOutput,
-) -> UserContent {
-    tool_result_with(id, call_id, output.into_content())
-}
-
-/// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
-/// "not executed" notice) as a tool result. Emitted **verbatim as text** and
-/// never re-parsed as structured tool output, so a JSON-shaped message is not
-/// silently reinterpreted as an image/multimodal result. Used identically by the
-/// blocking and streaming drivers so synthetic results match across both.
-pub(crate) fn tool_result_message(
-    id: String,
-    call_id: Option<String>,
-    message: String,
-) -> UserContent {
-    tool_result_with(
-        id,
-        call_id,
-        OneOrMany::one(ToolResultContent::text(message)),
-    )
-}
-
-pub(crate) fn invalid_tool_retry_user_message(
-    assistant_content: &OneOrMany<AssistantContent>,
-    invalid_tool_call_id: &str,
-    feedback: String,
-) -> Option<Message> {
-    let retry_results = assistant_content
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) if tool_call.id == invalid_tool_call_id => {
-                Some(tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    feedback.clone(),
-                ))
-            }
-            AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-            )),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    Some(Message::User {
-        content: OneOrMany::from_iter_optional(retry_results)?,
-    })
-}
-
-pub(crate) fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
-    choice.len() == 1
-        && matches!(
-            choice.first(),
-            AssistantContent::Text(text) if text.text.is_empty() && text.additional_params.is_none()
-        )
-}
-
-pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 impl PromptRequest<Extended> {
@@ -729,14 +415,14 @@ where
     pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
-        inner.runner.output_schema = Some(schema_for!(T));
+        inner.runner.config.output_schema = Some(schema_for!(T));
         // Typed prompts deserialize the model's final string, so they pin
         // `Native` structured output to keep the typed API's behavior unchanged
         // across all providers (#1928). Routing the typed path through `Tool`
         // output mode for tool-using agents on non-composing providers is a
         // follow-up; use the untyped `output_schema`/`output_mode` API for
         // tool-composing structured output today.
-        inner.runner.output_mode = OutputMode::Native;
+        inner.runner.config.output_mode = OutputMode::Native;
         Self {
             inner,
             _phantom: std::marker::PhantomData,
@@ -866,7 +552,11 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
+    use super::ResponseIdentity;
+    use super::{
+        CompletionCall, PromptResponse, TypedPromptResponse, assistant_text_from_choice,
+        is_empty_assistant_turn,
+    };
     use crate::{
         agent::{
             AgentBuilder,
@@ -877,8 +567,8 @@ mod tests {
             },
         },
         completion::{
-            AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            StructuredOutputError, TypedPrompt, Usage,
+            AssistantContent, CompletionError, CompletionRequest, FinishReason, Message, Prompt,
+            PromptError, StructuredOutputError, TypedPrompt, Usage,
         },
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
@@ -887,7 +577,9 @@ mod tests {
         },
         tool::{Tool, ToolContext},
     };
+    use rig_core::message::ProviderCallId;
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
+    use rig_run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
@@ -895,6 +587,243 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     };
+
+    /// rig#2322 — the **blocking** surface enforces the same truncation
+    /// contract as the streamed one.
+    ///
+    /// The premise of the whole fix is that the two surfaces disagreeing is
+    /// what let truncation surface as a blank answer, yet every other guard
+    /// test drives `stream_prompt`. Until `MockTurn::with_finish_reason`
+    /// existed the blocking mock could not report a reason at all, so
+    /// `runner.rs`'s `.with_finish_reason(resp.finish_reason())` — and its
+    /// propagation through `model_response` → `record_completion_call` → this
+    /// guard — was never exercised. Deleting that one line failed nothing.
+    #[tokio::test]
+    async fn blocking_prompt_rejects_an_empty_truncated_turn() {
+        let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_contents(
+            [],
+        )
+        .with_finish_reason(FinishReason::Length)]))
+        .build();
+
+        let err = agent
+            .prompt("write a long essay")
+            .await
+            .expect_err("a content-less truncated turn must not return an empty answer");
+
+        let rendered = format!("{err:?}");
+        assert!(
+            rendered.contains("Length") && rendered.contains("max_tokens"),
+            "the blocking error must name the reason and the remedy: {rendered}"
+        );
+    }
+
+    /// rig#2322 — blocking counterpart of the reasoning-only case: the shape
+    /// that motivated the predicate fix must be caught on both surfaces.
+    #[tokio::test]
+    async fn blocking_prompt_rejects_a_reasoning_only_truncated_turn() {
+        let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_content(
+            AssistantContent::Reasoning(rig_core::message::Reasoning::new(
+                "thinking, never answering",
+            )),
+        )
+        .with_finish_reason(FinishReason::Length)]))
+        .build();
+
+        let err = agent
+            .prompt("solve this")
+            .await
+            .expect_err("a reasoning-only truncated turn must not return an empty answer");
+
+        assert!(format!("{err:?}").contains("Length"));
+    }
+
+    /// rig#2322 — and the blocking surface keeps a truncated turn that *did*
+    /// answer, with the reason reaching `completion_calls`.
+    ///
+    /// This is the half that proves the blocking plumbing carries the reason
+    /// rather than merely erroring: the value has to survive into the returned
+    /// `PromptResponse`.
+    #[tokio::test]
+    async fn blocking_prompt_keeps_partial_output_and_records_the_reason() {
+        let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text(
+            "a partial ans",
+        )
+        .with_finish_reason(FinishReason::Length)]))
+        .build();
+
+        let response = agent
+            .prompt("write a long essay")
+            .extended_details()
+            .await
+            .expect("a truncated turn that produced text must still succeed");
+
+        assert_eq!(response.output, "a partial ans");
+        assert_eq!(
+            response
+                .completion_calls
+                .last()
+                .and_then(|call| call.finish_reason.clone()),
+            Some(FinishReason::Length),
+            "the terminal reason must reach the caller on the blocking surface too"
+        );
+    }
+
+    /// rig#2322 follow-up — every `AssistantContent` variant's answer
+    /// classification, pinned one variant at a time.
+    ///
+    /// A unit test rather than a cassette because this is a pure
+    /// classification decision over a rig-owned enum: no provider traffic is
+    /// involved, and the failure it guards against (a new variant silently
+    /// inheriting the wrong bucket) is invisible at the wire level.
+    ///
+    /// The predicate originally used a `_ => false` catch-all, which made
+    /// image-only turns read as "no answer" — so a truncated image-generation
+    /// turn would have errored despite delivering an image. The match is now
+    /// exhaustive; this test pins each arm so a reclassification is deliberate.
+    #[test]
+    fn answer_classification_covers_every_assistant_content_variant() {
+        let image = AssistantContent::image_base64(
+            "iVBORw0KGgo=",
+            Some(rig_core::message::ImageMediaType::PNG),
+            Some(rig_core::message::ImageDetail::default()),
+        );
+        let reasoning = AssistantContent::Reasoning(rig_core::message::Reasoning::new("thinking"));
+        let tool_call = AssistantContent::ToolCall(ToolCall::from_wire(
+            "call_1".to_string(),
+            ToolFunction::new("add".to_string(), json!({})),
+        ));
+
+        // Delivered an answer.
+        assert!(!turn_delivered_no_answer(&[AssistantContent::text("hi")]));
+        assert!(!turn_delivered_no_answer(std::slice::from_ref(&tool_call)));
+        assert!(
+            !turn_delivered_no_answer(std::slice::from_ref(&image)),
+            "an image IS the answer for an image-generation turn; classifying it \
+             as 'no answer' makes a truncated image turn error despite delivering one"
+        );
+
+        // Delivered nothing.
+        assert!(turn_delivered_no_answer(&[]));
+        assert!(turn_delivered_no_answer(&[AssistantContent::text("")]));
+        assert!(
+            turn_delivered_no_answer(std::slice::from_ref(&reasoning)),
+            "reasoning is scratch work, not an answer"
+        );
+
+        // Mixed: one real item is enough.
+        assert!(!turn_delivered_no_answer(&[
+            reasoning.clone(),
+            AssistantContent::text("answer")
+        ]));
+        assert!(
+            !turn_delivered_no_answer(&[reasoning.clone(), image]),
+            "a thinking image model that produced an image has answered"
+        );
+        assert!(turn_delivered_no_answer(&[
+            reasoning,
+            AssistantContent::text("")
+        ]));
+    }
+
+    /// rig#2322 follow-up — the two predicates diverge on exactly the shapes
+    /// that are **worth recording yet answer nothing**, and that is intentional.
+    ///
+    /// `is_empty_assistant_turn` governs the history push ("does this belong in
+    /// the transcript"); `turn_delivered_no_answer` governs the truncation
+    /// guard ("did this answer the question"). Two shapes disagree, and for the
+    /// same reason: reasoning-only, and an empty text block carrying
+    /// `additional_params`. Both are worth recording; neither delivers text.
+    ///
+    /// An earlier version of this test claimed the divergence was reasoning-only
+    /// and checked just three agreeing shapes — none of them annotated — so the
+    /// second case went unnoticed. The agreeing set is now enumerated
+    /// explicitly alongside it.
+    #[test]
+    fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
+        let reasoning_only = vec![AssistantContent::Reasoning(
+            rig_core::message::Reasoning::new("t"),
+        )];
+        let annotated_empty_text = vec![AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                json!({"citations": ["ref"]}),
+            )
+            .expect("citation params should be a JSON object"),
+        })];
+
+        // Divergent: recordable, but no answer was delivered.
+        for choice in [&reasoning_only, &annotated_empty_text] {
+            assert!(
+                !is_empty_assistant_turn(choice),
+                "should be recorded in history: {choice:?}"
+            );
+            assert!(
+                turn_delivered_no_answer(choice),
+                "should count as no answer — the caller receives no text: {choice:?}"
+            );
+        }
+
+        // Agreeing: everything else.
+        for choice in [
+            vec![],
+            vec![AssistantContent::text("")],
+            vec![AssistantContent::text("real")],
+            vec![AssistantContent::image_base64(
+                "iVBORw0KGgo=",
+                Some(rig_core::message::ImageMediaType::PNG),
+                Some(rig_core::message::ImageDetail::default()),
+            )],
+            vec![AssistantContent::ToolCall(ToolCall::from_wire(
+                "call_1".to_string(),
+                ToolFunction::new("add".to_string(), json!({})),
+            ))],
+        ] {
+            assert_eq!(
+                is_empty_assistant_turn(&choice),
+                turn_delivered_no_answer(&choice),
+                "unexpected divergence on {choice:?}"
+            );
+        }
+    }
+
+    /// rig#2322 follow-up — metadata-only text is **not** an answer, stated as
+    /// its own decision rather than left implied by the predicate's code.
+    ///
+    /// A text block with `additional_params` and no text carries provider
+    /// metadata (citations, encrypted reasoning references) that is worth
+    /// keeping in history, but `assistant_text_from_choice` concatenates
+    /// `text.text` alone — so the caller receives `""`. Nothing was answered,
+    /// and a turn truncated in that state is a failed turn.
+    ///
+    /// If this is ever reclassified, the run-level consequence is the point to
+    /// weigh: it decides whether a truncated annotation-only turn errors or
+    /// silently returns an empty string.
+    #[test]
+    fn metadata_only_text_is_not_an_answer() {
+        let annotated_empty = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                json!({"citations": ["ref"]}),
+            )
+            .expect("citation params should be a JSON object"),
+        });
+
+        assert!(turn_delivered_no_answer(std::slice::from_ref(
+            &annotated_empty
+        )));
+        assert_eq!(
+            assistant_text_from_choice(std::slice::from_ref(&annotated_empty)),
+            "",
+            "the caller receives no text, which is why this is not an answer"
+        );
+
+        // The annotation does not suppress a real answer beside it.
+        assert!(!turn_delivered_no_answer(&[
+            annotated_empty,
+            AssistantContent::text("real"),
+        ]));
+    }
 
     #[derive(Serialize)]
     struct SerializeOnly {
@@ -1215,10 +1144,70 @@ mod tests {
     }
 
     #[test]
+    fn empty_turn_classification_survives_a_serde_round_trip() {
+        // A suspended run restored from JSON must classify its empty-text
+        // turn exactly like the live run did, whatever spelling of "no
+        // extras" the JSON carries, and an *annotated* empty block must
+        // still read as content either way. The serde canonicalization
+        // mechanics behind this (`{}`/`null` decode to `None`, empty params
+        // never serialize) are pinned where they live, by rig-core's
+        // `empty_params_canonicalize_to_none_in_both_serde_directions` —
+        // this test asserts classification only.
+        let live = vec![AssistantContent::text("")];
+        assert!(is_empty_assistant_turn(&live));
+
+        let round: Vec<AssistantContent> =
+            serde_json::from_str(&serde_json::to_string(&live).expect("serialize"))
+                .expect("deserialize");
+        assert!(
+            is_empty_assistant_turn(&round),
+            "restored turn must classify like the live one: {round:?}"
+        );
+
+        // An explicit `{}` or `null` in the JSON — the shape a mechanical
+        // migration script writes — classifies exactly like an absent field.
+        for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
+            let migrated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
+                {"type": "text", "text": "", "additional_params": empty_spelling}
+            ]))
+            .expect("deserialize migrated");
+            assert!(is_empty_assistant_turn(&migrated));
+        }
+
+        // The old uncanonicalized-`Some({})` hazard is unrepresentable:
+        // `AdditionalParams` has no empty value, so the only way to spell
+        // "no extras" in memory is `None` and live/restored classification
+        // agree by construction.
+        let canonical_absent = vec![AssistantContent::Text(rig_core::message::Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                serde_json::json!({}),
+            )
+            .expect("object params"),
+        })];
+        assert!(is_empty_assistant_turn(&canonical_absent));
+        let restored: Vec<AssistantContent> =
+            serde_json::from_value(serde_json::to_value(&canonical_absent).expect("serialize"))
+                .expect("deserialize");
+        assert!(is_empty_assistant_turn(&restored));
+
+        let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
+            {"type": "text", "text": "", "additional_params": {"signature": "sig"}}
+        ]))
+        .expect("deserialize annotated");
+        assert!(
+            !is_empty_assistant_turn(&annotated),
+            "an annotated empty block carries data: {annotated:?}"
+        );
+    }
+
+    #[test]
     fn prompt_response_deserializes_pre_monoid_null_usage_format() {
-        // Fixture captured from rig before CompletionCall.usage dropped its
-        // Option encoding; `"usage": null` must map to zero-valued usage.
-        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}]}"#;
+        // Pins `CompletionCall.usage`'s null tolerance: `"usage": null` (the
+        // pre-monoid Option encoding) must map to zero-valued usage. The
+        // fixture otherwise uses the current shape — `content` is a required
+        // field since the missing-`content` reconstruction was dropped.
+        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}],"content":[{"type":"text","text":"ok"}]}"#;
 
         let response: PromptResponse =
             serde_json::from_str(fixture).expect("old-format response should deserialize");
@@ -1229,56 +1218,42 @@ mod tests {
                 CompletionCall::new(1, usage(3, 4))
             ]
         );
+        // `content` uses the tagged shape — assistant content is tagged like
+        // user content (see `the_type_key_is_the_tag_and_the_untagged_shape_does_not_load`).
+        let [AssistantContent::Text(text)] = response.content() else {
+            panic!("expected one text block, got {:?}", response.content());
+        };
+        assert_eq!(text.text, "ok");
     }
 
     #[test]
-    fn prompt_response_missing_content_reconstructs_from_output() {
-        // Runs serialized before `content` existed must not deserialize to empty
-        // text: the structured final turn is reconstructed from `output`, so
-        // `output()` and `content()` stay consistent for legacy data.
-        let mut value = serde_json::to_value(PromptResponse::new("hello", Usage::new()))
-            .expect("serialize prompt response");
-        value
-            .as_object_mut()
-            .expect("prompt response serializes to a JSON object")
-            .remove("content");
-        assert!(
-            value.get("content").is_none(),
-            "fixture must omit the content field to model legacy data"
-        );
+    fn the_type_key_is_the_tag_and_the_untagged_shape_does_not_load() {
+        // Assistant content is tagged like user content: `"type"` is consumed
+        // as the discriminant, never captured into `additional_params`. And
+        // there is deliberately no untagged fallback — the bare shape 0.41
+        // serialized fails to deserialize (MIGRATING carries the recipe),
+        // pinned here so removing the tag requirement is a visible decision,
+        // not an accident.
+        let tagged: Vec<AssistantContent> =
+            serde_json::from_value(serde_json::json!([{"type": "text", "text": "ok"}]))
+                .expect("deserialize");
+        let [AssistantContent::Text(text)] = tagged.as_slice() else {
+            panic!("expected one text block, got {tagged:?}");
+        };
+        assert_eq!(text.text, "ok");
+        assert_eq!(text.additional_params, None, "the tag is not data");
 
-        let response: PromptResponse = serde_json::from_value(value)
-            .expect("legacy response without content should deserialize");
-
-        assert_eq!(response.output(), "hello");
-        assert_eq!(response.content().iter().count(), 1);
-        assert_eq!(response.content().first(), AssistantContent::text("hello"));
-    }
-
-    #[test]
-    fn prompt_response_missing_content_empty_output_stays_empty_text() {
-        let mut value =
-            serde_json::to_value(PromptResponse::empty()).expect("serialize prompt response");
-        value
-            .as_object_mut()
-            .expect("prompt response serializes to a JSON object")
-            .remove("content");
-
-        let response: PromptResponse = serde_json::from_value(value)
-            .expect("legacy empty response without content should deserialize");
-
-        assert_eq!(response.output(), "");
-        assert_eq!(response.content().first(), AssistantContent::text(""));
+        serde_json::from_value::<Vec<AssistantContent>>(serde_json::json!([{"text": "ok"}]))
+            .expect_err("the untagged shape must not deserialize");
     }
 
     #[test]
     fn prompt_response_roundtrip_preserves_explicit_content() {
         // An explicitly-set `content` (e.g. the streaming surface's structured
-        // final turn) must survive a serialize/deserialize round-trip and is not
-        // clobbered by the output-derived fallback.
-        let response = PromptResponse::new("visible text", Usage::new()).with_content(
-            rig_core::OneOrMany::one(AssistantContent::text("structured")),
-        );
+        // final turn) must survive a serialize/deserialize round-trip intact —
+        // `content` and `output` are independent fields.
+        let response = PromptResponse::new("visible text", Usage::new())
+            .with_content(vec![AssistantContent::text("structured")]);
 
         let value = serde_json::to_value(&response).expect("serialize prompt response");
         assert!(
@@ -1289,11 +1264,11 @@ mod tests {
         let round: PromptResponse =
             serde_json::from_value(value).expect("deserialize prompt response");
         assert_eq!(round.output(), "visible text");
-        // The stored content is "structured" — distinct from `output` — proving the
-        // output-derived fallback only fills a genuinely absent `content`. (Compare
-        // the text directly to sidestep the unrelated `Text::additional_params`
-        // serde round-trip asymmetry.)
-        let AssistantContent::Text(text) = round.content().first() else {
+        // The stored content is "structured" — distinct from `output` — so the
+        // round trip demonstrably carried `content` itself rather than anything
+        // derived from `output`. (Compare the text directly to sidestep the
+        // `Text::additional_params` serde round-trip asymmetry.)
+        let Some(AssistantContent::Text(text)) = round.content().first() else {
             panic!("expected text content, got {:?}", round.content().first());
         };
         assert_eq!(text.text, "structured");
@@ -1301,26 +1276,18 @@ mod tests {
 
     #[test]
     fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
-        // Serialize *and* deserialize both route through `PromptResponseRepr`, so
-        // the two directions agree on `content`'s wire shape (an `Option`).
-        // Routing only deserialize through the shadow would make serialize write a
-        // bare `OneOrMany` while deserialize expects an `Option`, breaking
-        // round-trips for positional / non-self-describing formats. Assert this
-        // structurally: the message content types use `#[serde(flatten)]`, which no
-        // length-prefixed binary format can encode, and self-describing formats
-        // (JSON) collapse `Some(x)` and `x` to identical bytes, hiding the mismatch.
+        // `content` is a required, bare list in both serde directions — the
+        // pre-`content` reconstruction (and the shadow repr that carried it)
+        // is gone, so serialize and deserialize agree by construction. Pin
+        // the shape: `content` present, `completion_calls` omitted only when
+        // empty, and the value round-trips.
         let response = PromptResponse::new("hi", usage(1, 2))
             .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2))]);
 
         let from_response = serde_json::to_value(&response).expect("serialize response");
-        let from_shadow = serde_json::to_value(PromptResponseRepr::from(response.clone()))
-            .expect("serialize shadow");
-        assert_eq!(
-            from_response, from_shadow,
-            "serialize must route through the same shadow as deserialize"
-        );
+        assert!(from_response.get("content").is_some());
+        assert!(from_response.get("completion_calls").is_some());
 
-        // ...and the value still round-trips back to an equivalent response.
         let round: PromptResponse =
             serde_json::from_value(from_response).expect("deserialize response");
         assert_eq!(round.output(), "hi");
@@ -1329,6 +1296,16 @@ mod tests {
             round.completion_calls(),
             &[CompletionCall::new(0, usage(1, 2))]
         );
+
+        // The omission direction of `completion_calls`' skip-when-empty:
+        // an empty list serializes without the key (the shadow-era wire
+        // shape), and the keyless JSON still deserializes.
+        let bare = serde_json::to_value(PromptResponse::new("hi", usage(1, 2)))
+            .expect("serialize bare response");
+        assert!(bare.get("completion_calls").is_none());
+        let round: PromptResponse =
+            serde_json::from_value(bare).expect("deserialize keyless response");
+        assert!(round.completion_calls().is_empty());
     }
 
     #[tokio::test]
@@ -1385,7 +1362,7 @@ mod tests {
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) {
-        let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
+        let history = request.chat_history.clone();
         assert_eq!(
             history.len(),
             3,
@@ -1397,18 +1374,23 @@ mod tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::Text(text) if text.text == "do tool work"
+                    Some(UserContent::Text(text)) if text.text == "do tool work"
                 )
         ));
 
+        // The wire issued "tool_call_1" (adopted as rig's durable id) and the
+        // provider-specific correlator was overridden to "call_1"; the result
+        // answers the durable id and echoes the provider correlator.
         assert!(matches!(
             history.get(1),
             Some(Message::Assistant { content, .. })
                 if matches!(
                     content.first(),
-                    AssistantContent::ToolCall(tool_call)
+                    Some(AssistantContent::ToolCall(tool_call))
                         if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
+                            && tool_call.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         ));
 
@@ -1417,9 +1399,11 @@ mod tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::ToolResult(tool_result)
-                        if tool_result.id == "tool_call_1"
-                            && tool_result.call_id.as_deref() == Some("call_1")
+                    Some(UserContent::ToolResult(tool_result))
+                        if tool_result.call == "tool_call_1"
+                            && tool_result.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         ));
     }
@@ -1436,6 +1420,55 @@ mod tests {
                     ))
             )
         })
+    }
+
+    /// The invalid-call retry transcript pairs 1:1 by construction: every tool
+    /// call in the assistant turn carries a unique non-empty id (minted at the
+    /// provider boundary when the wire issued none), and the retry results
+    /// answer exactly those ids.
+    fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
+        use std::collections::BTreeSet;
+
+        let Message::Assistant { content, .. } = assistant else {
+            panic!("expected the assistant tool-call turn, got {assistant:?}");
+        };
+        let call_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(tool_call) => Some(tool_call.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let Message::User { content } = results else {
+            panic!("expected the user retry-result turn, got {results:?}");
+        };
+        let result_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some(result.call.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            call_ids.iter().all(|id| !id.is_empty()),
+            "every tool call carries a non-empty id: {call_ids:?}"
+        );
+        let unique_calls: BTreeSet<&str> = call_ids.iter().copied().collect();
+        assert_eq!(
+            unique_calls.len(),
+            call_ids.len(),
+            "tool-call ids must be unique: {call_ids:?}"
+        );
+        let unique_results: BTreeSet<&str> = result_ids.iter().copied().collect();
+        assert_eq!(
+            unique_results.len(),
+            result_ids.len(),
+            "retry-result ids must be unique: {result_ids:?}"
+        );
+        assert_eq!(
+            unique_calls, unique_results,
+            "retry results must answer exactly the turn's tool calls"
+        );
     }
 
     #[tokio::test]
@@ -1754,22 +1787,21 @@ mod tests {
     async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executing_valid_call()
     {
         let add_calls = Arc::new(AtomicU32::new(0));
-        let mut valid_tool_call = ToolCall::new(
-            "tool_call_1".to_string(),
+        let valid_tool_call = ToolCall::from_wire(
+            "tool_call_1",
             ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-        );
-        valid_tool_call.call_id = Some("call_1".to_string());
-        let mut invalid_tool_call = ToolCall::new(
-            "tool_call_2".to_string(),
+        )
+        .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        let invalid_tool_call = ToolCall::from_wire(
+            "tool_call_2",
             ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-        );
-        invalid_tool_call.call_id = Some("call_2".to_string());
+        )
+        .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
         let model = MockCompletionModel::new([
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
                 AssistantContent::ToolCall(invalid_tool_call),
-            ])
-            .expect("tool-call response should be non-empty"),
+            ]),
             MockTurn::text("retried"),
         ]);
         let recorded = model.clone();
@@ -1792,7 +1824,7 @@ mod tests {
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let retry_history = requests[1].chat_history.clone();
         assert_eq!(retry_history.len(), 3);
         assert!(matches!(
             retry_history.get(1),
@@ -1817,19 +1849,23 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
-                                && result.call_id.as_deref() == Some("call_1")
+                            if result.call == "tool_call_1"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_1"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
-                                        if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
                                 ))
                     ))
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
-                                && result.call_id.as_deref() == Some("call_2")
+                            if result.call == "tool_call_2"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_2"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1837,27 +1873,30 @@ mod tests {
                                 ))
             ))
         ));
+        assert_retry_transcript_ids_pair(
+            retry_history.get(1).expect("assistant tool-call turn"),
+            retry_history.get(2).expect("retry-result turn"),
+        );
     }
 
     #[tokio::test]
     async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing_valid_call() {
         let add_calls = Arc::new(AtomicU32::new(0));
-        let mut valid_tool_call = ToolCall::new(
-            "tool_call_1".to_string(),
+        let valid_tool_call = ToolCall::from_wire(
+            "tool_call_1",
             ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-        );
-        valid_tool_call.call_id = Some("call_1".to_string());
-        let mut invalid_tool_call = ToolCall::new(
-            "tool_call_2".to_string(),
+        )
+        .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        let invalid_tool_call = ToolCall::from_wire(
+            "tool_call_2",
             ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-        );
-        invalid_tool_call.call_id = Some("call_2".to_string());
+        )
+        .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
         let model = MockCompletionModel::new([
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
                 AssistantContent::ToolCall(invalid_tool_call),
-            ])
-            .expect("tool-call response should be non-empty"),
+            ]),
             MockTurn::text("skipped"),
         ]);
         let agent = AgentBuilder::new(model)
@@ -1886,19 +1925,23 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
-                                && result.call_id.as_deref() == Some("call_1")
+                            if result.call == "tool_call_1"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_1"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
-                                        if text.text == super::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
                                 ))
                     ))
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
-                                && result.call_id.as_deref() == Some("call_2")
+                            if result.call == "tool_call_2"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_2"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1906,6 +1949,10 @@ mod tests {
                                 ))
                     ))
         ));
+        assert_retry_transcript_ids_pair(
+            messages.get(1).expect("assistant tool-call turn"),
+            messages.get(2).expect("skip-result turn"),
+        );
     }
 
     #[tokio::test]
@@ -2011,7 +2058,7 @@ mod tests {
                         matches!(
                             content,
                             UserContent::ToolResult(result)
-                                if result.id == "tool_call_1"
+                                if result.call == "tool_call_1"
                                     && result.content.iter().any(|content| {
                                         matches!(
                                             content,
@@ -2334,7 +2381,7 @@ mod tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::Text(text) if text.text == "do tool work"
+                    Some(UserContent::Text(text)) if text.text == "do tool work"
                 )
         ));
         assert!(history.iter().any(|message| matches!(
@@ -2342,9 +2389,11 @@ mod tests {
             Message::Assistant { content, .. }
                 if matches!(
                     content.first(),
-                    AssistantContent::ToolCall(tool_call)
+                    Some(AssistantContent::ToolCall(tool_call))
                         if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
+                            && tool_call.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         )));
         assert!(history.iter().any(|message| matches!(
@@ -2352,9 +2401,11 @@ mod tests {
             Message::User { content }
                 if matches!(
                     content.first(),
-                    UserContent::ToolResult(tool_result)
-                        if tool_result.id == "tool_call_1"
-                            && tool_result.call_id.as_deref() == Some("call_1")
+                    Some(UserContent::ToolResult(tool_result))
+                        if tool_result.call == "tool_call_1"
+                            && tool_result.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         )));
         assert!(!history.iter().any(|message| matches!(
@@ -2376,8 +2427,7 @@ mod tests {
             AssistantContent::Text(Text::new("According to the document, ")),
             AssistantContent::Text(Text::new("the grass is green")),
             AssistantContent::Text(Text::new(" and the sky is blue.")),
-        ])
-        .expect("mock response should contain text blocks")]);
+        ])]);
         let agent = AgentBuilder::new(model).build();
 
         let response = agent
@@ -2393,7 +2443,7 @@ mod tests {
 
     #[tokio::test]
     async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
-        let metadata = json!({
+        let metadata = rig_core::message::AdditionalParams::try_from_value(json!({
             "citations": [{
                 "type": "web_search_result_location",
                 "cited_text": "Claude Shannon was born in 1916.",
@@ -2401,7 +2451,9 @@ mod tests {
                 "title": null,
                 "encrypted_index": "encrypted-reference"
             }]
-        });
+        }))
+        .expect("object params")
+        .expect("params carry data");
         let model =
             MockCompletionModel::new([MockTurn::from_content(AssistantContent::Text(Text {
                 text: String::new(),
@@ -2424,7 +2476,7 @@ mod tests {
             Message::Assistant { content, .. }
                 if matches!(
                     content.first(),
-                    AssistantContent::Text(text)
+                    Some(AssistantContent::Text(text))
                         if text.text.is_empty()
                             && text.additional_params.as_ref() == Some(&metadata)
                 )
@@ -2456,11 +2508,7 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let received = recorded.requests()[0].chat_history.clone();
         assert_eq!(
             received.len(),
             3,
@@ -2508,16 +2556,12 @@ mod tests {
         let appends = memory.append_count();
         assert_eq!(appends, 0, "append skipped");
 
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let received = recorded.requests()[0].chat_history.clone();
         assert_eq!(received.len(), 2, "caller history (1) + current prompt");
         assert!(matches!(
             received.first(),
             Some(Message::User { content })
-                if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
+                if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "from-caller")
         ));
     }
 
@@ -2621,7 +2665,7 @@ mod tests {
             matches!(
                 stored.first(),
                 Some(Message::User { content })
-                    if matches!(content.first(), UserContent::Text(t) if t.text == "old-q")
+                    if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "old-q")
             ),
             "loaded history is preserved once at the front: {stored:?}"
         );
@@ -2765,11 +2809,7 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let received = recorded.requests()[0].chat_history.clone();
         assert_eq!(
             received.len(),
             3,
@@ -2826,5 +2866,34 @@ mod tests {
             .expect("append failure must not block successful completion");
 
         assert!(!response.is_empty());
+    }
+
+    /// Serde compatibility (rig#2265): run records persisted before the
+    /// identity fields existed still load, with every identity field `None`.
+    #[test]
+    fn completion_call_without_identity_fields_still_deserializes() {
+        let call: CompletionCall = serde_json::from_str(
+            r#"{"call_index": 3, "usage": {"input_tokens": 1, "output_tokens": 2,
+                "total_tokens": 3, "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0, "reasoning_tokens": 0}}"#,
+        )
+        .expect("pre-identity CompletionCall JSON should load");
+        assert_eq!(call.call_index, 3);
+        assert_eq!(call.identity(), ResponseIdentity::default());
+    }
+
+    /// And a populated record round-trips the identity losslessly.
+    #[test]
+    fn completion_call_identity_round_trips() {
+        let call = CompletionCall::new(0, crate::completion::Usage::new()).with_identity(
+            ResponseIdentity {
+                message_id: Some("msg_1".into()),
+                response_id: Some("resp_1".into()),
+                provider_request_id: Some("req_1".into()),
+            },
+        );
+        let json = serde_json::to_string(&call).expect("serialize");
+        let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored, call);
     }
 }

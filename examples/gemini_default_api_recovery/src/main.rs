@@ -184,7 +184,7 @@ impl WorkspaceStreamObservation {
     fn final_response_text(&self) -> Option<&str> {
         self.final_response
             .as_ref()
-            .map(|response| response.output())
+            .map(rig::run::PromptResponse::output)
     }
 
     fn diagnostic_summary(&self) -> String {
@@ -203,7 +203,7 @@ impl WorkspaceStreamObservation {
             self.final_response_text(),
             self.final_response
                 .as_ref()
-                .map(|response| response.usage())
+                .map(rig::run::PromptResponse::usage)
         )
     }
 }
@@ -235,9 +235,10 @@ async fn consume_workspace_like_stream(
                 observation.events.push("text");
                 observation.streamed_text.push_str(&text.text);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
+            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
                 reasoning,
-            )) => {
+                ..
+            }) => {
                 observation.events.push("reasoning");
                 observation
                     .reasoning_text
@@ -272,15 +273,18 @@ async fn consume_workspace_like_stream(
             }) => {
                 observation.events.push("tool_result");
                 let value = match tool_result.content.first() {
-                    ToolResultContent::Json { value } => value.clone(),
-                    ToolResultContent::Text(_) => {
+                    Some(ToolResultContent::Json { value }) => value.clone(),
+                    Some(ToolResultContent::Text(_)) => {
                         return Err(
                             "JS Runtime returned literal text instead of structured JSON"
                                 .to_string(),
                         );
                     }
-                    ToolResultContent::Image(_) => {
+                    Some(ToolResultContent::Image(_)) => {
                         return Err("JS Runtime returned an unexpected image".to_string());
+                    }
+                    None => {
+                        return Err("JS Runtime returned an empty tool result".to_string());
                     }
                 };
                 observation.tool_results.push(value.to_string());

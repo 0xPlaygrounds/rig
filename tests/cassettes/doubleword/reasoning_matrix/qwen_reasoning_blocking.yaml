@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Compute 17 * 23. Give the number only after thinking.","role":"user"}],"model":"Qwen/Qwen3.5-9B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"reasoning_content":"Thinking Process:\n\n1.  **Analyze the Request:** The user wants me to compute the product of 17 and 23 ($17 \\times 23$). The output should contain only the number after thinking.\n\n2.  **Perform the Calculation:**\n    *   Method 1: Standard multiplication.\n        $$17 \\times 23$$\n        $$= 17 \\times (20 + 3)$$\n        $$= (17 \\times 20) + (17 \\times 3)$$\n        $$= 340","role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":128,"completion_tokens_details":{"accepted_prediction_tokens":null,"audio_tokens":null,"reasoning_tokens":128,"rejected_prediction_tokens":null},"prompt_tokens":26,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":154}}'

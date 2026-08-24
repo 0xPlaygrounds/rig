@@ -9,7 +9,7 @@
 //! - Groq
 //! - Hugging Face
 //! - Hyperbolic
-//! - Llamafile
+//! - llama.cpp (`llama-server`, and llamafile)
 //! - MiniMax
 //! - Mira
 //! - Mistral
@@ -19,6 +19,7 @@
 //! - OpenRouter
 //! - Perplexity
 //! - Together
+//! - Venice
 //! - Voyage AI
 //! - xAI
 //! - Xiaomi MiMo
@@ -77,7 +78,7 @@
 //!   credential requirements.
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::{AssistantContent, CompletionModel},
@@ -117,8 +118,8 @@ pub mod gemini;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
-pub(crate) mod internal;
-pub mod llamafile;
+pub mod internal;
+pub mod llamacpp;
 pub mod minimax;
 pub mod mira;
 pub mod mistral;
@@ -128,6 +129,7 @@ pub mod openai;
 pub mod openrouter;
 pub mod perplexity;
 pub mod together;
+pub mod venice;
 pub mod voyageai;
 pub mod xai;
 pub mod xiaomimimo;

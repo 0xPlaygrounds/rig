@@ -11,10 +11,11 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
 tracing = { workspace = true }
 
 [dev-dependencies]
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }
 rig-agent.workspace = true
 serde_json = { workspace = true }
@@ -22,4 +23,4 @@ tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 
 [[example]]
 name = "agent_with_memory_policies"
-required-features = ["rig-core/reqwest", "rig-core/rustls"]
+required-features = []

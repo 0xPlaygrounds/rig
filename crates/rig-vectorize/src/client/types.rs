@@ -81,7 +81,6 @@ pub struct ApiMessage {
 #[derive(Debug, Clone, Deserialize)]
 pub struct QueryResult {
     /// Number of matches returned.
-    #[allow(dead_code)]
     pub count: u64,
 
     /// The matching vectors.
@@ -99,7 +98,6 @@ pub struct VectorMatch {
 
     /// The vector values (only present if `returnValues: true`).
     #[serde(default)]
-    #[allow(dead_code)]
     pub values: Option<Vec<f64>>,
 
     /// Metadata associated with the vector.
@@ -108,7 +106,6 @@ pub struct VectorMatch {
 
     /// The namespace this vector belongs to.
     #[serde(default)]
-    #[allow(dead_code)]
     pub namespace: Option<String>,
 }
 
@@ -140,7 +137,6 @@ pub struct UpsertRequest {
 /// Result payload from an upsert request.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct UpsertResult {
     /// Mutation identifier for tracking async processing.
     pub mutation_id: String,
@@ -156,7 +152,6 @@ pub struct DeleteByIdsRequest {
 /// Result payload from a delete_by_ids request.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct DeleteResult {
     /// Mutation identifier for tracking async processing.
     pub mutation_id: String,

@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.41.0...rig-vertexai-v0.42.0) - 2026-08-16
+
+### Other
+
+- workspace-wide LOC consolidation pass 8 (net −1,353 production lines) ([#2320](https://github.com/0xPlaygrounds/rig/pull/2320)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2320
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- post-Vec-migration precision and the pre-Vec serde accommodations go ([#2276](https://github.com/0xPlaygrounds/rig/pull/2276)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2276
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+- Tool identity holds at every boundary: legacy lift, honest constructors, and the drains the siblings already had (2262 round-7 follow-up) ([#2267](https://github.com/0xPlaygrounds/rig/pull/2267)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2267
+- Stream parts become entities: lifecycle grammar, opaque keys, and tool names as data (the 84a43e9e C→B→A program) ([#2262](https://github.com/0xPlaygrounds/rig/pull/2262)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2262
+- Normalize completion responses at the provider boundary and erase the model type at agent construction ([#2257](https://github.com/0xPlaygrounds/rig/pull/2257)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2257
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Changed
+
+- *(completion)* [**behavior**] an empty converted response choice is rejected as `CompletionError::ResponseError` with rig-core's shared empty-response wording (via `message::require_non_empty_response`) — previously `ProviderError("No text or tool call content found in response")`
+
+- *(completion)* message and tool-result content conversions follow rig-core's message-content change from `OneOrMany<T>` to `Vec<T>`; wire payloads are unchanged
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.40.0...rig-vertexai-v0.41.0) - 2026-07-28
 
 ### Added

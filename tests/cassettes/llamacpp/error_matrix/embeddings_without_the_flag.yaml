@@ -1,0 +1,16 @@
+when:
+  path: /v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":["hello"],"model":"Qwen3-Embedding-0.6B-Q8_0"}'
+then:
+  status: 501
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":501,"message":"This server does not support embeddings. Start it with `--embeddings`","type":"not_supported_error"}}'

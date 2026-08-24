@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 2 and 3.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":{"functionCallingConfig":{"allowed_function_names":["add"],"mode":"ANY"}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":2,\"y\":3},\"name\":\"add\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":67,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":67}],\"serviceTier\":\"standard\",\"totalTokenCount\":85}}\r\n\r\n"

@@ -6,9 +6,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.41.0...rig-bedrock-v0.42.0) - 2026-08-16
+
+### Added
+
+- carry the provider transport request id on completion errors ([#2314](https://github.com/0xPlaygrounds/rig/pull/2314)) ([#2315](https://github.com/0xPlaygrounds/rig/pull/2315)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2315
+- response identity metadata — native response id + provider transport request id, to every completion observer ([#2265](https://github.com/0xPlaygrounds/rig/pull/2265)) ([#2313](https://github.com/0xPlaygrounds/rig/pull/2313)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2313
 
 ### Fixed
 
+- *(bedrock)* raw_completion discards provider-only response data (guardrail trace, request id, service tier) ([#2311](https://github.com/0xPlaygrounds/rig/pull/2311)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(bedrock)* ship invocable model identifiers, and keep provider error bodies the SDK cannot classify ([#2309](https://github.com/0xPlaygrounds/rig/pull/2309)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- reconcile the changelogs and the migration guide with what actually merged ([#2353](https://github.com/0xPlaygrounds/rig/pull/2353)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2353
+- remove #[non_exhaustive] from the workspace ([#2335](https://github.com/0xPlaygrounds/rig/pull/2335)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2335
+- workspace-wide LOC consolidation pass 8 (net −1,353 production lines) ([#2320](https://github.com/0xPlaygrounds/rig/pull/2320)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2320
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- post-Vec-migration precision and the pre-Vec serde accommodations go ([#2276](https://github.com/0xPlaygrounds/rig/pull/2276)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2276
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+- Tool identity holds at every boundary: legacy lift, honest constructors, and the drains the siblings already had (2262 round-7 follow-up) ([#2267](https://github.com/0xPlaygrounds/rig/pull/2267)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2267
+- Stream parts become entities: lifecycle grammar, opaque keys, and tool names as data (the 84a43e9e C→B→A program) ([#2262](https://github.com/0xPlaygrounds/rig/pull/2262)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2262
+- Canonical stream grammar: mandatory identity, one accumulator, decode-then-validate, and a wire-conformance corpus ([#2258](https://github.com/0xPlaygrounds/rig/pull/2258)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2258
+- Normalize completion responses at the provider boundary and erase the model type at agent construction ([#2257](https://github.com/0xPlaygrounds/rig/pull/2257)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2257
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Added
+
+- *(bedrock)* `CompletionModel::with_guardrail` attaches a [Bedrock guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) (identifier, version, trace mode) to every Converse request the model issues. Requests previously had no way to carry `guardrailConfig` at all, which also made the response-side trace unreachable
+- *(bedrock)* `types::converse_output` and `types::assistant_content` are public modules. `raw_completion` returns `AwsConverseOutput`, which wraps `InternalConverseOutput`; both lived behind `pub(crate)` modules, so a caller could not name the type the escape hatch hands back
+
+### Fixed
+
+- *(bedrock)* `raw_completion` no longer discards provider-only response data. The conversion from the SDK's `ConverseOutput` matched five fields and swallowed the rest, so the guardrail `trace`, `performance_config`, `service_tier` and the AWS `request_id` never reached the escape hatch whose contract is that nothing the provider sent was dropped. The trace is the costly one: a blocked turn normalizes to a content-filter finish reason and nothing else, so the assessment naming the policy that fired was unrecoverable. All four are now carried — the three SDK-typed ones as the SDK's own types, `#[serde(skip)]` because they are not `Serialize`, so an in-process caller reads them in full while a serialized response omits them
+
+- *(bedrock)* [**breaking**] the model constants are the identifiers Bedrock can actually invoke. Checked against `ListFoundationModels` in us-east-1, us-west-2, eu-central-1 and ap-northeast-1 and invoked with `Converse` in us-east-1, 45 of the 72 shipped constants could only fail: 38 are removed and 7 are rewritten, leaving 40. The 38 removals are every `anthropic.claude-*` constant the crate had (14 of them, so Bedrock's flagship family had no working identifier at all), the three Titan text models and both Titan image generators, `AMAZON_NOVA_PREMIER`, all three AI21 Jamba ids, the Cohere `command-text` pair together with `COHERE_COMMAND_R`/`COHERE_COMMAND_R_PLUS`, `LLAMA_3_1_405B_INSTRUCT` and the four Llama 3.2 ids, `MISTRAL_LARGE_24_07`, the four older Stability ids, and `TWELVELABS_MARENGO_EMBED_V2_7` — absent from every region checked and answering `ResourceNotFoundException` ("This model version has reached the end of its life"), or (like `AMAZON_NOVA_PREMIER` and `ANTHROPIC_CLAUDE_SONNET_4`) reachable only through a cross-region inference profile that is itself retired. The 7 rewritten ones — `DEEPSEEK_R1`, `META_LLAMA_3_3_70B_INSTRUCT`, `META_LLAMA_4_MAVERICK_17B_INSTRUCT`, `META_LLAMA_4_SCOUT_17B_INSTRUCT`, `MISTRAL_PIXTRAL_LARGE_2502`, `WRITER_PALMYRA_X4` and `WRITER_PALMYRA_X5` — exist but are servable only through a cross-region inference profile, so the bare identifier answered `ValidationException` ("Invocation of model ID … with on-demand throughput isn't supported"); each now carries its `us.` profile identifier, a silent value change for code that still compiles. Anthropic is represented by six new constants, all `us.` profiles: `ANTHROPIC_CLAUDE_HAIKU_4_5`, `ANTHROPIC_CLAUDE_SONNET_4_5`, `ANTHROPIC_CLAUDE_OPUS_4_5`, `ANTHROPIC_CLAUDE_SONNET_4_6`, `ANTHROPIC_CLAUDE_SONNET_5` and `ANTHROPIC_CLAUDE_OPUS_5`. A `us.` prefix names a region family: callers outside the US substitute `eu.`/`apac.` (or `global.` where offered). `image` drops its `AMAZON_TITAN_IMAGE_GENERATOR_V1`/`_V2_0` aliases along with the identifiers behind them and re-exports `STABILITY_SD3_5_LARGE`, `STABILITY_STABLE_IMAGE_CORE_1_0` and `STABILITY_STABLE_IMAGE_ULTRA_1_0` beside `AMAZON_NOVA_CANVAS` instead. Every retained identifier was invoked with `Converse` in us-east-1
+
+- *(bedrock)* a provider error this SDK version cannot classify keeps the service's own body. `SdkError::into_service_error` funnels unmodeled exceptions — and any response whose `x-amzn-errortype` the transport dropped — into `Unhandled`, whose `meta()` is empty and whose message hides in its source, so the conversion's catch-all reported Bedrock's end-of-life notice as `ProviderError("An unexpected error occurred. Verify Internet connection or AWS keys")` with `provider_response_body() == None`. The raw HTTP body is now the fallback on all four conversions (converse, converse-stream, invoke-model → image and embedding); a classified exception's own message still wins
+
+### Changed
+
+- *(types)* [**breaking**] the mirror→AWS-SDK conversion family is deleted — 17 hand-written `TryFrom` impls in `types::converse_output`, whose targets are the SDK's own `Message`, `DocumentSource`, `DocumentBlock`, `S3Location`, `Blob`, `ImageBlock`, `VideoBlock`, `ToolUseBlock`, `ToolResultBlock`, `ToolResultContentBlock`, `ReasoningTextBlock`, `CachePointBlock`, `CitationsConfig`, `CitationsContentBlock`, `Citation`, `GuardrailConverseImageBlock` and `GuardrailConverseTextBlock`, plus the reverse halves of the three mirror macros (`mirror_enum`, `mirror_union`, `mirror_location`). They existed only to rebuild an SDK value out of the mirror just built from it, so there is now no supported way back from a mirror value to its `aws_sdk_bedrockruntime` counterpart. The surviving Rig-facing conversions read the mirror instead of the SDK type: `RigAssistantContent`/`RigUserContent` convert from `converse_output::ContentBlock`, `RigMessage` from `converse_output::Message`, `RigImage` from `ImageBlock`, `RigDocument` from `DocumentBlock`, `RigToolResultContent` from `ToolResultContentBlock` — each took the `aws_bedrock::` type before
+
+- *(streaming)* [**breaking**] `streaming::BedrockUsage` is deleted and `BedrockStreamingResponse::usage` is `Option<types::converse_output::TokenUsage>`. The two structs were field-for-field identical — `input_tokens`, `output_tokens`, `total_tokens`, and the two `skip_serializing_if` cache counters — so the serialized shape is unchanged and no accounting moves; the migration is the type's name and path. `types::converse_output` is a public module as of the guardrail/raw-response work in this same cycle, so `TokenUsage` is nameable from outside the crate
+
+- *(completion)* [**behavior**] an assistant message that converts to zero content blocks is rejected with rig-core's shared empty-response wording (via `message::require_non_empty_response`) — previously "Bedrock returned an assistant message with no content"
+
+- *(completion)* message and tool-result content conversions follow rig-core's message-content change from `OneOrMany<T>` to `Vec<T>`; wire payloads are unchanged
+
+- *(streaming)* the Converse stream routes through the shared `WireAdapter` driver: frame triage (unknown-variant warn-skip) lives in the one policy site, and `streaming::stream_from_events` is the events-first conformance seam driving already-typed SDK events through the full pipeline
+
+### Fixed
+
+- *(bedrock)* the assistant `toolUse` echo derives its `toolUseId` exactly like the result leg (provider-issued call id when one exists, else rig's minted handle) — a history whose handle and provider id diverge no longer replays an unmatched `toolUseId` pair that Converse rejects
+- *(bedrock)* foreign encrypted reasoning (`ReasoningContent::Encrypted` — OpenAI Responses `encrypted_content`, OpenRouter `reasoning.encrypted`, Anthropic) is never shipped as Bedrock's own `redactedContent` and never fails the request: it degrades away with a warning, in every position including the all-encrypted block. Only Bedrock-native `Redacted` blobs (base64 applied by this crate's inbound legs) decode back onto the wire, and one that no longer decodes also degrades instead of erroring the request
+- *(bedrock)* redacted reasoning survives all three legs — streaming no longer drops `RedactedContent`, the non-streaming path no longer fails the whole response, and it is replayed as `redactedContent` instead of being flattened into unsigned plaintext
+- *(bedrock)* an unmodeled `ContentBlockStart` variant warns and skips instead of failing the stream with "Stream is empty", matching its sibling arms and the classify layer's Unknown policy
+- *(bedrock)* a reasoning block mixing text with opaque (redacted/encrypted) content — the exact shape OpenAI Responses histories carry when `encrypted_content` is requested — degrades by dropping the un-representable opaque part instead of failing the whole request locally
 - *(streaming)* the `MessageStop` straggler flush is gated on a `ToolUse` stop reason: a tool block truncated by `MaxTokens` is dropped with a warning instead of fabricating a `{}`-args call or a spurious error
 - *(streaming)* emit every parallel tool call (in-flight state is keyed by `content_block_index` and flushed per `ContentBlockStop`); text after a closed tool block is no longer dropped; malformed tool-call JSON surfaces an `Err` item instead of silently dropping the call under a `ToolCalls` terminal
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.40.0...rig-bedrock-v0.41.0) - 2026-07-28

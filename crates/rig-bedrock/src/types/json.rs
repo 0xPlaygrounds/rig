@@ -58,7 +58,7 @@ impl From<Value> for AwsDocument {
             Value::Array(arr) => {
                 let documents = arr
                     .into_iter()
-                    .map(|json| json.into())
+                    .map(std::convert::Into::into)
                     .map(|aws: AwsDocument| aws.0)
                     .collect();
                 AwsDocument(Document::Array(documents))

@@ -6,12 +6,12 @@ mod audio {
     /// Clone is required for conversions between client types.
     pub trait AudioGenerationClient {
         /// The AudioGenerationModel used by the Client
-        type AudioGenerationModel: AudioGenerationModel<Client = Self>;
+        type AudioGenerationModel: AudioGenerationModel;
 
         /// Create an audio generation model with the given name.
         ///
         /// # Example
-        /// ```no_run
+        /// ```ignore
         /// use rig_core::prelude::AudioGenerationClient;
         /// use rig_core::providers::openai::{Client, self};
         ///
@@ -23,9 +23,21 @@ mod audio {
         /// # Ok(())
         /// # }
         /// ```
-        fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel {
-            Self::AudioGenerationModel::make(self, model)
-        }
+        fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel;
+    }
+
+    /// Construction hook for the blanket [`AudioGenerationClient`] implementation over
+    /// [`crate::client::Client`] — the audio generation twin of
+    /// [`crate::client::ConstructCompletionModel`].
+    ///
+    /// Public for the same reason: an out-of-tree provider extension built on the
+    /// generic `Client<Ext, H>` cannot implement [`AudioGenerationClient`] for that foreign
+    /// type (orphan rule), so it implements this trait on its own model type and
+    /// the blanket implementation supplies the constructor. Providers with their
+    /// own client type implement [`AudioGenerationClient`] directly and never need this.
+    pub trait ConstructAudioGenerationModel<C>: Sized {
+        /// Build this model from its provider client and a model identifier.
+        fn construct(client: &C, model: String) -> Self;
     }
 }
 

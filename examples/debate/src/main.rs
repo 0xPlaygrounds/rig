@@ -27,7 +27,7 @@ impl Debater {
                 .preamble(position_a)
                 .build(),
             coral: cohere_client
-                .agent(cohere::COMMAND_R)
+                .agent(cohere::COMMAND_A_03_2025)
                 .preamble(position_b)
                 .build(),
         })
@@ -69,7 +69,7 @@ impl Debater {
                 .unwrap_or_default();
             println!("Coral:\n{}", resp_b.output);
             println!("================================================================");
-            last_resp_b = Some(resp_b.output)
+            last_resp_b = Some(resp_b.output);
         }
         Ok(())
     }

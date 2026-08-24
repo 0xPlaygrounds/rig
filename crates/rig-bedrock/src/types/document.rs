@@ -8,6 +8,8 @@ pub(crate) use crate::types::media_types::RigDocumentMediaType;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use uuid::Uuid;
 
+use super::converse_output::{DocumentBlock, DocumentSource};
+
 #[derive(Clone)]
 pub struct RigDocument(pub Document);
 
@@ -19,13 +21,9 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             data, media_type, ..
         }): RigDocument,
     ) -> Result<Self, Self::Error> {
-        let document_media_type = media_type.map(|doc| RigDocumentMediaType(doc).try_into());
-
-        let document_media_type = match document_media_type {
-            Some(Ok(document_format)) => Ok(Some(document_format)),
-            Some(Err(err)) => Err(err),
-            None => Ok(None),
-        }?;
+        let document_media_type = media_type
+            .map(|doc| RigDocumentMediaType(doc).try_into())
+            .transpose()?;
 
         let document_source = match data {
             DocumentSourceKind::Base64(blob) => {
@@ -60,19 +58,19 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
     }
 }
 
-impl TryFrom<aws_bedrock::DocumentBlock> for RigDocument {
+impl TryFrom<DocumentBlock> for RigDocument {
     type Error = CompletionError;
 
-    fn try_from(value: aws_bedrock::DocumentBlock) -> Result<Self, Self::Error> {
+    fn try_from(value: DocumentBlock) -> Result<Self, Self::Error> {
         let media_type: RigDocumentMediaType = value.format.try_into()?;
         let media_type = media_type.0;
 
         let data = match value.source {
-            Some(aws_bedrock::DocumentSource::Bytes(blob)) => {
-                let encoded_data = BASE64_STANDARD.encode(blob.into_inner());
+            Some(DocumentSource::Bytes(blob)) => {
+                let encoded_data = BASE64_STANDARD.encode(blob.inner);
                 Ok(DocumentSourceKind::Base64(encoded_data))
             }
-            Some(aws_bedrock::DocumentSource::Text(str)) => Ok(DocumentSourceKind::String(str)),
+            Some(DocumentSource::Text(str)) => Ok(DocumentSourceKind::String(str)),
             doc => Err(CompletionError::ProviderError(format!(
                 "Unsupported document type: {doc:?}"
             ))),
@@ -95,7 +93,13 @@ mod tests {
         message::{Document, DocumentMediaType, DocumentSourceKind},
     };
 
-    use crate::types::document::RigDocument;
+    use crate::types::{converse_output::DocumentBlock, document::RigDocument};
+
+    /// The inbound path reads the mirror, but what Bedrock sends is the SDK
+    /// block, so the tests still start there and mirror it first.
+    fn mirrored(block: aws_bedrock::DocumentBlock) -> DocumentBlock {
+        block.try_into().expect("the SDK block mirrors")
+    }
 
     #[test]
     fn test_document_to_aws_document() {
@@ -131,7 +135,7 @@ mod tests {
 
         let doc_name = aws_document.name;
         assert!(doc_name.starts_with("document-"));
-        assert_eq!(aws_document_bytes, document_data)
+        assert_eq!(aws_document_bytes, document_data);
     }
 
     #[test]
@@ -153,7 +157,7 @@ mod tests {
             .unwrap()
             .as_ref()
             .to_owned();
-        assert_eq!(aws_document_bytes, document_data)
+        assert_eq!(aws_document_bytes, document_data);
     }
 
     #[test]
@@ -163,14 +167,14 @@ mod tests {
             media_type: Some(DocumentMediaType::Javascript),
             additional_params: None,
         });
-        let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.clone().try_into();
+        let aws_document: Result<aws_bedrock::DocumentBlock, _> = rig_document.try_into();
         assert_eq!(
             aws_document.err().unwrap().to_string(),
             CompletionError::ProviderError(
                 "Unsupported media type application/x-javascript".into()
             )
             .to_string()
-        )
+        );
     }
 
     #[test]
@@ -183,10 +187,10 @@ mod tests {
             .source(document_source)
             .build()
             .unwrap();
-        let rig_document: Result<RigDocument, _> = aws_document.clone().try_into();
+        let rig_document: Result<RigDocument, _> = mirrored(aws_document).try_into();
         assert!(rig_document.is_ok());
         let rig_document = rig_document.unwrap().0;
-        assert_eq!(rig_document.media_type.unwrap(), DocumentMediaType::PDF)
+        assert_eq!(rig_document.media_type.unwrap(), DocumentMediaType::PDF);
     }
 
     #[test]
@@ -199,11 +203,11 @@ mod tests {
             .source(document_source)
             .build()
             .unwrap();
-        let rig_document: Result<RigDocument, _> = aws_document.clone().try_into();
+        let rig_document: Result<RigDocument, _> = mirrored(aws_document).try_into();
         assert!(rig_document.is_err());
         assert_eq!(
             rig_document.err().unwrap().to_string(),
             CompletionError::ProviderError("Unsupported media type xlsx".into()).to_string()
-        )
+        );
     }
 }

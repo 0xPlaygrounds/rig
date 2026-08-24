@@ -1,7 +1,7 @@
 //! Groq API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::groq};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,19 +11,14 @@
 //! # Ok(())
 //! # }
 //! ```
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::openai::{self, TranscriptionResponse};
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+use super::openai;
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::completion::CompletionError;
-use crate::http_client::multipart::Part;
-use crate::http_client::{self, HttpClientExt, MultipartForm};
-use crate::transcription::{self, TranscriptionError};
+use crate::http_client::HttpClientExt;
+use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 
 // ================================================================
 // Main Groq Client
@@ -44,6 +39,11 @@ impl Provider for GroqExt {
 
 impl openai::completion::OpenAICompatibleProvider for GroqExt {
     const PROVIDER_NAME: &'static str = "groq";
+
+    /// Groq reports its transport request id on the same `x-request-id`
+    /// header OpenAI uses (verified live; see the recorded
+    /// `response_identity_edge` fixture, where the header arrives scrubbed).
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
     type StreamingUsage = openai::Usage;
 
@@ -80,79 +80,84 @@ impl openai::completion::OpenAICompatibleProvider for GroqExt {
     }
 }
 
-impl<H> Capabilities<H> for GroqExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Capable<TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
+client::impl_capabilities!(
+    GroqExt,
+    completion = CompletionModel<H>,
+    transcription = TranscriptionModel<H>,
+    model_listing = GroqModelLister<H>,
+);
 
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
+/// A Groq listing entry.
+///
+/// Groq reports its context window and output ceiling on every entry, and
+/// [`Model`](crate::model::Model) has fields for both — `max_output_tokens`
+/// exists precisely because rig used to drop a provider-reported output
+/// ceiling on the floor (rig#2322). The shared `ListModelEntry` decodes
+/// neither (Groq spells them `context_window` / `max_completion_tokens`, and
+/// the spellings differ across providers), so Groq keeps its own DTO rather
+/// than losing them.
+#[derive(Debug, serde::Deserialize)]
+struct GroqModelEntry {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    created: Option<u64>,
+    #[serde(default)]
+    owned_by: Option<String>,
+    #[serde(default)]
+    context_window: Option<u32>,
+    #[serde(default)]
+    max_completion_tokens: Option<u32>,
 }
 
-impl DebugExt for GroqExt {}
-
-impl ProviderBuilder for GroqBuilder {
-    type Extension<H>
-        = GroqExt
-    where
-        H: HttpClientExt;
-    type ApiKey = GroqApiKey;
-
-    const BASE_URL: &'static str = GROQ_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(GroqExt)
+impl From<GroqModelEntry> for crate::model::Model {
+    fn from(value: GroqModelEntry) -> Self {
+        let mut model = crate::model::Model::from_id(value.id);
+        model.name = value.name;
+        model.created_at = value.created;
+        model.owned_by = value.owned_by;
+        model.context_length = value.context_window;
+        model.max_output_tokens = value.max_completion_tokens;
+        model
     }
 }
 
-pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the Groq
+    /// API (`GET /models`), the same path [`GroqExt::VERIFY_PATH`] already
+    /// uses.
+    GroqModelLister,
+    Client<H>,
+    GroqModelEntry,
+    "Groq",
+    "/models"
+);
+
+impl DebugExt for GroqExt {}
+
+client::impl_default_provider_builder!(
+    GroqBuilder => GroqExt,
+    api_key = GroqApiKey,
+    base_url = GROQ_API_BASE_URL,
+);
+
+pub type Client<H> = client::Client<GroqExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GroqBuilder, GroqApiKey, H>;
 
 /// Groq completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<GroqExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<GroqExt, H>;
 
 /// Groq's provider-native terminal streaming record: the value carried by the
 /// final item of the stream returned by `CompletionModel::raw_stream`. Shared
 /// with the OpenAI Chat Completions path, usage payload included.
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
+client::impl_provider_from_env!(GroqExt, input = String, api_key_env = "GROQ_API_KEY");
 
-    /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("GROQ_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
+#[cfg(test)]
+use crate::providers::openai::client::ApiResponse;
 
 fn apply_native_tools_to_additional_params(
     extra: &mut Map<String, Value>,
@@ -266,99 +271,23 @@ pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
 pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
 pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T> {
-    client: Client<T>,
-    /// Name of the model (e.g.: whisper-large-v3)
-    pub model: String,
-}
+/// Groq transcription model using the shared OpenAI-style implementation.
+pub type TranscriptionModel<T> =
+    crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> OpenAiTranscriptionClient for Client<T>
 where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
-    type Response = TranscriptionResponse;
+    const MODEL_IN_FORM: bool = true;
+    const PROVIDER_NAME: &'static str = "groq";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    fn transcription_request(
         &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        let data = request.data;
-
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(prompt) = request.prompt {
-            body = body.text("prompt", prompt.clone());
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-
-            for (key, value) in params {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
-
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send_multipart::<Bytes>(req).await?;
-
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => {
-                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body).to_string(),
-            ))
-        }
+        _model: &str,
+    ) -> crate::http_client::Result<crate::http_client::Builder> {
+        self.post("/audio/transcriptions")
     }
 }
 
@@ -368,6 +297,34 @@ mod tests {
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::{completion::CompletionRequestBuilder, test_utils::MockCompletionModel};
+
+    /// An OpenAI-style nested error body (`{"error": {"message": ...}}`) on a
+    /// 2xx status must classify as the error envelope — not fail both untagged
+    /// arms and surface as a serde error that loses the provider body.
+    #[test]
+    fn nested_error_object_parses_as_the_error_envelope() {
+        #[derive(serde::Deserialize)]
+        struct Success {
+            #[allow(dead_code)]
+            choices: Vec<serde_json::Value>,
+        }
+
+        let nested = r#"{"error":{"message":"model not found","type":"invalid_request_error"}}"#;
+        match serde_json::from_str::<super::ApiResponse<Success>>(nested)
+            .expect("nested error envelope should deserialize")
+        {
+            super::ApiResponse::Err(err) => assert!(err.message.contains("model not found")),
+            super::ApiResponse::Ok(_) => panic!("error body must classify as the error envelope"),
+        }
+
+        let plain = r#"{"error":"over capacity"}"#;
+        match serde_json::from_str::<super::ApiResponse<Success>>(plain)
+            .expect("string error envelope should deserialize")
+        {
+            super::ApiResponse::Err(err) => assert_eq!(err.message, "over capacity"),
+            super::ApiResponse::Ok(_) => panic!("error body must classify as the error envelope"),
+        }
+    }
 
     #[test]
     fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {
@@ -390,6 +347,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("Groq request should convert");
@@ -414,12 +372,56 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
         let json = serde_json::to_value(no_tools_request).expect("request should serialize");
         assert_eq!(json["response_format"]["type"], "json_schema");
         assert_eq!(json["response_format"]["json_schema"]["strict"], true);
+    }
+
+    #[tokio::test]
+    async fn transcription_routes_model_in_multipart_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let http_client = RecordingHttpClient::new(r#"{"text":"transcribed"}"#);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(super::WHISPER_LARGE_V3);
+
+        let response = model
+            .transcription_request()
+            .data(vec![1, 2, 3])
+            .filename(Some("audio.mp3".to_owned()))
+            .send()
+            .await
+            .expect("transcription should succeed");
+
+        assert_eq!(response.text, "transcribed");
+        let request = http_client
+            .requests()
+            .into_iter()
+            .next()
+            .expect("request should be captured");
+        assert_eq!(
+            request.uri,
+            "https://api.groq.com/openai/v1/audio/transcriptions"
+        );
+        let body = String::from_utf8_lossy(&request.body);
+        assert!(
+            body.contains("name=\"model\"\r\n\r\nwhisper-large-v3\r\n"),
+            "{body}"
+        );
+        assert!(
+            body.contains("name=\"file\"; filename=\"audio.mp3\""),
+            "{body}"
+        );
     }
 
     #[test]
@@ -441,6 +443,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
@@ -477,6 +480,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            supports_image_tool_results: false,
             supports_tools: true,
         })
         .expect("request should convert");
@@ -488,11 +492,17 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::groq::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let builder: crate::providers::groq::ClientBuilder =
             crate::providers::groq::Client::builder().api_key("dummy-key");
-        let _client_from_builder = builder.build().expect("Client::builder() failed");
+        let _client_from_builder = builder
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
+            .build()
+            .expect("Client::builder() failed");
     }
 
     #[tokio::test]
@@ -554,7 +564,11 @@ mod tests {
             .await
             .expect_err("completion should fail with non-success status");
 
-        assert!(matches!(error, CompletionError::HttpError(_)));
+        // rig#2314: a provider with a request-id contract preserves its
+        // non-success responses as ProviderResponse, so the transport id has
+        // a home on the error; this mock sent no header, so the id is None.
+        assert!(matches!(error, CompletionError::ProviderResponse(_)));
+        assert_eq!(error.provider_request_id(), None);
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -578,14 +592,13 @@ mod tests {
             .expect("build client");
         let model = client.transcription_model("whisper-large-v3");
 
-        let error = match model
+        let Err(error) = model
             .transcription_request()
             .data(vec![0u8; 16])
             .send()
             .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("transcription should fail with non-success status"),
+        else {
+            panic!("transcription should fail with non-success status")
         };
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));

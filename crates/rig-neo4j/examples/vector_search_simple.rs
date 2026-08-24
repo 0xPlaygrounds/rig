@@ -6,10 +6,11 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
+use rig_reqwest::prelude::*;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -71,7 +72,13 @@ async fn main() -> Result<(), anyhow::Error> {
                 .param("id", doc.id)
                 // Here we use the first embedding but we could use any of them.
                 // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", embeddings.first().vec.clone())
+                .param(
+                    "embedding",
+                    embeddings
+                        .first()
+                        .map(|embedding| embedding.vec.clone())
+                        .unwrap_or_default(),
+                )
                 .param("document", doc.definition.to_bolt_type()),
             )
         })

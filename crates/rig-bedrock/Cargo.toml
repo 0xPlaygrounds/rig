@@ -16,10 +16,11 @@ aws-config = { workspace = true, features = ["behavior-version-latest"] }
 aws-sdk-bedrockruntime = { workspace = true, features = ["rt-tokio", "default-https-client"] }
 aws-smithy-types = { workspace = true }
 base64 = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = [
+futures = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
     "image",
 ] }
-rig-derive = { path = "../rig-derive", version = "0.41.0" }
+rig-derive = { path = "../rig-derive", version = "0.42.0" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -30,6 +31,12 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+# Harness signal: rig-core's sequence laws panic (not just log) in this
+# crate's own tests.
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+    "image",
+    "test-utils",
+] }
 rig-agent.workspace = true
 reqwest = { workspace = true, features = ["json", "stream"] }
 tracing-subscriber = { workspace = true }

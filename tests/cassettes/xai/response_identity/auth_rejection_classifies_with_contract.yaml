@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"Never authenticated","role":"user","type":"message"}],"model":"grok-3-mini"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"code":"invalid-argument","error":"Incorrect API key provided. You can obtain an API key from https://console.x.ai."}'

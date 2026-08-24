@@ -18,10 +18,7 @@ use rig_agent::{
     streaming::{RawStreamingChoice, StreamFinal, StreamingCompletionResponse},
     tool::{Tool, ToolContext},
 };
-use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, ToolCall, ToolFunction},
-};
+use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
@@ -36,7 +33,7 @@ fn response(
     choice: AssistantContent,
     total_tokens: u64,
 ) -> CompletionResponse {
-    CompletionResponse::new(OneOrMany::one(choice), usage(total_tokens), provider)
+    CompletionResponse::new(vec![choice], usage(total_tokens), provider)
         .with_message_id(format!("{provider}-message"))
 }
 
@@ -50,8 +47,8 @@ impl CompletionModel for FastResearchModel {
     ) -> Result<CompletionResponse, CompletionError> {
         Ok(response(
             "fast",
-            AssistantContent::ToolCall(ToolCall::new(
-                "search-1".to_owned(),
+            AssistantContent::ToolCall(ToolCall::from_wire(
+                "search-1",
                 ToolFunction::new(
                     "search".to_owned(),
                     serde_json::json!({"query": "runtime model routing"}),

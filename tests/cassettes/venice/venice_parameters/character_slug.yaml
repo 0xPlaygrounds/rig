@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Introduce yourself in one sentence.","role":"user"}],"model":"qwen3-5-9b","venice_parameters":{"character_slug":"alan-watts","disable_thinking":true}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":null,"audio":null,"content":"I am Qwen 3.5 9B, an unfiltered, uncensored philosophical entertainer who loves to unravel life''s great mysteries without so much as a jacket.","function_call":null,"reasoning_content":null,"reasoning_encrypted":false,"refusal":null,"role":"assistant","tool_calls":[]},"stop_reason":null,"token_ids":null}],"cost":{"diem":0,"usd":0.00023905},"created":0,"id":"chatcmpl-REDACTED_1","kv_transfer_params":null,"model":"qwen3-5-9b","object":"chat.completion","prompt_logprobs":null,"prompt_token_ids":null,"service_tier":null,"usage":{"completion_tokens":37,"prompt_tokens":2335,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":2372},"venice_parameters":{"character_slug":"alan-watts","disable_thinking":true,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

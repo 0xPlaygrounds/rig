@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.41.0...rig-surrealdb-v0.42.0) - 2026-08-16
+
+### Other
+
+- reconcile the changelogs and the migration guide with what actually merged ([#2353](https://github.com/0xPlaygrounds/rig/pull/2353)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2353
+- *(rig-core)* consolidate provider boilerplate ([#2317](https://github.com/0xPlaygrounds/rig/pull/2317)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- workspace-wide LOC consolidation pass 7 (net −366 production lines) ([#2310](https://github.com/0xPlaygrounds/rig/pull/2310)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2310
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Fixed
+
+- *(surrealdb)* `top_n_ids` binds the query vector as `Vec<f64>`. It narrowed every component to `f32` before binding while `top_n`, running the same similarity query, bound `Vec<f64>` — so the id-only search scored a lower-precision copy of the query vector against the stored `embedding: Vec<f64>` and could rank or threshold differently from the full search for an identical request. Both paths now share one query runner
+
+### Changed
+
+- *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-surrealdb-v0.40.0...rig-surrealdb-v0.41.0) - 2026-07-28
 
 ### Other

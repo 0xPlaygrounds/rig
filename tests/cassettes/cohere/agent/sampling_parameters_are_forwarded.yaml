@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"frequency_penalty":0.1,"k":20,"max_tokens":24,"messages":[{"content":[{"text":"Reply with one short sentence about rain.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","p":0.8,"presence_penalty":0.1,"seed":11,"temperature":0.2}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"341e246d-b471-479a-b48a-9362b635cf95","message":{"content":[{"text":"Rain is nature''s way of watering the earth.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":8,"output_tokens":10},"cached_tokens":448,"tokens":{"input_tokens":503,"output_tokens":13}}}'

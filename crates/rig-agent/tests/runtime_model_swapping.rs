@@ -26,15 +26,12 @@ use rig_agent::{
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
-        RawStreamingChoice, RawStreamingToolCall, StreamFinal, StreamedAssistantContent,
-        StreamingCompletionResponse, StreamingPrompt,
+        RawStreamingChoice, StreamFinal, StreamedAssistantContent, StreamingCompletionResponse,
+        StreamingPrompt,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent},
-};
+use rig_core::message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
@@ -162,24 +159,23 @@ impl Turn {
         }
     }
 
-    fn choice(&self) -> OneOrMany<AssistantContent> {
+    fn choice(&self) -> Vec<AssistantContent> {
         match self {
-            Self::Text { text, .. } => OneOrMany::one(AssistantContent::text(text)),
+            Self::Text { text, .. } => vec![AssistantContent::text(text)],
             Self::Tool {
                 id,
                 name,
                 arguments,
                 ..
-            } => OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+            } => vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 id.clone(),
                 ToolFunction::new(name.clone(), arguments.clone()),
-            ))),
-            Self::Rich { text, .. } => OneOrMany::many(vec![
+            ))],
+            Self::Rich { text, .. } => vec![
                 AssistantContent::reasoning("considering the evidence"),
                 AssistantContent::text(text),
-            ])
-            .expect("rich turn contains two items"),
-            Self::Error(_) => OneOrMany::one(AssistantContent::text("unreachable")),
+            ],
+            Self::Error(_) => vec![AssistantContent::text("unreachable")],
         }
     }
 }
@@ -281,33 +277,42 @@ fn stream_from_script(
             arguments,
             ..
         } => {
-            let raw = RawStreamingToolCall::new(id.clone(), name.clone(), arguments.clone())
-                .with_internal_call_id(format!("{id}-internal"));
+            // Canonical fragmenting-wire shape: name/args fragments closed by
+            // a tool-input end; the shared accumulator assembles the call and
+            // mints the correlation id at the first fragment.
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: id.clone(),
-                internal_call_id: raw.internal_call_id.clone(),
+                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Name(name.clone()),
             }));
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: id.clone(),
-                internal_call_id: raw.internal_call_id.clone(),
+                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
             }));
-            events.push(Ok(RawStreamingChoice::ToolCall(raw)));
+            events.push(Ok(RawStreamingChoice::ToolInputEnd(
+                rig_agent::streaming::ToolInputEnd::new(
+                    id.clone(),
+                    rig_agent::streaming::UnparseableToolInput::Drop,
+                ),
+            )));
         }
         Turn::Rich { text, .. } => {
             events.push(Ok(RawStreamingChoice::Reasoning {
-                id: Some("reasoning-1".to_owned()),
+                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(1),
+                provider_id: None,
                 content: ReasoningContent::Summary("summary".to_owned()),
             }));
             events.push(Ok(RawStreamingChoice::ReasoningDelta {
-                id: Some("reasoning-2".to_owned()),
+                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(2),
+                provider_id: None,
                 reasoning: "reasoning delta".to_owned(),
             }));
-            events.push(Ok(RawStreamingChoice::Unknown(serde_json::json!({
-                "type": "provider_native_event",
-                "provider": script.provider,
-            }))));
+            events.push(Ok(RawStreamingChoice::Unknown(
+                serde_json::json!({
+                    "type": "provider_native_event",
+                    "provider": script.provider,
+                })
+                .into(),
+            )));
             events.push(Ok(RawStreamingChoice::Message(text.clone())));
         }
         // Handled by the early return above.
@@ -373,7 +378,7 @@ fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
         preamble: None,
-        chat_history: OneOrMany::one(Message::user(prompt)),
+        chat_history: vec![Message::user(prompt)],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -1006,7 +1011,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                     internal_call_ids.push(internal_call_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
-                    final_response = Some(response)
+                    final_response = Some(response);
                 }
                 _ => {}
             }
@@ -1056,9 +1061,16 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             "tool-result"
         ]
     );
+    // The correlation id is minted by the shared accumulator when the call's
+    // first fragment arrives; every downstream stage must carry that one id.
+    let correlation = stream_internal_call_ids
+        .first()
+        .expect("at least one correlated event")
+        .clone();
+    assert!(!correlation.is_empty());
     assert_eq!(
         stream_internal_call_ids,
-        vec!["lookup-call-internal"; 5],
+        vec![correlation; 5],
         "deltas, the completed call, execution, and result retain one correlation id"
     );
 }
@@ -1209,7 +1221,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     while let Some(item) = stream.next().await {
         match item.expect("normalized stream item") {
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Reasoning(_),
+                StreamedAssistantContent::Reasoning { .. },
             ) => saw_reasoning = true,
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::ReasoningDelta { .. },
@@ -1217,13 +1229,13 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::Unknown(value),
             ) => {
-                saw_unknown = value["type"] == "provider_native_event";
+                saw_unknown = value.value()["type"] == "provider_native_event";
             }
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::Final(final_),
             ) => provider_final = Some(final_),
             rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
-                final_response = Some(response)
+                final_response = Some(response);
             }
             _ => {}
         }
@@ -1469,7 +1481,7 @@ impl CompletionModel for PendingStreamingModel {
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
         Ok(CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("unused")),
+            vec![AssistantContent::text("unused")],
             Usage::new(),
             "pending",
         ))

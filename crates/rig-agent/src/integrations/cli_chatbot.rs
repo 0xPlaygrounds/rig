@@ -86,12 +86,14 @@ impl CliChat for AgentImpl {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
                     Text { text, .. },
                 ))) => {
-                    print!("{}", text);
+                    print!("{text}");
                     acc.push_str(&text);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
                     self.usage = final_response.usage();
-                    messages = final_response.messages().map(|history| history.to_vec());
+                    messages = final_response
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
                 }
                 Err(e) => {
                     break Err(PromptError::CompletionError(

@@ -15,16 +15,17 @@ reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
 
 [dev-dependencies]
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = ["rustls"]
-rustls = ["reqwest/rustls", "rig-core/rustls"]
-native-tls = ["reqwest/native-tls", "rig-core/native-tls"]
+rustls = ["reqwest/rustls"]
+native-tls = ["reqwest/native-tls"]
 
 [[example]]
 name = "vector_search_helixdb"

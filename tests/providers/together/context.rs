@@ -15,7 +15,7 @@ async fn context_smoke() {
         .copied()
         .fold(
             client.agent(together::MIXTRAL_8X7B_INSTRUCT_V0_1),
-            |builder, doc| builder.context(doc),
+            rig::AgentBuilder::context,
         )
         .build();
 

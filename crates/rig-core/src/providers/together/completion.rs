@@ -121,18 +121,17 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 // =================================================================
 
 /// Together AI completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<TogetherExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<TogetherExt, H>;
 
 #[cfg(test)]
 mod tests {
     use crate::client::CompletionClient;
     use crate::completion::{CompletionError, CompletionModel};
+    use crate::message;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAIRequestParams,
     };
     use crate::test_utils::RecordingHttpClient;
-    use crate::{OneOrMany, message};
 
     use super::super::client::Client;
 
@@ -178,10 +177,10 @@ mod tests {
     fn together_request_conversion_errors_when_all_messages_are_filtered() {
         let request = crate::completion::CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::one(message::Message::Assistant {
+            chat_history: vec![message::Message::Assistant {
                 id: None,
-                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
-            }),
+                content: vec![message::AssistantContent::reasoning("hidden")],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -199,6 +198,7 @@ mod tests {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: false,
+            supports_image_tool_results: false,
             supports_tools: true,
         });
         assert!(matches!(result, Err(CompletionError::RequestError(_))));

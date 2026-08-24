@@ -36,7 +36,7 @@ enum TurnEnd {
     Finished,
     /// Mid-stream recovery abandoned the turn (retry or skip).
     Abandoned {
-        skipped_tool_result: Option<ToolResult>,
+        skipped_tool_result: Option<Box<ToolResult>>,
     },
 }
 
@@ -77,10 +77,19 @@ async fn run_streamed_turn(
                     }
                 }
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
-                StreamedTurnEvent::Completed { usage, .. } => {
+                StreamedTurnEvent::Completed {
+                    usage,
+                    finish_reason,
+                    ..
+                } => {
                     if !recorded {
-                        run.record_streamed_completion_call(usage)
-                            .expect("completion call should record while the turn is pending");
+                        run.record_streamed_completion_call(
+                            usage,
+                            rig::completion::ResponseIdentity::default(),
+                            finish_reason,
+                            serde_json::Value::Null,
+                        )
+                        .expect("completion call should record while the turn is pending");
                         recorded = true;
                     }
                 }
@@ -107,7 +116,7 @@ async fn run_streamed_turn(
                                 } => {
                                     let drained_usage = drain_stream_usage(&mut stream).await;
                                     if !recorded {
-                                        run.record_streamed_completion_call(drained_usage).expect(
+                                        run.record_streamed_completion_call(drained_usage, rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -128,8 +137,13 @@ async fn run_streamed_turn(
         "the provider stream should end consistently"
     );
     if !recorded {
-        run.record_streamed_completion_call(Usage::new())
-            .expect("turns without provider usage still record a completion call");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig::completion::ResponseIdentity::default(),
+            None,
+            serde_json::Value::Null,
+        )
+        .expect("turns without provider usage still record a completion call");
     }
     let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.choice);
     run.streamed_turn(streamed_turn)?;
@@ -156,7 +170,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::new()).is_err(),
+                fresh.record_streamed_completion_call(Usage::new(), rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 
@@ -226,7 +240,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                 "cassette-recorded usage should be non-zero"
             );
 
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             assert!(history_has_assistant_tool_call(&messages, "add"));
             assert!(history_has_assistant_tool_call(&messages, "subtract"));
             // The assembler records streamed turns in canonical replay order.
@@ -353,7 +367,7 @@ async fn streamed_repair_continues_the_same_stream() {
 
             assert!(repaired, "the model should call a tool that gets repaired");
             assert_mentions_expected_number(&response.output, 5);
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             let recorded: Vec<String> = messages
                 .iter()
                 .flat_map(assistant_tool_call_names)
@@ -433,7 +447,13 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                                 assert!(expect_abandon, "only the first turn should abandon");
                                 let tool_result = skipped_tool_result
                                     .expect("a skipped call surfaces its synthetic tool result");
-                                assert!(!tool_result.id.is_empty());
+                                // Gemini's wire supplies no tool-call id, and
+                                // rig no longer fabricates one from the tool
+                                // name — the synthetic result answers the
+                                // call's minted correlation handle and
+                                // records no provider-issued id.
+                                assert!(!tool_result.call.as_str().is_empty());
+                                assert!(tool_result.provider.is_none());
                                 abandoned = true;
                             }
                             TurnEnd::Finished => {

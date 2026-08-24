@@ -1,0 +1,58 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Reply with the single word: pong","role":"user"}],"model":"allam-2-7b","stream":true,"stream_options":{"include_usage":true}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","x_groq":{"id":"req_REDACTED_1","seed":1918454552}}
+
+    data: {"choices":[{"delta":{"content":"رائع"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"!"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" يُمكن"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"ني"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" مناقشة"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" تاريخ"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" وآليات"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" عمل"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" لعبة"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" ب"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"ونغ"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" الكلاسيكية"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" معك"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"."},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" إذا"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" كنت"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{},"finish_reason":"length","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.011791052,"completion_tokens":16,"prompt_time":0.001049784,"prompt_tokens":15,"queue_time":0.237157112,"total_time":0.012840836,"total_tokens":31},"x_groq":{"id":"req_REDACTED_1","usage":{"completion_time":0.011791052,"completion_tokens":16,"prompt_time":0.001049784,"prompt_tokens":15,"queue_time":0.237157112,"total_time":0.012840836,"total_tokens":31}}}
+
+    data: {"choices":[],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.011791052,"completion_tokens":16,"prompt_time":0.001049784,"prompt_tokens":15,"queue_time":0.237157112,"total_time":0.012840836,"total_tokens":31}}
+
+    data: [DONE]
+

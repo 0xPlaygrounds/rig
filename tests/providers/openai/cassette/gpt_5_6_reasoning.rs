@@ -66,7 +66,7 @@ struct StoredStreamingTurn {
 /// derived from the same raw response through the provider's own conversion
 /// rather than by issuing a second identical request.
 async fn prompt_with_reasoning(
-    model: &openai::responses_api::ResponsesCompletionModel,
+    model: &openai::ResponsesCompletionModel,
     reasoning: serde_json::Value,
 ) -> (
     CompletionResponse,
@@ -117,11 +117,12 @@ fn assert_reasoning_metadata(
 
 /// Rebuild the reasoning block the normalized stream would have produced for a
 /// [`RawStreamingChoice::Reasoning`] event: the same id and the single content
-/// block, verbatim. [`Reasoning`] is `#[non_exhaustive]`, so it is round-tripped
-/// through serde rather than constructed field-by-field.
+/// block, verbatim.
 fn reasoning_block(id: Option<String>, content: rig::message::ReasoningContent) -> Reasoning {
-    serde_json::from_value(json!({ "id": id, "content": [content] }))
-        .expect("streamed reasoning block should rebuild")
+    Reasoning {
+        id,
+        content: vec![content],
+    }
 }
 
 fn assert_has_text(response: &CompletionResponse) {
@@ -367,9 +368,15 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                         panic!("turn {} stream should succeed: {error}", turn_index + 1)
                     }) {
                         RawStreamingChoice::Message(delta) => text.push_str(&delta),
-                        RawStreamingChoice::Reasoning { id, content } => {
-                            reasoning_blocks
-                                .push(AssistantContent::Reasoning(reasoning_block(id, content)));
+                        RawStreamingChoice::Reasoning {
+                            provider_id,
+                            content,
+                            ..
+                        } => {
+                            reasoning_blocks.push(AssistantContent::Reasoning(reasoning_block(
+                                provider_id.map(rig::streaming::WireId::into_string),
+                                content,
+                            )));
                         }
                         RawStreamingChoice::ReasoningDelta { reasoning, .. } => {
                             reasoning_delta.push_str(&reasoning);
@@ -428,8 +435,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: message_id,
-                        content: rig::OneOrMany::many(reasoning_blocks)
-                            .expect("streamed assistant message should not be empty"),
+                        content: reasoning_blocks,
                     },
                     final_response,
                 });

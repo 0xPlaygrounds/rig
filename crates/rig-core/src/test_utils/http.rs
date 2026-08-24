@@ -36,6 +36,12 @@ pub enum MockHttpResponse {
     /// Return an HTTP response with the given (typically non-success) status
     /// and body, instead of a transport-level error.
     ErrorResponse(http::StatusCode, Bytes),
+    /// Return a status-code error that preserved the failed response's
+    /// headers, exactly as the bundled reqwest transport does (rig#2210).
+    ErrorWithHeaders(http::StatusCode, String, Box<http::HeaderMap>),
+    /// Return an HTTP response with the given (typically non-success) status,
+    /// body, and response headers, instead of a transport-level error.
+    ErrorResponseWithHeaders(http::StatusCode, Bytes, Box<http::HeaderMap>),
 }
 
 impl MockHttpResponse {
@@ -45,8 +51,22 @@ impl MockHttpResponse {
     }
 
     /// Create an error response with a status code and message.
+    ///
+    /// Models a transport that reports a non-success status *without*
+    /// preserving the response headers (a custom [`HttpClientExt`]); use
+    /// [`Self::error_with_headers`] for the bundled reqwest behavior.
     pub fn error(status: http::StatusCode, message: impl Into<String>) -> Self {
         Self::Error(status, message.into())
+    }
+
+    /// Create a transport-level status error that preserved the failed
+    /// response's headers, as the bundled reqwest transport does.
+    pub fn error_with_headers(
+        status: http::StatusCode,
+        message: impl Into<String>,
+        headers: http::HeaderMap,
+    ) -> Self {
+        Self::ErrorWithHeaders(status, message.into(), Box::new(headers))
     }
 }
 
@@ -93,6 +113,39 @@ impl RecordingHttpClient {
         }
     }
 
+    /// Create a client whose transport reports a non-success status *and*
+    /// preserves the failed response's headers, as the bundled reqwest client
+    /// does (rig#2210).
+    pub fn with_error_headers(
+        status: http::StatusCode,
+        message: impl Into<String>,
+        headers: http::HeaderMap,
+    ) -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(Vec::new())),
+            response: Arc::new(Mutex::new(MockHttpResponse::error_with_headers(
+                status, message, headers,
+            ))),
+        }
+    }
+
+    /// Create a client that hands back a non-success HTTP response carrying
+    /// `headers`, instead of a transport-level error.
+    pub fn with_error_response_headers(
+        status: http::StatusCode,
+        body: impl Into<Bytes>,
+        headers: http::HeaderMap,
+    ) -> Self {
+        Self {
+            requests: Arc::new(Mutex::new(Vec::new())),
+            response: Arc::new(Mutex::new(MockHttpResponse::ErrorResponseWithHeaders(
+                status,
+                body.into(),
+                Box::new(headers),
+            ))),
+        }
+    }
+
     /// Return the requests captured so far.
     pub fn requests(&self) -> Vec<CapturedHttpRequest> {
         self.requests_guard().clone()
@@ -128,20 +181,33 @@ impl RecordingHttpClient {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        let (status, response_body) = match response {
-            MockHttpResponse::Success(response_body) => (http::StatusCode::OK, response_body),
+        let (status, response_body, response_headers) = match response {
+            MockHttpResponse::Success(response_body) => (http::StatusCode::OK, response_body, None),
             MockHttpResponse::Error(status, message) => {
                 return Err(http_client::Error::InvalidStatusCodeWithMessage(
                     status, message,
                 ));
             }
-            MockHttpResponse::ErrorResponse(status, response_body) => (status, response_body),
+            MockHttpResponse::ErrorWithHeaders(status, body, headers) => {
+                return Err(http_client::Error::InvalidStatusCodeWithDetails {
+                    status,
+                    body,
+                    headers,
+                });
+            }
+            MockHttpResponse::ErrorResponse(status, response_body) => (status, response_body, None),
+            MockHttpResponse::ErrorResponseWithHeaders(status, response_body, headers) => {
+                (status, response_body, Some(headers))
+            }
         };
         let body: LazyBody<U> = Box::pin(async move { Ok(U::from(response_body)) });
-        Response::builder()
-            .status(status)
-            .body(body)
-            .map_err(http_client::Error::Protocol)
+        let mut builder = Response::builder().status(status);
+        if let Some(headers) = response_headers
+            && let Some(slot) = builder.headers_mut()
+        {
+            *slot = *headers;
+        }
+        builder.body(body).map_err(http_client::Error::Protocol)
     }
 }
 
@@ -169,8 +235,9 @@ impl HttpClientExt for RecordingHttpClient {
         U: From<Bytes> + WasmCompatSend + 'static,
     {
         let response = self.response_guard().clone();
-        let (parts, _body) = req.into_parts();
-        self.record_request(parts.uri.to_string(), parts.headers, Bytes::new());
+        let (parts, body) = req.into_parts();
+        let (_, body) = body.boundary("recording-http-client").encode();
+        self.record_request(parts.uri.to_string(), parts.headers, body);
 
         async move { Self::build_unary_response(response) }
     }

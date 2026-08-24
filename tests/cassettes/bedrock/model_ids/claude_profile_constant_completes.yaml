@@ -1,0 +1,14 @@
+when:
+  path: /model/us.anthropic.claude-haiku-4-5-20251001-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{},"messages":[{"content":[{"text":"Reply with the single word: ready."}],"role":"user"}],"system":[{"text":"You are concise."}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":1813},"output":{"message":{"content":[{"text":"ready."}],"role":"assistant"}},"stopReason":"end_turn","usage":{"cacheReadInputTokenCount":0,"cacheReadInputTokens":0,"cacheWriteInputTokenCount":0,"cacheWriteInputTokens":0,"inputTokens":20,"outputTokens":5,"serverToolUsage":{},"totalTokens":25}}'

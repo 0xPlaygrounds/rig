@@ -5,8 +5,11 @@ use super::completion::gemini_api_types::{
     Content, GenerateContentRequest, GenerateContentResponse, GenerationConfig, ImageConfig, Part,
     PartKind, ResponseModality, Role,
 };
+use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
-use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+use crate::image_generation::{
+    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+};
 use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -17,7 +20,7 @@ pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMA
 
 /// Gemini image generation model.
 #[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
+pub struct ImageGenerationModel<T> {
     client: Client<T>,
     /// Name of the model, for example [`GEMINI_2_5_FLASH_IMAGE`].
     pub model: String,
@@ -32,38 +35,40 @@ impl<T> ImageGenerationModel<T> {
     }
 }
 
-impl TryFrom<GenerateContentResponse>
-    for image_generation::ImageGenerationResponse<GenerateContentResponse>
-{
-    type Error = ImageGenerationError;
+impl NormalizeImageGenerationResponse for GenerateContentResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        let image = first_image_bytes(&self)?;
+        let usage = self
+            .usage_metadata
+            .as_ref()
+            .map(Usage::from)
+            .unwrap_or_default();
 
-    fn try_from(value: GenerateContentResponse) -> Result<Self, Self::Error> {
-        let image = first_image_bytes(&value)?;
-
-        Ok(image_generation::ImageGenerationResponse {
-            image,
-            response: value,
-        })
+        Ok(
+            image_generation::ImageGenerationResponse::new(image, provider)
+                .with_optional_model(self.model_version)
+                .with_response_id(self.response_id)
+                .with_usage(usage),
+        )
     }
 }
 
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+impl<T> ImageGenerationModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Send + 'static,
 {
-    type Response = GenerateContentResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn image_generation(
+    /// Perform the generation and return Gemini's native
+    /// [`GenerateContentResponse`] instead of the normalized
+    /// [`image_generation::ImageGenerationResponse`]. Same request, transport,
+    /// parser, and error path as
+    /// [`image_generation::ImageGenerationModel::image_generation`].
+    pub async fn raw_image_generation(
         &self,
         generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
+    ) -> Result<GenerateContentResponse, ImageGenerationError> {
         let body = serde_json::to_vec(&create_request_body(generation_request)?)?;
 
         let request = self
@@ -82,12 +87,45 @@ where
         }
 
         match serde_json::from_str::<ApiResponse<GenerateContentResponse>>(&text)? {
-            ApiResponse::Ok(response) => response.try_into(),
+            ApiResponse::Ok(response) => Ok(response),
             ApiResponse::Err(err) => {
                 tracing::warn!(message = %err.error.message, "provider returned an error response");
                 Err(ImageGenerationError::from_http_response(status, text))
             }
         }
+    }
+}
+
+impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+where
+    T: HttpClientExt + Clone + Send + 'static,
+{
+    async fn image_generation(
+        &self,
+        generation_request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::ImageGeneration,
+            async {
+                let response = self.raw_image_generation(generation_request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(super::completion::PROVIDER_NAME)?
+                    .with_raw(captured))
+            },
+        )
+        .await
+    }
+}
+
+impl<T> crate::client::ConstructImageGenerationModel<Client<T>> for ImageGenerationModel<T>
+where
+    T: HttpClientExt + Clone + Send + 'static,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -120,6 +158,7 @@ fn create_request_body(
         }),
         safety_settings: None,
         system_instruction: None,
+        cached_content: None,
         additional_params: None,
     };
 
@@ -315,8 +354,8 @@ mod tests {
             response_id: "response-id".to_string(),
         };
 
-        let parsed: image_generation::ImageGenerationResponse<GenerateContentResponse> = response
-            .try_into()
+        let parsed = response
+            .normalize(super::super::completion::PROVIDER_NAME)
             .expect("response should contain an image");
 
         assert_eq!(parsed.image, b"final image");
@@ -350,10 +389,9 @@ mod tests {
             response_id: "response-id".to_string(),
         };
 
-        let err = image_generation::ImageGenerationResponse::<GenerateContentResponse>::try_from(
-            response,
-        )
-        .expect_err("text-only responses should fail");
+        let err = response
+            .normalize(super::super::completion::PROVIDER_NAME)
+            .expect_err("text-only responses should fail");
 
         assert!(err.to_string().contains("did not include image data"));
     }

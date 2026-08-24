@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one short paragraph, explain what a solar eclipse is.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"A solar eclipse occurs when the Moon passes\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":8,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":176,\"totalTokenCount\":210}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" directly between the Sun and Earth, casting a shadow on our planet's surface. During this alignment, the Moon blocks\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":32,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":176,\"totalTokenCount\":234}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" some or all of the Sun's light from reaching certain areas, temporarily darkening the sky. This phenomenon can be partial\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":56,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":176,\"totalTokenCount\":258}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\", where only a portion of the Sun is obscured, or total, where the Moon completely covers the solar disk.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":79,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":176,\"totalTokenCount\":281}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":79,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":176,\"totalTokenCount\":281}}\r\n\r\n"

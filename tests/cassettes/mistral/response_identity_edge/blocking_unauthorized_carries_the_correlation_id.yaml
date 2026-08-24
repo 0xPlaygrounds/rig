@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"mistral-small-latest"}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"detail":"Invalid API Key"}'

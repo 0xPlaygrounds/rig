@@ -1,0 +1,28 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":24,"messages":[{"content":"Unicode context: café 東京. The marker is exactly: lantern-42.","role":"user"},{"content":"lantern-42","prefix":false,"role":"assistant"},{"content":"Reply with exactly the marker from the prior conversation.","role":"user"}],"model":"mistral-small-latest","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"lan"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345678"}
+
+    data: {"choices":[{"delta":{"content":"tern-42"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmn","usage":{"completion_tokens":6,"prompt_tokens":49,"prompt_tokens_details":{"cached_tokens":32},"service_tier":"standard","total_tokens":55}}
+
+    data: [DONE]
+

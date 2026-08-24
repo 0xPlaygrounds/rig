@@ -10,11 +10,11 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
-use rig_core::OneOrMany;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::providers::gemini::completion::attach_trailing_signature;
 use rig_core::providers::gemini::completion::gemini_api_types::{
-    Schema as GeminiSchema, tool_parameters_to_schema,
+    Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
 };
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
@@ -46,9 +46,10 @@ pub const PROVIDER_NAME: &str = "gemini-grpc";
 
 /// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
 ///
-/// The wire value is a prost enum discriminant; unmapped values are carried
-/// verbatim in their SCREAMING_SNAKE proto spelling so a reason Google adds
-/// later surfaces rather than reading as a natural stop.
+/// The wire value is a prost enum discriminant; `as_str_name` recovers the
+/// SCREAMING_SNAKE proto spelling the shared Google table keys on, and a
+/// discriminant this proto does not model keeps its numeric identity so a
+/// reason Google adds later surfaces rather than reading as a natural stop.
 pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
     use proto::candidate::FinishReason as Wire;
 
@@ -58,18 +59,40 @@ pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
         )));
     };
 
-    let normalized = match reason {
-        // The proto default; Gemini reports it when no reason applies.
-        Wire::Unspecified => return None,
-        Wire::Stop => completion::FinishReason::Stop,
-        Wire::MaxTokens => completion::FinishReason::Length,
-        Wire::Safety | Wire::Blocklist | Wire::ProhibitedContent | Wire::Spii => {
-            completion::FinishReason::ContentFilter
-        }
-        other => completion::FinishReason::Other(other.as_str_name().to_owned()),
-    };
+    map_google_finish_reason(reason.as_str_name())
+}
 
-    Some(normalized)
+/// Turn a tool-protocol terminal `finishReason` into an error, mirroring the
+/// REST wire's `function_call_finish_reason_error`.
+///
+/// These reasons mean the turn ABORTED inside the tool protocol: the model
+/// emitted a call the API could not parse, called a tool that was not
+/// offered, or exceeded the per-turn call budget. The candidate that carries
+/// them has no usable tool call, so reporting the turn as merely "finished
+/// for some other reason" lets an agent loop read an aborted turn as a
+/// complete one. The REST surface has always failed here; the gRPC surface
+/// must not diverge.
+///
+/// Only the reasons this proto models are matched — REST's
+/// `MISSING_THOUGHT_SIGNATURE` / `MALFORMED_RESPONSE` have no protobuf
+/// discriminant in `v1beta`, so an unmapped value cannot masquerade as one.
+pub fn tool_protocol_finish_reason_error(
+    reason: i32,
+    finish_message: Option<&str>,
+) -> Option<CompletionError> {
+    use proto::candidate::FinishReason as Wire;
+
+    let reason = Wire::try_from(reason).ok()?;
+    match reason {
+        Wire::MalformedFunctionCall | Wire::UnexpectedToolCall | Wire::TooManyToolCalls => {
+            let message = finish_message.unwrap_or("no finish message provided");
+            Some(CompletionError::ResponseError(format!(
+                "Gemini stopped with finish_reason={}: {message}",
+                reason.as_str_name()
+            )))
+        }
+        _ => None,
+    }
 }
 
 impl CompletionModel {
@@ -82,7 +105,7 @@ impl CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<GenerateContentResponse, CompletionError> {
-        let request = create_grpc_request(self.model.clone(), completion_request)?;
+        let request = create_grpc_request(&self.model, completion_request)?;
 
         let mut grpc_client = self
             .client
@@ -92,7 +115,7 @@ impl CompletionModel {
         let response = grpc_client
             .generate_content(request)
             .await
-            .map_err(rpc_error)?
+            .map_err(|status| rpc_error(&status))?
             .into_inner();
 
         Ok(response)
@@ -116,7 +139,11 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.raw_completion(completion_request).await?.try_into()
+        // Capture before `try_into` consumes the raw value.
+        let raw = self.raw_completion(completion_request).await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
     }
 
     async fn stream(
@@ -127,6 +154,21 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+/// Build a non-thought `proto::Part` around the given data payload.
+pub(crate) fn data_part(data: proto::part::Data) -> proto::Part {
+    proto::Part {
+        data: Some(data),
+        thought: false,
+        thought_signature: Vec::new(),
+        part_metadata: None,
+    }
+}
+
+/// Build a plain (non-thought) text `proto::Part`.
+pub(crate) fn text_part(text: String) -> proto::Part {
+    data_part(proto::part::Data::Text(text))
+}
+
 // Map a failed gRPC call into a `CompletionError` that preserves the provider's
 // error payload verbatim. gRPC is a non-HTTP transport, so there is no
 // `http::StatusCode`; the body is preserved via `from_provider_body` (status:
@@ -134,13 +176,13 @@ impl completion::CompletionModel for CompletionModel {
 // not distinguish a server-returned gRPC error from a transport/connection
 // failure, so a pure connection error is also preserved here rather than gated
 // out as a Rig diagnostic the way Bedrock's typed service errors are.
-pub(crate) fn rpc_error(status: tonic::Status) -> CompletionError {
+pub(crate) fn rpc_error(status: &tonic::Status) -> CompletionError {
     CompletionError::from_provider_body(status.to_string())
 }
 
 // Helper function to create gRPC request from Rig's CompletionRequest
 pub(crate) fn create_grpc_request(
-    model: String,
+    model: &str,
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
     let CompletionRequest {
@@ -157,7 +199,10 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
+    let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
+    // functionResponse.name keys the replay: cross-provider ingested
+    // results arrive with an empty name and their call carries it.
+    rig_core::providers::internal::resolve_empty_tool_result_names(&mut chat_history);
     let mut contents = Vec::new();
 
     // Convert chat history to gRPC Content messages
@@ -170,21 +215,11 @@ pub(crate) fn create_grpc_request(
     if let Some(preamble) = preamble
         && !preamble.is_empty()
     {
-        system_parts.push(proto::Part {
-            data: Some(proto::part::Data::Text(preamble)),
-            thought: false,
-            thought_signature: Vec::new(),
-            part_metadata: None,
-        });
+        system_parts.push(text_part(preamble));
     }
     for content in history_system {
         if !content.is_empty() {
-            system_parts.push(proto::Part {
-                data: Some(proto::part::Data::Text(content)),
-                thought: false,
-                thought_signature: Vec::new(),
-                part_metadata: None,
-            });
+            system_parts.push(text_part(content));
         }
     }
     let system_instruction = if system_parts.is_empty() {
@@ -230,7 +265,7 @@ pub(crate) fn create_grpc_request(
     };
 
     Ok(GenerateContentRequest {
-        model: format!("models/{}", model),
+        model: format!("models/{model}"),
         contents,
         tools,
         safety_settings: vec![],
@@ -272,33 +307,14 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
     }
 }
 
-fn split_system_messages_from_history(
-    history: OneOrMany<message::Message>,
-) -> (Vec<String>, Vec<message::Message>) {
-    let mut system = Vec::new();
-    let mut remaining = Vec::new();
-
-    for message in history {
-        match message {
-            message::Message::System { content } => system.push(content),
-            other => remaining.push(other),
-        }
-    }
-
-    (system, remaining)
-}
+use rig_core::providers::gemini::completion::split_system_messages_from_history;
 
 // Convert Rig UserContent to gRPC Part
 fn rig_user_content_to_grpc_part(
     content: message::UserContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::UserContent::Text(message::Text { text, .. }) => Ok(proto::Part {
-            data: Some(proto::part::Data::Text(text)),
-            thought: false,
-            thought_signature: Vec::new(),
-            part_metadata: None,
-        }),
+        message::UserContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
         message::UserContent::ToolResult(result) => {
             let mut values = result
                 .content
@@ -320,18 +336,19 @@ fn rig_user_content_to_grpc_part(
             let response_struct =
                 json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
 
-            Ok(proto::Part {
-                data: Some(proto::part::Data::FunctionResponse(
-                    proto::FunctionResponse {
-                        name: result.id,
-                        response: Some(response_struct),
-                        id: result.call_id.unwrap_or_default(),
-                    },
-                )),
-                thought: false,
-                thought_signature: Vec::new(),
-                part_metadata: None,
-            })
+            // `FunctionResponse.name` is the executed function's name —
+            // required data on the result. Only a provider-issued id may
+            // travel back on the wire (the proto field is optional-empty).
+            Ok(data_part(proto::part::Data::FunctionResponse(
+                proto::FunctionResponse {
+                    name: result.name,
+                    response: Some(response_struct),
+                    id: result
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_default(),
+                },
+            )))
         }
         message::UserContent::Image(img) => {
             let Some(media_type) = img.media_type else {
@@ -357,15 +374,10 @@ fn rig_user_content_to_grpc_part(
 
             let data = match img.data {
                 message::DocumentSourceKind::Url(file_uri) => {
-                    return Ok(proto::Part {
-                        data: Some(proto::part::Data::FileData(proto::FileData {
-                            mime_type,
-                            file_uri,
-                        })),
-                        thought: false,
-                        thought_signature: Vec::new(),
-                        part_metadata: None,
-                    });
+                    return Ok(data_part(proto::part::Data::FileData(proto::FileData {
+                        mime_type,
+                        file_uri,
+                    })));
                 }
                 message::DocumentSourceKind::Raw(bytes) => bytes,
                 message::DocumentSourceKind::Base64(data)
@@ -382,15 +394,10 @@ fn rig_user_content_to_grpc_part(
                 }
             };
 
-            Ok(proto::Part {
-                data: Some(proto::part::Data::InlineData(proto::Blob {
-                    mime_type,
-                    data,
-                })),
-                thought: false,
-                thought_signature: Vec::new(),
-                part_metadata: None,
-            })
+            Ok(data_part(proto::part::Data::InlineData(proto::Blob {
+                mime_type,
+                data,
+            })))
         }
         _ => Err(CompletionError::RequestError(
             "Unsupported user content type".into(),
@@ -403,31 +410,31 @@ fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::AssistantContent::Text(message::Text { text, .. }) => Ok(proto::Part {
-            data: Some(proto::part::Data::Text(text)),
-            thought: false,
-            thought_signature: Vec::new(),
-            part_metadata: None,
-        }),
+        message::AssistantContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
         message::AssistantContent::ToolCall(tool_call) => {
             let args = json_to_prost_struct(tool_call.function.arguments)?;
 
             Ok(proto::Part {
-                data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
+                thought_signature: decode_optional_base64(tool_call.signature)?,
+                ..data_part(proto::part::Data::FunctionCall(proto::FunctionCall {
                     name: tool_call.function.name,
                     args: Some(args),
-                    id: tool_call.call_id.unwrap_or(tool_call.id),
-                })),
-                thought: false,
-                thought_signature: decode_optional_base64(tool_call.signature)?,
-                part_metadata: None,
+                    // Only a provider-issued id may travel back on the
+                    // wire; minted correlation handles stay internal.
+                    id: tool_call
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_default(),
+                }))
             })
         }
         message::AssistantContent::Reasoning(reasoning) => Ok(proto::Part {
             data: Some(proto::part::Data::Text(reasoning.display_text())),
             thought: true,
             thought_signature: decode_optional_base64(
-                reasoning.first_signature().map(|s| s.to_string()),
+                reasoning
+                    .first_signature()
+                    .map(std::string::ToString::to_string),
             )?,
             part_metadata: None,
         }),
@@ -445,6 +452,15 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
+
+        // Same helper (and therefore the same message) as the streaming path,
+        // so a tool-protocol abort reads identically on both surfaces.
+        if let Some(err) = tool_protocol_finish_reason_error(
+            candidate.finish_reason,
+            candidate.finish_message.as_deref(),
+        ) {
+            return Err(err);
+        }
 
         let content_ref = candidate.content.as_ref().ok_or_else(|| {
             CompletionError::ResponseError(format!(
@@ -487,27 +503,18 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                     }
                 }
                 Some(proto::part::Data::FunctionCall(function_call)) => {
-                    let args = function_call
-                        .args
-                        .as_ref()
-                        .map(prost_struct_to_json)
-                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-
-                    let mut tool_call = message::ToolCall::new(
-                        if function_call.id.is_empty() {
-                            function_call.name.clone()
-                        } else {
-                            function_call.id.clone()
-                        },
-                        message::ToolFunction::new(function_call.name.clone(), args),
+                    let args = function_call.args.as_ref().map_or(
+                        serde_json::Value::Object(serde_json::Map::new()),
+                        prost_struct_to_json,
                     );
 
-                    if !function_call.id.is_empty() {
-                        tool_call = tool_call.with_call_id(function_call.id.clone());
-                    }
-
-                    tool_call =
-                        tool_call.with_signature(encode_optional_base64(&part.thought_signature));
+                    // An id-less call mints its correlation handle —
+                    // never name-as-id, which collides two same-tool calls.
+                    let tool_call = message::ToolCall::from_wire(
+                        function_call.id.clone(),
+                        message::ToolFunction::new(function_call.name.clone(), args),
+                    )
+                    .with_signature(encode_optional_base64(&part.thought_signature));
 
                     completion::AssistantContent::ToolCall(tool_call)
                 }
@@ -519,27 +526,23 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             };
 
             assistant_contents.push(assistant_content);
+
+            // The wire hangs a `thoughtSignature` on a trailing part carrying
+            // no `thought` flag, and this crate's own streaming adapter keeps
+            // it (`streaming.rs`, the non-thought text arm) while this mapper
+            // dropped it — the same blocking/streaming asymmetry the REST wire
+            // had. One shared rule places it on both transports.
+            if !part.thought
+                && matches!(part.data, Some(proto::part::Data::Text(_)))
+                && let Some(signature) = encode_optional_base64(&part.thought_signature)
+            {
+                attach_trailing_signature(&mut assistant_contents, signature);
+            }
         }
 
-        let choice = OneOrMany::many(assistant_contents).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
-        let usage = response
-            .usage_metadata
-            .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_token_count as u64,
-                output_tokens: usage.candidates_token_count as u64,
-                total_tokens: usage.total_token_count as u64,
-                cached_input_tokens: usage.cached_content_token_count as u64,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .unwrap_or_default();
+        let usage = map_usage(response.usage_metadata.as_ref());
 
         let finish_reason = response
             .candidates
@@ -559,35 +562,36 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
 // Implement ProviderResponseExt for telemetry
 impl ProviderResponseExt for GenerateContentResponse {
-    type OutputMessage = proto::Candidate;
     type Usage = proto::UsageMetadata;
 
-    fn get_response_id(&self) -> Option<String> {
+    fn response_id(&self) -> Option<&str> {
         if self.response_id.is_empty() {
             None
         } else {
-            Some(self.response_id.clone())
+            Some(self.response_id.as_str())
         }
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
+    fn response_model_name(&self) -> Option<&str> {
         if self.model_version.is_empty() {
             None
         } else {
-            Some(self.model_version.clone())
+            Some(self.model_version.as_str())
         }
     }
 
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.candidates.clone()
-    }
-
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         self.candidates.first().and_then(|c| {
             c.content.as_ref().and_then(|content| {
                 let text: Vec<String> = content
                     .parts
                     .iter()
+                    // `thought` marks the model's chain-of-thought, which the
+                    // completion mapper above routes to `Reasoning`. A reader
+                    // that wants the response *text* must skip it, or it
+                    // reports reasoning as the answer — the same defect the
+                    // REST wire carried.
+                    .filter(|part| !part.thought)
                     .filter_map(|part| {
                         if let Some(proto::part::Data::Text(text)) = &part.data {
                             Some(text.clone())
@@ -606,7 +610,7 @@ impl ProviderResponseExt for GenerateContentResponse {
         })
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         self.usage_metadata
     }
 }
@@ -616,7 +620,7 @@ fn decode_base64_bytes(input: &str) -> Result<Vec<u8>, CompletionError> {
 
     // Allow `data:<mime>;base64,<data>` inputs.
     let data = if let Some(rest) = data.strip_prefix("data:") {
-        rest.split_once(',').map(|(_, b64)| b64).unwrap_or(data)
+        rest.split_once(',').map_or(data, |(_, b64)| b64)
     } else {
         data
     };
@@ -648,7 +652,26 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionErro
     decode_base64_bytes(&sig)
 }
 
-fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
+/// Map Gemini's `UsageMetadata` onto rig's normalized `Usage`.
+///
+/// Known gap (unchanged here): `tool_use_prompt_token_count` and
+/// `thoughts_token_count` are not yet surfaced, so `tool_use_prompt_tokens`
+/// and `reasoning_tokens` read as 0.
+pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
+    usage
+        .map(|usage| completion::Usage {
+            input_tokens: usage.prompt_token_count as u64,
+            output_tokens: usage.candidates_token_count as u64,
+            total_tokens: usage.total_token_count as u64,
+            cached_input_tokens: usage.cached_content_token_count as u64,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
     if bytes.is_empty() {
         None
     } else {
@@ -704,7 +727,7 @@ fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
     }
 }
 
-fn prost_struct_to_json(st: &proto::Struct) -> serde_json::Value {
+pub(crate) fn prost_struct_to_json(st: &proto::Struct) -> serde_json::Value {
     let mut out = serde_json::Map::with_capacity(st.fields.len());
     for (k, v) in &st.fields {
         out.insert(k.clone(), prost_value_to_json(v));
@@ -717,8 +740,7 @@ fn prost_value_to_json(v: &proto::Value) -> serde_json::Value {
         None | Some(proto::value::Kind::NullValue(_)) => serde_json::Value::Null,
         Some(proto::value::Kind::BoolValue(b)) => serde_json::Value::Bool(*b),
         Some(proto::value::Kind::NumberValue(n)) => serde_json::Number::from_f64(*n)
-            .map(serde_json::Value::Number)
-            .unwrap_or(serde_json::Value::Null),
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
         Some(proto::value::Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
         Some(proto::value::Kind::StructValue(st)) => prost_struct_to_json(st),
         Some(proto::value::Kind::ListValue(list)) => {
@@ -789,7 +811,7 @@ mod tests {
         let status = tonic::Status::unavailable("boom");
         let expected = status.to_string();
 
-        let err = rpc_error(status);
+        let err = rpc_error(&status);
 
         // The raw provider error text is preserved verbatim, and there is no
         // HTTP status because gRPC is a non-HTTP transport.
@@ -1007,6 +1029,81 @@ mod tests {
         );
     }
 
+    /// `FunctionResponse.name` is the executed function's name: read from
+    /// the required `ToolResult::name` — never an identifier, no matter how
+    /// identifier-shaped the correlation handles are.
+    #[test]
+    fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
+        use rig_core::message::{
+            AssistantContent, ProviderCallId, ToolCall, ToolCallId, ToolFunction, ToolResult,
+            ToolResultContent,
+        };
+
+        let call = |wire_id: &str, name: &str| message::Message::Assistant {
+            id: None,
+            content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+                wire_id,
+                ToolFunction {
+                    name: name.to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+            ))],
+        };
+        let result = |wire_id: &str, name: &str| message::Message::User {
+            content: vec![message::UserContent::ToolResult(ToolResult {
+                call: ToolCallId::new_or_mint(wire_id),
+                provider: ProviderCallId::new(wire_id),
+                name: name.to_owned(),
+                content: vec![ToolResultContent::text("out")],
+            })],
+        };
+
+        let req = create_grpc_request(
+            "gemini-2.5-flash",
+            CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: vec![
+                    // Driver-built: the executed name travels as data (a
+                    // repair hook renamed the call: `sum` ran, not `add`).
+                    call("call_1", "add"),
+                    result("call_1", "sum"),
+                    // Cross-provider history with an OpenAI-shaped id —
+                    // `call_abc` must never travel as the name.
+                    call("call_abc", "get_weather"),
+                    result("call_abc", "get_weather"),
+                ],
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            },
+        )
+        .expect("request build");
+
+        // The name is the executed tool's name; the proto `id` is the
+        // provider-issued call id (never rig's minted handle).
+        let responses: Vec<(&str, &str)> = req
+            .contents
+            .iter()
+            .flat_map(|content| content.parts.iter())
+            .filter_map(|part| match &part.data {
+                Some(proto::part::Data::FunctionResponse(fr)) => {
+                    Some((fr.id.as_str(), fr.name.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            responses,
+            vec![("call_1", "sum"), ("call_abc", "get_weather")]
+        );
+    }
+
     #[test]
     fn create_grpc_request_populates_tool_parameters() {
         use rig_core::completion::ToolDefinition;
@@ -1024,11 +1121,11 @@ mod tests {
         };
 
         let req = create_grpc_request(
-            "gemini-2.5-flash".to_string(),
+            "gemini-2.5-flash",
             CompletionRequest {
                 model: None,
                 preamble: None,
-                chat_history: OneOrMany::one(message::Message::user("forecast in Berlin?")),
+                chat_history: vec![message::Message::user("forecast in Berlin?")],
                 documents: Vec::new(),
                 tools: vec![tool],
                 temperature: None,
@@ -1054,5 +1151,169 @@ mod tests {
         assert_eq!(params.r#type, proto::Type::Object as i32);
         assert_eq!(params.required, vec!["city".to_string()]);
         assert!(params.properties.contains_key("city"));
+    }
+
+    /// The gRPC wire carries the model's chain-of-thought in the same `parts`
+    /// array as the answer, flagged by `thought` — same shape as the REST
+    /// wire, where reading it as output text was a live-confirmed defect.
+    /// There is no cassette harness for this transport (it is protobuf over
+    /// gRPC, not HTTP), so the wire shape is stated directly.
+    #[test]
+    fn text_response_skips_thought_parts() {
+        let response = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![
+                        proto::Part {
+                            data: Some(proto::part::Data::Text(
+                                "Let me work through this...".to_string(),
+                            )),
+                            thought: true,
+                            ..Default::default()
+                        },
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("The answer is 42.".to_string())),
+                            thought: false,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            response.text_response().as_deref(),
+            Some("The answer is 42."),
+            "reasoning must not be reported as the response text"
+        );
+    }
+
+    /// The wire hangs a `thoughtSignature` on a trailing part with no
+    /// `thought` flag. This crate's streaming adapter has always kept it; the
+    /// unary mapper dropped it, the same asymmetry the REST wire carried. The
+    /// signature belongs to the chain-of-thought block that precedes it.
+    #[test]
+    fn a_trailing_thought_signature_signs_the_reasoning_before_it() {
+        let response = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("the chain".to_string())),
+                            thought: true,
+                            ..Default::default()
+                        },
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("answer".to_string())),
+                            thought: false,
+                            thought_signature: b"sig-bytes".to_vec(),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let normalized: completion::CompletionResponse =
+            response.try_into().expect("payload should normalize");
+        assert_eq!(
+            normalized.choice.len(),
+            2,
+            "no empty sibling; got {:?}",
+            normalized.choice
+        );
+        assert!(
+            matches!(
+                normalized.choice.first(),
+                Some(completion::AssistantContent::Reasoning(reasoning))
+                    if matches!(reasoning.content.first(),
+                        Some(message::ReasoningContent::Text { text, signature })
+                            if text == "the chain" && signature.is_some())
+            ),
+            "the reasoning block must carry the trailing signature, got {:?}",
+            normalized.choice
+        );
+    }
+
+    /// The load-bearing property behind `CompletionResponse::raw` for the
+    /// gRPC provider: the captured value is
+    /// `serde_json::to_value(&GenerateContentResponse)` — the prost message
+    /// `raw_completion` returns, with the serde derives `build.rs` attaches to
+    /// every generated type — and a consumer must be able to read it back as
+    /// the same message and get the same JSON. There is no cassette harness
+    /// for gRPC, so this is the unit-form pin. Fields rig never normalizes
+    /// (`cached_content_token_count` under `usage_metadata`, the candidate's
+    /// `finish_message`) survive both directions, and normalizing the
+    /// restored message agrees with normalizing the original.
+    #[test]
+    fn generate_content_response_round_trips_through_serde_json_value() {
+        let raw = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![proto::Part {
+                        data: Some(proto::part::Data::Text("hello".to_string())),
+                        ..Default::default()
+                    }],
+                    role: "model".to_string(),
+                }),
+                finish_reason: proto::candidate::FinishReason::Stop as i32,
+                index: Some(0),
+                finish_message: Some("done".to_string()),
+            }],
+            usage_metadata: Some(proto::UsageMetadata {
+                prompt_token_count: 10,
+                candidates_token_count: 20,
+                total_token_count: 30,
+                cached_content_token_count: 4,
+            }),
+            model_version: "gemini-2.5-flash".to_string(),
+            response_id: "resp-grpc-1".to_string(),
+            prompt_feedback: None,
+        };
+
+        let value = serde_json::to_value(&raw).expect("serialize");
+        assert_eq!(
+            value.pointer("/usage_metadata/cached_content_token_count"),
+            Some(&serde_json::json!(4))
+        );
+        assert_eq!(
+            value.pointer("/candidates/0/finish_message"),
+            Some(&serde_json::json!("done"))
+        );
+        assert_eq!(
+            value.pointer("/model_version"),
+            Some(&serde_json::json!("gemini-2.5-flash"))
+        );
+
+        let back: proto::GenerateContentResponse =
+            serde_json::from_value(value.clone()).expect("deserialize");
+        assert_eq!(
+            serde_json::to_value(&back).expect("re-serialize"),
+            value,
+            "the capture must read back into GenerateContentResponse and re-serialize identically"
+        );
+        assert_eq!(back, raw);
+
+        let original: completion::CompletionResponse = raw.try_into().expect("original converts");
+        let restored: completion::CompletionResponse = back.try_into().expect("restored converts");
+        assert_eq!(restored.identity(), original.identity());
+        assert_eq!(restored.finish_reason(), original.finish_reason());
+        assert_eq!(restored.model, original.model);
+        assert_eq!(restored.usage, original.usage);
+        assert_eq!(restored.choice, original.choice);
+        assert_eq!(
+            restored.identity().response_id.as_deref(),
+            Some("resp-grpc-1")
+        );
+        assert_eq!(
+            restored.finish_reason(),
+            Some(completion::FinishReason::Stop)
+        );
     }
 }

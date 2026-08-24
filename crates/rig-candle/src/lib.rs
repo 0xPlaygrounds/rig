@@ -12,7 +12,7 @@ mod validation;
 
 pub use artifacts::{GgufModelData, ModelArtifacts, ModelData};
 pub use generation::GenerationConfig;
-pub use model::{CandleModel, CandleModelBuilder, LlamaModel, LlamaModelBuilder};
+pub use model::{CandleModel, CandleModelBuilder, LlamaModel, stream_from_events};
 pub use profile::{ConversationProtocol, ModelArchitecture, ModelFamily, Quantization};
 pub use types::{CandleCompletionResponse, CandleError, FinishReason};
 

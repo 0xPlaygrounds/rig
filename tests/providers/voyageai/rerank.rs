@@ -1,6 +1,7 @@
 //! VoyageAI reranking smoke test.
 
-use rig::client::{ProviderClient, RerankingClient};
+use rig::client::DefaultTransportClient as _;
+use rig::client::RerankingClient;
 use rig::providers::voyageai;
 use rig::rerank::RerankModel;
 
@@ -35,5 +36,12 @@ async fn rerank_smoke() {
         "Paris should be the top result"
     );
     assert!(response.usage.total_tokens > 0, "usage should be positive");
-    assert!(!response.model.is_empty(), "model name should be present");
+    assert!(
+        response
+            .model
+            .as_deref()
+            .is_some_and(|model| !model.is_empty()),
+        "model name should be present"
+    );
+    assert_eq!(response.provider, "voyageai");
 }

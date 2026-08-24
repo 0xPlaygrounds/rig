@@ -10,7 +10,6 @@
 //! 5. repeats until the model returns a final text answer.
 
 use anyhow::{Result, bail};
-use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::prelude::*;
@@ -95,7 +94,7 @@ impl Tool for Subtract {
     }
 }
 
-fn collect_tool_calls(choice: &OneOrMany<AssistantContent>) -> Vec<ToolCall> {
+fn collect_tool_calls(choice: &[AssistantContent]) -> Vec<ToolCall> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -105,7 +104,7 @@ fn collect_tool_calls(choice: &OneOrMany<AssistantContent>) -> Vec<ToolCall> {
         .collect()
 }
 
-fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
+fn extract_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -118,14 +117,14 @@ fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
 
 fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
     let content = output.into_content();
-    let result = match &tool_call.call_id {
-        Some(call_id) => {
-            UserContent::tool_result_with_call_id(tool_call.id.clone(), call_id.clone(), content)
-        }
-        None => UserContent::tool_result(tool_call.id.clone(), content),
-    };
+    let result = UserContent::tool_result_for(
+        tool_call.id.clone(),
+        tool_call.provider.clone(),
+        tool_call.function.name.clone(),
+        content,
+    );
     Message::User {
-        content: OneOrMany::one(result),
+        content: vec![result],
     }
 }
 
@@ -139,10 +138,9 @@ async fn main() -> Result<()> {
                     You may emit one or multiple tool calls in a single turn. \
                     Once all tool results are available, give a short final answer.";
 
-    let local_tools = ToolSet::builder()
-        .static_tool(Add)
-        .static_tool(Subtract)
-        .build();
+    let mut local_tools = ToolSet::default();
+    local_tools.add_tool(Add);
+    local_tools.add_tool(Subtract);
 
     let mut history = Vec::new();
     let mut current_prompt = Message::user(
@@ -156,7 +154,7 @@ async fn main() -> Result<()> {
             .completion_request(current_prompt.clone())
             .preamble(preamble.to_string())
             .messages(history.clone())
-            .tools(local_tools.get_tool_definitions());
+            .tools(local_tools.tool_definitions());
         if round == 1 {
             // Force the first turn through the tool path so the example always demonstrates it.
             request = request.tool_choice(ToolChoice::Required);

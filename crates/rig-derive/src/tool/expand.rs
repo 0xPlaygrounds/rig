@@ -57,6 +57,9 @@ fn is_option_type(ty: &Type) -> bool {
 }
 
 fn result_type_tokens(return_type: &ReturnType) -> syn::Result<(TokenStream, TokenStream)> {
+    const RESULT_TY_MSG: &str = "return type must be Result<T, E>";
+    const RESULT_ARITY_MSG: &str = "expected Result<T, E> with exactly two type parameters";
+
     let ReturnType::Type(_, ty) = return_type else {
         return Err(syn::Error::new_spanned(
             return_type,
@@ -65,24 +68,15 @@ fn result_type_tokens(return_type: &ReturnType) -> syn::Result<(TokenStream, Tok
     };
 
     let Type::Path(type_path) = ty.deref() else {
-        return Err(syn::Error::new_spanned(
-            ty,
-            "return type must be Result<T, E>",
-        ));
+        return Err(syn::Error::new_spanned(ty, RESULT_TY_MSG));
     };
 
     let Some(last_segment) = type_path.path.segments.last() else {
-        return Err(syn::Error::new_spanned(
-            &type_path.path,
-            "return type must be Result<T, E>",
-        ));
+        return Err(syn::Error::new_spanned(&type_path.path, RESULT_TY_MSG));
     };
 
     if last_segment.ident != "Result" {
-        return Err(syn::Error::new_spanned(
-            &last_segment.ident,
-            "return type must be Result<T, E>",
-        ));
+        return Err(syn::Error::new_spanned(&last_segment.ident, RESULT_TY_MSG));
     }
 
     let PathArguments::AngleBracketed(args) = &last_segment.arguments else {
@@ -94,17 +88,11 @@ fn result_type_tokens(return_type: &ReturnType) -> syn::Result<(TokenStream, Tok
 
     let mut generic_args = args.args.iter();
     let (Some(output), Some(error)) = (generic_args.next(), generic_args.next()) else {
-        return Err(syn::Error::new_spanned(
-            &args.args,
-            "expected Result<T, E> with exactly two type parameters",
-        ));
+        return Err(syn::Error::new_spanned(&args.args, RESULT_ARITY_MSG));
     };
 
     if generic_args.next().is_some() {
-        return Err(syn::Error::new_spanned(
-            &args.args,
-            "expected Result<T, E> with exactly two type parameters",
-        ));
+        return Err(syn::Error::new_spanned(&args.args, RESULT_ARITY_MSG));
     }
 
     Ok((quote!(#output), quote!(#error)))
@@ -118,7 +106,10 @@ struct ModelParam<'a> {
     optional: bool,
 }
 
-pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Result<TokenStream> {
+pub(crate) fn expand_rig_tool(
+    args: &MacroArgs,
+    input_fn: &syn::ItemFn,
+) -> syn::Result<TokenStream> {
     let refs = CrateRefs::resolve();
     let core = &refs.core;
 
@@ -152,10 +143,10 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
     let fn_doc = extract_doc_comment(&input_fn.attrs);
     let tool_description = match &args.description {
         Some(desc) => quote! { #desc.to_string() },
-        None => match fn_doc {
-            Some(doc) => quote! { #doc.to_string() },
-            None => quote! { format!("Function to {}", #tool_name) },
-        },
+        None => fn_doc.map_or_else(
+            || quote! { format!("Function to {}", #tool_name) },
+            |doc| quote! { #doc.to_string() },
+        ),
     };
 
     // Classify parameters: model-facing fields are built independently from
@@ -213,20 +204,6 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
 
     let has_context = context.is_some();
 
-    // Contextual tools live in the classic runtime crate; give a targeted
-    // error when it is not reachable instead of emitting an unresolved path.
-    let agent_root = match (&context, &refs.agent) {
-        (Some(_), Some(agent)) => Some(agent.clone()),
-        (Some((pat_type, _)), None) => {
-            return Err(syn::Error::new_spanned(
-                pat_type,
-                "contextual tools (`&mut ToolContext`) require a dependency on `rig` or \
-                 `rig-agent`; portable tools only need `rig-core`",
-            ));
-        }
-        (None, _) => None,
-    };
-
     // Validate `params(...)` and `required(...)` names against the actual
     // parameter list so a typo cannot silently alter the advertised schema.
     let model_names: Vec<String> = model_params
@@ -282,7 +259,7 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
     let explicit_required: Option<Vec<String>> = args
         .required
         .as_ref()
-        .map(|list| list.iter().map(|ident| ident.to_string()).collect());
+        .map(|list| list.iter().map(std::string::ToString::to_string).collect());
 
     let field_tokens: Vec<TokenStream> = model_params
         .iter()
@@ -323,12 +300,12 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
-    let tool_module = match &agent_root {
-        Some(agent) => quote!(#agent::tool),
-        None => quote!(#core::tool),
-    };
-    // Contextual tools implement the classic `Tool` trait; context-free tools
-    // implement the portable `PortableTool` contract owned by `rig-core`.
+    // Both traits are rig-core's: contextual tools implement `Tool`
+    // (`rig_core::tool::Tool`, re-exported unchanged by `rig-agent` and the
+    // `rig` facade); context-free tools implement the portable `PortableTool`
+    // contract. Resolving through the core root means a crate that depends on
+    // `rig-core` alone can author either kind.
+    let tool_module = quote!(#core::tool);
     let tool_trait = if has_context {
         quote!(#tool_module::Tool)
     } else {

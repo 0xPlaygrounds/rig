@@ -1,15 +1,14 @@
 //! Google Gemini Interactions API integration.
 //! From <https://ai.google.dev/api/interactions-api>
 
-use base64::{Engine, prelude::BASE64_STANDARD};
-
-use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
+use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::envelope::DirectPayload;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use serde_json::{Map, Value};
-use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 use url::form_urlencoded;
 
@@ -32,7 +31,7 @@ pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
 /// Completion model wrapper for the Gemini Interactions API.
 #[derive(Clone, Debug)]
-pub struct InteractionsCompletionModel<T = reqwest::Client> {
+pub struct InteractionsCompletionModel<T> {
     pub(crate) client: InteractionsClient<T>,
     pub model: String,
 }
@@ -73,7 +72,7 @@ impl<T> InteractionsCompletionModel<T> {
 
 impl<T> InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Create an interaction and return the raw response payload.
     pub async fn create_interaction(
@@ -115,7 +114,7 @@ where
 
 impl<T> InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Execute a completion and return the Interactions API's own payload.
     ///
@@ -142,13 +141,11 @@ where
 
         let request = self.create_completion_request(completion_request, Some(false))?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Gemini interactions completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Gemini interactions completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
         let request = self
@@ -157,68 +154,39 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        async move {
-            let response = self.client.send::<_, Vec<u8>>(request).await?;
-
-            if response.status().is_success() {
-                let response_body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                let response_text = String::from_utf8_lossy(&response_body).to_string();
-
-                let response: Interaction =
-                    serde_json::from_slice(&response_body).map_err(|err| {
-                        tracing::error!(
-                            error = %err,
-                            body = %response_text,
-                            "Failed to deserialize Gemini interactions response"
-                        );
-                        CompletionError::JsonError(err)
-                    })?;
-
+        send_completion::<_, DirectPayload<Interaction>, _>(
+            &self.client,
+            request,
+            "Gemini interactions completion",
+            // Gemini reports no transport request-id response header (verified
+            // against the live API); the normalized id is None by design.
+            None,
+            |response| {
                 let span = tracing::Span::current();
-                span.record_response_metadata(&response);
-                let usage = crate::completion::Usage::from(&response);
+                span.record_response_metadata(response);
+                let usage = crate::completion::Usage::from(response);
                 span.record_token_usage(&usage);
-
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "Gemini interactions completion response: {}",
-                        serde_json::to_string_pretty(&response)?
-                    );
-                }
-
-                Ok(response)
-            } else {
-                let status = response.status();
-                let body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
+            },
+        )
         .instrument(span)
         .await
+        .map(|(payload, _)| payload)
     }
 }
 
 impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     async fn completion(
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.raw_completion(completion_request).await?.try_into()
+        // Capture before `try_into` consumes the raw value.
+        let raw = self.raw_completion(completion_request).await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
     }
 
     async fn stream(
@@ -241,7 +209,7 @@ where
 
 impl<T> InteractionsClient<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     /// Create a new interaction and return the raw response payload.
     pub async fn create_interaction(
@@ -321,6 +289,9 @@ pub(crate) fn create_request_body(
 
     let mut history = Vec::new();
     history.extend(chat_history);
+    // functionResponse.name keys the replay: cross-provider ingested
+    // results arrive with an empty name and their call carries it.
+    crate::providers::internal::resolve_empty_tool_result_names(&mut history);
     let (history_system, history) = split_system_messages_from_history(history);
 
     let steps = history
@@ -418,28 +389,14 @@ pub(crate) fn create_request_body(
     })
 }
 
-fn split_system_messages_from_history(
-    history: Vec<completion::Message>,
-) -> (Vec<String>, Vec<completion::Message>) {
-    let mut system = Vec::new();
-    let mut remaining = Vec::new();
-
-    for message in history {
-        match message {
-            completion::Message::System { content } => system.push(content),
-            other => remaining.push(other),
-        }
-    }
-
-    (system, remaining)
-}
+use super::completion::split_system_messages_from_history;
 
 async fn send_interaction_request<T>(
     client: &InteractionsClient<T>,
     request: crate::http_client::Request<Vec<u8>>,
 ) -> Result<Interaction, CompletionError>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
     let response = client.send::<_, Vec<u8>>(request).await?;
 
@@ -514,11 +471,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
             .usage
@@ -553,10 +506,10 @@ fn assistant_content_from_output(
             let Some(name) = name else {
                 return Ok(None);
             };
-            let call_id = id.unwrap_or_else(|| name.clone());
-            Ok(Some(completion::AssistantContent::tool_call_with_call_id(
-                name.clone(),
-                call_id,
+            // An id-less call mints its correlation handle — never
+            // name-as-id, which collides two same-tool calls in one turn.
+            Ok(Some(completion::AssistantContent::tool_call(
+                id.unwrap_or_default(),
                 name,
                 arguments.unwrap_or(Value::Object(Map::new())),
             )))
@@ -640,6 +593,23 @@ fn assistant_content_from_output(
     }
 }
 
+/// Shared preamble for Gemini Interactions media parts: require the media
+/// type, render its MIME string, and split the source into data/uri.
+fn media_parts<M: MimeType>(
+    data: message::DocumentSourceKind,
+    media_type: Option<M>,
+    kind: &str,
+) -> Result<(Option<String>, Option<String>, String), message::MessageError> {
+    let media_type = media_type.ok_or_else(|| {
+        message::MessageError::ConversionError(format!(
+            "Media type for {kind} is required for Gemini"
+        ))
+    })?;
+    let mime_type = media_type.to_mime_type().to_string();
+    let (data, uri) = split_data_uri(data)?;
+    Ok((data, uri, mime_type))
+}
+
 fn split_data_uri(
     src: message::DocumentSourceKind,
 ) -> Result<(Option<String>, Option<String>), message::MessageError> {
@@ -661,7 +631,7 @@ fn split_data_uri(
 
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
-    use super::split_data_uri;
+    use super::{media_parts, split_data_uri};
     use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
@@ -783,26 +753,21 @@ pub mod interactions_api_types {
     }
 
     impl ProviderResponseExt for Interaction {
-        type OutputMessage = Content;
         type Usage = InteractionUsage;
 
-        fn get_response_id(&self) -> Option<String> {
+        fn response_id(&self) -> Option<&str> {
             if self.id.is_empty() {
                 None
             } else {
-                Some(self.id.clone())
+                Some(self.id.as_str())
             }
         }
 
-        fn get_response_model_name(&self) -> Option<String> {
-            self.model.clone()
+        fn response_model_name(&self) -> Option<&str> {
+            self.model.as_deref()
         }
 
-        fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-            self.output_contents()
-        }
-
-        fn get_text_response(&self) -> Option<String> {
+        fn text_response(&self) -> Option<String> {
             let text = self
                 .output_contents()
                 .iter()
@@ -816,120 +781,268 @@ pub mod interactions_api_types {
             if text.is_empty() { None } else { Some(text) }
         }
 
-        fn get_usage(&self) -> Option<Self::Usage> {
-            self.usage.clone()
+        fn usage(&self) -> Option<Self::Usage> {
+            self.usage
         }
     }
 
-    /// Groups Google Search tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct GoogleSearchExchange {
+    /// Groups tool calls and results of one built-in tool family for a single
+    /// interaction.
+    #[derive(Clone, Debug)]
+    pub struct Exchange<C, R> {
         /// Call identifier used to match calls to results.
         pub call_id: Option<String>,
-        /// One or more Google Search tool calls.
-        pub calls: Vec<GoogleSearchCallContent>,
-        /// One or more Google Search tool results.
-        pub results: Vec<GoogleSearchResultContent>,
+        /// One or more tool calls.
+        pub calls: Vec<C>,
+        /// One or more tool results.
+        pub results: Vec<R>,
     }
+
+    impl<C, R> Default for Exchange<C, R> {
+        fn default() -> Self {
+            Self {
+                call_id: None,
+                calls: Vec::new(),
+                results: Vec::new(),
+            }
+        }
+    }
+
+    /// A tool call content type that carries an optional call identifier.
+    trait ExchangeCall {
+        fn id(&self) -> Option<&str>;
+    }
+
+    /// A tool result content type that carries an optional call identifier.
+    trait ExchangeResult {
+        fn call_id(&self) -> Option<&str>;
+    }
+
+    macro_rules! impl_exchange_ids {
+        ($call:ty, $result:ty) => {
+            impl ExchangeCall for $call {
+                fn id(&self) -> Option<&str> {
+                    self.id.as_deref()
+                }
+            }
+            impl ExchangeResult for $result {
+                fn call_id(&self) -> Option<&str> {
+                    self.call_id.as_deref()
+                }
+            }
+        };
+    }
+
+    impl_exchange_ids!(GoogleSearchCallContent, GoogleSearchResultContent);
+    impl_exchange_ids!(UrlContextCallContent, UrlContextResultContent);
+    impl_exchange_ids!(CodeExecutionCallContent, CodeExecutionResultContent);
+
+    /// Pairs tool calls with their results by call_id.
+    ///
+    /// When a call_id is missing, results are grouped with the most recent
+    /// call (identified or not) as a best-effort fallback.
+    fn pair_exchanges<C, R>(
+        contents: &[Content],
+        as_call: impl Fn(&Content) -> Option<&C>,
+        as_result: impl Fn(&Content) -> Option<&R>,
+    ) -> Vec<Exchange<C, R>>
+    where
+        C: Clone + ExchangeCall,
+        R: Clone + ExchangeResult,
+    {
+        let mut exchanges: Vec<Exchange<C, R>> = Vec::new();
+        let mut last_call_index: Option<usize> = None;
+        let position_of = |exchanges: &[Exchange<C, R>], call_id: &str| {
+            exchanges
+                .iter()
+                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+        };
+
+        for content in contents {
+            if let Some(call) = as_call(content) {
+                let index = match call.id() {
+                    Some(call_id) => match position_of(&exchanges, call_id) {
+                        Some(index) => {
+                            if let Some(exchange) = exchanges.get_mut(index) {
+                                exchange.calls.push(call.clone());
+                            }
+                            index
+                        }
+                        None => {
+                            exchanges.push(Exchange {
+                                call_id: Some(call_id.to_string()),
+                                calls: vec![call.clone()],
+                                results: Vec::new(),
+                            });
+                            exchanges.len() - 1
+                        }
+                    },
+                    None => {
+                        exchanges.push(Exchange {
+                            call_id: None,
+                            calls: vec![call.clone()],
+                            results: Vec::new(),
+                        });
+                        exchanges.len() - 1
+                    }
+                };
+                last_call_index = Some(index);
+            } else if let Some(result) = as_result(content) {
+                if let Some(call_id) = result.call_id() {
+                    if let Some(index) = position_of(&exchanges, call_id) {
+                        if let Some(exchange) = exchanges.get_mut(index) {
+                            exchange.results.push(result.clone());
+                        }
+                    } else {
+                        exchanges.push(Exchange {
+                            call_id: Some(call_id.to_string()),
+                            calls: Vec::new(),
+                            results: vec![result.clone()],
+                        });
+                    }
+                } else if let Some(index) = last_call_index {
+                    if let Some(exchange) = exchanges.get_mut(index) {
+                        exchange.results.push(result.clone());
+                    }
+                } else {
+                    exchanges.push(Exchange {
+                        call_id: None,
+                        calls: Vec::new(),
+                        results: vec![result.clone()],
+                    });
+                    last_call_index = Some(exchanges.len() - 1);
+                }
+            }
+        }
+
+        exchanges
+    }
+
+    /// Groups Google Search tool calls and results for a single interaction.
+    pub type GoogleSearchExchange = Exchange<GoogleSearchCallContent, GoogleSearchResultContent>;
 
     impl GoogleSearchExchange {
         /// Collects all queries from the stored Google Search tool calls.
         pub fn queries(&self) -> Vec<String> {
-            let mut queries = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(call_queries) = &args.queries
-                {
-                    queries.extend(call_queries.clone());
-                }
-            }
-            queries
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.queries.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
 
         /// Collects all Google Search result entries from tool results.
         pub fn result_items(&self) -> Vec<GoogleSearchResult> {
-            let mut items = Vec::new();
-            for result in &self.results {
-                if let Some(entries) = &result.result {
-                    items.extend(entries.clone());
-                }
-            }
-            items
+            self.results
+                .iter()
+                .filter_map(|result| result.result.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
     }
 
     /// Groups URL context tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct UrlContextExchange {
-        /// Call identifier used to match calls to results.
-        pub call_id: Option<String>,
-        /// One or more URL context tool calls.
-        pub calls: Vec<UrlContextCallContent>,
-        /// One or more URL context tool results.
-        pub results: Vec<UrlContextResultContent>,
-    }
+    pub type UrlContextExchange = Exchange<UrlContextCallContent, UrlContextResultContent>;
 
     impl UrlContextExchange {
         /// Collects all URLs from the stored URL context tool calls.
         pub fn urls(&self) -> Vec<String> {
-            let mut urls = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(call_urls) = &args.urls
-                {
-                    urls.extend(call_urls.clone());
-                }
-            }
-            urls
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.urls.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
 
         /// Collects all URL context result entries from tool results.
         pub fn result_items(&self) -> Vec<UrlContextResult> {
-            let mut items = Vec::new();
-            for result in &self.results {
-                if let Some(entries) = &result.result {
-                    items.extend(entries.clone());
-                }
-            }
-            items
+            self.results
+                .iter()
+                .filter_map(|result| result.result.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
     }
 
     /// Groups code execution tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct CodeExecutionExchange {
-        /// Call identifier used to match calls to results.
-        pub call_id: Option<String>,
-        /// One or more code execution tool calls.
-        pub calls: Vec<CodeExecutionCallContent>,
-        /// One or more code execution tool results.
-        pub results: Vec<CodeExecutionResultContent>,
-    }
+    pub type CodeExecutionExchange = Exchange<CodeExecutionCallContent, CodeExecutionResultContent>;
 
     impl CodeExecutionExchange {
         /// Collects all code snippets from the stored code execution tool calls.
         pub fn code_snippets(&self) -> Vec<String> {
-            let mut snippets = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(code) = &args.code
-                {
-                    snippets.push(code.clone());
-                }
-            }
-            snippets
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.code.clone())
+                .collect()
         }
 
         /// Collects all code execution outputs from tool results.
         pub fn outputs(&self) -> Vec<String> {
-            let mut outputs = Vec::new();
-            for result in &self.results {
-                if let Some(output) = &result.result {
-                    outputs.push(output.clone());
-                }
-            }
-            outputs
+            self.results
+                .iter()
+                .filter_map(|result| result.result.clone())
+                .collect()
         }
+    }
+
+    /// Generates the `Interaction` accessor family for one built-in tool:
+    /// the call_id-grouped exchanges plus flattened views over their calls,
+    /// results, and per-exchange collector methods.
+    macro_rules! interaction_exchange_accessors {
+        (
+            $tool:literal, $exchange:ty, $call_variant:ident, $result_variant:ident,
+            $exchanges_fn:ident, $call_contents_fn:ident -> $call_ty:ty,
+            $result_contents_fn:ident -> $result_ty:ty,
+            $($flat_doc:literal $flat_fn:ident => $method:ident -> $flat_ty:ty),* $(,)?
+        ) => {
+            #[doc = concat!("Groups ", $tool, " tool calls and results by call_id.")]
+            ///
+            /// When a call_id is missing, results are grouped with the most recent
+            /// call (identified or not) as a best-effort fallback.
+            pub fn $exchanges_fn(&self) -> Vec<$exchange> {
+                pair_exchanges(
+                    &self.output_contents(),
+                    |content| match content {
+                        Content::$call_variant(call) => Some(call),
+                        _ => None,
+                    },
+                    |content| match content {
+                        Content::$result_variant(result) => Some(result),
+                        _ => None,
+                    },
+                )
+            }
+
+            #[doc = concat!("Collects ", $tool, " tool call contents from the interaction outputs.")]
+            pub fn $call_contents_fn(&self) -> Vec<$call_ty> {
+                self.$exchanges_fn()
+                    .into_iter()
+                    .flat_map(|exchange| exchange.calls)
+                    .collect()
+            }
+
+            #[doc = concat!("Collects ", $tool, " result contents from the interaction outputs.")]
+            pub fn $result_contents_fn(&self) -> Vec<$result_ty> {
+                self.$exchanges_fn()
+                    .into_iter()
+                    .flat_map(|exchange| exchange.results)
+                    .collect()
+            }
+
+            $(
+                #[doc = $flat_doc]
+                pub fn $flat_fn(&self) -> Vec<$flat_ty> {
+                    self.$exchanges_fn()
+                        .into_iter()
+                        .flat_map(|exchange| exchange.$method())
+                        .collect()
+                }
+            )*
+        };
     }
 
     impl Interaction {
@@ -937,326 +1050,38 @@ pub mod interactions_api_types {
             self.steps.iter().flat_map(Step::output_contents).collect()
         }
 
-        /// Groups Google Search tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
-            let mut exchanges: Vec<GoogleSearchExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
+        interaction_exchange_accessors!(
+            "Google Search", GoogleSearchExchange, GoogleSearchCall, GoogleSearchResult,
+            google_search_exchanges,
+            google_search_call_contents -> GoogleSearchCallContent,
+            google_search_result_contents -> GoogleSearchResultContent,
+            "Collects all Google Search queries from tool calls in the outputs."
+                google_search_queries => queries -> String,
+            "Collects all Google Search result entries from tool results in the outputs."
+                google_search_results => result_items -> GoogleSearchResult,
+        );
 
-            for content in &output_contents {
-                match content {
-                    Content::GoogleSearchCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(GoogleSearchExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(GoogleSearchExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::GoogleSearchResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(GoogleSearchExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(GoogleSearchExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
+        interaction_exchange_accessors!(
+            "URL context", UrlContextExchange, UrlContextCall, UrlContextResult,
+            url_context_exchanges,
+            url_context_call_contents -> UrlContextCallContent,
+            url_context_result_contents -> UrlContextResultContent,
+            "Collects all URLs from URL context tool calls in the outputs."
+                url_context_urls => urls -> String,
+            "Collects all URL context result entries from tool results in the outputs."
+                url_context_results => result_items -> UrlContextResult,
+        );
 
-            exchanges
-        }
-
-        /// Collects Google Search tool call contents from the interaction outputs.
-        pub fn google_search_call_contents(&self) -> Vec<GoogleSearchCallContent> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects Google Search result contents from the interaction outputs.
-        pub fn google_search_result_contents(&self) -> Vec<GoogleSearchResultContent> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all Google Search queries from tool calls in the outputs.
-        pub fn google_search_queries(&self) -> Vec<String> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.queries())
-                .collect()
-        }
-
-        /// Collects all Google Search result entries from tool results in the outputs.
-        pub fn google_search_results(&self) -> Vec<GoogleSearchResult> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.result_items())
-                .collect()
-        }
-
-        /// Groups URL context tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn url_context_exchanges(&self) -> Vec<UrlContextExchange> {
-            let mut exchanges: Vec<UrlContextExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
-
-            for content in &output_contents {
-                match content {
-                    Content::UrlContextCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(UrlContextExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(UrlContextExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::UrlContextResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(UrlContextExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(UrlContextExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            exchanges
-        }
-
-        /// Collects URL context tool call contents from the interaction outputs.
-        pub fn url_context_call_contents(&self) -> Vec<UrlContextCallContent> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects URL context result contents from the interaction outputs.
-        pub fn url_context_result_contents(&self) -> Vec<UrlContextResultContent> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all URLs from URL context tool calls in the outputs.
-        pub fn url_context_urls(&self) -> Vec<String> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.urls())
-                .collect()
-        }
-
-        /// Collects all URL context result entries from tool results in the outputs.
-        pub fn url_context_results(&self) -> Vec<UrlContextResult> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.result_items())
-                .collect()
-        }
-
-        /// Groups code execution tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn code_execution_exchanges(&self) -> Vec<CodeExecutionExchange> {
-            let mut exchanges: Vec<CodeExecutionExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
-
-            for content in &output_contents {
-                match content {
-                    Content::CodeExecutionCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(CodeExecutionExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(CodeExecutionExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::CodeExecutionResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(CodeExecutionExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(CodeExecutionExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            exchanges
-        }
-
-        /// Collects code execution tool call contents from the interaction outputs.
-        pub fn code_execution_call_contents(&self) -> Vec<CodeExecutionCallContent> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects code execution result contents from the interaction outputs.
-        pub fn code_execution_result_contents(&self) -> Vec<CodeExecutionResultContent> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all code snippets from code execution calls in the outputs.
-        pub fn code_execution_snippets(&self) -> Vec<String> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.code_snippets())
-                .collect()
-        }
-
-        /// Collects all code execution outputs from tool results in the outputs.
-        pub fn code_execution_outputs(&self) -> Vec<String> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.outputs())
-                .collect()
-        }
+        interaction_exchange_accessors!(
+            "code execution", CodeExecutionExchange, CodeExecutionCall, CodeExecutionResult,
+            code_execution_exchanges,
+            code_execution_call_contents -> CodeExecutionCallContent,
+            code_execution_result_contents -> CodeExecutionResultContent,
+            "Collects all code snippets from code execution calls in the outputs."
+                code_execution_snippets => code_snippets -> String,
+            "Collects all code execution outputs from tool results in the outputs."
+                code_execution_outputs => outputs -> String,
+        );
 
         /// Returns concatenated text outputs with inline citations appended.
         pub fn text_with_inline_citations(&self) -> Option<String> {
@@ -1361,7 +1186,7 @@ pub mod interactions_api_types {
     }
 
     /// Token usage metadata for an interaction.
-    #[derive(Clone, Debug, Deserialize, Serialize, Default)]
+    #[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
     #[serde(rename_all = "snake_case")]
     pub struct InteractionUsage {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1370,6 +1195,26 @@ pub mod interactions_api_types {
         pub total_output_tokens: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub total_tokens: Option<u64>,
+        /// Input tokens served from Gemini's cache.
+        ///
+        /// The Interactions wire has always reported this; rig had no field for
+        /// it, so `Usage::cached_input_tokens` was structurally zero on this
+        /// surface no matter what the provider said.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub total_cached_tokens: Option<u64>,
+        /// Tokens spent on internal thinking.
+        ///
+        /// Reported *outside* `total_output_tokens` on this surface, and it is
+        /// routinely the largest component: a recorded interaction reporting
+        /// `input=14, output=34, total=270` spent 222 of those tokens thinking.
+        /// Dropping it left the normalized triple unable to explain its own
+        /// total.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub total_thought_tokens: Option<u64>,
+        /// Prompt tokens attributed to built-in tool use (search grounding and
+        /// friends).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub total_tool_use_tokens: Option<u64>,
     }
 
     impl From<&InteractionUsage> for Usage {
@@ -1377,9 +1222,20 @@ pub mod interactions_api_types {
             let mut usage = Usage::new();
             usage.input_tokens = value.total_input_tokens.unwrap_or_default();
             usage.output_tokens = value.total_output_tokens.unwrap_or_default();
-            usage.total_tokens = value
-                .total_tokens
-                .unwrap_or(usage.input_tokens + usage.output_tokens);
+            usage.cached_input_tokens = value.total_cached_tokens.unwrap_or_default();
+            usage.reasoning_tokens = value.total_thought_tokens.unwrap_or_default();
+            usage.tool_use_prompt_tokens = value.total_tool_use_tokens.unwrap_or_default();
+            // The provider's own total is authoritative. The fallback sums every
+            // component rather than just input+output, because on this surface
+            // thinking and tool-use tokens are reported *beside* those two, not
+            // inside them — summing only the first pair understated the total by
+            // the whole thinking spend.
+            usage.total_tokens = value.total_tokens.unwrap_or(
+                usage.input_tokens
+                    + usage.output_tokens
+                    + usage.reasoning_tokens
+                    + usage.tool_use_prompt_tokens,
+            );
             usage
         }
     }
@@ -1404,8 +1260,17 @@ pub mod interactions_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum Step {
-        UserInput { content: Vec<Content> },
-        ModelOutput { content: Vec<Content> },
+        // `content` is defaulted: a streaming `step.start` announces the step
+        // with the content omitted (it follows in `step.delta` events), e.g.
+        // `{"type":"model_output"}` on the recorded wire.
+        UserInput {
+            #[serde(default)]
+            content: Vec<Content>,
+        },
+        ModelOutput {
+            #[serde(default)]
+            content: Vec<Content>,
+        },
         Thought(ThoughtContent),
         FunctionCall(FunctionCallContent),
         FunctionResult(FunctionResultContent),
@@ -1582,8 +1447,7 @@ pub mod interactions_api_types {
                     let index = source_order
                         .iter()
                         .position(|source| source == &citation.source)
-                        .map(|idx| idx + 1)
-                        .unwrap_or(0);
+                        .map_or(0, |idx| idx + 1);
                     (
                         citation.start_index,
                         citation.end_index,
@@ -1600,7 +1464,7 @@ pub mod interactions_api_types {
                 if index == 0 {
                     continue;
                 }
-                let citation = format!("[{}]({})", index, source);
+                let citation = format!("[{index}]({source})");
                 text.insert_str(end, &citation);
             }
 
@@ -1920,18 +1784,15 @@ pub mod interactions_api_types {
                         annotations: None,
                     }))
                 }
-                message::UserContent::ToolResult(message::ToolResult {
-                    id,
-                    call_id,
-                    content,
-                }) => {
-                    let Some(call_id) = call_id else {
-                        return Err(message::MessageError::ConversionError(
-                            "Tool results require call_id for Gemini Interactions API".to_string(),
-                        ));
-                    };
+                message::UserContent::ToolResult(tool_result) => {
+                    // The wire requires a call id: the provider-issued one
+                    // when it exists, else rig's minted handle — always
+                    // present, so the old "results require call_id" error
+                    // is unrepresentable.
+                    let call_id = tool_result.wire_call_id().to_owned();
+                    let name = tool_result.name;
 
-                    let mut contents = content.into_iter().collect::<Vec<_>>();
+                    let mut contents = tool_result.content.into_iter().collect::<Vec<_>>();
                     let result = if contents.len() == 1 {
                         let content = contents.pop().ok_or_else(|| {
                             message::MessageError::ConversionError(
@@ -1961,7 +1822,8 @@ pub mod interactions_api_types {
                     };
 
                     Ok(Self::FunctionResult(FunctionResultContent {
-                        name: Some(id),
+                        // The executed tool's name travels as required data.
+                        name: Some(name),
                         is_error: None,
                         result: Some(result),
                         call_id: Some(call_id),
@@ -1970,13 +1832,7 @@ pub mod interactions_api_types {
                 message::UserContent::Image(message::Image {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for image is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "image")?;
                     Ok(Self::Image(ImageContent {
                         data,
                         uri,
@@ -1987,13 +1843,7 @@ pub mod interactions_api_types {
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for audio is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "audio")?;
                     Ok(Self::Audio(AudioContent {
                         data,
                         uri,
@@ -2003,13 +1853,7 @@ pub mod interactions_api_types {
                 message::UserContent::Video(message::Video {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for video is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "video")?;
                     Ok(Self::Video(VideoContent {
                         data,
                         uri,
@@ -2069,8 +1913,7 @@ pub mod interactions_api_types {
                             annotations: None,
                         }));
                     }
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, Some(media_type), "document")?;
                     Ok(Self::Document(DocumentContent {
                         data,
                         uri,
@@ -2093,7 +1936,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
-                    let call_id = tool_call.call_id.unwrap_or_else(|| tool_call.id.clone());
+                    let call_id = tool_call.wire_call_id().to_owned();
                     Ok(Self::FunctionCall(FunctionCallContent {
                         name: Some(tool_call.function.name),
                         arguments: Some(tool_call.function.arguments),
@@ -2407,21 +2250,21 @@ pub mod interactions_api_types {
         },
         #[serde(rename = "step.start")]
         StepStart {
-            index: i32,
+            index: u32,
             step: Step,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
         #[serde(rename = "step.delta")]
         StepDelta {
-            index: i32,
+            index: u32,
             delta: ContentDelta,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
         #[serde(rename = "step.stop")]
         StepStop {
-            index: i32,
+            index: u32,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
@@ -2441,27 +2284,47 @@ pub mod interactions_api_types {
     }
 
     /// Content delta item in streaming events.
+    ///
+    /// Most deltas repeat a whole [`Content`] payload rather than a fragment of
+    /// one, so they reuse the `*Content` types directly; the wire tags come
+    /// from this enum's own `type` tagging. Only the variants whose payloads
+    /// genuinely differ from their `Content` counterpart — a partial text run,
+    /// a raw arguments fragment, and the identity-less thought deltas — carry
+    /// their own struct.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ContentDelta {
         Text(TextDelta),
-        Image(ImageDelta),
-        Audio(AudioDelta),
-        Document(DocumentDelta),
-        Video(VideoDelta),
+        Image(ImageContent),
+        Audio(AudioContent),
+        Document(DocumentContent),
+        Video(VideoContent),
         ThoughtSummary(ThoughtSummaryDelta),
         ThoughtSignature(ThoughtSignatureDelta),
-        FunctionCall(FunctionCallDelta),
-        FunctionResult(FunctionResultDelta),
-        CodeExecutionCall(CodeExecutionCallDelta),
-        CodeExecutionResult(CodeExecutionResultDelta),
-        UrlContextCall(UrlContextCallDelta),
-        UrlContextResult(UrlContextResultDelta),
-        GoogleSearchCall(GoogleSearchCallDelta),
-        GoogleSearchResult(GoogleSearchResultDelta),
-        McpServerToolCall(McpServerToolCallDelta),
-        McpServerToolResult(McpServerToolResultDelta),
-        FileSearchResult(FileSearchResultDelta),
+        FunctionCall(FunctionCallContent),
+        ArgumentsDelta(ArgumentsDelta),
+        FunctionResult(FunctionResultContent),
+        CodeExecutionCall(CodeExecutionCallContent),
+        CodeExecutionResult(CodeExecutionResultContent),
+        UrlContextCall(UrlContextCallContent),
+        UrlContextResult(UrlContextResultContent),
+        GoogleSearchCall(GoogleSearchCallContent),
+        GoogleSearchResult(GoogleSearchResultContent),
+        McpServerToolCall(McpServerToolCallContent),
+        McpServerToolResult(McpServerToolResultContent),
+        FileSearchResult(FileSearchResultContent),
+    }
+
+    /// Streaming function-call arguments fragment: the wire fragments a
+    /// `function_call` step's arguments as raw JSON text across
+    /// `arguments_delta` events at the step's index (recorded live in
+    /// `streaming_grammar/interactions_same_tool_twice`; the `step.start`
+    /// announces the call with `"arguments": {}` and the real payload
+    /// arrives here).
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ArgumentsDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<String>,
     }
 
     /// Streaming text delta.
@@ -2471,54 +2334,6 @@ pub mod interactions_api_types {
         pub text: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub annotations: Option<Vec<Annotation>>,
-    }
-
-    /// Streaming image delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ImageDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub resolution: Option<MediaResolution>,
-    }
-
-    /// Streaming audio delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct AudioDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-    }
-
-    /// Streaming document delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct DocumentDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-    }
-
-    /// Streaming video delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct VideoDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub resolution: Option<MediaResolution>,
     }
 
     /// Streaming thought summary delta.
@@ -2532,135 +2347,11 @@ pub mod interactions_api_types {
     pub struct ThoughtSignatureDelta {
         pub signature: String,
     }
-
-    /// Streaming function call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FunctionCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming function result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FunctionResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-    }
-
-    /// Streaming code execution call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct CodeExecutionCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<CodeExecutionCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming code execution result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct CodeExecutionResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming URL context call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct UrlContextCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<UrlContextCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming URL context result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct UrlContextResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<UrlContextResult>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming Google Search call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct GoogleSearchCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<GoogleSearchCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming Google Search result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct GoogleSearchResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<GoogleSearchResult>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming MCP server tool call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct McpServerToolCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub server_name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming MCP server tool result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct McpServerToolResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub server_name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming file search result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FileSearchResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<FileSearchResult>>,
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OneOrMany;
     use crate::completion::{CompletionRequest, Message};
     use crate::message::{self, ToolChoice as MessageToolChoice};
     use serde_json::json;
@@ -2668,14 +2359,14 @@ mod tests {
     #[test]
     fn test_create_request_body_simple() {
         let prompt = Message::User {
-            content: OneOrMany::one(message::UserContent::text("Hello")),
+            content: vec![message::UserContent::text("Hello")],
         };
 
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: Some("Be precise.".to_string()),
-            chat_history: OneOrMany::one(prompt),
+            chat_history: vec![prompt],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2715,28 +2406,151 @@ mod tests {
         }
     }
 
+    /// `functionResponse.name` is the executed function's name: read from
+    /// the required `ToolResult::name` — never an identifier.
     #[test]
-    fn test_tool_result_requires_call_id() {
+    fn tool_result_serializes_the_executed_name_not_an_identifier() {
+        use message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
+
+        let call = |item_id: Option<&str>, call_id: &str, name: &str| {
+            let function = ToolFunction {
+                name: name.to_owned(),
+                arguments: json!({}),
+            };
+            let tool_call = match item_id {
+                Some(item_id) => ToolCall::from_dual_wire(item_id, call_id, function),
+                None => ToolCall::from_wire(call_id, function),
+            };
+            Message::Assistant {
+                id: None,
+                content: vec![AssistantContent::ToolCall(tool_call)],
+            }
+        };
+        let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
+            content: vec![match item_id {
+                Some(item_id) => message::UserContent::tool_result_with_call_id(
+                    item_id,
+                    call_id,
+                    name,
+                    vec![ToolResultContent::text("out")],
+                ),
+                None => message::UserContent::tool_result_from_wire(
+                    call_id,
+                    name,
+                    vec![ToolResultContent::text("out")],
+                ),
+            }],
+        };
+
+        let request = CompletionRequest {
+            record_telemetry_content: false,
+            model: None,
+            preamble: None,
+            chat_history: vec![
+                // A driver-built result carries the executed name (a repair
+                // hook renamed the call: `sum` ran, not `add`).
+                call(None, "call_1", "sum"),
+                result(None, "call_1", "sum"),
+                // An OpenAI-shaped correlator travels as the call id while
+                // the required `name` field carries the executed name —
+                // `call_abc` must never reach the wire as a name.
+                call(None, "call_abc", "get_weather"),
+                result(None, "call_abc", "get_weather"),
+                // A dual-identifier result (OpenAI Responses: item id `fc_…`
+                // + `call_id` `call_…`) keeps the correlator on the wire and
+                // the executed name in `name` — `fc_1` must never reach the
+                // wire as a name.
+                call(Some("fc_1"), "call_9", "get_time"),
+                result(Some("fc_1"), "call_9", "get_time"),
+            ],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_request_body("gemini-2.5-flash".to_string(), request, None)
+            .expect("request should build");
+        let input = serde_json::to_value(&body.input).expect("input should serialize");
+        let mut names = Vec::new();
+        let mut call_ids = Vec::new();
+        fn collect(value: &serde_json::Value, names: &mut Vec<String>, call_ids: &mut Vec<String>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    if map.get("type").and_then(|t| t.as_str()) == Some("function_result") {
+                        if let Some(name) = map.get("name").and_then(|n| n.as_str()) {
+                            names.push(name.to_owned());
+                        }
+                        if let Some(call_id) = map.get("call_id").and_then(|c| c.as_str()) {
+                            call_ids.push(call_id.to_owned());
+                        }
+                    }
+                    for nested in map.values() {
+                        collect(nested, names, call_ids);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for nested in items {
+                        collect(nested, names, call_ids);
+                    }
+                }
+                _ => {}
+            }
+        }
+        collect(&input, &mut names, &mut call_ids);
+
+        assert_eq!(
+            names,
+            vec![
+                "sum".to_owned(),
+                "get_weather".to_owned(),
+                "get_time".to_owned()
+            ]
+        );
+        assert_eq!(
+            call_ids,
+            vec![
+                "call_1".to_owned(),
+                "call_abc".to_owned(),
+                "call_9".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tool_result_without_provider_id_sends_minted_call_id() {
+        // A call id is always available now: the wire gets the
+        // provider-issued id when one exists, else rig's minted handle —
+        // the old "Tool results require call_id" error is unrepresentable.
+        let call = message::ToolCallId::mint();
         let content = message::UserContent::ToolResult(message::ToolResult {
-            id: "get_weather".to_string(),
-            call_id: None,
-            content: OneOrMany::one(message::ToolResultContent::text("ok")),
+            call: call.clone(),
+            provider: None,
+            name: "get_weather".to_string(),
+            content: vec![message::ToolResultContent::text("ok")],
         });
 
-        let err = Content::try_from(content).expect_err("should require call_id");
-        assert!(format!("{err}").contains("call_id"));
+        let converted = Content::try_from(content).expect("tool result should convert");
+        let Content::FunctionResult(result) = converted else {
+            panic!("expected function result");
+        };
+        assert_eq!(result.call_id.as_deref(), Some(call.as_str()));
+        assert_eq!(result.name.as_deref(), Some("get_weather"));
     }
 
     #[test]
     fn test_tool_result_preserves_text_and_json_types() {
         let content = message::UserContent::ToolResult(message::ToolResult {
-            id: "get_weather".to_string(),
-            call_id: Some("call-123".to_string()),
-            content: OneOrMany::many(vec![
+            call: message::ToolCallId::new_or_mint("call-123"),
+            provider: message::ProviderCallId::new("call-123"),
+            name: "get_weather".to_string(),
+            content: vec![
                 message::ToolResultContent::text(r#"{"status":"literal"}"#),
                 message::ToolResultContent::json(json!({ "status": "structured" })),
-            ])
-            .expect("tool result content is non-empty"),
+            ],
         });
 
         let converted = Content::try_from(content).expect("tool result should convert");
@@ -2785,9 +2599,10 @@ mod tests {
 
         for (tool_content, expected) in cases {
             let content = message::UserContent::ToolResult(message::ToolResult {
-                id: "get_weather".to_string(),
-                call_id: Some("call-123".to_string()),
-                content: OneOrMany::one(tool_content),
+                call: message::ToolCallId::new_or_mint("call-123"),
+                provider: message::ProviderCallId::new("call-123"),
+                name: "get_weather".to_string(),
+                content: vec![tool_content],
             });
 
             let Content::FunctionResult(result) =
@@ -2825,9 +2640,10 @@ mod tests {
 
         for (tool_content, expected) in cases {
             let content = message::UserContent::ToolResult(message::ToolResult {
-                id: "get_weather".to_string(),
-                call_id: Some("call-123".to_string()),
-                content: OneOrMany::one(tool_content),
+                call: message::ToolCallId::new_or_mint("call-123"),
+                provider: message::ProviderCallId::new("call-123"),
+                name: "get_weather".to_string(),
+                content: vec![tool_content],
             });
 
             let Content::FunctionResult(result) =
@@ -2842,9 +2658,10 @@ mod tests {
     #[test]
     fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
         let tool_result = message::UserContent::ToolResult(message::ToolResult {
-            id: "render".to_string(),
-            call_id: Some("call-image".to_string()),
-            content: OneOrMany::many(vec![
+            call: message::ToolCallId::new_or_mint("call-image"),
+            provider: message::ProviderCallId::new("call-image"),
+            name: "render".to_string(),
+            content: vec![
                 message::ToolResultContent::image_base64(
                     "first-image",
                     Some(message::ImageMediaType::PNG),
@@ -2859,16 +2676,15 @@ mod tests {
                     detail: None,
                     additional_params: None,
                 }),
-            ])
-            .expect("tool result content should be non-empty"),
+            ],
         });
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(tool_result),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![tool_result],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2921,6 +2737,7 @@ mod tests {
                 total_input_tokens: Some(5),
                 total_output_tokens: Some(7),
                 total_tokens: Some(12),
+                ..Default::default()
             }),
             ..Default::default()
         };
@@ -2930,9 +2747,13 @@ mod tests {
 
         let choice = response.choice.first();
         match choice {
-            completion::AssistantContent::ToolCall(tool_call) => {
+            Some(completion::AssistantContent::ToolCall(tool_call)) => {
                 assert_eq!(tool_call.function.name, "get_weather");
-                assert_eq!(tool_call.call_id.as_deref(), Some("call-123"));
+                assert_eq!(tool_call.id, "call-123");
+                assert_eq!(
+                    tool_call.provider.as_ref().expect("wire id").call_id,
+                    "call-123"
+                );
             }
             other => panic!("unexpected content: {other:?}"),
         }
@@ -3561,5 +3382,87 @@ mod tests {
             cited_text.as_deref(),
             Some("Hello[1](https://hello.example) world[2](https://example.com)")
         );
+    }
+}
+
+#[cfg(test)]
+mod interaction_usage_tests {
+    use super::interactions_api_types::InteractionUsage;
+    use crate::completion::Usage;
+
+    /// Shape taken verbatim from a committed cassette
+    /// (`tests/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`).
+    /// Note that input + output is 48 while the provider's own total is 270 —
+    /// the missing 222 is thinking, reported beside the pair rather than inside
+    /// it.
+    fn recorded() -> InteractionUsage {
+        serde_json::from_value(serde_json::json!({
+            "total_input_tokens": 14,
+            "total_output_tokens": 34,
+            "total_tokens": 270,
+            "total_cached_tokens": 0,
+            "total_thought_tokens": 222,
+            "total_tool_use_tokens": 0,
+        }))
+        .expect("recorded usage should deserialize")
+    }
+
+    /// Before this mapping existed, `reasoning_tokens` was 0 here and the
+    /// normalized triple could not explain its own total.
+    #[test]
+    fn thinking_tokens_survive_the_interactions_mapping() {
+        let usage = Usage::from(&recorded());
+        assert_eq!(usage.input_tokens, 14);
+        assert_eq!(usage.output_tokens, 34);
+        assert_eq!(usage.total_tokens, 270);
+        assert_eq!(usage.reasoning_tokens, 222);
+        assert_eq!(
+            usage.input_tokens + usage.output_tokens + usage.reasoning_tokens,
+            usage.total_tokens,
+            "the components should account for the provider's total"
+        );
+    }
+
+    /// The Interactions wire reports `total_cached_tokens`; rig had no field for
+    /// it, so this surface reported zero cached tokens no matter what Gemini
+    /// said.
+    #[test]
+    fn cached_tokens_survive_the_interactions_mapping() {
+        let mut wire = recorded();
+        wire.total_cached_tokens = Some(9_000);
+        assert_eq!(Usage::from(&wire).cached_input_tokens, 9_000);
+    }
+
+    #[test]
+    fn tool_use_tokens_survive_the_interactions_mapping() {
+        let mut wire = recorded();
+        wire.total_tool_use_tokens = Some(77);
+        assert_eq!(Usage::from(&wire).tool_use_prompt_tokens, 77);
+    }
+
+    /// With no provider total, the fallback must count every component. Summing
+    /// only input+output understated the total by the whole thinking spend.
+    #[test]
+    fn the_total_fallback_counts_thinking_and_tool_use() {
+        let mut wire = recorded();
+        wire.total_tokens = None;
+        wire.total_tool_use_tokens = Some(5);
+        assert_eq!(Usage::from(&wire).total_tokens, 14 + 34 + 222 + 5);
+    }
+
+    /// A wire that omits the new fields entirely must still map, so an older
+    /// recorded interaction keeps replaying.
+    #[test]
+    fn the_older_three_field_shape_still_maps() {
+        let wire: InteractionUsage = serde_json::from_value(serde_json::json!({
+            "total_input_tokens": 3,
+            "total_output_tokens": 4,
+            "total_tokens": 7,
+        }))
+        .expect("the three-field shape should still deserialize");
+        let usage = Usage::from(&wire);
+        assert_eq!(usage.total_tokens, 7);
+        assert_eq!(usage.reasoning_tokens, 0);
+        assert_eq!(usage.cached_input_tokens, 0);
     }
 }

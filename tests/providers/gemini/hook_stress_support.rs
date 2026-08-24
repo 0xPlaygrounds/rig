@@ -177,7 +177,7 @@ impl EventTap {
         self.run_ids
             .lock()
             .expect("run_ids")
-            .insert(ctx.run_id().as_str().to_string());
+            .insert(ctx.run_id().to_string());
         *self.streaming.lock().expect("streaming") = Some(ctx.is_streaming());
         *self.agent_name.lock().expect("agent_name") = ctx.agent_name().map(str::to_string);
         self.breadcrumbs
@@ -287,11 +287,7 @@ impl AgentHook for ScratchpadReader {
         ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        let tally = ctx
-            .scratchpad()
-            .get::<ToolCallTally>()
-            .map(|t| t.0)
-            .unwrap_or(0);
+        let tally = ctx.scratchpad().get::<ToolCallTally>().map_or(0, |t| t.0);
         self.tallies.lock().expect("tallies").push(tally);
         ModelTurnAction::continue_run()
     }

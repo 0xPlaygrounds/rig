@@ -24,11 +24,21 @@ async fn nano_banana_image_generation_smoke() {
                 "expected non-empty generated image bytes"
             );
             assert_eq!(
-                response.response.model_version.as_deref(),
+                response.model.as_deref(),
                 Some(gemini::GEMINI_2_5_FLASH_IMAGE),
                 "expected Gemini response to identify the image model"
             );
         },
     )
     .await;
+
+    // rig#2322 — the image request literal seeded itself with
+    // `..Default::default()`, so every Gemini image generation shipped a
+    // hardcoded `maxOutputTokens: 4096` and `temperature: 1.0` that no caller
+    // asked for. Image output is billed and limited in tokens, so an injected
+    // cap here is a real truncation risk, not a harmless extra field.
+    super::super::support::assert_recorded_sampling_fields(
+        "image_generation/nano_banana_image_generation_smoke",
+        &[],
+    );
 }

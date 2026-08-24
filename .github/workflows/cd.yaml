@@ -6,38 +6,52 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  RUST_VERSION: 1.94.0
+# The full-suite gate makes this workflow run ~25-30 minutes before
+# release-plz starts, so two pushes landing minutes apart (e.g. consecutive
+# merge-queue batches) would otherwise reach release-plz concurrently and
+# race on release-PR creation and crates.io publishes. Serialize runs per
+# ref; `cancel-in-progress: false` because a run that may already be
+# publishing must never be killed mid-release — later pushes queue behind it
+# and release the superset.
+concurrency:
+  group: release-plz-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  # No `secrets: inherit` on either gate call: the test lanes are hermetic
+  # (cassette replay, dummy keys, `#[ignore]`-gated live tests) and reference
+  # no secrets, so inheriting them into jobs that execute the whole test
+  # suite would be pure exfiltration surface.
   run-ci:
     permissions:
       checks: write
     uses: ./.github/workflows/ci.yaml
-    secrets: inherit
+
+  # ci.yaml is the fast PR gate; the `--all-features` suite (Docker-backed
+  # vector-store integrations, the facade build guard) lives in nightly.yaml.
+  # Calling it here keeps the pre-split guarantee: release-plz never runs on
+  # a commit the full suite has not passed.
+  run-full-ci:
+    uses: ./.github/workflows/nightly.yaml
 
   release-plz:
     name: Release-plz
-    needs: run-ci
+    needs: [run-ci, run-full-ci]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
+      # protoc: required when release-plz checks or packages rig-lancedb.
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: ${{ env.RUST_VERSION }}
-          cache: true
-
-      # Required to compile rig-lancedb
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          protoc: "true"
 
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5

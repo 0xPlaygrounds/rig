@@ -9,7 +9,6 @@ use crate::{
 
 /// Normalized classification for a tool execution error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum ToolErrorKind {
     /// Arguments could not be decoded or validated.
     InvalidArgs,
@@ -32,45 +31,77 @@ pub enum ToolErrorKind {
     Other,
 }
 
-impl ToolErrorKind {
-    /// Stable machine-readable name.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgs => "invalid_args",
-            Self::Timeout => "timeout",
-            Self::Cancelled => "cancelled",
-            Self::NotFound => "not_found",
-            Self::PermissionDenied => "permission_denied",
-            Self::RateLimited => "rate_limited",
-            Self::Provider => "provider",
-            Self::Network => "network",
-            Self::Other => "other",
-        }
-    }
-
-    const fn default_retryable(self) -> Option<bool> {
-        match self {
-            Self::Timeout | Self::RateLimited | Self::Network => Some(true),
-            Self::InvalidArgs | Self::Cancelled | Self::NotFound | Self::PermissionDenied => {
-                Some(false)
+// One row per kind: (stable name, default retryability, default model
+// feedback). The macro emits the three parallel accessors from the single
+// table so a new kind cannot update one and miss another.
+macro_rules! kind_defaults {
+    ($($variant:ident => ($name:literal, $retryable:expr, $feedback:literal)),+ $(,)?) => {
+        impl ToolErrorKind {
+            /// Stable machine-readable name.
+            pub const fn as_str(self) -> &'static str {
+                match self { $(Self::$variant => $name,)+ }
             }
-            Self::Provider | Self::Other => None,
-        }
-    }
 
-    const fn default_model_feedback(self) -> &'static str {
-        match self {
-            Self::InvalidArgs => "tool arguments were invalid",
-            Self::Timeout => "tool execution timed out",
-            Self::Cancelled => "tool execution was cancelled",
-            Self::NotFound => "the requested tool or resource was not found",
-            Self::PermissionDenied => "the tool denied the request",
-            Self::RateLimited => "the tool was rate limited; try again later",
-            Self::Provider => "the tool provider failed",
-            Self::Network => "the tool could not reach its upstream service",
-            Self::Other => "the tool failed",
+            const fn default_retryable(self) -> Option<bool> {
+                match self { $(Self::$variant => $retryable,)+ }
+            }
+
+            const fn default_model_feedback(self) -> &'static str {
+                match self { $(Self::$variant => $feedback,)+ }
+            }
         }
-    }
+    };
+}
+
+kind_defaults! {
+    InvalidArgs => ("invalid_args", Some(false), "tool arguments were invalid"),
+    Timeout => ("timeout", Some(true), "tool execution timed out"),
+    Cancelled => ("cancelled", Some(false), "tool execution was cancelled"),
+    NotFound => ("not_found", Some(false), "the requested tool or resource was not found"),
+    PermissionDenied => ("permission_denied", Some(false), "the tool denied the request"),
+    RateLimited => ("rate_limited", Some(true), "the tool was rate limited; try again later"),
+    Provider => ("provider", None, "the tool provider failed"),
+    Network => ("network", Some(true), "the tool could not reach its upstream service"),
+    Other => ("other", None, "the tool failed"),
+}
+
+// One `ToolExecutionError` constructor per kind, from a single table so a new
+// kind cannot miss its shorthand. `refused` stays hand-written because it also
+// sets the refusal disposition.
+macro_rules! kind_ctors {
+    ($($(#[$doc:meta])* $ctor:ident => $variant:ident),+ $(,)?) => {
+        impl ToolExecutionError {
+            $($(#[$doc])*
+            pub fn $ctor(message: impl Into<String>) -> Self {
+                Self::new(ToolErrorKind::$variant, message)
+            })+
+        }
+    };
+}
+
+kind_ctors! {
+    /// Invalid arguments.
+    invalid_args => InvalidArgs,
+    /// Timeout.
+    timeout => Timeout,
+    /// Cancellation.
+    cancelled => Cancelled,
+    /// Missing tool or resource.
+    not_found => NotFound,
+    /// An authorization or permission failure.
+    ///
+    /// This is an ordinary execution error. Use [`Self::refused`] when the tool
+    /// intentionally declines the operation so hooks and telemetry can preserve
+    /// the refusal as a distinct disposition.
+    permission_denied => PermissionDenied,
+    /// Rate limit.
+    rate_limited => RateLimited,
+    /// Upstream provider failure.
+    provider => Provider,
+    /// Network failure.
+    network => Network,
+    /// Catch-all failure.
+    other => Other,
 }
 
 impl std::fmt::Display for ToolErrorKind {
@@ -119,35 +150,6 @@ impl ToolExecutionError {
         }
     }
 
-    /// Invalid arguments.
-    pub fn invalid_args(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::InvalidArgs, message)
-    }
-
-    /// Timeout.
-    pub fn timeout(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Timeout, message)
-    }
-
-    /// Cancellation.
-    pub fn cancelled(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Cancelled, message)
-    }
-
-    /// Missing tool or resource.
-    pub fn not_found(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::NotFound, message)
-    }
-
-    /// An authorization or permission failure.
-    ///
-    /// This is an ordinary execution error. Use [`Self::refused`] when the tool
-    /// intentionally declines the operation so hooks and telemetry can preserve
-    /// the refusal as a distinct disposition.
-    pub fn permission_denied(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::PermissionDenied, message)
-    }
-
     /// An intentional, tool-authored refusal.
     ///
     /// Refusals use the normalized [`ToolErrorKind::PermissionDenied`] kind but
@@ -156,26 +158,6 @@ impl ToolExecutionError {
         let mut error = Self::new(ToolErrorKind::PermissionDenied, message);
         error.refusal = true;
         error
-    }
-
-    /// Rate limit.
-    pub fn rate_limited(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::RateLimited, message)
-    }
-
-    /// Upstream provider failure.
-    pub fn provider(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Provider, message)
-    }
-
-    /// Network failure.
-    pub fn network(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Network, message)
-    }
-
-    /// Catch-all failure.
-    pub fn other(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Other, message)
     }
 
     /// Build a safely presented `Other` error from a concrete source.

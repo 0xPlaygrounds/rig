@@ -41,8 +41,8 @@ subtract tool to subtract 5 from it. Then state the final number in one short se
 /// it appeared at plus the identifiers needed to pair calls with results.
 struct ToolEvent {
     message_index: usize,
-    name_or_id: String,
-    call_id: Option<String>,
+    name: String,
+    call_id: String,
 }
 
 fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
@@ -53,8 +53,8 @@ fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_call.function.name.clone(),
-                        call_id: tool_call.call_id.clone().or(Some(tool_call.id.clone())),
+                        name: tool_call.function.name.clone(),
+                        call_id: tool_call.id.to_string(),
                     });
                 }
             }
@@ -71,8 +71,8 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
                 if let UserContent::ToolResult(tool_result) = item {
                     results.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_result.id.clone(),
-                        call_id: tool_result.call_id.clone().or(Some(tool_result.id.clone())),
+                        name: tool_result.name.clone(),
+                        call_id: tool_result.call.to_string(),
                     });
                 }
             }
@@ -88,7 +88,7 @@ fn result_index_for_call(results: &[ToolEvent], call: &ToolEvent) -> usize {
         .unwrap_or_else(|| {
             panic!(
                 "chat history is missing the tool result answering call {:?} (call_id {:?})",
-                call.name_or_id, call.call_id
+                call.name, call.call_id
             )
         })
         .message_index
@@ -119,11 +119,11 @@ async fn sequential_tool_calls_nonstreaming() {
             let results = history_tool_results(&history);
             let add_call = calls
                 .iter()
-                .find(|call| call.name_or_id == Adder::NAME)
+                .find(|call| call.name == Adder::NAME)
                 .expect("history should contain an add tool call");
             let subtract_call = calls
                 .iter()
-                .find(|call| call.name_or_id == Subtract::NAME)
+                .find(|call| call.name == Subtract::NAME)
                 .expect("history should contain a subtract tool call");
             let add_result_index = result_index_for_call(&results, add_call);
             let subtract_result_index = result_index_for_call(&results, subtract_call);
@@ -245,7 +245,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
                 "expected exactly two tool calls in history, got {:?}",
                 calls
                     .iter()
-                    .map(|call| call.name_or_id.as_str())
+                    .map(|call| call.name.as_str())
                     .collect::<Vec<_>>()
             );
             assert_eq!(results.len(), 2, "expected exactly two tool results");
@@ -328,10 +328,10 @@ async fn long_history_replay_nonstreaming() {
                     _ => None,
                 })
                 .expect("first turn should call lookup_harbor_label");
-            let call_id = tool_call
-                .call_id
-                .clone()
-                .unwrap_or_else(|| tool_call.id.clone());
+            let call_id = tool_call.provider.as_ref().map_or_else(
+                || tool_call.id.to_string(),
+                |provider| provider.call_id.clone(),
+            );
 
             // Follow-up: replay a long client-owned history around that tool
             // roundtrip. The tool call is re-tagged with a local item ID (not
@@ -350,18 +350,19 @@ async fn long_history_replay_nonstreaming() {
                 .message(Message::user("Now look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: rig::OneOrMany::one(AssistantContent::tool_call_with_call_id(
+                    content: vec![AssistantContent::tool_call_with_call_id(
                         "history_tool_1",
                         call_id.clone(),
                         AlphaSignal::NAME,
                         serde_json::json!({}),
-                    )),
+                    )],
                 })
-                .message(Message::tool_result_with_call_id(
+                .message(Message::from(UserContent::tool_result_with_call_id(
                     "history_tool_1",
-                    Some(call_id),
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
+                    call_id,
+                    AlphaSignal::NAME,
+                    vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+                )))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();

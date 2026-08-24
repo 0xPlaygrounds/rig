@@ -100,6 +100,51 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
     .await;
 }
 
+/// Extended thinking and a 1h static prefix coexist: thinking params ride
+/// `additional_params` while the knob adds prefix `cache_control` markers.
+#[tokio::test]
+async fn static_prefix_ttl_coexists_with_extended_thinking() {
+    with_anthropic_cassette(
+        "messages_thinking/static_prefix_ttl_coexists_with_extended_thinking",
+        |client| async move {
+            let model = client
+                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_automatic_caching()
+                .with_static_prefix_cache_ttl(
+                    rig::providers::anthropic::completion::CacheTtl::OneHour,
+                );
+
+            // The preamble must clear the model's minimum cacheable prompt
+            // length or the API silently skips caching and the recorded
+            // counters prove nothing.
+            let padding = "This thinking cache fixture paragraph is stable provider test \
+                           padding about request routing, tool schemas, system instructions, \
+                           and deterministic replay behavior. "
+                .repeat(60);
+            let request = model
+                .completion_request(redacted_thinking_prompt())
+                .preamble(format!(
+                    "You are a deterministic cassette test assistant for the \
+                     static-prefix thinking scenario.\n{padding}"
+                ))
+                .max_tokens(4096)
+                .additional_params(thinking_params())
+                .build();
+            let response = model
+                .completion(request)
+                .await
+                .expect("extended thinking with a 1h static prefix should succeed");
+
+            assert!(
+                response.choice.iter().any(has_redacted_reasoning),
+                "the magic string must surface a redacted reasoning block, got {:?}",
+                response.choice
+            );
+        },
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn redacted_thinking_streaming() {
     with_anthropic_cassette(
@@ -122,7 +167,7 @@ async fn redacted_thinking_streaming() {
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    StreamedAssistantContent::Reasoning(reasoning) => {
+                    StreamedAssistantContent::Reasoning { reasoning, .. } => {
                         if reasoning
                             .content
                             .iter()

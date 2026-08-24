@@ -25,9 +25,9 @@
 //! supported with no feature flags to set — the relaxed async bounds follow
 //! from the target alone.
 //!
-//! The `rmcp` feature is unavailable on wasm: rmcp's `ClientHandler` requires
-//! `Send + Sync` unconditionally, which this crate's wasm tool registry cannot
-//! satisfy, so asking for it there raises a targeted `compile_error!`. WASI
+//! MCP tool support lives in the companion `rig-rmcp` crate, which is
+//! native-only (rmcp's `ClientHandler` requires `Send + Sync` unconditionally,
+//! which rig's wasm tool registry cannot satisfy). WASI
 //! (`wasm32-wasip1`/`wasip2`) is **not supported**: the dependency graph does
 //! not build for it. See the crate README for the full matrix and the
 //! reasoning.
@@ -43,18 +43,18 @@ extern crate self as rig;
 /// Portable `rig-core` root items are reachable here, but deliberately *not*
 /// at the `rig_agent` crate root — adding a root export to `rig-core` must not
 /// silently add one to `rig-agent`. A stable `rig-core` root export
-/// ([`rig_core::OneOrMany`]) demonstrates both halves of that invariant (the
+/// ([`rig_core::Embed`]) demonstrates both halves of that invariant (the
 /// two doctests below enforce it):
 ///
 /// ```
 /// // Reachable through the explicit `core` namespace.
-/// use rig_agent::core::OneOrMany;
-/// let _reachable: Option<OneOrMany<u8>> = None;
+/// use rig_agent::core::Embed;
+/// fn _reachable<T: Embed>() {}
 /// ```
 ///
 /// ```compile_fail
 /// // NOT reachable at the `rig_agent` crate root.
-/// use rig_agent::OneOrMany as _;
+/// use rig_agent::Embed as _;
 /// ```
 pub mod core {
     pub use rig_core::*;
@@ -76,7 +76,7 @@ pub mod test_utils;
 pub mod tool;
 
 pub use agent::{
-    Agent, AgentBuilder, AgentHook, AgentRun, AgentRunner, HookContext, ModelHandle,
+    Agent, AgentBuilder, AgentHook, AgentRun, AgentRunner, HookContext, ModelHandle, ModelRef,
     ModelSelection, ModelSelectionAction,
 };
 pub use extractor::ExtractionResponse;
@@ -87,3 +87,17 @@ pub use rig_derive::rig_tool;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::rig_tool as tool_macro;
+
+// Compile-time thread-safety contract: the agent surface must be safe to hold
+// in shared host state (worker pools, ECS resources) on native targets.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<Agent>();
+    assert_send_sync_static::<AgentRunner>();
+    assert_send_sync_static::<ModelHandle>();
+    assert_send_sync_static::<agent::MultiTurnStreamItem>();
+    assert_send_sync_static::<agent::RunEvents>();
+    assert_send_sync_static::<agent::PromptResponse>();
+    assert_send_sync_static::<tool::server::ToolServerHandle>();
+};

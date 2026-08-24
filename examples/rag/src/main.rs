@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::providers::openai::client::Client;
+use rig::providers::openai::Client;
 use rig::{
     Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::openai,
     vector_store::in_memory_store::InMemoryVectorStore,

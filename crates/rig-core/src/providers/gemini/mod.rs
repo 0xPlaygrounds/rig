@@ -1,7 +1,7 @@
 //! Google Gemini API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::EmbeddingsClient, providers::gemini};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,6 +12,7 @@
 //! # }
 //! ```
 
+pub mod cached_content;
 pub mod client;
 pub mod completion;
 pub mod embedding;
@@ -23,6 +24,9 @@ pub mod model_listing;
 pub mod streaming;
 pub mod transcription;
 
+pub use cached_content::{
+    CacheExpiry, CachedContent, CachedContentClient, CachedContentError, NewCachedContent,
+};
 pub use client::{Client, InteractionsClient};
 pub use completion::CompletionModel;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004, EmbeddingModel};

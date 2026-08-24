@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.41.0...rig-sqlite-v0.42.0) - 2026-08-16
+
+### Other
+
+- reconcile the changelogs and the migration guide with what actually merged ([#2353](https://github.com/0xPlaygrounds/rig/pull/2353)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2353
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Fixed
+
+- *(sqlite)* a filter built from `SqliteSearchFilter::default()` now composes instead of erroring. `default()` produced an internal `Raw { condition: "1 = 1" }` node that was special-cased only at the top level; nested under `or` it reached the document-table renderer and failed with `SQLite filter cannot be safely lowered; raw filters cannot be validated as document-table constraints` — so `SqliteSearchFilter::default().or(other)`, the natural way to fold filters, died on a message naming a concept the public API never exposed. The default is now a dedicated no-op node: it contributes no constraint at the top level and renders as the tautology `1 = 1` when it is composed under `and`/`or`/`not` on the document path, pinned by `default_filter_composes_under_or_as_a_tautology`
+
+### Changed
+
+- *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
+
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.39.0...rig-sqlite-v0.40.0) - 2026-07-10
 
 ### Other

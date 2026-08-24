@@ -1,6 +1,6 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
-use super::{image::RigImage, json::AwsDocument};
+use super::{converse_output::ToolResultContentBlock, image::RigImage, json::AwsDocument};
 use rig_core::{
     completion::CompletionError,
     message::{Text, ToolResultContent},
@@ -37,22 +37,19 @@ impl TryFrom<RigToolResultContent> for aws_bedrock::ToolResultContentBlock {
     }
 }
 
-impl TryFrom<aws_bedrock::ToolResultContentBlock> for RigToolResultContent {
+impl TryFrom<ToolResultContentBlock> for RigToolResultContent {
     type Error = CompletionError;
 
-    fn try_from(value: aws_bedrock::ToolResultContentBlock) -> Result<Self, Self::Error> {
+    fn try_from(value: ToolResultContentBlock) -> Result<Self, Self::Error> {
         match value {
-            aws_bedrock::ToolResultContentBlock::Image(image) => {
+            ToolResultContentBlock::Image(image) => {
                 let image: RigImage = image.try_into()?;
                 Ok(RigToolResultContent(ToolResultContent::Image(image.0)))
             }
-            aws_bedrock::ToolResultContentBlock::Json(document) => {
-                let json: serde_json::Value = AwsDocument(document).into();
-                Ok(RigToolResultContent(ToolResultContent::Json {
-                    value: json,
-                }))
+            ToolResultContentBlock::Json(value) => {
+                Ok(RigToolResultContent(ToolResultContent::Json { value }))
             }
-            aws_bedrock::ToolResultContentBlock::Text(text) => Ok(RigToolResultContent(
+            ToolResultContentBlock::Text(text) => Ok(RigToolResultContent(
                 ToolResultContent::Text(Text::new(text)),
             )),
             _ => Err(CompletionError::ProviderError(
@@ -71,7 +68,13 @@ mod tests {
         message::{DocumentSourceKind, Image, ImageMediaType, Text, ToolResultContent},
     };
 
-    use crate::types::tool::RigToolResultContent;
+    use crate::types::{converse_output::ToolResultContentBlock, tool::RigToolResultContent};
+
+    /// The inbound path reads the mirror, but what Bedrock sends is the SDK
+    /// block, so the tests still start there and mirror it first.
+    fn mirrored(block: aws_bedrock::ToolResultContentBlock) -> ToolResultContentBlock {
+        block.try_into().expect("the SDK block mirrors")
+    }
 
     #[test]
     fn rig_tool_text_to_aws_tool() {
@@ -96,7 +99,7 @@ mod tests {
         let tool = RigToolResultContent(ToolResultContent::Image(image));
         let aws_tool: Result<aws_bedrock::ToolResultContentBlock, _> = tool.try_into();
         assert!(aws_tool.is_ok());
-        assert!(aws_tool.unwrap().is_image())
+        assert!(aws_tool.unwrap().is_image());
     }
 
     #[test]
@@ -144,7 +147,7 @@ mod tests {
 
     #[test]
     fn aws_tool_to_rig_tool() {
-        let aws_tool = aws_bedrock::ToolResultContentBlock::Text("txt".into());
+        let aws_tool = mirrored(aws_bedrock::ToolResultContentBlock::Text("txt".into()));
         let tool: Result<RigToolResultContent, _> = aws_tool.try_into();
         assert!(tool.is_ok());
         let tool = match tool.unwrap().0 {
@@ -152,7 +155,7 @@ mod tests {
             _ => Err("tool doesn't contain text"),
         };
         assert!(tool.is_ok());
-        assert_eq!(tool.unwrap().text, String::from("txt"))
+        assert_eq!(tool.unwrap().text, String::from("txt"));
     }
 
     #[test]
@@ -165,7 +168,7 @@ mod tests {
             .source(document_source)
             .build()
             .unwrap();
-        let aws_tool = aws_bedrock::ToolResultContentBlock::Document(aws_document);
+        let aws_tool = mirrored(aws_bedrock::ToolResultContentBlock::Document(aws_document));
         let tool: Result<RigToolResultContent, _> = aws_tool.try_into();
         assert!(tool.is_err());
         assert_eq!(
@@ -174,6 +177,6 @@ mod tests {
                 "ToolResultContentBlock contains unsupported variant".into()
             )
             .to_string()
-        )
+        );
     }
 }

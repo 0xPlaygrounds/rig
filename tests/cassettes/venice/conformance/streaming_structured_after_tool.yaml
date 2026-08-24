@@ -1,0 +1,123 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"role":"system"},{"content":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"},{"function":{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":null,"usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"{\"a\": 19, \"b\": 23}","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":null,"reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":"tool_calls","index":0,"logprobs":null}],"cost":{"diem":0,"usd":0.00012524999999999998},"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":{"completion_tokens":18,"prompt_tokens":1288,"total_tokens":1306}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"role":"system"},{"content":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\":19,\"b\":23}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"42","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"mistral-small-3-2-24b-instruct","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"},{"function":{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":null,"usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":"final_result"},"id":"call_REDACTED_2","index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"{\"answer\": 42, \"explanation\": \"19 + 23 = 42\"}","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":null,"reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":"tool_calls","index":0,"logprobs":null}],"cost":{"diem":0,"usd":0.0001313125},"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":{"completion_tokens":28,"prompt_tokens":1326,"total_tokens":1354}}
+
+    data: [DONE]
+

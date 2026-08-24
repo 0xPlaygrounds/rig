@@ -151,11 +151,10 @@ async fn main() -> Result<()> {
     let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
-    let tools = ToolSet::builder()
-        .static_tool(GetBalance)
-        .static_tool(TransferFunds)
-        .build();
-    let tool_definitions = tools.get_tool_definitions();
+    let mut tools = ToolSet::default();
+    tools.add_tool(GetBalance);
+    tools.add_tool(TransferFunds);
+    let tool_definitions = tools.tool_definitions();
 
     let prompt = "Check the balance of account A-1, then transfer $500 to account B-2.";
     println!("User: {prompt}");
@@ -222,6 +221,7 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     let id = call.tool_call.id.clone();
+                    let provider = call.tool_call.provider.clone();
                     let name = call.tool_call.function.name.clone();
                     let args = call.tool_call.function.arguments.to_string();
 
@@ -234,8 +234,10 @@ async fn main() -> Result<()> {
                             let execution = tools
                                 .execute(&name, args, &mut rig::tool::ToolContext::new())
                                 .await;
-                            results.push(UserContent::tool_result(
+                            results.push(UserContent::tool_result_for(
                                 id,
+                                provider,
+                                name,
                                 execution.output().clone().into_content(),
                             ));
                         }
@@ -253,18 +255,22 @@ async fn main() -> Result<()> {
                                             &mut rig::tool::ToolContext::new(),
                                         )
                                         .await;
-                                    results.push(UserContent::tool_result(
+                                    results.push(UserContent::tool_result_for(
                                         id,
+                                        provider,
+                                        name,
                                         execution.output().clone().into_content(),
                                     ));
                                 }
                                 _ => {
                                     println!("     ! no valid JSON; denying instead");
-                                    results.push(UserContent::tool_result(
+                                    results.push(UserContent::tool_result_for(
                                         id,
-                                        rig::OneOrMany::one(ToolResultContent::text(
+                                        provider,
+                                        name,
+                                        vec![ToolResultContent::text(
                                             "denied: the reviewer supplied no valid JSON to edit with",
-                                        )),
+                                        )],
                                     ));
                                 }
                             }
@@ -284,9 +290,11 @@ async fn main() -> Result<()> {
                             } else {
                                 "denied: no clear approval given".to_string()
                             };
-                            results.push(UserContent::tool_result(
+                            results.push(UserContent::tool_result_for(
                                 id,
-                                rig::OneOrMany::one(ToolResultContent::text(reason)),
+                                provider,
+                                name,
+                                vec![ToolResultContent::text(reason)],
                             ));
                         }
                     }

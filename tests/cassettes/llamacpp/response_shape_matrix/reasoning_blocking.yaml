@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":"What is 2+2? Answer briefly.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"2 + 2 = 4.","reasoning_content":"Okay, the user is asking \"What is 2+2? Answer briefly.\" Let me think. The question is straightforward. 2 plus 2 is 4. But I need to make sure I''m not missing anything. Sometimes people might think of different operations, but addition is pretty basic. There''s no trick here. The answer is simple. I should just state the result clearly. No need for extra details. Let me confirm once more. 2 + 2 equals 4. Yep, that''s right. Alright, the answer is 4.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":3,"predicted_ms":728.289,"predicted_n":128,"predicted_per_second":174.3813238975187,"predicted_per_token_ms":5.73455905511811,"prompt_ms":24.414,"prompt_n":15,"prompt_per_second":614.4015728680265,"prompt_per_token_ms":1.6276000000000002},"usage":{"completion_tokens":128,"prompt_tokens":18,"prompt_tokens_details":{"cached_tokens":3},"total_tokens":146}}'

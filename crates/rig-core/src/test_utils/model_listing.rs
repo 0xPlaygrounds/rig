@@ -18,18 +18,19 @@ impl MockModelLister {
     }
 }
 
-impl ModelLister for MockModelLister {
-    type Client = Vec<Model>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { models: client }
-    }
-
+impl<H> ModelLister<H> for MockModelLister {
     fn list_all(
         &self,
     ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend
     {
         let models = self.models.clone();
         async move { Ok(ModelList::new(models)) }
+    }
+}
+
+impl crate::client::ConstructModelLister<Vec<Model>> for MockModelLister {
+    fn construct(client: &Vec<Model>) -> Self {
+        let client = client.clone();
+        Self { models: client }
     }
 }

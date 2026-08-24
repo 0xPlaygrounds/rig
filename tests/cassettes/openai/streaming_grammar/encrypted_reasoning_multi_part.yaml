@@ -1,0 +1,337 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"How many positive integers n < 500 are divisible by 3 but not by 4? Work it out carefully, then answer with just the number.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-5.6","reasoning":{"effort":"high","summary":"detailed"},"store":false,"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.6-sol","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"high","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.6-sol","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"high","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"encrypted_content":"encrypted_content_REDACTED_1","id":"rs_REDACTED_1","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"**Calculating multiples of three**\n\nI","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" need","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_2","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" to","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" find","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" number","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" multiples","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 3","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" under","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 500","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" can","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" calculate","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" this","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" by","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" taking","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" floor","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 499","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" divided","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" by","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 3","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":29,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" which","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":31,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" gives","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":32,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" me","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":33,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 166","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":34,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":35,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" Next","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":36,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":37,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":38,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" want","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":39,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" to","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":40,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" find","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":41,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":42,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" multiples","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":43,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":44,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" both","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":45,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 3","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":46,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":47,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 4","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":48,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":49,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" which","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":50,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" involves","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":51,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" using","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":52,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" their","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":53,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" least","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":54,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" common","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":55,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" multiple","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":56,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":57,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 12","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":58,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":59,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" So","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":60,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":61,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_59","output_index":0,"sequence_number":62,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" take","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_60","output_index":0,"sequence_number":63,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_61","output_index":0,"sequence_number":64,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" floor","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_62","output_index":0,"sequence_number":65,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_63","output_index":0,"sequence_number":66,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 499","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_64","output_index":0,"sequence_number":67,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" divided","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_65","output_index":0,"sequence_number":68,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" by","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_66","output_index":0,"sequence_number":69,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 12","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_67","output_index":0,"sequence_number":70,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_68","output_index":0,"sequence_number":71,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_69","output_index":0,"sequence_number":72,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" that","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_70","output_index":0,"sequence_number":73,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" equals","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_71","output_index":0,"sequence_number":74,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 41","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_72","output_index":0,"sequence_number":75,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_73","output_index":0,"sequence_number":76,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" I","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_74","output_index":0,"sequence_number":77,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" can","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_75","output_index":0,"sequence_number":78,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" just","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_76","output_index":0,"sequence_number":79,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" subtract","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_77","output_index":0,"sequence_number":80,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_78","output_index":0,"sequence_number":81,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" second","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_79","output_index":0,"sequence_number":82,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" result","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_80","output_index":0,"sequence_number":83,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" from","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_81","output_index":0,"sequence_number":84,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_82","output_index":0,"sequence_number":85,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" first","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_83","output_index":0,"sequence_number":86,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_84","output_index":0,"sequence_number":87,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_85","output_index":0,"sequence_number":88,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" that","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_86","output_index":0,"sequence_number":89,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" gives","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_87","output_index":0,"sequence_number":90,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" me","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_88","output_index":0,"sequence_number":91,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" a","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_89","output_index":0,"sequence_number":92,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" difference","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_90","output_index":0,"sequence_number":93,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_91","output_index":0,"sequence_number":94,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" 125","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_92","output_index":0,"sequence_number":95,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","obfuscation":"obfuscation_REDACTED_93","output_index":0,"sequence_number":96,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"sequence_number":97,"summary_index":0,"text":"**Calculating multiples of three**\n\nI need to find the number of multiples of 3 under 500. I can calculate this by taking the floor of 499 divided by 3, which gives me 166. Next, I want to find the multiples of both 3 and 4, which involves using their least common multiple of 12. So, I take the floor of 499 divided by 12, and that equals 41. I can just subtract the second result from the first, and that gives me a difference of 125.","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"**Calculating multiples of three**\n\nI need to find the number of multiples of 3 under 500. I can calculate this by taking the floor of 499 divided by 3, which gives me 166. Next, I want to find the multiples of both 3 and 4, which involves using their least common multiple of 12. So, I take the floor of 499 divided by 12, and that equals 41. I can just subtract the second result from the first, and that gives me a difference of 125.","type":"summary_text"},"sequence_number":98,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[],"encrypted_content":"encrypted_content_REDACTED_2","id":"rs_REDACTED_1","summary":[{"text":"**Calculating multiples of three**\n\nI need to find the number of multiples of 3 under 500. I can calculate this by taking the floor of 499 divided by 3, which gives me 166. Next, I want to find the multiples of both 3 and 4, which involves using their least common multiple of 12. So, I take the floor of 499 divided by 12, and that equals 41. I can just subtract the second result from the first, and that gives me a difference of 125.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":99,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":100,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":101,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"125","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_94","output_index":1,"sequence_number":102,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":103,"text":"125","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"125","type":"output_text"},"sequence_number":104,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"125","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":105,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.6-sol","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"encrypted_content_REDACTED_3","id":"rs_REDACTED_1","summary":[{"text":"**Calculating multiples of three**\n\nI need to find the number of multiples of 3 under 500. I can calculate this by taking the floor of 499 divided by 3, which gives me 166. Next, I want to find the multiples of both 3 and 4, which involves using their least common multiple of 12. So, I take the floor of 499 divided by 12, and that equals 41. I can just subtract the second result from the first, and that gives me a difference of 125.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"125","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"high","mode":"standard","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":37,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":59,"output_tokens_details":{"reasoning_tokens":52},"total_tokens":96},"user":null},"sequence_number":106,"type":"response.completed"}
+

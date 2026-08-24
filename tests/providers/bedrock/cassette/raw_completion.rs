@@ -31,7 +31,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .await
                 .expect("raw Bedrock request should succeed");
             let raw_text = raw
-                .get_text_response()
+                .text_response()
                 .expect("raw Bedrock response should contain assistant text");
             let response: rig::completion::CompletionResponse = raw
                 .try_into()

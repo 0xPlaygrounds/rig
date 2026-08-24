@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Add 2 and 3 using the tool.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 500
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":500,"message":"tools param requires --jinja flag","type":"server_error"}}'

@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"Never answered","role":"user","type":"message"}],"model":"grok-nonexistent-model-for-identity-edge"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"code":"invalid-argument","error":"Model not found: grok-nonexistent-model-for-identity-edge"}'

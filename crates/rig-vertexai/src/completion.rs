@@ -47,13 +47,13 @@ impl CompletionModel {
         }
     }
 
-    fn model_path(&self) -> Result<String, CompletionError> {
+    fn model_path(&self) -> String {
         let project = self.client.project();
         let location = self.client.location();
-        Ok(format!(
+        format!(
             "projects/{project}/locations/{location}/publishers/google/models/{}",
             self.model
-        ))
+        )
     }
 }
 
@@ -74,16 +74,16 @@ impl CompletionModel {
 
         let vertex_request = VertexCompletionRequest(request);
 
-        let contents = vertex_request.contents()?;
         let generation_config = vertex_request.generation_config()?;
         let system_instruction = vertex_request.system_instruction();
         let tools = vertex_request.tools();
         let tool_config = vertex_request.tool_config();
-        let model_path = self.model_path()?;
+        let contents = vertex_request.contents()?;
+        let model_path = self.model_path();
 
         let mut request_builder = self
             .client
-            .get_inner()
+            .inner()
             .await
             .map_err(|error| CompletionError::ProviderError(error.to_string()))?
             .generate_content()
@@ -140,7 +140,11 @@ impl CompletionModelTrait for CompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        self.raw_completion(request).await?.try_into()
+        // Capture before `try_into` consumes the raw value.
+        let raw = self.raw_completion(request).await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
     }
 
     async fn stream(
@@ -158,7 +162,7 @@ impl CompletionModelTrait for CompletionModel {
 /// [`http::StatusCode`] to attach; the error body is preserved via
 /// [`CompletionError::from_provider_body`] (`status: None`) rather than a
 /// Rig-prefixed [`CompletionError::ProviderError`] diagnostic. (The
-/// `get_inner()` client-init failure stays a `ProviderError` because it is a
+/// `inner()` client-init failure stays a `ProviderError` because it is a
 /// Rig-side setup failure, not a provider response.)
 ///
 /// Note: the SDK does not distinguish a server-returned gRPC error from a

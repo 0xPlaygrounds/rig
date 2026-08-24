@@ -43,6 +43,7 @@
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;
 //! use rig_core::{providers::openai::*, vector_store::VectorStoreIndex};
+//! use rig_reqwest::prelude::*;
 //! use serde::Deserialize;
 //! use std::env;
 //!
@@ -81,7 +82,7 @@
 //!         plot: String,
 //!     }
 //!     let results = index.top_n::<Movie>("Batman", 3).await.unwrap();
-//!     println!("{:#?}", results);
+//!     println!("{results:#?}");
 //! }
 //! ```
 pub mod vector_index;
@@ -98,10 +99,6 @@ use vector_index::{IndexConfig, Neo4jVectorIndex, VectorSimilarityFunction};
 
 pub struct Neo4jClient {
     pub graph: Graph,
-}
-
-fn neo4j_to_rig_error(e: neo4rs::Error) -> VectorStoreError {
-    VectorStoreError::DatastoreError(Box::new(e))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -141,15 +138,15 @@ impl Neo4jSearchFilter {
         Self(format!("NOT ({})", self.0))
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("n.{key} >= {}", serialize_cypher(value)))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("n.{key} <= {}", serialize_cypher(value)))
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         Self(format!(
             "n.{key} IN {}",
             serialize_cypher(serde_json::Value::Array(values))
@@ -159,7 +156,7 @@ impl Neo4jSearchFilter {
     // String matching
 
     /// Tests whether the value at `key` contains the pattern
-    pub fn contains<S>(key: String, pattern: S) -> Self
+    pub fn contains<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -170,7 +167,7 @@ impl Neo4jSearchFilter {
     }
 
     /// Tests whether the value at `key` starts with the pattern
-    pub fn starts_with<S>(key: String, pattern: S) -> Self
+    pub fn starts_with<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -181,7 +178,7 @@ impl Neo4jSearchFilter {
     }
 
     /// Tests whether the value at `key` ends with the pattern
-    pub fn ends_with<S>(key: String, pattern: S) -> Self
+    pub fn ends_with<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -191,7 +188,7 @@ impl Neo4jSearchFilter {
         ))
     }
 
-    pub fn matches<S>(key: String, pattern: S) -> Self
+    pub fn matches<S>(key: &str, pattern: S) -> Self
     where
         S: AsRef<str>,
     {
@@ -256,7 +253,7 @@ where
                 serde_json::Value::String(s) => BoltType::String(BoltString::new(&s)),
                 serde_json::Value::Array(arr) => BoltType::List(
                     arr.iter()
-                        .map(|v| v.to_bolt_type())
+                        .map(ToBoltType::to_bolt_type)
                         .collect::<Vec<BoltType>>()
                         .into(),
                 ),
@@ -294,7 +291,7 @@ impl Neo4jClient {
         tracing::info!("Connecting to Neo4j DB at {} ...", uri);
         let graph = Graph::new(uri, user, password)
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
         tracing::info!("Connected to Neo4j");
         Ok(Self { graph })
     }
@@ -302,7 +299,7 @@ impl Neo4jClient {
     pub async fn from_config(config: Config) -> Result<Self, VectorStoreError> {
         let graph = Graph::connect(config)
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
         Ok(Self { graph })
     }
 
@@ -313,11 +310,11 @@ impl Neo4jClient {
         graph
             .execute(query)
             .await
-            .map_err(neo4j_to_rig_error)?
+            .map_err(VectorStoreError::datastore)?
             .into_stream_as::<T>()
             .try_collect::<Vec<T>>()
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))
+            .map_err(VectorStoreError::datastore)
     }
 
     /// Returns a `Neo4jVectorIndex` that mirrors an existing Neo4j Vector Index.
@@ -326,11 +323,11 @@ impl Neo4jClient {
     /// See the Neo4j [documentation (Create vector index)](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information on creating indexes.
     ///
     /// ❗IMPORTANT: The index must be created with the same embedding model that will be used to query the index.
-    pub async fn get_index<M: EmbeddingModel>(
+    pub async fn get_index(
         &self,
-        model: M,
+        model: impl EmbeddingModel + 'static,
         index_name: &str,
-    ) -> Result<Neo4jVectorIndex<M>, VectorStoreError> {
+    ) -> Result<Neo4jVectorIndex, VectorStoreError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IndexInfo {
@@ -371,9 +368,9 @@ impl Neo4jClient {
                 );
             }
             let embedding_property = index.properties.first().ok_or_else(|| {
-                VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                    "Neo4j index is missing an embedding property",
-                )))
+                VectorStoreError::DatastoreError(
+                    "Neo4j index is missing an embedding property".into(),
+                )
             })?;
             let mut config = IndexConfig::new(index.name.clone())
                 .embedding_property(embedding_property)
@@ -392,12 +389,10 @@ impl Neo4jClient {
                 neo4rs::query(Self::SHOW_INDEXES_QUERY),
             )
             .await?;
-            return Err(VectorStoreError::DatastoreError(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!(
-                        "Index `{index_name}` not found in database. Available indexes: {indexes:?}"
-                    ),
+            return Err(VectorStoreError::datastore(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Index `{index_name}` not found in database. Available indexes: {indexes:?}"
                 ),
             )));
         };
@@ -453,7 +448,7 @@ impl Neo4jClient {
                     .param("dimensions", model.ndims() as i64),
             )
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         // Check if the index exists with db.awaitIndex(), the call timeouts if the index is not ready
         let index_exists = self

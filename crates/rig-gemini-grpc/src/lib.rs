@@ -23,8 +23,9 @@ pub mod streaming;
 
 pub use client::Client;
 
-// Include the generated proto code
-mod proto {
+// Include the generated proto code. Public so the events-first conformance
+// seam ([`streaming::stream_from_events`]) can be fed constructed events.
+pub mod proto {
     #![allow(clippy::all)]
     #![allow(warnings)]
     tonic::include_proto!("google.ai.generativelanguage.v1beta");

@@ -1,12 +1,12 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, CompletionResponse, Usage};
 use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
 };
+use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -20,32 +20,17 @@ pub const PROVIDER_NAME: &str = "vertexai";
 /// Unmapped values are carried verbatim in their wire SCREAMING_SNAKE spelling
 /// so a reason Vertex adds later surfaces instead of reading as a natural stop.
 pub fn map_finish_reason(
-    reason: vertexai::model::candidate::FinishReason,
+    reason: &vertexai::model::candidate::FinishReason,
 ) -> Option<rig_core::completion::FinishReason> {
-    use rig_core::completion::FinishReason as Normalized;
-    use vertexai::model::candidate::FinishReason as Wire;
+    // `name()` yields the wire form (`MALFORMED_FUNCTION_CALL`) the shared
+    // Google table keys on; a value the SDK does not model falls back to
+    // `Display`, which prints the raw enum value. Formatting the variant with
+    // `Debug` would silently drop the underscores.
+    let wire_name = reason
+        .name()
+        .map_or_else(|| reason.to_string(), ToOwned::to_owned);
 
-    let normalized = match reason {
-        Wire::Stop => Normalized::Stop,
-        Wire::MaxTokens => Normalized::Length,
-        Wire::Safety | Wire::Blocklist | Wire::ProhibitedContent | Wire::Spii => {
-            Normalized::ContentFilter
-        }
-        // `Unspecified` is Vertex's "no reason reported" value, not a reason.
-        Wire::Unspecified => return None,
-        // Everything else keeps Vertex's own spelling. `name()` yields the wire
-        // form (`MALFORMED_FUNCTION_CALL`); a value the SDK does not model
-        // falls back to `Display`, which prints the raw enum value. Formatting
-        // the variant with `Debug` would silently drop the underscores.
-        ref other => Normalized::Other(
-            other
-                .name()
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| other.to_string()),
-        ),
-    };
-
-    Some(normalized)
+    map_google_finish_reason(&wire_name)
 }
 
 impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
@@ -76,15 +61,17 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 .then(|| BASE64.encode(&part.thought_signature));
 
             if let Some(function_call) = part.function_call() {
-                let args_json = function_call
-                    .args
-                    .as_ref()
-                    .map(|s| serde_json::Value::Object(s.clone()))
-                    .unwrap_or_else(|| serde_json::json!({}));
+                let args_json = function_call.args.as_ref().map_or_else(
+                    || serde_json::json!({}),
+                    |s| serde_json::Value::Object(s.clone()),
+                );
 
+                // Vertex function calls carry no identifier: mint the
+                // correlation handle — never name-as-id, which collides two
+                // same-tool calls in one turn.
                 assistant_contents.push(AssistantContent::ToolCall(
-                    ToolCall::new(
-                        function_call.name.clone(),
+                    ToolCall::from_wire(
+                        "",
                         ToolFunction::new(function_call.name.clone(), args_json),
                     )
                     .with_signature(signature),
@@ -149,15 +136,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             }
         }
 
-        if assistant_contents.is_empty() {
-            return Err(CompletionError::ProviderError(
-                "No text or tool call content found in response".to_string(),
-            ));
-        }
-
-        let choice = OneOrMany::many(assistant_contents).map_err(|e| {
-            CompletionError::ProviderError(format!("Failed to create OneOrMany: {e}"))
-        })?;
+        let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
         let usage = response
             .usage_metadata
@@ -166,14 +145,23 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 input_tokens: usage.prompt_token_count as u64,
                 output_tokens: usage.candidates_token_count as u64,
                 total_tokens: usage.total_token_count as u64,
+                // `prompt_token_count` is documented as "still the total
+                // effective prompt size... including the number of tokens in the
+                // cached content", so the cached count is a *subset* of the
+                // input count, matching the Gemini surface.
                 cached_input_tokens: usage.cached_content_token_count as u64,
+                // Vertex reports no cache-write counter.
                 cache_creation_input_tokens: 0,
                 tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
+                // Vertex reports `thoughts_token_count`, and rig has a field for
+                // it. Hardcoding zero here silently discarded the thinking spend
+                // on every Vertex response — on the sibling Gemini surface it is
+                // routinely the largest component of the bill.
+                reasoning_tokens: usage.thoughts_token_count as u64,
             })
             .unwrap_or_default();
 
-        let finish_reason = map_finish_reason(candidate.finish_reason.clone());
+        let finish_reason = map_finish_reason(&candidate.finish_reason);
         let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
 
         Ok(CompletionResponse::new(choice, usage, PROVIDER_NAME)
@@ -189,7 +177,6 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
 mod tests {
     use super::*;
     use google_cloud_aiplatform_v1 as vertexai;
-    use rig_core::OneOrMany;
     use rig_core::message::{
         AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
     };
@@ -229,9 +216,8 @@ mod tests {
         function_name: &str,
         args: serde_json::Value,
     ) -> VertexGenerateContentOutput {
-        let struct_args = match args {
-            serde_json::Value::Object(map) => map,
-            _ => panic!("Expected JSON object for Struct conversion"),
+        let serde_json::Value::Object(struct_args) = args else {
+            panic!("Expected JSON object for Struct conversion")
         };
         let function_call = vertexai::model::FunctionCall::new()
             .set_name(function_name.to_string())
@@ -272,7 +258,9 @@ mod tests {
             .try_into()
             .unwrap();
         match response.choice.first() {
-            AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, Some(BASE64.encode(raw))),
+            Some(AssistantContent::ToolCall(tc)) => {
+                assert_eq!(tc.signature, Some(BASE64.encode(raw)));
+            }
             _ => panic!("Expected ToolCall"),
         }
     }
@@ -284,7 +272,7 @@ mod tests {
                 .try_into()
                 .unwrap();
         match response.choice.first() {
-            AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, None),
+            Some(AssistantContent::ToolCall(tc)) => assert_eq!(tc.signature, None),
             _ => panic!("Expected ToolCall"),
         }
     }
@@ -306,7 +294,7 @@ mod tests {
             VertexGenerateContentOutput(response).try_into().unwrap();
 
         match response.choice.first() {
-            AssistantContent::Reasoning(reasoning) => {
+            Some(AssistantContent::Reasoning(reasoning)) => {
                 assert_eq!(reasoning.display_text(), "thinking text");
                 assert_eq!(
                     reasoning.first_signature(),
@@ -326,9 +314,9 @@ mod tests {
         let response = completion_response.unwrap();
         assert_eq!(
             response.choice,
-            OneOrMany::one(AssistantContent::Text(Text::new(
+            vec![AssistantContent::Text(Text::new(
                 "Hello, world!".to_string()
-            )))
+            ))]
         );
     }
 
@@ -345,8 +333,18 @@ mod tests {
         let response = completion_response.unwrap();
 
         match response.choice.first() {
-            AssistantContent::ToolCall(ToolCall { id, function, .. }) => {
-                assert_eq!(id, "add");
+            Some(AssistantContent::ToolCall(ToolCall {
+                id,
+                provider,
+                function,
+                ..
+            })) => {
+                // Vertex issues no call ids: the decode mints a unique
+                // non-empty handle (never the function name) and records
+                // that the provider issued nothing.
+                assert!(!id.as_str().is_empty());
+                assert_ne!(id, "add");
+                assert_eq!(provider, &None);
                 assert_eq!(function.name, "add");
                 assert_eq!(function.arguments, args);
             }
@@ -363,7 +361,7 @@ mod tests {
                 .expect("image response should convert");
 
         match response.choice.first() {
-            AssistantContent::Image(image) => {
+            Some(AssistantContent::Image(image)) => {
                 assert_eq!(image.data, DocumentSourceKind::Base64(BASE64.encode(raw)));
                 assert_eq!(image.media_type, Some(ImageMediaType::PNG));
                 assert_eq!(image.detail, Some(ImageDetail::default()));
@@ -419,16 +417,16 @@ mod tests {
         )
         .set_thought(true)]));
 
-        let error = match result {
-            Err(error) => error,
-            Ok(_) => panic!("thought-image-only response must fail"),
+        let Err(error) = result else {
+            panic!("thought-image-only response must fail")
         };
-        assert!(matches!(error, CompletionError::ProviderError(_)));
-        assert!(
-            error
-                .to_string()
-                .contains("No text or tool call content found in response")
-        );
+        // Rejected with the shared empty-response wording via
+        // `require_non_empty_response`, like every other wire.
+        assert!(matches!(
+            error,
+            CompletionError::ResponseError(message)
+                if message == rig_core::message::EMPTY_RESPONSE_ERROR
+        ));
     }
 
     #[test]
@@ -438,9 +436,8 @@ mod tests {
                 mime_type,
                 vec![0],
             )]));
-            let error = match result {
-                Err(error) => error,
-                Ok(_) => panic!("unsupported inline media must fail"),
+            let Err(error) = result else {
+                panic!("unsupported inline media must fail")
             };
             assert!(matches!(error, CompletionError::ResponseError(_)));
             assert!(error.to_string().contains(mime_type));
@@ -454,9 +451,8 @@ mod tests {
                 mime_type,
                 vec![0],
             )]));
-            let error = match result {
-                Err(error) => error,
-                Ok(_) => panic!("non-replayable inline image must fail"),
+            let Err(error) = result else {
+                panic!("non-replayable inline image must fail")
             };
             assert!(matches!(error, CompletionError::ResponseError(_)));
             assert!(
@@ -471,9 +467,8 @@ mod tests {
     fn signed_inline_image_is_rejected() {
         let part = inline_data_part("image/png", vec![0]).set_thought_signature(vec![1, 2, 3]);
         let result = CompletionResponse::try_from(create_parts_response([part]));
-        let error = match result {
-            Err(error) => error,
-            Ok(_) => panic!("signed inline image must fail"),
+        let Err(error) = result else {
+            panic!("signed inline image must fail")
         };
         assert!(matches!(error, CompletionError::ResponseError(_)));
         assert!(error.to_string().contains("thought_signature"));
@@ -506,5 +501,114 @@ mod tests {
         let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_err());
+    }
+
+    /// The load-bearing property behind `CompletionResponse::raw` for Vertex
+    /// AI: the captured value is `serde_json::to_value(&VertexGenerateContentOutput)`
+    /// — the SDK response as `raw_completion` returns it — and a consumer must
+    /// be able to read it back as the same type and get the same JSON.
+    /// Vertex has no cassette harness, so this is the unit-form pin: the
+    /// serde derives on the newtype delegate to the SDK's own (camelCase)
+    /// wire encoding (camelCase keys, enums as proto numbers), and fields
+    /// rig never normalizes (`modelVersion` is mapped, but a candidate's
+    /// `safetyRatings` and `avgLogprobs` are not)
+    /// survive both directions. Normalizing the restored value agrees with
+    /// normalizing the original.
+    #[test]
+    fn vertex_generate_content_output_round_trips_through_serde_json_value() {
+        let part = vertexai::model::Part::new().set_text("hello".to_string());
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts([part]);
+        let candidate = vertexai::model::Candidate::new()
+            .set_content(content)
+            .set_finish_reason(vertexai::model::candidate::FinishReason::Stop)
+            .set_avg_logprobs(-0.25)
+            .set_safety_ratings([vertexai::model::SafetyRating::new()
+                .set_category(vertexai::model::HarmCategory::Harassment)
+                .set_probability(vertexai::model::safety_rating::HarmProbability::Negligible)]);
+        let usage_metadata = vertexai::model::generate_content_response::UsageMetadata::new()
+            .set_prompt_token_count(10)
+            .set_candidates_token_count(20)
+            .set_total_token_count(30);
+        let response = vertexai::model::GenerateContentResponse::new()
+            .set_candidates([candidate])
+            .set_model_version("gemini-2.5-flash-001")
+            .set_response_id("resp-vertex-1")
+            .set_usage_metadata(usage_metadata);
+        let raw = VertexGenerateContentOutput(response);
+
+        let value = serde_json::to_value(&raw).expect("serialize");
+        assert_eq!(value["modelVersion"], "gemini-2.5-flash-001");
+        assert_eq!(value["candidates"][0]["avgLogprobs"], -0.25);
+        // The SDK encodes enums as their proto numbers, not their names —
+        // `HARM_CATEGORY_HARASSMENT` is 3, `STOP` is 1 — so that is what the
+        // capture carries; a consumer decodes it through the SDK's own enum.
+        assert_eq!(value["candidates"][0]["safetyRatings"][0]["category"], 3);
+        assert_eq!(value["candidates"][0]["finishReason"], 1);
+
+        let back: VertexGenerateContentOutput =
+            serde_json::from_value(value.clone()).expect("deserialize");
+        assert_eq!(
+            serde_json::to_value(&back).expect("re-serialize"),
+            value,
+            "the capture must read back into VertexGenerateContentOutput and re-serialize identically"
+        );
+        assert_eq!(back.0, raw.0);
+
+        let original: CompletionResponse = raw.try_into().expect("original converts");
+        let restored: CompletionResponse = back.try_into().expect("restored converts");
+        assert_eq!(restored.identity(), original.identity());
+        assert_eq!(restored.finish_reason(), original.finish_reason());
+        assert_eq!(restored.model, original.model);
+        assert_eq!(restored.usage, original.usage);
+        assert_eq!(restored.choice, original.choice);
+        assert_eq!(restored.model.as_deref(), Some("gemini-2.5-flash-001"));
+        assert_eq!(
+            restored.identity().response_id.as_deref(),
+            Some("resp-vertex-1")
+        );
+    }
+}
+
+#[cfg(test)]
+mod vertex_usage_mapping_tests {
+    use super::*;
+
+    /// Vertex reports `thoughts_token_count` and rig has a field for it, but the
+    /// mapping hardcoded `reasoning_tokens: 0` — so the thinking spend, which on
+    /// the sibling Gemini surface is routinely the largest component of the
+    /// bill, was discarded on every Vertex response.
+    ///
+    /// Drives the real conversion. An earlier version of this test built a
+    /// `UsageMetadata` and then re-implemented the mapping inline in its own
+    /// body, so reverting the production fix left it green — it guarded nothing.
+    #[test]
+    fn thinking_tokens_survive_the_real_conversion() {
+        let usage_metadata = vertexai::model::generate_content_response::UsageMetadata::new()
+            .set_prompt_token_count(14)
+            .set_candidates_token_count(34)
+            .set_thoughts_token_count(222)
+            .set_total_token_count(270)
+            .set_cached_content_token_count(9);
+
+        let response = vertexai::model::GenerateContentResponse::new()
+            .set_usage_metadata(usage_metadata)
+            .set_candidates(vec![
+                vertexai::model::Candidate::new().set_content(
+                    vertexai::model::Content::new()
+                        .set_role("model")
+                        .set_parts(vec![vertexai::model::Part::new().set_text("hi")]),
+                ),
+            ]);
+
+        let converted = CompletionResponse::try_from(VertexGenerateContentOutput(response))
+            .expect("a response with content should convert");
+
+        assert_eq!(converted.usage.reasoning_tokens, 222);
+        assert_eq!(converted.usage.cached_input_tokens, 9);
+        assert_eq!(converted.usage.input_tokens, 14);
+        assert_eq!(converted.usage.output_tokens, 34);
+        assert_eq!(converted.usage.total_tokens, 270);
     }
 }

@@ -25,10 +25,11 @@
 //! tool-result stop omits result content from telemetry.
 //!
 //! Blocking and streaming agents share model-turn, request, tool-call, and
-//! tool-result resolution. Streaming adds delta-specific observations, but
-//! shared lifecycle actions have identical semantics on both surfaces. Streamed
-//! deltas are provisional until the model turn is accepted; a retry is surfaced
-//! as [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
+//! tool-result resolution. Streaming adds text, reasoning, and tool-call delta
+//! observations, but shared lifecycle actions have identical semantics on both
+//! surfaces. Streamed deltas are provisional until the model turn is accepted;
+//! a retry is surfaced as
+//! [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
 //! so consumers can discard the rejected turn's deltas.
 //!
 //! # Example
@@ -114,47 +115,125 @@
 //! }
 //! # let _hook = RetryOnMarker::new(2);
 //! ```
+//!
+//! # Retrying a turn the provider cut short
+//!
+//! [`ModelTurnFinished::finish_reason`] and [`ModelTurnFinished::max_tokens`]
+//! carry a turn's termination metadata in portable form, so the common
+//! "truncated at the cap, so raise it and go again" policy needs no provider
+//! types. `finish_reason` is a normalized [`FinishReason`] — anything outside
+//! the shared vocabulary arrives as `Other` in the provider's own spelling
+//! rather than as a natural stop, and `None` means the provider reported no
+//! reason at all. `max_tokens` is the cap *this* attempt ran under, after the
+//! agent's configuration, the runner override, and any merged [`RequestPatch`],
+//! so the pair below reads its own escalation back on the retried turn:
+//!
+//! ```
+//! use std::sync::atomic::{AtomicU64, Ordering};
+//! use rig_agent::agent::{
+//!     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext,
+//!     ModelTurnAction, ModelTurnFinished, RequestPatch,
+//! };
+//! use rig_core::completion::FinishReason;
+//! use rig_core::message::AssistantContent;
+//!
+//! /// Doubles the output cap each time a turn is truncated, up to a ceiling.
+//! struct GrowCapOnTruncation {
+//!     cap: AtomicU64,
+//!     ceiling: u64,
+//! }
+//!
+//! impl AgentHook for GrowCapOnTruncation {
+//!     /// Every attempt is prepared afresh, so the current cap is applied here
+//!     /// and reported back on that attempt's `ModelTurnFinished`.
+//!     async fn on_completion_call(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         _event: CompletionCallEvent<'_>,
+//!     ) -> CompletionCallAction {
+//!         CompletionCallAction::patch(
+//!             RequestPatch::new().max_tokens(self.cap.load(Ordering::Relaxed)),
+//!         )
+//!     }
+//!
+//!     async fn on_model_turn_finished(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         event: ModelTurnFinished<'_>,
+//!     ) -> ModelTurnAction {
+//!         // `truncated_output` covers every reason that means "cut short",
+//!         // so a provider reporting a filter stop retries here too.
+//!         let truncated = event
+//!             .finish_reason
+//!             .is_some_and(FinishReason::truncated_output);
+//!         // Retrying a turn that carries tool calls is rejected, so a policy
+//!         // that might see one has to check before asking.
+//!         let has_tool_call = event
+//!             .content
+//!             .iter()
+//!             .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+//!         // `max_tokens` is this attempt's own cap: growing past the ceiling
+//!         // would be retrying a limit we already know we cannot raise.
+//!         let room = event.max_tokens.is_none_or(|cap| cap < self.ceiling);
+//!
+//!         if truncated && !has_tool_call && room {
+//!             let grown = event.max_tokens.map_or(self.ceiling, |cap| {
+//!                 cap.saturating_mul(2).min(self.ceiling)
+//!             });
+//!             self.cap.store(grown, Ordering::Relaxed);
+//!             return ModelTurnAction::repeat();
+//!         }
+//!         ModelTurnAction::continue_run()
+//!     }
+//! }
+//! # let _hook = GrowCapOnTruncation { cap: AtomicU64::new(256), ceiling: 4096 };
+//! ```
+//!
+//! `cargo run -p rig-agent --example retry_on_truncation` runs this policy
+//! against a credential-free scripted model whose output genuinely depends on
+//! the cap, on both surfaces.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{future::Future, sync::Arc};
 
-use crate::tool::extensions::TypeMap;
+use rig_core::tool::context::TypeMap;
 use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, Message, ToolChoice},
+    completion::FinishReason,
+    message::{AssistantContent, Message},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use crate::{
-    agent::model::ModelHandle,
-    completion::{Document, Usage},
+    agent::ModelHandle,
+    completion::{ResponseIdentity, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
 };
 
-/// Opaque process-scoped identifier for one agent run.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RunId(String);
+pub use rig_core::id::RunId;
 
-impl RunId {
-    pub(crate) fn generate() -> Self {
-        Self(rig_core::id::generate())
-    }
+pub use rig_run::RunEntry;
 
-    /// Identifier as text.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for RunId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// Run-scoped typed storage shared by hooks.
+/// Run-scoped typed storage shared by hooks — the in-process cross-hook
+/// channel.
+///
+/// # Where hook state belongs
+///
+/// - **A hook's own private state** belongs in the hook's own fields
+///   (`Arc<AtomicUsize>`, `Arc<Mutex<…>>` — the pattern this crate's test
+///   probes use). Key by [`HookContext::run_id`] when one instance serves
+///   many runs.
+/// - **Transient cross-hook state** — one hook writing, another reading,
+///   within one run — goes here. Typed entries live only as long as the
+///   run's process; a `TypeMap` has no serialization story on purpose.
+/// - **Anything that must survive serialization** — an out-of-process
+///   approval, a run resumed later, possibly elsewhere — or that must rewind
+///   correctly when a host clones/forks a run, goes through
+///   [`HookContext::append_entry`]: state that rides the run's record
+///   travels, rewinds, and forks with the record; out-of-band state does not.
+///
+/// [`AgentRun`]: crate::agent::AgentRun
 #[derive(Clone, Default)]
 pub struct Scratchpad {
     inner: Arc<std::sync::Mutex<TypeMap>>,
@@ -162,7 +241,9 @@ pub struct Scratchpad {
 
 impl Scratchpad {
     fn lock(&self) -> std::sync::MutexGuard<'_, TypeMap> {
-        self.inner.lock().unwrap_or_else(|error| error.into_inner())
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Insert a value.
@@ -231,7 +312,9 @@ struct ToolCallRewriteFrames {
 
 impl ToolCallRewriteFrames {
     fn lock(&self) -> std::sync::MutexGuard<'_, ToolCallRewriteFrameMap> {
-        self.inner.lock().unwrap_or_else(|error| error.into_inner())
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     fn begin(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
@@ -258,13 +341,13 @@ impl ToolCallRewriteFrames {
 
     fn finish(&self, internal_call_id: &str) -> Option<serde_json::Value> {
         let mut frames = self.lock();
-        let (rewrite, remove_entry) = frames
-            .get_mut(internal_call_id)
-            .map(|frames| {
-                let rewrite = frames.pop().flatten();
-                (rewrite, frames.is_empty())
-            })
-            .unwrap_or((None, false));
+        let (rewrite, remove_entry) =
+            frames
+                .get_mut(internal_call_id)
+                .map_or((None, false), |frames| {
+                    let rewrite = frames.pop().flatten();
+                    (rewrite, frames.is_empty())
+                });
         if remove_entry {
             frames.remove(internal_call_id);
         }
@@ -309,18 +392,47 @@ pub struct HookContext {
     agent_name: Option<String>,
     scratchpad: Scratchpad,
     tool_call_rewrite_frames: ToolCallRewriteFrames,
+    /// Every [`RunEntry`] visible to this run — the entries the run carried
+    /// in (seeded by the driver at run start) followed by this run's appends,
+    /// in append order.
+    entries: std::sync::Mutex<Vec<RunEntry>>,
+    /// Appends not yet flushed into the [`AgentRun`](crate::agent::AgentRun)
+    /// by the driver.
+    pending_entries: std::sync::Mutex<Vec<RunEntry>>,
 }
 
 impl HookContext {
     pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
         Self {
-            run_id: RunId::generate(),
+            run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
             agent_name,
             scratchpad: Scratchpad::default(),
             tool_call_rewrite_frames: ToolCallRewriteFrames::default(),
+            entries: std::sync::Mutex::new(Vec::new()),
+            pending_entries: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// Seed the entries a resumed run carried; called by the driver at run
+    /// start, before any hook fires.
+    pub(crate) fn seed_entries(&self, entries: &[RunEntry]) {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(entries);
+    }
+
+    /// Drain the appends not yet flushed into the run; called by the driver
+    /// at each step boundary.
+    pub(crate) fn drain_pending_entries(&self) -> Vec<RunEntry> {
+        std::mem::take(
+            &mut *self
+                .pending_entries
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
     }
 
     pub(crate) fn set_turn(&self, turn: usize) {
@@ -328,8 +440,8 @@ impl HookContext {
     }
 
     /// Stable run identifier.
-    pub fn run_id(&self) -> &RunId {
-        &self.run_id
+    pub fn run_id(&self) -> RunId {
+        self.run_id
     }
 
     /// Current one-based model-call index.
@@ -352,6 +464,73 @@ impl HookContext {
         &self.scratchpad
     }
 
+    /// Append a durable entry to the run's record.
+    ///
+    /// The entry is stamped with the current [`turn`](Self::turn) and lands
+    /// in the serializable [`AgentRun`](crate::agent::AgentRun) at the next
+    /// step boundary — durability holds by construction, with no snapshot or
+    /// export moment. Serialization failures surface immediately; nothing is
+    /// silently dropped. Fire-and-forget beyond that: no id or handle comes
+    /// back.
+    ///
+    /// The intended default pattern is **snapshot + last-wins**: append a
+    /// full state snapshot whenever your state changes, and reconstruct by
+    /// reading the most recent one with [`last_entry`](Self::last_entry).
+    /// Delta entries folded over [`entries`](Self::entries) fit genuinely
+    /// event-shaped state (an approval ledger); the snapshot pattern needs no
+    /// fold logic and tolerates replay trivially.
+    ///
+    /// An entry appended inside `on_run_settled` is not persisted — the run
+    /// is already finished; it remains visible to same-process reads only.
+    pub fn append_entry<T: serde::Serialize>(
+        &self,
+        kind: impl Into<String>,
+        value: &T,
+    ) -> Result<(), serde_json::Error> {
+        let entry = RunEntry {
+            kind: kind.into(),
+            turn: self.turn(),
+            value: serde_json::to_value(value)?,
+        };
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(entry.clone());
+        self.pending_entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(entry);
+        Ok(())
+    }
+
+    /// All entries of `kind` visible to this run: the entries a resumed run
+    /// carried in, followed by this run's appends, in append order.
+    ///
+    /// This *is* the replay: a hook reconstructs state by folding over this
+    /// list — and because every read traverses the full list, re-reading is
+    /// idempotent by construction.
+    pub fn entries(&self, kind: &str) -> Vec<RunEntry> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|entry| entry.kind == kind)
+            .cloned()
+            .collect()
+    }
+
+    /// The most recent entry of `kind`, if any — the read for the
+    /// snapshot-and-read-the-last pattern.
+    pub fn last_entry(&self, kind: &str) -> Option<RunEntry> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .rev()
+            .find(|entry| entry.kind == kind)
+            .cloned()
+    }
+
     fn begin_tool_call_resolution(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
         self.tool_call_rewrite_frames.begin(internal_call_id)
     }
@@ -362,29 +541,7 @@ impl HookContext {
     }
 }
 
-/// Diagnostics for an invalid model-emitted tool call.
-#[derive(Debug, Clone)]
-#[non_exhaustive]
-pub struct InvalidToolCallContext {
-    /// Name emitted by the model.
-    pub tool_name: String,
-    /// Provider tool-call id, when present.
-    pub tool_call_id: Option<String>,
-    /// Rig correlation id, when present.
-    pub internal_call_id: Option<String>,
-    /// Emitted JSON arguments, when present.
-    pub args: Option<String>,
-    /// Executable tools advertised for the turn.
-    pub available_tools: Vec<String>,
-    /// Tools permitted by the active tool choice.
-    pub allowed_tools: Vec<String>,
-    /// Active tool choice.
-    pub tool_choice: Option<ToolChoice>,
-    /// Diagnostic history including the rejected output.
-    pub chat_history: Vec<Message>,
-    /// Whether the call came from the streaming path.
-    pub is_streaming: bool,
-}
+pub use rig_run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 
 /// Completion-call event.
 ///
@@ -436,7 +593,6 @@ pub struct CompletionCall<'a> {
 /// default candidate for every retry, not a hard pin: selection hooks may
 /// override it on each retry.
 #[derive(Clone, Copy)]
-#[non_exhaustive]
 pub struct ModelSelection<'a> {
     /// Prompt for the pending model call.
     pub prompt: &'a Message,
@@ -456,9 +612,8 @@ pub struct ModelSelection<'a> {
 impl<'a> ModelSelection<'a> {
     /// Construct a `ModelSelection` event from its parts.
     ///
-    /// The struct is `#[non_exhaustive]`, so external code cannot build it
-    /// with a struct literal; this constructor exists so that custom
-    /// model-selection routers can be unit-tested outside this crate.
+    /// Provided so that custom model-selection routers can be unit-tested
+    /// outside this crate without restating every field.
     pub fn new(
         prompt: &'a Message,
         history: &'a [Message],
@@ -484,11 +639,25 @@ pub struct CompletionResponse<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
     /// Canonical assistant content returned for this turn.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
-    /// Provider-assigned message ID, when available.
+    /// Provider-assigned message ID, when available. Always equal to
+    /// [`identity`](Self::identity)`.message_id`; kept as a field for
+    /// continuity with pre-identity hooks.
     pub message_id: Option<&'a str>,
+    /// This exact attempt's response identity metadata (message-scoped,
+    /// response-scoped, and transport request ids).
+    pub identity: &'a ResponseIdentity,
+    /// The provider's own response for this attempt — see
+    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
+    /// payload: the value the model's inherent `raw_completion` /
+    /// `raw_stream` would have returned, serialized. Every provider seam
+    /// populates it; `Value::Null` only when the response was built without
+    /// a provider behind it (a hand-constructed model, a record persisted
+    /// before the field). On a retry this is the retried attempt's own,
+    /// never a previous attempt's.
+    pub raw: &'a serde_json::Value,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -501,22 +670,63 @@ pub struct ModelTurnFinished<'a> {
     /// One-based model-call index.
     pub turn: usize,
     /// Canonical assistant content parked for hook acceptance.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for the turn.
     pub usage: Usage,
-}
-
-/// How an accepted, tool-free model turn should be retried.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RetryRequest {
-    /// Discard the rejected response and reuse the same prompt and preceding
-    /// history with fresh request preparation.
+    /// This exact attempt's response identity metadata. Fired for every
+    /// completed model call on both surfaces — including streamed tool-only
+    /// and reasoning-only turns, which fire no [`StreamResponseFinish`] — so
+    /// a provider-neutral hook observing this event alone records identity
+    /// for every accepted call. On a retry, this is the retried attempt's own
+    /// identity, never a previous attempt's.
+    pub identity: &'a ResponseIdentity,
+    /// Why the provider stopped generating this attempt, normalized.
     ///
-    /// Completion-call hooks, retrieval, and dynamic tool resolution run again,
-    /// so the resulting provider request may differ from the rejected attempt.
-    Repeat,
-    /// Preserve the rejected assistant response and append corrective feedback.
-    Feedback(String),
+    /// [`FinishReason`] is the portable vocabulary — `Stop`, `Length`,
+    /// `ToolCalls`, `ContentFilter`, and `Other(String)` carrying a provider's
+    /// own spelling verbatim for anything outside it — so a hook can decide
+    /// whether to accept a turn without naming a provider or touching a raw
+    /// response type. [`FinishReason::truncated_output`] is the predicate for
+    /// "the provider cut this turn short", which is the usual retry trigger.
+    ///
+    /// `None` means the provider reported no reason at all, which is a real
+    /// outcome for several OpenAI-compatible gateways; it is deliberately not
+    /// smoothed into `Stop`, because "finished normally" and "did not say" are
+    /// different facts to steer on.
+    ///
+    /// The value is the one recorded for this attempt's completion call, after
+    /// the `Stop`→`ToolCalls` reconciliation that both surfaces apply, so a
+    /// provider that reports a bare `stop` on a turn carrying tool calls still
+    /// reads as `ToolCalls` here. On a retry this is the retried attempt's own
+    /// reason, never a previous attempt's.
+    pub finish_reason: Option<&'a FinishReason>,
+    /// The output-token cap this exact attempt was prepared with.
+    ///
+    /// Resolved after the agent's configured value, the runner/request
+    /// override, and the merged completion-call
+    /// [`RequestPatch`] — so a stateful
+    /// completion-call hook that raises the cap for a retry sees its own new
+    /// value here on the following turn, not the agent's baseline. `None` means
+    /// no cap was sent, so the provider's own default applied.
+    ///
+    /// Paired with [`finish_reason`](Self::finish_reason) this is what makes a
+    /// portable retry-on-truncation decision possible: a hook can tell a turn
+    /// cut short at a cap it chose from one cut short at a cap it did not.
+    pub max_tokens: Option<u64>,
+    /// The provider's own response for this attempt — see
+    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
+    /// payload: the value the model's inherent `raw_completion` /
+    /// `raw_stream` would have returned, serialized. Every provider seam
+    /// populates it; `Value::Null` only when the response was built without
+    /// a provider behind it (a hand-constructed model, a record persisted
+    /// before the field). On a retry this is the retried attempt's own,
+    /// never a previous attempt's.
+    ///
+    /// Carried here, and not only on the surface-specific events, for the
+    /// same reason identity is: this is the medium-neutral event, so a hook
+    /// observing it alone sees the payload for every accepted call on both
+    /// surfaces.
+    pub raw: &'a serde_json::Value,
 }
 
 /// Action for the medium-neutral [`ModelTurnFinished`] event.
@@ -564,7 +774,8 @@ impl ModelTurnAction {
 pub struct ToolCall<'a> {
     /// Tool name.
     pub tool_name: &'a str,
-    /// Provider tool-call id.
+    /// Durable tool-call id: the provider's when it issued one, else rig's
+    /// minted handle.
     pub tool_call_id: Option<&'a str>,
     /// Rig correlation id.
     pub internal_call_id: &'a str,
@@ -580,7 +791,8 @@ pub struct ToolCall<'a> {
 pub struct ToolResultEvent<'a> {
     /// Tool name.
     pub tool_name: &'a str,
-    /// Provider tool-call id.
+    /// Durable tool-call id: the provider's when it issued one, else rig's
+    /// minted handle.
     pub tool_call_id: Option<&'a str>,
     /// Rig correlation id.
     pub internal_call_id: &'a str,
@@ -603,12 +815,28 @@ pub struct TextDelta<'a> {
     pub aggregated: &'a str,
 }
 
+/// Streaming reasoning delta.
+#[derive(Clone, Copy)]
+pub struct ReasoningDelta<'a> {
+    /// Rig-generated correlator for this reasoning part. It is stable across
+    /// the part's deltas and eventual completed reasoning item, but is never
+    /// persisted as a provider-issued reasoning id.
+    pub id: &'a str,
+    /// Provider-issued durable reasoning item id, when the wire provides one.
+    pub provider_id: Option<&'a str>,
+    /// Newly received reasoning fragment.
+    pub delta: &'a str,
+    /// Reasoning text accumulated for this reasoning part through this delta.
+    pub aggregated: &'a str,
+}
+
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
-    /// Provider tool-call id.
-    pub tool_call_id: &'a str,
-    /// Rig correlation id.
+    /// Rig correlation id — stable across this call's fragments and its
+    /// completed [`ToolCall`], unique per run. Provider-issued ids arrive on
+    /// the completed call; no provider id (and no stream-internal key) is
+    /// available or rendered at delta time.
     pub internal_call_id: &'a str,
     /// Tool name on the first delta.
     pub tool_name: Option<&'a str>,
@@ -622,17 +850,101 @@ pub struct StreamResponseFinish<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
     /// Canonical assistant content aggregated for this turn.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
-    /// Provider-assigned message ID, when available.
+    /// Provider-assigned message ID, when available. Always equal to
+    /// [`identity`](Self::identity)`.message_id`; kept as a field for
+    /// continuity with pre-identity hooks.
     pub message_id: Option<&'a str>,
+    /// This exact attempt's response identity metadata (message-scoped,
+    /// response-scoped, and transport request ids).
+    pub identity: &'a ResponseIdentity,
+    /// The provider's own response for this attempt — see
+    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
+    /// payload: the value the model's inherent `raw_completion` /
+    /// `raw_stream` would have returned, serialized. Every provider seam
+    /// populates it; `Value::Null` only when the response was built without
+    /// a provider behind it (a hand-constructed model, a record persisted
+    /// before the field). On a retry this is the retried attempt's own,
+    /// never a previous attempt's.
+    pub raw: &'a serde_json::Value,
+}
+
+/// Pre-run event: the run's initial prompt, before any model call.
+///
+/// Fired exactly once per run, before the first completion-call hook. The
+/// composition rules mirror an input-transform chain: in a [`HookStack`],
+/// rewrites chain in registration order — each hook sees the prompt as
+/// rewritten by earlier hooks — and the first [`RunStartAction::Stop`] wins,
+/// short-circuiting the remaining hooks and terminating the run before any
+/// provider call.
+#[derive(Clone, Copy)]
+pub struct RunStart<'a> {
+    /// The prompt the run will send on its first model call, including
+    /// earlier hooks' rewrites.
+    pub prompt: &'a Message,
+    /// The input chat history preceding the prompt.
+    pub history: &'a [Message],
+}
+
+/// Action for the pre-run [`RunStart`] event.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RunStartAction {
+    /// Start the run with the current prompt.
+    Continue,
+    /// Replace the prompt and pass it to later hooks.
+    Rewrite(Message),
+    /// Stop the run before any model call, with a reason.
+    Stop(String),
+}
+
+impl RunStartAction {
+    /// Starts the run with the current prompt.
+    pub fn continue_run() -> Self {
+        Self::Continue
+    }
+
+    /// Replaces the prompt; later hooks in a [`HookStack`] see the rewrite.
+    pub fn rewrite(prompt: impl Into<Message>) -> Self {
+        Self::Rewrite(prompt.into())
+    }
+
+    /// Stops the run before any provider call.
+    pub fn stop(reason: impl Into<String>) -> Self {
+        Self::Stop(reason.into())
+    }
+}
+
+/// Terminal run event: the run has settled and nothing follows automatically.
+///
+/// Fired exactly once per run, after the outcome is decided — no retry,
+/// further turn, or tool execution will run. This is deliberately distinct
+/// from per-turn finishes ([`ModelTurnFinished`], [`StreamResponseFinish`]):
+/// those can be followed by hook-driven retries or tool turns, while
+/// `RunSettled` cannot. On the streaming surface the success case coincides
+/// with the run's `FinalResponse` stream item; `RunSettled` additionally
+/// covers error termination, which the stream reports as its `Err` item.
+#[derive(Clone, Copy)]
+pub struct RunSettled<'a> {
+    /// How the run ended.
+    pub outcome: SettledOutcome<'a>,
+}
+
+/// The outcome carried by [`RunSettled`].
+#[derive(Clone, Copy)]
+pub enum SettledOutcome<'a> {
+    /// The run completed with this final response.
+    Response(&'a rig_run::PromptResponse),
+    /// The run terminated with an error, rendered via its `Display` form.
+    Error(&'a str),
 }
 
 /// Hook event kind used only as an observation performance hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum StepEventKind {
+    RunStart,
+    RunSettled,
     CompletionCall,
     CompletionResponse,
     ModelTurnFinished,
@@ -640,174 +952,15 @@ pub enum StepEventKind {
     ToolCall,
     ToolResult,
     TextDelta,
+    ReasoningDelta,
     ToolCallDelta,
     StreamResponseFinish,
 }
 
-/// A non-sticky patch applied only to the current turn's completion request.
-///
-/// A [`HookStack`] merges patches in hook registration order according to these
-/// rules:
-///
-/// - `extra_context` documents are appended in order.
-/// - JSON-object `additional_params` values are shallow-merged, with later
-///   top-level keys winning; a later non-object value replaces an earlier value.
-/// - `active_tools` allow-lists are intersected.
-/// - Scalar fields and `history` use last-writer-wins semantics, with a warning
-///   when multiple hooks set the same field.
-///
-/// The merged patch does not mutate the agent's configured baseline and is not
-/// carried into subsequent turns.
-#[derive(Debug, Clone, Default, PartialEq)]
-#[non_exhaustive]
-pub struct RequestPatch {
-    /// Preamble to use instead of the agent's configured preamble for this turn.
-    pub preamble: Option<String>,
-    /// Sampling temperature to use for this turn.
-    pub temperature: Option<f64>,
-    /// Maximum output-token count to use for this turn.
-    pub max_tokens: Option<u64>,
-    /// Tool-choice policy to use for this turn.
-    pub tool_choice: Option<ToolChoice>,
-    /// Allow-list used to narrow the tools advertised for this turn.
-    pub active_tools: Option<Vec<String>>,
-    /// Provider-specific request parameters to apply for this turn.
-    pub additional_params: Option<serde_json::Value>,
-    /// Context documents appended to the request for this turn.
-    pub extra_context: Vec<Document>,
-    /// Conversation history to use instead of the current history for this turn.
-    pub history: Option<Vec<Message>>,
-}
-
-fn merge_last_wins<T>(earlier: Option<T>, later: Option<T>, field: &str) -> Option<T> {
-    match (earlier, later) {
-        (Some(_), Some(later)) => {
-            tracing::warn!(
-                patch_field = field,
-                "two hooks set the same request field; later wins"
-            );
-            Some(later)
-        }
-        (earlier, later) => later.or(earlier),
-    }
-}
-
-impl RequestPatch {
-    /// Creates an empty request patch.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Replaces the agent's configured preamble for this turn.
-    pub fn preamble(mut self, value: impl Into<String>) -> Self {
-        self.preamble = Some(value.into());
-        self
-    }
-
-    /// Sets the sampling temperature for this turn.
-    pub fn temperature(mut self, value: f64) -> Self {
-        self.temperature = Some(value);
-        self
-    }
-
-    /// Sets the maximum output-token count for this turn.
-    pub fn max_tokens(mut self, value: u64) -> Self {
-        self.max_tokens = Some(value);
-        self
-    }
-
-    /// Sets the tool-choice policy for this turn.
-    pub fn tool_choice(mut self, value: ToolChoice) -> Self {
-        self.tool_choice = Some(value);
-        self
-    }
-
-    /// Sets the allow-list used to narrow the tools advertised for this turn.
-    pub fn active_tools<I, S>(mut self, values: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.active_tools = Some(values.into_iter().map(Into::into).collect());
-        self
-    }
-
-    /// Sets provider-specific request parameters for this turn.
-    ///
-    /// When multiple patches provide JSON objects, their top-level keys are
-    /// shallow-merged and values from later hooks win.
-    pub fn additional_params(mut self, value: serde_json::Value) -> Self {
-        self.additional_params = Some(value);
-        self
-    }
-
-    /// Appends context documents to the request for this turn.
-    pub fn extra_context<I>(mut self, values: I) -> Self
-    where
-        I: IntoIterator<Item = Document>,
-    {
-        self.extra_context.extend(values);
-        self
-    }
-
-    /// Appends one context document to the request for this turn.
-    pub fn context(mut self, value: Document) -> Self {
-        self.extra_context.push(value);
-        self
-    }
-
-    /// Replaces the conversation history for this turn.
-    pub fn history<I>(mut self, values: I) -> Self
-    where
-        I: IntoIterator<Item = Message>,
-    {
-        self.history = Some(values.into_iter().collect());
-        self
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.preamble.is_none()
-            && self.temperature.is_none()
-            && self.max_tokens.is_none()
-            && self.tool_choice.is_none()
-            && self.active_tools.is_none()
-            && self.additional_params.is_none()
-            && self.extra_context.is_empty()
-            && self.history.is_none()
-    }
-
-    pub(crate) fn merge(mut self, later: Self) -> Self {
-        self.extra_context.extend(later.extra_context);
-        self.additional_params = match (self.additional_params.take(), later.additional_params) {
-            (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
-                Some(json_utils::merge(base, patch))
-            }
-            (base, patch) => patch.or(base),
-        };
-        self.preamble = merge_last_wins(self.preamble, later.preamble, "preamble");
-        self.temperature = merge_last_wins(self.temperature, later.temperature, "temperature");
-        self.max_tokens = merge_last_wins(self.max_tokens, later.max_tokens, "max_tokens");
-        self.tool_choice = merge_last_wins(self.tool_choice, later.tool_choice, "tool_choice");
-        self.history = merge_last_wins(self.history, later.history, "history");
-        self.active_tools = match (self.active_tools.take(), later.active_tools) {
-            (Some(earlier), Some(later)) => {
-                let later: std::collections::BTreeSet<_> = later.iter().collect();
-                Some(
-                    earlier
-                        .into_iter()
-                        .filter(|name| later.contains(name))
-                        .collect(),
-                )
-            }
-            (earlier, later) => earlier.or(later),
-        };
-        self
-    }
-}
+pub use rig_run::policy::RequestPatch;
 
 /// Action for model-selection hooks.
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub enum ModelSelectionAction {
     /// Keep the candidate supplied to this hook.
     Continue,
@@ -945,68 +1098,6 @@ impl ToolResultAction {
     }
 }
 
-/// Action for invalid-tool-call hooks and manual invalid-call resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InvalidToolCallAction {
-    /// Preserve fail-fast behavior.
-    Fail,
-    /// Retry the model with corrective feedback.
-    Retry {
-        /// Feedback appended for the retry.
-        feedback: String,
-    },
-    /// Repair the emitted tool name.
-    Repair {
-        /// Replacement registered tool name.
-        tool_name: String,
-    },
-    /// Treat the invalid call as skipped.
-    Skip {
-        /// Synthetic model feedback.
-        reason: String,
-    },
-    /// Stop the run.
-    Stop {
-        /// Stop reason.
-        reason: String,
-    },
-}
-
-impl InvalidToolCallAction {
-    /// Creates an action that preserves fail-fast invalid-call handling.
-    pub fn fail() -> Self {
-        Self::Fail
-    }
-
-    /// Creates an action that retries the model with corrective feedback.
-    pub fn retry(feedback: impl Into<String>) -> Self {
-        Self::Retry {
-            feedback: feedback.into(),
-        }
-    }
-
-    /// Creates an action that replaces the invalid tool name.
-    pub fn repair(tool_name: impl Into<String>) -> Self {
-        Self::Repair {
-            tool_name: tool_name.into(),
-        }
-    }
-
-    /// Creates an action that treats the invalid call as skipped.
-    pub fn skip(reason: impl Into<String>) -> Self {
-        Self::Skip {
-            reason: reason.into(),
-        }
-    }
-
-    /// Creates an action that stops the run with the supplied reason.
-    pub fn stop(reason: impl Into<String>) -> Self {
-        Self::Stop {
-            reason: reason.into(),
-        }
-    }
-}
-
 /// Action for observe-only lifecycle events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ObservationAction {
@@ -1030,6 +1121,35 @@ impl ObservationAction {
 
 /// Per-run lifecycle observer and steerer.
 pub trait AgentHook: WasmCompatSend + WasmCompatSync {
+    /// Runs once before the run's first model call, seeing the initial prompt.
+    ///
+    /// The hook may rewrite the prompt or stop the run before any provider
+    /// call. In a [`HookStack`], rewrites chain in registration order and the
+    /// first stop wins — see [`RunStart`]. The default action starts the run
+    /// with the current prompt.
+    fn on_run_start(
+        &self,
+        _ctx: &HookContext,
+        _event: RunStart<'_>,
+    ) -> impl Future<Output = RunStartAction> + WasmCompatSend {
+        async { RunStartAction::Continue }
+    }
+
+    /// Runs once after the run settles: its outcome — final response or
+    /// terminal error — is decided, and no retry, further turn, or tool
+    /// execution will follow. Observe-only; the run is already over.
+    ///
+    /// [`HookContext::entries`] sees every entry appended during the run
+    /// (the driver flushes before settling), but an entry appended *inside*
+    /// this hook is not persisted — the run is finished.
+    fn on_run_settled(
+        &self,
+        _ctx: &HookContext,
+        _event: RunSettled<'_>,
+    ) -> impl Future<Output = ()> + WasmCompatSend {
+        async {}
+    }
+
     /// Selects the model for the pending model-call boundary.
     ///
     /// Selection is synchronous, local, and non-blocking: it operates only on
@@ -1137,6 +1257,19 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
+    /// Observes a reasoning delta from a streaming response.
+    ///
+    /// The aggregate is scoped to the reasoning part identified by the event's
+    /// correlator. Like all streamed deltas, it remains provisional until the
+    /// model turn is accepted. The default action continues the run.
+    fn on_reasoning_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ReasoningDelta<'_>,
+    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+        async { ObservationAction::Continue }
+    }
+
     /// Observes an argument delta for a streaming tool call.
     ///
     /// The default action continues the run.
@@ -1171,23 +1304,91 @@ impl AgentHook for () {
     }
 }
 
+/// The erased hook events whose dispatch is a plain `Box::pin(self.on_*(..))`.
+/// `model_select` (sync), `invalid_tool_call` (borrowed event), and `tool_call`
+/// (wraps the rewrite-salvage frame) are hand-written below.
+macro_rules! for_each_boxed_hook_event {
+    ($m:ident) => {
+        $m!(
+            completion_call,
+            on_completion_call,
+            CompletionCall,
+            CompletionCallAction
+        );
+        $m!(
+            completion_response,
+            on_completion_response,
+            CompletionResponse,
+            ObservationAction
+        );
+        $m!(
+            model_turn_finished,
+            on_model_turn_finished,
+            ModelTurnFinished,
+            ModelTurnAction
+        );
+        $m!(
+            tool_result,
+            on_tool_result,
+            ToolResultEvent,
+            ToolResultAction
+        );
+        $m!(text_delta, on_text_delta, TextDelta, ObservationAction);
+        $m!(
+            reasoning_delta,
+            on_reasoning_delta,
+            ReasoningDelta,
+            ObservationAction
+        );
+        $m!(
+            tool_call_delta,
+            on_tool_call_delta,
+            ToolCallDelta,
+            ObservationAction
+        );
+        $m!(
+            stream_response_finish,
+            on_stream_response_finish,
+            StreamResponseFinish,
+            ObservationAction
+        );
+    };
+}
+
+macro_rules! erased_hook_decl {
+    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+        fn $erased<'a>(
+            &'a self,
+            ctx: &'a HookContext,
+            event: $event<'a>,
+        ) -> WasmBoxedFuture<'a, $action>;
+    };
+}
+
+macro_rules! erased_hook_forward {
+    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+        fn $erased<'a>(
+            &'a self,
+            ctx: &'a HookContext,
+            event: $event<'a>,
+        ) -> WasmBoxedFuture<'a, $action> {
+            Box::pin(self.$on(ctx, event))
+        }
+    };
+}
+
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
+    fn run_start<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunStart<'a>,
+    ) -> WasmBoxedFuture<'a, RunStartAction>;
+    fn run_settled<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunSettled<'a>,
+    ) -> WasmBoxedFuture<'a, ()>;
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
-    fn completion_call<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction>;
-    fn completion_response<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction>;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1198,26 +1399,7 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         ctx: &'a HookContext,
         event: ToolCall<'a>,
     ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
-    fn tool_result<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction>;
-    fn text_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn tool_call_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
 
@@ -1225,31 +1407,26 @@ impl<H> DynAgentHook for H
 where
     H: AgentHook,
 {
+    fn run_start<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunStart<'a>,
+    ) -> WasmBoxedFuture<'a, RunStartAction> {
+        Box::pin(self.on_run_start(ctx, event))
+    }
+
+    fn run_settled<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: RunSettled<'a>,
+    ) -> WasmBoxedFuture<'a, ()> {
+        Box::pin(self.on_run_settled(ctx, event))
+    }
+
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction {
         self.on_model_select(ctx, event)
     }
 
-    fn completion_call<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction> {
-        Box::pin(self.on_completion_call(ctx, event))
-    }
-    fn completion_response<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_completion_response(ctx, event))
-    }
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction> {
-        Box::pin(self.on_model_turn_finished(ctx, event))
-    }
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1270,34 +1447,7 @@ where
             (action, frame.finish())
         })
     }
-    fn tool_result<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction> {
-        Box::pin(self.on_tool_result(ctx, event))
-    }
-    fn text_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_text_delta(ctx, event))
-    }
-    fn tool_call_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_tool_call_delta(ctx, event))
-    }
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_stream_response_finish(ctx, event))
-    }
+    for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {
         AgentHook::observes(self, kind)
     }
@@ -1380,19 +1530,84 @@ impl HookStack {
     }
 }
 
-async fn first_stop<I>(futures: I) -> ObservationAction
+/// An action with a neutral `Continue` state that observe-only and steering
+/// dispatch short-circuits on: the first non-`Continue` action wins and later
+/// hooks are not invoked.
+trait ShortCircuitAction: Sized {
+    const CONTINUE: Self;
+    fn is_continue(&self) -> bool;
+}
+
+impl ShortCircuitAction for ObservationAction {
+    const CONTINUE: Self = ObservationAction::Continue;
+    fn is_continue(&self) -> bool {
+        matches!(self, ObservationAction::Continue)
+    }
+}
+
+impl ShortCircuitAction for ModelTurnAction {
+    const CONTINUE: Self = ModelTurnAction::Continue;
+    fn is_continue(&self) -> bool {
+        matches!(self, ModelTurnAction::Continue)
+    }
+}
+
+/// Dispatches to each hook in registration order, returning the first action
+/// that is not `Continue` without invoking the remaining hooks.
+async fn first_non_continue<'a, A, F>(hooks: &'a [Arc<dyn DynAgentHook>], mut dispatch: F) -> A
 where
-    I: IntoIterator<Item = ObservationAction>,
+    A: ShortCircuitAction,
+    F: FnMut(&'a dyn DynAgentHook) -> WasmBoxedFuture<'a, A>,
 {
-    for action in futures {
-        if !matches!(action, ObservationAction::Continue) {
+    for hook in hooks {
+        let action = dispatch(hook.as_ref()).await;
+        if !action.is_continue() {
             return action;
         }
     }
-    ObservationAction::Continue
+    A::CONTINUE
+}
+
+/// Generate the `HookStack` methods whose dispatch is exactly
+/// [`first_non_continue`] over the erased hooks: `(on_* name, erased name,
+/// event type, action type)`, mirroring `for_each_boxed_hook_event!`. The
+/// genuinely chaining events (`on_model_select`, `on_completion_call`,
+/// `on_invalid_tool_call`, `on_tool_call`, `on_tool_result`) stay hand-written.
+macro_rules! stack_first_non_continue {
+    ($($on:ident, $erased:ident, $event:ident, $action:ident;)+) => {
+        $(
+            async fn $on(&self, ctx: &HookContext, event: $event<'_>) -> $action {
+                first_non_continue(&self.hooks, |hook| hook.$erased(ctx, event)).await
+            }
+        )+
+    };
 }
 
 impl AgentHook for HookStack {
+    async fn on_run_start(&self, ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+        let mut rewritten: Option<Message> = None;
+        for hook in &self.hooks {
+            let current = RunStart {
+                prompt: rewritten.as_ref().unwrap_or(event.prompt),
+                ..event
+            };
+            match hook.run_start(ctx, current).await {
+                RunStartAction::Continue => {}
+                RunStartAction::Rewrite(prompt) => rewritten = Some(prompt),
+                stop @ RunStartAction::Stop(_) => return stop,
+            }
+        }
+        rewritten.map_or(RunStartAction::Continue, RunStartAction::Rewrite)
+    }
+
+    async fn on_run_settled(&self, ctx: &HookContext, event: RunSettled<'_>) {
+        // Every hook observes the terminal event; there is nothing to
+        // short-circuit on since the run is already over.
+        for hook in &self.hooks {
+            hook.run_settled(ctx, event).await;
+        }
+    }
+
     fn on_model_select(
         &self,
         ctx: &HookContext,
@@ -1429,7 +1644,7 @@ impl AgentHook for HookStack {
             match hook.completion_call(ctx, event).await {
                 CompletionCallAction::Continue => {}
                 CompletionCallAction::Patch(patch) => {
-                    merged = Some(merged.map_or(patch.clone(), |value| value.merge(patch)))
+                    merged = Some(merged.map_or(patch.clone(), |value| value.merge(patch)));
                 }
                 stop @ CompletionCallAction::Stop(_) => return stop,
             }
@@ -1440,34 +1655,13 @@ impl AgentHook for HookStack {
         }
     }
 
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: CompletionResponse<'_>,
-    ) -> ObservationAction {
-        let mut actions = Vec::new();
-        for hook in &self.hooks {
-            let action = hook.completion_response(ctx, event).await;
-            let stop = !matches!(action, ObservationAction::Continue);
-            actions.push(action);
-            if stop {
-                break;
-            }
-        }
-        first_stop(actions).await
-    }
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        event: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        for hook in &self.hooks {
-            let action = hook.model_turn_finished(ctx, event).await;
-            if !matches!(action, ModelTurnAction::Continue) {
-                return action;
-            }
-        }
-        ModelTurnAction::Continue
+    stack_first_non_continue! {
+        on_completion_response, completion_response, CompletionResponse, ObservationAction;
+        on_model_turn_finished, model_turn_finished, ModelTurnFinished, ModelTurnAction;
+        on_text_delta, text_delta, TextDelta, ObservationAction;
+        on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
+        on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction;
+        on_stream_response_finish, stream_response_finish, StreamResponseFinish, ObservationAction;
     }
     async fn on_invalid_tool_call(
         &self,
@@ -1510,41 +1704,6 @@ impl AgentHook for HookStack {
         }
         effective.map_or(ToolResultAction::Keep, ToolResultAction::Rewrite)
     }
-    async fn on_text_delta(&self, ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.text_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
-    }
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.tool_call_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
-    }
-    async fn on_stream_response_finish(
-        &self,
-        ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.stream_response_finish(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
-    }
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))
     }
@@ -1554,6 +1713,118 @@ impl AgentHook for HookStack {
 mod tests {
     use super::*;
     use crate::tool::{ToolErrorKind, ToolExecutionError};
+
+    /// Rewrites the run-start prompt by appending its tag; used to observe
+    /// rewrite chaining across a stack.
+    struct StartRewriter(&'static str);
+    impl AgentHook for StartRewriter {
+        async fn on_run_start(&self, _ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+            let current = match event.prompt {
+                Message::User { .. } => event.prompt.rag_text().expect("test prompts carry text"),
+                _ => panic!("run-start prompts are user messages"),
+            };
+            RunStartAction::rewrite(Message::user(format!("{current}{}", self.0)))
+        }
+    }
+
+    struct StartStopper;
+    impl AgentHook for StartStopper {
+        async fn on_run_start(&self, _ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+            RunStartAction::stop("blocked at start")
+        }
+    }
+
+    #[tokio::test]
+    async fn run_start_rewrites_chain_in_registration_order() {
+        let mut stack = HookStack::with(StartRewriter("-a"));
+        stack.push(StartRewriter("-b"));
+        let ctx = HookContext::new(false, None);
+        let prompt = Message::user("p");
+        let action = stack
+            .on_run_start(
+                &ctx,
+                RunStart {
+                    prompt: &prompt,
+                    history: &[],
+                },
+            )
+            .await;
+        match action {
+            RunStartAction::Rewrite(message) => {
+                // The second hook saw the first hook's rewrite.
+                assert_eq!(message.rag_text().expect("text"), "p-a-b");
+            }
+            other => panic!("expected a chained rewrite, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_start_first_stop_wins_and_short_circuits() {
+        let mut stack = HookStack::with(StartRewriter("-a"));
+        stack.push(StartStopper);
+        // This rewriter must never run.
+        struct Panicker;
+        impl AgentHook for Panicker {
+            async fn on_run_start(
+                &self,
+                _ctx: &HookContext,
+                _event: RunStart<'_>,
+            ) -> RunStartAction {
+                panic!("a stop must short-circuit later hooks");
+            }
+        }
+        stack.push(Panicker);
+        let ctx = HookContext::new(false, None);
+        let prompt = Message::user("p");
+        let action = stack
+            .on_run_start(
+                &ctx,
+                RunStart {
+                    prompt: &prompt,
+                    history: &[],
+                },
+            )
+            .await;
+        assert_eq!(action, RunStartAction::Stop("blocked at start".into()));
+    }
+
+    #[test]
+    fn append_entry_stamps_the_current_turn_and_reads_replay_in_order() {
+        let ctx = HookContext::new(false, None);
+        // A resumed run's carried entries come first.
+        ctx.seed_entries(&[RunEntry {
+            kind: "counter".into(),
+            turn: 2,
+            value: serde_json::json!(2),
+        }]);
+
+        ctx.set_turn(3);
+        ctx.append_entry("counter", &3u64).expect("serializable");
+        ctx.append_entry("other", &()).expect("null marker");
+
+        let counters = ctx.entries("counter");
+        assert_eq!(
+            counters.iter().map(|e| e.turn).collect::<Vec<_>>(),
+            [2, 3],
+            "seeded entries precede this run's appends"
+        );
+        // Last-wins snapshot read.
+        let last = ctx.last_entry("counter").expect("appended");
+        assert_eq!(last.turn, 3);
+        assert_eq!(last.value, serde_json::json!(3));
+        assert!(ctx.last_entry("absent").is_none());
+
+        // Only this run's appends are pending for the driver to flush —
+        // seeded entries are already in the run.
+        let pending = ctx.drain_pending_entries();
+        assert_eq!(
+            pending.iter().map(|e| e.kind.as_str()).collect::<Vec<_>>(),
+            ["counter", "other"]
+        );
+        // Draining does not affect reads, and is not repeatable.
+        assert_eq!(ctx.entries("counter").len(), 2);
+        assert!(ctx.drain_pending_entries().is_empty());
+    }
 
     struct Patcher(f64);
     impl AgentHook for Patcher {
@@ -2039,6 +2310,19 @@ mod migrated_tests {
                 ObservationAction::continue_run()
             }
         }
+
+        async fn on_reasoning_delta(
+            &self,
+            _ctx: &HookContext,
+            _event: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.log.lock().expect("log").push(self.label);
+            if self.stop {
+                ObservationAction::stop("stop")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
     }
 
     struct ObservesOnly(StepEventKind);
@@ -2181,6 +2465,43 @@ mod migrated_tests {
             ObservationAction::Stop(_)
         ));
         assert_eq!(*log.lock().unwrap(), vec![1]);
+    }
+
+    #[tokio::test]
+    async fn reasoning_delta_observation_preserves_nested_order_and_stop() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut inner = HookStack::with(ObservationRecorder {
+            label: 1,
+            log: log.clone(),
+            stop: false,
+        });
+        inner.push(ObservationRecorder {
+            label: 2,
+            log: log.clone(),
+            stop: true,
+        });
+        let mut outer = HookStack::with(inner);
+        outer.push(ObservationRecorder {
+            label: 3,
+            log: log.clone(),
+            stop: false,
+        });
+
+        assert!(matches!(
+            outer
+                .on_reasoning_delta(
+                    &ctx(),
+                    ReasoningDelta {
+                        id: "corr_1",
+                        provider_id: Some("rs_1"),
+                        delta: "think",
+                        aggregated: "think",
+                    },
+                )
+                .await,
+            ObservationAction::Stop(_)
+        ));
+        assert_eq!(*log.lock().expect("log"), vec![1, 2]);
     }
 
     #[tokio::test]
@@ -2346,6 +2667,7 @@ mod migrated_tests {
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
             StepEventKind::TextDelta,
+            StepEventKind::ReasoningDelta,
             StepEventKind::ToolCallDelta,
             StepEventKind::StreamResponseFinish,
         ] {
@@ -2440,7 +2762,7 @@ mod migrated_tests {
         assert_eq!(context.agent_name(), Some("agent"));
         context.set_turn(3);
         assert_eq!(context.turn(), 3);
-        assert!(!context.run_id().as_str().is_empty());
+        assert!(context.run_id().to_raw() > 0);
     }
 
     struct RewriteHook(Value);

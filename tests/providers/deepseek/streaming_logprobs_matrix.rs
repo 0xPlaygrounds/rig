@@ -1,0 +1,774 @@
+//! Exhaustive matrix for streamed Chat Completions log probabilities.
+//!
+//! Before this fix, `StreamingChoice` did not model `logprobs`, so serde
+//! discarded every per-token object before the shared compatible adapter saw
+//! it. Blocking `raw_completion` retained the same field on `Choice`; raw
+//! streaming therefore carried strictly less provider-native information.
+//!
+//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
+//!
+//! | dimension | values |
+//! |---|---|
+//! | transport | blocking control, raw streaming regression |
+//! | thinking | disabled text, `reasoning_effort: low` |
+//! | termination | natural `stop`, one-token `length` |
+//! | top candidates | `top_logprobs` absent, `0`, `2` |
+//!
+//! That is 24 recorded cells. Each one re-derives the exact expected
+//! log-probability object from its fixture and compares it with the serialized
+//! native response. Streaming cells recursively concatenate token arrays in
+//! wire order, including DeepSeek's `reasoning_content` probability array.
+
+use std::sync::{Arc, Mutex};
+
+use anyhow::{Context, Result};
+use futures::StreamExt as _;
+use rig::completion::CompletionModel;
+use rig::prelude::*;
+use rig::providers::deepseek;
+use rig::streaming::RawStreamingChoice;
+use serde_json::{Value, json};
+
+use super::support::{
+    recorded_request, recorded_response, recorded_stream_chunks,
+    with_deepseek_stream_logprobs_cassette_result,
+};
+
+const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Transport {
+    Blocking,
+    Streaming,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Thinking {
+    Disabled,
+    Low,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Termination {
+    Stop,
+    Length,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Top {
+    Absent,
+    Zero,
+    Two,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Cell {
+    transport: Transport,
+    thinking: Thinking,
+    termination: Termination,
+    top: Top,
+}
+
+#[derive(Debug)]
+struct Observation {
+    logprobs: Value,
+    finish_reason: Value,
+}
+
+type SharedObservation = Arc<Mutex<Option<Observation>>>;
+
+fn params(cell: Cell) -> Value {
+    let mut params = match cell.thinking {
+        Thinking::Disabled => json!({
+            "thinking": { "type": "disabled" },
+            "logprobs": true
+        }),
+        Thinking::Low => json!({
+            "reasoning_effort": "low",
+            "logprobs": true
+        }),
+    };
+    if let Some(top) = match cell.top {
+        Top::Absent => None,
+        Top::Zero => Some(0),
+        Top::Two => Some(2),
+    } {
+        params["top_logprobs"] = json!(top);
+    }
+    params
+}
+
+fn prompt(cell: Cell) -> &'static str {
+    match (cell.thinking, cell.termination) {
+        (Thinking::Disabled, Termination::Stop) => "Reply with exactly: cobalt",
+        (Thinking::Disabled, Termination::Length) => {
+            "Write the English alphabet in order without spaces."
+        }
+        (Thinking::Low, Termination::Stop) => "What is 17 + 25? Answer with only the number.",
+        (Thinking::Low, Termination::Length) => {
+            "Work out 17 + 25 carefully, then answer with only the number."
+        }
+    }
+}
+
+fn max_tokens(cell: Cell) -> u64 {
+    match (cell.thinking, cell.termination) {
+        (_, Termination::Length) => 1,
+        (Thinking::Disabled, Termination::Stop) => 8,
+        (Thinking::Low, Termination::Stop) => 64,
+    }
+}
+
+async fn run_cell(client: deepseek::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion_model(MODEL);
+    let request = model
+        .completion_request(prompt(cell))
+        .additional_params(params(cell))
+        .max_tokens(max_tokens(cell))
+        .build();
+
+    let observation = match cell.transport {
+        Transport::Blocking => {
+            let raw = model.raw_completion(request).await?;
+            let choice = raw
+                .choices
+                .first()
+                .context("blocking response should carry a choice")?;
+            Observation {
+                logprobs: choice.logprobs.clone().unwrap_or(Value::Null),
+                finish_reason: json!(choice.finish_reason),
+            }
+        }
+        Transport::Streaming => {
+            let mut stream = model.raw_stream(request).await?;
+            let mut terminal = None;
+            while let Some(item) = stream.next().await {
+                if let RawStreamingChoice::FinalResponse(response) = item? {
+                    terminal = Some(response);
+                }
+            }
+            let terminal = terminal.context("raw stream should carry a terminal response")?;
+            let serialized = serde_json::to_value(terminal)?;
+            Observation {
+                logprobs: serialized["logprobs"].clone(),
+                finish_reason: serialized["finish_reason"].clone(),
+            }
+        }
+    };
+
+    *observed.lock().expect("observation mutex poisoned") = Some(observation);
+    Ok(())
+}
+
+fn merge_json(existing: &mut Value, incoming: Value) {
+    match (existing, incoming) {
+        (Value::Object(existing), Value::Object(incoming)) => {
+            for (key, incoming) in incoming {
+                match existing.get_mut(&key) {
+                    Some(existing) => merge_json(existing, incoming),
+                    None => {
+                        existing.insert(key, incoming);
+                    }
+                }
+            }
+        }
+        (Value::Array(existing), Value::Array(mut incoming)) => existing.append(&mut incoming),
+        (existing, incoming) => *existing = incoming,
+    }
+}
+
+fn recorded_stream_logprobs(scenario: &str) -> Value {
+    let mut accumulated = Value::Null;
+    for chunk in recorded_stream_chunks(scenario) {
+        let Some(choice) = chunk["choices"].as_array().and_then(|choices| {
+            choices
+                .iter()
+                .find(|choice| choice["index"].as_u64() == Some(0))
+        }) else {
+            continue;
+        };
+        let logprobs = &choice["logprobs"];
+        if logprobs.is_null() {
+            continue;
+        }
+        if accumulated.is_null() {
+            accumulated = logprobs.clone();
+        } else {
+            merge_json(&mut accumulated, logprobs.clone());
+        }
+    }
+    accumulated
+}
+
+fn recorded_finish_reason(scenario: &str, transport: Transport) -> Value {
+    match transport {
+        Transport::Blocking => recorded_response(scenario)["choices"][0]["finish_reason"].clone(),
+        Transport::Streaming => recorded_stream_chunks(scenario)
+            .into_iter()
+            .filter_map(|chunk| {
+                chunk["choices"]
+                    .as_array()?
+                    .iter()
+                    .find(|choice| choice["index"].as_u64() == Some(0))?
+                    .get("finish_reason")
+                    .filter(|reason| !reason.is_null())
+                    .cloned()
+            })
+            .next_back()
+            .unwrap_or(Value::Null),
+    }
+}
+
+fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
+    let request = recorded_request(scenario);
+    assert_eq!(request["logprobs"], true, "{scenario}: request premise");
+    match cell.top {
+        Top::Absent => assert!(
+            request.get("top_logprobs").is_none(),
+            "{scenario}: top_logprobs should be absent"
+        ),
+        Top::Zero => assert_eq!(request["top_logprobs"], 0, "{scenario}"),
+        Top::Two => assert_eq!(request["top_logprobs"], 2, "{scenario}"),
+    }
+    match cell.thinking {
+        Thinking::Disabled => assert_eq!(request["thinking"]["type"], "disabled", "{scenario}"),
+        Thinking::Low => assert_eq!(request["reasoning_effort"], "low", "{scenario}"),
+    }
+    match cell.transport {
+        Transport::Blocking => assert!(request.get("stream").is_none(), "{scenario}"),
+        Transport::Streaming => assert_eq!(request["stream"], true, "{scenario}"),
+    }
+
+    let expected_logprobs = match cell.transport {
+        Transport::Blocking => recorded_response(scenario)["choices"][0]["logprobs"].clone(),
+        Transport::Streaming => recorded_stream_logprobs(scenario),
+    };
+    assert!(
+        expected_logprobs.is_object(),
+        "{scenario}: recorded response must exercise logprobs"
+    );
+    let token_count = expected_logprobs
+        .as_object()
+        .expect("checked object")
+        .values()
+        .filter_map(Value::as_array)
+        .map(Vec::len)
+        .sum::<usize>();
+    assert!(token_count > 0, "{scenario}: premise must contain tokens");
+
+    let expected_finish = match cell.termination {
+        Termination::Stop => json!("stop"),
+        Termination::Length => json!("length"),
+    };
+    assert_eq!(
+        recorded_finish_reason(scenario, cell.transport),
+        expected_finish,
+        "{scenario}: recorded termination premise"
+    );
+
+    let observation = observed
+        .lock()
+        .expect("observation mutex poisoned")
+        .take()
+        .expect("test body should save an observation");
+    assert_eq!(
+        observation.logprobs, expected_logprobs,
+        "{scenario}: native response must retain every recorded probability"
+    );
+    assert_eq!(
+        observation.finish_reason, expected_finish,
+        "{scenario}: terminal reason"
+    );
+}
+
+fn cell(transport: Transport, thinking: Thinking, termination: Termination, top: Top) -> Cell {
+    Cell {
+        transport,
+        thinking,
+        termination,
+        top,
+    }
+}
+
+// Blocking controls: 2 thinking modes × 2 termination classes × 3 top-N
+// configurations. The matching streaming half below traverses the fixed path.
+
+#[tokio::test]
+async fn blocking_disabled_stop_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_stop_top_absent";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Disabled,
+        Termination::Stop,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_disabled_stop_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_disabled_stop_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_stop_top_zero";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Disabled,
+        Termination::Stop,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_disabled_stop_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_disabled_stop_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_stop_top_two";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Disabled,
+        Termination::Stop,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_disabled_stop_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_disabled_length_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_length_top_absent";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Disabled,
+        Termination::Length,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_disabled_length_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_disabled_length_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_length_top_zero";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Disabled,
+        Termination::Length,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_disabled_length_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_disabled_length_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_length_top_two";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Disabled,
+        Termination::Length,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_disabled_length_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_low_stop_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_stop_top_absent";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Low,
+        Termination::Stop,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_low_stop_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_low_stop_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_stop_top_zero";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Low,
+        Termination::Stop,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_low_stop_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_low_stop_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_stop_top_two";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Low,
+        Termination::Stop,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_low_stop_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_low_length_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_length_top_absent";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Low,
+        Termination::Length,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_low_length_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_low_length_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_length_top_zero";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Low,
+        Termination::Length,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_low_length_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn blocking_low_length_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_length_top_two";
+    let cell = cell(
+        Transport::Blocking,
+        Thinking::Low,
+        Termination::Length,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/blocking_low_length_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_disabled_stop_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_stop_top_absent";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Disabled,
+        Termination::Stop,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_disabled_stop_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_disabled_stop_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_stop_top_zero";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Disabled,
+        Termination::Stop,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_disabled_stop_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_disabled_stop_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_stop_top_two";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Disabled,
+        Termination::Stop,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_disabled_stop_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_disabled_length_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_length_top_absent";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Disabled,
+        Termination::Length,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_disabled_length_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_disabled_length_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_length_top_zero";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Disabled,
+        Termination::Length,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_disabled_length_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_disabled_length_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_length_top_two";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Disabled,
+        Termination::Length,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_disabled_length_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_low_stop_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_stop_top_absent";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Low,
+        Termination::Stop,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_low_stop_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_low_stop_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_stop_top_zero";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Low,
+        Termination::Stop,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_low_stop_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_low_stop_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_stop_top_two";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Low,
+        Termination::Stop,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_low_stop_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_low_length_top_absent() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_length_top_absent";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Low,
+        Termination::Length,
+        Top::Absent,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_low_length_top_absent",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_low_length_top_zero() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_length_top_zero";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Low,
+        Termination::Length,
+        Top::Zero,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_low_length_top_zero",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}
+
+#[tokio::test]
+async fn streaming_low_length_top_two() -> Result<()> {
+    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_length_top_two";
+    let cell = cell(
+        Transport::Streaming,
+        Thinking::Low,
+        Termination::Length,
+        Top::Two,
+    );
+    let observed = SharedObservation::default();
+    let capture = Arc::clone(&observed);
+    with_deepseek_stream_logprobs_cassette_result(
+        "streaming_logprobs_matrix/streaming_low_length_top_two",
+        |client| async move { run_cell(client, cell, capture).await },
+    )
+    .await?;
+    assert_cell(SCENARIO, cell, observed);
+    Ok(())
+}

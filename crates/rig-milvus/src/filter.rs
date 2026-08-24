@@ -1,4 +1,6 @@
-use rig_core::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
+use rig_core::vector_store::request::{
+    DynamicSearchFilter, Filter as CoreFilter, FilterError, SearchFilter,
+};
 use serde::{Deserialize, Serialize};
 
 pub enum MilvusValue {
@@ -144,67 +146,67 @@ impl Filter {
         Self(format!("NOT ({})", self.0))
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} >= {}", value.escaped()))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("{key} <= {}", value.escaped()))
     }
 
     /// IN operator
-    pub fn in_values(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn in_values(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("{} in [{}]", key, values_str))
+        Self(format!("{key} in [{values_str}]"))
     }
 
     /// NOT IN operator
-    pub fn not_in(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn not_in(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("{} not in [{}]", key, values_str))
+        Self(format!("{key} not in [{values_str}]"))
     }
 
     /// LIKE operator (string pattern matching)
-    pub fn like(key: String, pattern: String) -> Self {
-        Self(format!("{} like '{}'", key, pattern))
+    pub fn like(key: &str, pattern: &str) -> Self {
+        Self(format!("{key} like '{pattern}'"))
     }
 
     /// Array contains
-    pub fn array_contains(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn array_contains(key: &str, value: <Self as SearchFilter>::Value) -> Self {
         Self(format!("array_contains({}, {})", key, value.escaped()))
     }
 
     /// Array contains all
-    pub fn array_contains_all(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_contains_all(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("array_contains_all({}, [{}])", key, values_str))
+        Self(format!("array_contains_all({key}, [{values_str}])"))
     }
 
     /// Array contains any
-    pub fn array_contains_any(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_contains_any(key: &str, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let values_str = values
             .into_iter()
-            .map(|v| v.escaped())
+            .map(MilvusValue::escaped)
             .collect::<Vec<_>>()
             .join(", ");
-        Self(format!("array_contains_any({}, [{}])", key, values_str))
+        Self(format!("array_contains_any({key}, [{values_str}])"))
     }
 
     /// Array length comparison
-    pub fn array_length_eq(key: String, length: i32) -> Self {
-        Self(format!("array_length({}) == {}", key, length))
+    pub fn array_length_eq(key: &str, length: i32) -> Self {
+        Self(format!("array_length({key}) == {length}"))
     }
 
     pub fn into_inner(self) -> String {
@@ -215,14 +217,12 @@ impl Filter {
 impl TryFrom<CoreFilter<serde_json::Value>> for Filter {
     type Error = FilterError;
     fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
-        let value = match value {
-            CoreFilter::Eq(k, val) => Filter::eq(k, val.try_into()?),
-            CoreFilter::Gt(k, val) => Filter::gt(k, val.try_into()?),
-            CoreFilter::Lt(k, val) => Filter::lt(k, val.try_into()?),
-            CoreFilter::And(l, r) => Self::try_from(*l)?.and(Self::try_from(*r)?),
-            CoreFilter::Or(l, r) => Self::try_from(*l)?.or(Self::try_from(*r)?),
-        };
+        value.try_interpret(MilvusValue::try_from)
+    }
+}
 
-        Ok(value)
+impl DynamicSearchFilter for Filter {
+    fn from_dynamic_filter(filter: CoreFilter<serde_json::Value>) -> Result<Self, FilterError> {
+        Self::try_from(filter)
     }
 }

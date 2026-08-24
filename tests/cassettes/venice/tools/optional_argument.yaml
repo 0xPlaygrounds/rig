@@ -1,0 +1,33 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use the repeat_text tool whenever asked to repeat text.","type":"text"}],"role":"system"},{"content":"Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","tools":[{"function":{"description":"Repeat `text`. `times` is optional and defaults to 2.","name":"repeat_text","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"text":{"description":"The text to repeat.","type":"string"},"times":{"description":"Number of repetitions; defaults to 2 when omitted.","format":"uint32","minimum":0,"type":["integer","null"]}},"required":["text"],"title":"RepeatArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"text\": \"banana\", \"times\": 3}","name":"repeat_text"},"id":"call_REDACTED_1","type":"function"}]}}],"cost":{"diem":0,"usd":0.000111375},"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":18,"prompt_tokens":1140,"total_tokens":1158},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use the repeat_text tool whenever asked to repeat text.","type":"text"}],"role":"system"},{"content":"Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"text\":\"banana\",\"times\":3}","name":"repeat_text"},"id":"call_REDACTED_1","type":"function"}]},{"content":"banana banana banana","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"mistral-small-3-2-24b-instruct","tools":[{"function":{"description":"Repeat `text`. `times` is optional and defaults to 2.","name":"repeat_text","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"text":{"description":"The text to repeat.","type":"string"},"times":{"description":"Number of repetitions; defaults to 2 when omitted.","format":"uint32","minimum":0,"type":["integer","null"]}},"required":["text"],"title":"RepeatArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"banana banana banana","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[]}}],"cost":{"diem":0,"usd":0.0001116875},"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":5,"prompt_tokens":1178,"total_tokens":1183},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

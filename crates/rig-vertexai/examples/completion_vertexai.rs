@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    println!("Response: {}", response_text);
+    println!("Response: {response_text}");
 
     Ok(())
 }

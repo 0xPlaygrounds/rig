@@ -12,6 +12,7 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
+use rig::client::DefaultTransportBuilder as _;
 use rig::mongodb::{MongoDbVectorIndex, SearchParams};
 use rig::{
     Embed,
@@ -38,6 +39,10 @@ struct Word {
 
 const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
 const MONGODB_PORT: u16 = 27017;
+// Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+// layer caching and lets a rerun silently test a different database version.
+const MONGODB_IMAGE: &str = "mongodb/mongodb-atlas-local";
+const MONGODB_TAG: &str = "8.0.5";
 const COLLECTION_NAME: &str = "words";
 const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
@@ -152,7 +157,7 @@ async fn vector_search_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+    let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
         .with_exposed_port(MONGODB_PORT.tcp())
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
@@ -232,7 +237,7 @@ async fn vector_search_test() {
             "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
             "score": score
         })
-    )
+    );
 }
 
 #[tokio::test]
@@ -289,7 +294,7 @@ async fn insert_documents_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Setup MongoDB container
-    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+    let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
         .with_exposed_port(MONGODB_PORT.tcp())
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
@@ -316,7 +321,7 @@ async fn insert_documents_test() {
         },
     ];
 
-    // Generate embeddings using EmbeddingsBuilder (returns Vec<(Word, OneOrMany<Embedding>)>)
+    // Generate embeddings using EmbeddingsBuilder (returns Vec<(Word, Vec<Embedding>)>)
     let documents_with_embeddings = EmbeddingsBuilder::new(model.clone())
         .documents(test_words)
         .unwrap()
@@ -418,16 +423,13 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
                         .await;
 
                     if indexes.iter().any(|idx| {
-                        idx.as_ref()
-                            .ok()
-                            .map(|i| {
-                                // Check both name and status
-                                let name_matches =
-                                    i.get_str("name").ok() == Some(VECTOR_SEARCH_INDEX_NAME);
-                                let status_ready = i.get_str("status").ok() == Some("READY");
-                                name_matches && status_ready
-                            })
-                            .unwrap_or(false)
+                        idx.as_ref().ok().is_some_and(|i| {
+                            // Check both name and status
+                            let name_matches =
+                                i.get_str("name").ok() == Some(VECTOR_SEARCH_INDEX_NAME);
+                            let status_ready = i.get_str("status").ok() == Some("READY");
+                            name_matches && status_ready
+                        })
                     }) {
                         return;
                     }
@@ -502,11 +504,12 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
 
     embeddings
         .iter()
-        .map(|(Word { id, definition, .. }, embedding)| {
+        .map(|(Word { id, definition, .. }, embeddings)| {
+            let embedding = embeddings.first().expect("expected at least one embedding");
             doc! {
                 "_id": id.clone(),
                 "definition": definition.clone(),
-                "embedding": embedding.first().vec.clone(),
+                "embedding": embedding.vec.clone(),
             }
         })
         .collect()

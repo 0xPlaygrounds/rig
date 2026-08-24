@@ -30,6 +30,15 @@ impl MacroArgs {
     }
 }
 
+fn unsupported_argument(path: &syn::Path) -> syn::Error {
+    let message = path.get_ident().map_or_else(
+        || "unsupported top-level #[rig_tool] argument".to_string(),
+        |ident| format!("unsupported top-level #[rig_tool] argument `{ident}`"),
+    );
+
+    syn::Error::new_spanned(path, message)
+}
+
 fn parse_string_literal(expr: &Expr, field_name: &str) -> syn::Result<String> {
     match expr {
         Expr::Lit(ExprLit {
@@ -73,7 +82,7 @@ fn validate_explicit_tool_name(name: &str, expr: &Expr) -> syn::Result<()> {
 }
 
 fn reject_duplicate<T>(
-    slot: &Option<T>,
+    slot: Option<&T>,
     spanned: impl quote::ToTokens,
     what: &str,
 ) -> syn::Result<()> {
@@ -107,43 +116,40 @@ impl Parse for MacroArgs {
         for meta in meta_list {
             match meta {
                 Meta::NameValue(nv) => {
-                    let ident = nv.path.get_ident().ok_or_else(|| {
-                        syn::Error::new_spanned(
-                            &nv.path,
-                            "unsupported top-level #[rig_tool] argument",
-                        )
-                    })?;
+                    let ident = nv
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| unsupported_argument(&nv.path))?;
 
                     match ident.to_string().as_str() {
                         "name" => {
-                            reject_duplicate(&name, &nv.path, "name")?;
+                            reject_duplicate(name.as_ref(), &nv.path, "name")?;
                             let parsed_name = parse_string_literal(&nv.value, "name")?;
                             validate_explicit_tool_name(&parsed_name, &nv.value)?;
                             name = Some(parsed_name);
                         }
                         "description" => {
-                            reject_duplicate(&description, &nv.path, "description")?;
+                            reject_duplicate(description.as_ref(), &nv.path, "description")?;
                             description = Some(parse_string_literal(&nv.value, "description")?);
                         }
                         _ => {
-                            return Err(syn::Error::new_spanned(
-                                &nv.path,
-                                format!("unsupported top-level #[rig_tool] argument `{ident}`"),
-                            ));
+                            return Err(unsupported_argument(&nv.path));
                         }
                     }
                 }
                 Meta::List(list) => {
-                    let ident = list.path.get_ident().ok_or_else(|| {
-                        syn::Error::new_spanned(
-                            &list.path,
-                            "unsupported top-level #[rig_tool] argument",
-                        )
-                    })?;
+                    let ident = list
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| unsupported_argument(&list.path))?;
 
                     match ident.to_string().as_str() {
                         "params" => {
-                            reject_duplicate(&param_descriptions, &list.path, "params(...)")?;
+                            reject_duplicate(
+                                param_descriptions.as_ref(),
+                                &list.path,
+                                "params(...)",
+                            )?;
                             let nested: Punctuated<Meta, Token![,]> =
                                 list.parse_args_with(Punctuated::parse_terminated)?;
 
@@ -179,7 +185,7 @@ impl Parse for MacroArgs {
                             param_descriptions = Some(descriptions);
                         }
                         "required" => {
-                            reject_duplicate(&required, &list.path, "required(...)")?;
+                            reject_duplicate(required.as_ref(), &list.path, "required(...)")?;
                             let required_variables: Punctuated<Ident, Token![,]> =
                                 list.parse_args_with(Punctuated::parse_terminated)?;
 
@@ -196,21 +202,12 @@ impl Parse for MacroArgs {
                             required = Some(names);
                         }
                         _ => {
-                            return Err(syn::Error::new_spanned(
-                                &list.path,
-                                format!("unsupported top-level #[rig_tool] argument `{ident}`"),
-                            ));
+                            return Err(unsupported_argument(&list.path));
                         }
                     }
                 }
                 Meta::Path(path) => {
-                    let message = if let Some(ident) = path.get_ident() {
-                        format!("unsupported top-level #[rig_tool] argument `{ident}`")
-                    } else {
-                        "unsupported top-level #[rig_tool] argument".to_string()
-                    };
-
-                    return Err(syn::Error::new_spanned(path, message));
+                    return Err(unsupported_argument(&path));
                 }
             }
         }

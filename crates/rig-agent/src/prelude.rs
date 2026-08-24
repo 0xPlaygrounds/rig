@@ -12,8 +12,8 @@ pub use rig_core::client::audio_generation::AudioGenerationClient;
 pub use rig_core::client::image_generation::ImageGenerationClient;
 
 pub use crate::agent::{
-    Agent, AgentHook, HookContext, ModelHandle, ModelSelection, ModelSelectionAction,
-    MultiTurnStreamItem, StreamingResult,
+    Agent, AgentHook, HookContext, ModelHandle, ModelRef, ModelSelection, ModelSelectionAction,
+    MultiTurnStreamItem, RunEvents, StreamingResult,
 };
 pub use crate::client::{AgentClientExt, AgentModelExt};
 pub use crate::completion::{
@@ -25,7 +25,6 @@ pub use crate::tool::{Tool, ToolSet};
 pub use rig_core::client::completion::CompletionClient;
 
 pub use rig_core::Embed;
-pub use rig_core::OneOrMany;
 pub use rig_core::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 pub use rig_core::vector_store::VectorStoreIndex;
 pub use rig_core::vector_store::in_memory_store::InMemoryVectorStore;

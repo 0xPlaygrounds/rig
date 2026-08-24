@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub(crate) struct GeminiAgent {
-    model: gemini::completion::CompletionModel,
+    model: gemini::CompletionModel,
     preamble: String,
     tools: Vec<ToolDefinition>,
     tool_choice: Option<ToolChoice>,
@@ -23,7 +23,7 @@ pub(crate) struct GeminiAgent {
 
 impl GeminiAgent {
     pub(crate) fn new(
-        model: gemini::completion::CompletionModel,
+        model: gemini::CompletionModel,
         preamble: impl Into<String>,
         tool_names: &[&str],
         tool_choice: Option<ToolChoice>,
@@ -50,7 +50,7 @@ impl GeminiAgent {
         &self,
         prompt: Message,
         history: Vec<Message>,
-    ) -> CompletionRequestBuilder<gemini::completion::CompletionModel> {
+    ) -> CompletionRequestBuilder<gemini::CompletionModel> {
         let mut request = self
             .model
             .completion_request(prompt)
@@ -201,15 +201,13 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
                 &call.tool_call.function.name,
                 &call.tool_call.function.arguments,
             );
-            let content = rig::OneOrMany::one(ToolResultContent::json(serde_json::json!(output)));
-            match call.tool_call.call_id.clone() {
-                Some(call_id) => UserContent::tool_result_with_call_id(
-                    call.tool_call.id.clone(),
-                    call_id,
-                    content,
-                ),
-                None => UserContent::tool_result(call.tool_call.id.clone(), content),
-            }
+            let content = vec![ToolResultContent::json(serde_json::json!(output))];
+            UserContent::tool_result_for(
+                call.tool_call.id.clone(),
+                call.tool_call.provider.clone(),
+                call.tool_call.function.name.clone(),
+                content,
+            )
         })
         .collect()
 }

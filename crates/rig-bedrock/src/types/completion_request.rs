@@ -5,7 +5,6 @@ use aws_sdk_bedrockruntime::types::{
     CachePointBlock, CachePointType, InferenceConfiguration, SystemContentBlock, Tool,
     ToolConfiguration, ToolInputSchema, ToolSpecification,
 };
-use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, Message};
 use rig_core::message::{DocumentMediaType, UserContent};
 
@@ -25,12 +24,12 @@ impl AwsCompletionRequest {
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
         self.inner
             .additional_params
-            .to_owned()
-            .map(|params| params.into())
+            .clone()
+            .map(std::convert::Into::into)
             .map(|doc: AwsDocument| doc.0)
     }
 
-    pub fn inference_config(&self) -> Option<InferenceConfiguration> {
+    pub fn inference_config(&self) -> InferenceConfiguration {
         let mut inference_configuration = InferenceConfiguration::builder();
 
         if let Some(temperature) = &self.inner.temperature {
@@ -43,7 +42,7 @@ impl AwsCompletionRequest {
                 inference_configuration.set_max_tokens(Some(*max_tokens as i32));
         }
 
-        Some(inference_configuration.build())
+        inference_configuration.build()
     }
 
     pub fn tools_config(&self) -> Result<Option<ToolConfiguration>, CompletionError> {
@@ -51,20 +50,21 @@ impl AwsCompletionRequest {
             return Ok(None);
         }
 
-        let mut tools = vec![];
-        for tool_definition in self.inner.tools.iter() {
-            let doc: AwsDocument = tool_definition.parameters.clone().into();
-            let schema = ToolInputSchema::Json(doc.0);
-            let tool = Tool::ToolSpec(
+        let tools = self
+            .inner
+            .tools
+            .iter()
+            .map(|tool_definition| {
+                let doc: AwsDocument = tool_definition.parameters.clone().into();
                 ToolSpecification::builder()
                     .name(tool_definition.name.clone())
                     .set_description(Some(tool_definition.description.clone()))
-                    .set_input_schema(Some(schema))
+                    .set_input_schema(Some(ToolInputSchema::Json(doc.0)))
                     .build()
-                    .map_err(|e| CompletionError::RequestError(e.into()))?,
-            );
-            tools.push(tool);
-        }
+                    .map(Tool::ToolSpec)
+                    .map_err(|e| CompletionError::RequestError(e.into()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         if !tools.is_empty() {
             // Convert rig's ToolChoice to AWS Bedrock ToolChoice
@@ -120,7 +120,7 @@ impl AwsCompletionRequest {
             .output_schema_name()
             .unwrap_or_else(|| "response_schema".to_string());
 
-        let schema_json = serde_json::to_string(&schema.clone().to_value())
+        let schema_json = serde_json::to_string(schema.as_value())
             .map_err(|e| CompletionError::RequestError(e.into()))?;
 
         let json_schema_def = aws_bedrock::JsonSchemaDefinition::builder()
@@ -147,7 +147,7 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
         let mut system_blocks = Vec::new();
 
-        if let Some(system_prompt) = self.inner.preamble.to_owned()
+        if let Some(system_prompt) = self.inner.preamble.clone()
             && !system_prompt.is_empty()
         {
             system_blocks.push(SystemContentBlock::Text(system_prompt));
@@ -171,7 +171,9 @@ impl AwsCompletionRequest {
         }
     }
 
-    pub fn messages(&self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
+    /// Consumes the request: this is the one accessor that needs the chat
+    /// history by value, so call it after the borrowing accessors.
+    pub fn messages(self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
         let mut full_history: Vec<Message> = Vec::new();
 
         if !self.inner.documents.is_empty() {
@@ -179,23 +181,32 @@ impl AwsCompletionRequest {
                 .inner
                 .documents
                 .iter()
-                .map(|doc| doc.to_string())
+                .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = OneOrMany::one(UserContent::document(
+            let content = vec![UserContent::document(
                 messages,
                 Some(DocumentMediaType::TXT),
-            ));
+            )];
 
             full_history.push(Message::User { content });
         }
 
-        self.inner.chat_history.iter().for_each(|message| {
-            if !matches!(message, Message::System { .. }) {
-                full_history.push(message.clone());
-            }
+        // Compute before the history is moved below.
+        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
+            Message::Assistant { content, .. } => content
+                .iter()
+                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
+            _ => false,
         });
+
+        full_history.extend(
+            self.inner
+                .chat_history
+                .into_iter()
+                .filter(|message| !matches!(message, Message::System { .. })),
+        );
 
         let mut messages: Vec<aws_bedrock::Message> = full_history
             .into_iter()
@@ -210,18 +221,11 @@ impl AwsCompletionRequest {
         // result. Skip the message-level checkpoint in that case; the
         // system-prompt cache point still applies and captures the largest
         // stable prefix.
-        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
-            Message::Assistant { content, .. } => content
-                .iter()
-                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
-            _ => false,
-        });
-
         if self.prompt_caching
             && !has_reasoning
             && let Some(last_msg) = messages.last_mut()
         {
-            let mut content = last_msg.content.clone();
+            let mut content = std::mem::take(&mut last_msg.content);
             content.push(aws_bedrock::ContentBlock::CachePoint(cache_point_block()?));
             *last_msg = aws_bedrock::Message::builder()
                 .role(last_msg.role.clone())
@@ -237,7 +241,6 @@ impl AwsCompletionRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::OneOrMany;
     use rig_core::completion::{CompletionRequest, ToolDefinition};
     use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
@@ -246,9 +249,9 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::Text(Text::new("test".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -505,13 +508,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
+                    content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 
@@ -561,13 +563,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
+                    content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 
@@ -601,27 +602,28 @@ mod tests {
         let reasoning =
             rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
         let request = CompletionRequest {
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new(
-                        "user prompt".to_string(),
-                    ))),
+                    content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
                 },
                 Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(rig_core::completion::AssistantContent::Reasoning(
-                        reasoning,
-                    )),
+                    content: vec![rig_core::completion::AssistantContent::Reasoning(reasoning)],
                 },
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("follow up".to_string()))),
+                    content: vec![UserContent::Text(Text::new("follow up".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 
         let aws_request = aws_request(request, true);
+
+        // The system-prompt cache point path is independent and unaffected;
+        // read it before `messages()` consumes the request.
+        let system_only = aws_request.system_prompt().expect("system prompt builds");
+        assert!(system_only.is_none() || !system_only.unwrap().is_empty());
+
         let messages = aws_request.messages().expect("messages should convert");
 
         let last_message = messages.last().expect("messages should not be empty");
@@ -632,10 +634,6 @@ mod tests {
                 .any(|c| matches!(c, aws_bedrock::ContentBlock::CachePoint(_))),
             "message-level cache point should be skipped when chat history contains reasoning"
         );
-
-        // The system-prompt cache point path is independent and unaffected.
-        let system_only = aws_request.system_prompt().expect("system prompt builds");
-        assert!(system_only.is_none() || !system_only.unwrap().is_empty());
     }
 
     #[test]

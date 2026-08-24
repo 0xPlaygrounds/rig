@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Compute 17 * 23. Give the number only after thinking.","role":"user"}],"model":"deepseek-ai/DeepSeek-V4-Flash"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"391","reasoning_content":"We need to compute 17 * 23. This is a multiplication problem. We can do it mentally: 17*20 = 340, plus 17*3 = 51, total 391. Alternatively, 17*23 = (20-3)*23 = 460 - 69 = 391. So answer is 391.","reasoning_details":[{"format":"unknown","index":0,"text":"We need to compute 17 * 23. This is a multiplication problem. We can do it mentally: 17*20 = 340, plus 17*3 = 51, total 391. Alternatively, 17*23 = (20-3)*23 = 460 - 69 = 391. So answer is 391.","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"deepseek-ai/DeepSeek-V4-Flash","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":75,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":72},"prompt_tokens":18,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":93}}'

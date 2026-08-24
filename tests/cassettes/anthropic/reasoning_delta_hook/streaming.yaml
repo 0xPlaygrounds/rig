@@ -1,0 +1,78 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"How many positive integers n < 400 are divisible by 6 but not by 9? Think through the counting carefully, then answer with only the integer.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"Reason carefully before giving a concise final answer.","type":"text"}],"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":54,"output_tokens":7,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"I","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" need to find positive","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":" integers n < 400 that are divisible by 6 but not by 9.\n\nFirst, find numbers divisible by 6 and less than 400.\nNumbers divisible by 6: 6, 12, 18, ..., 396\nCount","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":": 396/6 = 66 numbers\n\nNow subtract those divisible by both 6 and 9 (i.e., divisible by lcm(6,9) = 18).\nNumbers divisible by 18 and less than 400: ","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"18, 36, ..., 396\n","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"…","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"signature_REDACTED_1","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"## Setting Up the Count\n\n**Step 1: Count integers","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" < 400 divisible by 6**\n\nThe multiples of 6 less than 400 are: 6, 12, 18, ..., 396\n\n$$\\left\\lfloor \\frac{399}{6} \\right\\rfloor = 66 ","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\\text{ numbers}$$\n\n**Step 2: Remove those also divisible by 9**\n\nDivisible by both 6 and 9 means divisible by lcm(6, 9) = **18**\n\nThe","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" multiples of 18 less than 400 are: 18, 36, 54, ..., 396\n\n$$\\left\\lfloor \\frac{399}{18} \\right\\rfloor = 22 \\text{ numbers}$$\n\n**Step 3: Subtract**\n\n$$66 - 22","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" = \\boxed{44}$$","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":54,"output_tokens":390,"output_tokens_details":{"thinking_tokens":173}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

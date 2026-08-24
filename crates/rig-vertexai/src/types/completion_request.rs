@@ -6,19 +6,26 @@ use rig_core::providers::gemini::completion::gemini_api_types::{
     ImageConfig as GeminiImageConfig, ResponseModality, ThinkingConfig as GeminiThinkingConfig,
     ThinkingLevel,
 };
-use serde_json::{Map, Value};
 
 pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
-    pub fn contents(&self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
-        let mut contents = Vec::new();
+    pub fn contents(self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
+        // Vertex's `functionResponse.name` is the *function name*, not a
+        // call identifier — `ToolResult::name` carries it as required data.
+        // Consumes the request: this is the one accessor that needs the
+        // history by value, so call it after the borrowing accessors.
+        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history;
+        // Cross-provider ingested results arrive with an empty name and
+        // their paired call carries it.
+        rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);
 
-        for message in self.0.chat_history.iter() {
+        let mut contents = Vec::new();
+        for message in history {
             if matches!(message, rig_core::completion::Message::System { .. }) {
                 continue;
             }
-            let content = RigMessage(message.clone()).try_into()?;
+            let content = RigMessage(message).try_into()?;
             contents.push(content);
         }
 
@@ -77,27 +84,20 @@ impl VertexCompletionRequest {
             return None;
         }
 
-        let function_calling_config = match self.0.tool_choice.as_ref() {
-            Some(rig_core::message::ToolChoice::Auto) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::Auto)
-            }
-            Some(rig_core::message::ToolChoice::Required) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::Any)
-            }
-            Some(rig_core::message::ToolChoice::None) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::None)
-            }
+        use vertexai::model::function_calling_config::Mode;
+
+        let (mode, allowed_function_names) = match self.0.tool_choice.as_ref() {
+            Some(rig_core::message::ToolChoice::Auto) | None => (Mode::Auto, Vec::new()),
+            Some(rig_core::message::ToolChoice::Required) => (Mode::Any, Vec::new()),
+            Some(rig_core::message::ToolChoice::None) => (Mode::None, Vec::new()),
             Some(rig_core::message::ToolChoice::Specific { function_names }) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::Any)
-                    .set_allowed_function_names(function_names.clone())
+                (Mode::Any, function_names.clone())
             }
-            None => vertexai::model::FunctionCallingConfig::new()
-                .set_mode(vertexai::model::function_calling_config::Mode::Auto),
         };
+
+        let function_calling_config = vertexai::model::FunctionCallingConfig::new()
+            .set_mode(mode)
+            .set_allowed_function_names(allowed_function_names);
 
         Some(
             vertexai::model::ToolConfig::new().set_function_calling_config(function_calling_config),
@@ -107,14 +107,12 @@ impl VertexCompletionRequest {
     pub fn generation_config(
         &self,
     ) -> Result<Option<vertexai::model::GenerationConfig>, CompletionError> {
-        let additional_params = self
-            .0
-            .additional_params
-            .clone()
-            .unwrap_or_else(|| Value::Object(Map::new()));
         let AdditionalParameters {
             generation_config, ..
-        } = serde_json::from_value(additional_params)?;
+        } = match self.0.additional_params.as_ref() {
+            Some(params) => serde::Deserialize::deserialize(params)?,
+            None => AdditionalParameters::default(),
+        };
 
         let mut config = generation_config
             .map(|mut config| {
@@ -233,7 +231,7 @@ fn vertex_generation_config(
     if let Some(response_modalities) = config.response_modalities {
         let response_modalities = response_modalities
             .into_iter()
-            .map(vertex_response_modality)
+            .map(|modality| vertex_response_modality(&modality))
             .collect::<Result<Vec<_>, _>>()?;
         vertex_config = vertex_config.set_response_modalities(response_modalities);
     }
@@ -284,7 +282,7 @@ fn vertex_thinking_config(
 }
 
 fn vertex_response_modality(
-    modality: ResponseModality,
+    modality: &ResponseModality,
 ) -> Result<vertexai::model::generation_config::Modality, CompletionError> {
     match modality {
         ResponseModality::Text => Ok(vertexai::model::generation_config::Modality::Text),
@@ -310,7 +308,6 @@ fn vertex_image_config(image_config: GeminiImageConfig) -> vertexai::model::Imag
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::OneOrMany;
     use rig_core::completion::{CompletionRequest, ToolDefinition};
     use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
@@ -319,9 +316,9 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::Text(Text::new("test".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -331,6 +328,94 @@ mod tests {
             output_schema: None,
             record_telemetry_content: false,
         }
+    }
+
+    /// `functionResponse.name` is the executed function's name: read from
+    /// the required `ToolResult::name` — never an identifier, no matter how
+    /// identifier-shaped the correlation handles are.
+    #[test]
+    fn tool_result_serializes_the_executed_name_not_an_identifier() {
+        use rig_core::message::{
+            AssistantContent, ProviderCallId, ToolCall, ToolCallId, ToolFunction, ToolResult,
+            ToolResultContent,
+        };
+
+        let call = |wire_id: &str, name: &str| Message::Assistant {
+            id: None,
+            content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+                wire_id,
+                ToolFunction {
+                    name: name.to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+            ))],
+        };
+        let result = |wire_id: &str, name: &str| Message::User {
+            content: vec![UserContent::ToolResult(ToolResult {
+                call: ToolCallId::new_or_mint(wire_id),
+                provider: ProviderCallId::new(wire_id),
+                name: name.to_owned(),
+                content: vec![ToolResultContent::text("out")],
+            })],
+        };
+        let call_dual = |item_id: &str, call_id: &str, name: &str| Message::Assistant {
+            id: None,
+            content: vec![AssistantContent::ToolCall(ToolCall::from_dual_wire(
+                item_id,
+                call_id,
+                ToolFunction {
+                    name: name.to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+            ))],
+        };
+        let result_dual = |item_id: &str, call_id: &str, name: &str| Message::User {
+            content: vec![UserContent::ToolResult(ToolResult {
+                call: ToolCallId::new_or_mint(call_id),
+                provider: ProviderCallId::new(call_id)
+                    .map(|provider| provider.with_item_id(item_id)),
+                name: name.to_owned(),
+                content: vec![ToolResultContent::text("out")],
+            })],
+        };
+
+        let request = CompletionRequest {
+            chat_history: vec![
+                // A driver-built result carries the executed name (a repair
+                // hook renamed the call: `sum` ran, not `add`) — the wire
+                // name comes from the result, not the call.
+                call("call_1", "add"),
+                result("call_1", "sum"),
+                // A cross-provider history with an OpenAI-shaped identifier:
+                // `call_abc` must never reach the wire as a name.
+                call("call_abc", "get_weather"),
+                result("call_abc", "get_weather"),
+                // A dual-identifier history (OpenAI Responses: item id
+                // `fc_…` + correlator `call_…`, both carried on `provider`) —
+                // `fc_1` must never reach the wire as a name.
+                call_dual("fc_1", "call_9", "get_time"),
+                result_dual("fc_1", "call_9", "get_time"),
+            ],
+            ..minimal_request()
+        };
+
+        let contents = VertexCompletionRequest(request)
+            .contents()
+            .expect("conversion should succeed");
+        let response_names: Vec<String> = contents
+            .iter()
+            .flat_map(|content| content.parts.iter())
+            .filter_map(|part| part.function_response().map(|fr| fr.name.clone()))
+            .collect();
+
+        assert_eq!(
+            response_names,
+            vec![
+                "sum".to_owned(),
+                "get_weather".to_owned(),
+                "get_time".to_owned()
+            ]
+        );
     }
 
     #[test]
@@ -491,13 +576,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System from history"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("hello".to_string()))),
+                    content: vec![UserContent::Text(Text::new("hello".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 

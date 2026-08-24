@@ -87,7 +87,7 @@ async fn hand_driven_single_turn_completes() {
                 "cassette-recorded usage should be non-zero"
             );
 
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             assert_eq!(messages.as_slice(), run.messages());
             assert_eq!(
                 messages.len(),
@@ -181,7 +181,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                 response.usage
             );
 
-            let messages = response.messages.clone().expect("run reports its messages");
+            let messages = response.messages.expect("run reports its messages");
             assert!(history_has_assistant_tool_call(&messages, "add"));
             assert!(history_has_assistant_tool_call(&messages, "subtract"));
             assert!(
@@ -323,6 +323,89 @@ async fn max_turns_error_carries_pending_tool_results_message() {
                 history_has_assistant_tool_call(&chat_history, "add"),
                 "the error history must include the recorded assistant tool-call turn: {chat_history:?}"
             );
+        },
+    )
+    .await;
+}
+
+/// Host-side entry log across a mid-run serialize/resume (PR #2408): a driver
+/// pausing at the tool boundary appends its state to the run's record, ships
+/// the serialized run across a process boundary, and the resumed run carries
+/// the entries — no export step, and (proven by this cassette replaying
+/// byte-exactly) no effect on the wire.
+#[tokio::test]
+async fn hand_driven_entries_survive_midrun_serialization() {
+    with_gemini_cassette(
+        "agent_run_stepping/entries_survive_midrun_serialization",
+        |client| async move {
+            let agent = GeminiAgent::new(
+                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                FORCE_TOOLS_PREAMBLE,
+                &["add"],
+                None,
+            );
+            let names = tool_names(&["add"]);
+
+            let mut run =
+                AgentRun::new("Use the add tool to compute 6 + 7, then state the final result.")
+                    .max_turns(4);
+            run.append_entry(rig::run::RunEntry {
+                kind: "driver_note".into(),
+                turn: 0,
+                value: serde_json::json!("created"),
+            });
+
+            let response = loop {
+                match run.next_step().expect("run should advance") {
+                    AgentRunStep::CallModel {
+                        prompt,
+                        history,
+                        turn,
+                    } => {
+                        run.model_response(
+                            call_model(&agent, prompt, history, &names, &names).await,
+                        )
+                        .expect("model turn should be accepted");
+                        run.append_entry(rig::run::RunEntry {
+                            kind: "driver_note".into(),
+                            turn,
+                            value: serde_json::json!(format!("model_call_{turn}")),
+                        });
+                    }
+                    AgentRunStep::CallTools { calls } => {
+                        // Pause at the tool boundary: serialize, cross a
+                        // "process boundary", resume. The entries ride along
+                        // with no export step.
+                        let serialized =
+                            serde_json::to_string(&run).expect("run serializes mid-run");
+                        run = serde_json::from_str(&serialized).expect("run deserializes");
+                        assert_eq!(
+                            run.entries_of("driver_note").count(),
+                            2,
+                            "created + first model call survived the round trip"
+                        );
+
+                        run.tool_results(execute_pending_calls(&calls))
+                            .expect("tool results should be accepted");
+                    }
+                    AgentRunStep::Done(response) => break response,
+                }
+            };
+
+            assert_mentions_expected_number(&response.output, 13);
+            // The full log is on the finished run, in append order, last-wins
+            // readable.
+            let notes: Vec<_> = run
+                .entries_of("driver_note")
+                .map(|entry| (entry.turn, entry.value.clone()))
+                .collect();
+            assert_eq!(notes.first(), Some(&(0, serde_json::json!("created"))));
+            assert!(
+                notes.len() >= 3,
+                "created + at least two model calls: {notes:?}"
+            );
+            let last = run.last_entry_of("driver_note").expect("appends recorded");
+            assert_eq!(last.turn, run.turn(), "last note is the final model call's");
         },
     )
     .await;

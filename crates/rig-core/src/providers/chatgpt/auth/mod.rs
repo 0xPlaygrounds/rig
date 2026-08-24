@@ -1,9 +1,12 @@
 //! Shared ChatGPT authentication types and target-specific dispatch.
 
+use crate::http_client::HttpClientExt;
+use futures::lock::Mutex;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+
+pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
 
 #[cfg(not(target_family = "wasm"))]
 mod native;
@@ -14,34 +17,6 @@ mod wasm;
 use native as platform;
 #[cfg(target_family = "wasm")]
 use wasm as platform;
-
-#[derive(Debug, Clone)]
-pub struct DeviceCodePrompt {
-    pub verification_uri: String,
-    pub user_code: String,
-}
-
-#[derive(Clone, Default)]
-pub struct DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>);
-
-impl DeviceCodeHandler {
-    pub fn new<F>(handler: F) -> Self
-    where
-        F: Fn(DeviceCodePrompt) + Send + Sync + 'static,
-    {
-        Self(Some(Arc::new(handler)))
-    }
-}
-
-impl fmt::Debug for DeviceCodeHandler {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_some() {
-            f.write_str("DeviceCodeHandler(<callback>)")
-        } else {
-            f.write_str("DeviceCodeHandler(None)")
-        }
-    }
-}
 
 #[derive(Clone)]
 pub enum AuthSource {
@@ -64,15 +39,17 @@ impl fmt::Debug for AuthSource {
 #[derive(Clone)]
 pub struct Authenticator {
     source: AuthSource,
-    platform: platform::PlatformAuthenticator,
-    state_lock: Arc<Mutex<()>>,
+    /// The platform half owns the token/key caches (files plus their parsed
+    /// state); serializing access to it — rather than to a detached unit
+    /// lock — is what prevents concurrent refreshes from racing the cache.
+    platform: Arc<Mutex<platform::PlatformAuthenticator>>,
 }
 
 impl fmt::Debug for Authenticator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Authenticator")
             .field("source", &self.source)
-            .field("platform", &self.platform)
+            .field("platform", &"<serialized>")
             .finish()
     }
 }
@@ -94,16 +71,20 @@ impl Authenticator {
     ) -> Self {
         Self {
             source,
-            platform: platform::PlatformAuthenticator::new(
+            platform: Arc::new(Mutex::new(platform::PlatformAuthenticator::new(
                 auth_file,
                 device_code_handler,
                 allow_device_flow,
-            ),
-            state_lock: Arc::new(Mutex::new(())),
+            ))),
         }
     }
 
-    pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
+    /// Resolve the access token, refreshing or signing in through `http` —
+    /// the client's own transport — when the cache is stale.
+    pub async fn auth_context<H>(&self, http: &H) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+    {
         match &self.source {
             AuthSource::AccessToken {
                 access_token,
@@ -112,10 +93,7 @@ impl Authenticator {
                 access_token: access_token.clone(),
                 account_id: account_id.clone(),
             }),
-            AuthSource::OAuth => {
-                let _guard = self.state_lock.lock().await;
-                self.platform.auth_context_oauth().await
-            }
+            AuthSource::OAuth => self.platform.lock().await.auth_context_oauth(http).await,
         }
     }
 }

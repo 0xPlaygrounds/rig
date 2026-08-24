@@ -1,5 +1,5 @@
 use fixture::{as_record_batch, words};
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -8,6 +8,7 @@ use rig_core::{
     vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+use rig_reqwest::prelude::*;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;

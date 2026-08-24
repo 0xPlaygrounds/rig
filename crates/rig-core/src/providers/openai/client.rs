@@ -1,17 +1,13 @@
-use super::responses_api::{ResponsesProviderExt, SystemInstructionsPlacement};
+use super::responses_api::{
+    ConfigurableSystemInstructionsPlacement, ResponsesProviderExt, SystemInstructionsPlacement,
+};
 use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client::{self, HttpClientExt},
+    client::{self, BearerAuth, DebugExt, Provider},
+    http_client::HttpClientExt,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
 use std::fmt::Debug;
-
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-use crate::client::completion::CompletionClient;
 
 // ================================================================
 // Main OpenAI Client
@@ -46,12 +42,12 @@ pub struct OpenAICompletionsExtBuilder;
 type OpenAIApiKey = BearerAuth;
 
 // Responses API client (default)
-pub type Client<H = reqwest::Client> = client::Client<OpenAIResponsesExt, H>;
+pub type Client<H> = client::Client<OpenAIResponsesExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
 
 // Completions API client
-pub type CompletionsClient<H = reqwest::Client> = client::Client<OpenAICompletionsExt, H>;
+pub type CompletionsClient<H> = client::Client<OpenAICompletionsExt, H>;
 pub type CompletionsClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
 
@@ -66,86 +62,51 @@ impl ResponsesProviderExt for OpenAIResponsesExt {
     }
 }
 
+impl ConfigurableSystemInstructionsPlacement for OpenAIResponsesExt {}
+
 impl Provider for OpenAICompletionsExt {
     type Builder = OpenAICompletionsExtBuilder;
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for OpenAIResponsesExt {
-    type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenAIModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenAIResponsesExt,
+    completion = super::responses_api::ResponsesCompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+    transcription = super::TranscriptionModel<H>,
+    model_listing = super::OpenAIModelLister<H>,
+    image_generation = super::ImageGenerationModel<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
-impl<H> Capabilities<H> for OpenAICompletionsExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::GenericEmbeddingModel<OpenAICompletionsExt, H>>;
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenAIModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenAICompletionsExt,
+    completion = super::completion::CompletionModel<H>,
+    embeddings = super::GenericEmbeddingModel<OpenAICompletionsExt, H>,
+    transcription = super::CompletionsTranscriptionModel<H>,
+    model_listing = super::OpenAICompletionsModelLister<H>,
+    image_generation = super::CompletionsImageGenerationModel<H>,
+    audio_generation = super::audio_generation::CompletionsAudioGenerationModel<H>,
+);
 
 impl DebugExt for OpenAIResponsesExt {}
 
 impl DebugExt for OpenAICompletionsExt {}
 
-impl ProviderBuilder for OpenAIResponsesExtBuilder {
-    type Extension<H>
-        = OpenAIResponsesExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OpenAIApiKey;
-
-    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OpenAIResponsesExt::default())
-    }
-}
-
-impl ProviderBuilder for OpenAICompletionsExtBuilder {
-    type Extension<H>
-        = OpenAICompletionsExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OpenAIApiKey;
-
-    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OpenAICompletionsExt::default())
-    }
-}
+client::impl_default_provider_builder!(
+    OpenAIResponsesExtBuilder => OpenAIResponsesExt,
+    api_key = OpenAIApiKey,
+    base_url = OPENAI_API_BASE_URL,
+);
+client::impl_default_provider_builder!(
+    OpenAICompletionsExtBuilder => OpenAICompletionsExt,
+    api_key = OpenAIApiKey,
+    base_url = OPENAI_API_BASE_URL,
+);
 
 impl<H> Client<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Sets where Rig system instructions are placed in Responses requests for
     /// every completion model created from this client. Models capture the
@@ -181,41 +142,9 @@ where
     }
 }
 
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-impl Client<reqwest::Client> {
-    /// WebSocket mode currently uses a native `tokio-tungstenite` transport and does
-    /// not reuse custom `HttpClientExt` backends, so this API is only exposed for the
-    /// default `reqwest::Client` transport.
-    pub fn responses_websocket_builder(
-        &self,
-        model: impl Into<String>,
-    ) -> super::responses_api::websocket::ResponsesWebSocketSessionBuilder {
-        super::responses_api::websocket::ResponsesWebSocketSessionBuilder::new(
-            self.completion_model(model),
-        )
-    }
-
-    /// This API is OpenAI-specific and only available on non-wasm targets in `rig-core`.
-    pub async fn responses_websocket(
-        &self,
-        model: impl Into<String>,
-    ) -> Result<
-        super::responses_api::websocket::ResponsesWebSocketSession,
-        crate::completion::CompletionError,
-    > {
-        self.responses_websocket_builder(model).connect().await
-    }
-}
-
 impl<H> CompletionsClient<H>
 where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Create a Responses API client from this Completions API client.
     /// Useful for switching to the newer Responses API. A system-instructions
@@ -229,72 +158,41 @@ where
     }
 }
 
-impl ProviderClient for Client {
-    type Input = OpenAIApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI Responses API client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let base_url = crate::client::optional_env_var("OPENAI_BASE_URL")?;
-        let api_key = crate::client::required_env_var("OPENAI_API_KEY")?;
-
-        let mut builder = Client::builder().api_key(&api_key);
-
-        if let Some(base) = base_url {
-            builder = builder.base_url(&base);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for CompletionsClient {
-    type Input = OpenAIApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI Completions API client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let base_url = crate::client::optional_env_var("OPENAI_BASE_URL")?;
-        let api_key = crate::client::required_env_var("OPENAI_API_KEY")?;
-
-        let mut builder = CompletionsClient::builder().api_key(&api_key);
-
-        if let Some(base) = base_url {
-            builder = builder.base_url(&base);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_from_env!(
+    OpenAIResponsesExt,
+    input = OpenAIApiKey,
+    api_key_env = "OPENAI_API_KEY",
+    base_url_env_first = "OPENAI_BASE_URL",
+);
+client::impl_provider_from_env!(
+    OpenAICompletionsExt,
+    input = OpenAIApiKey,
+    api_key_env = "OPENAI_API_KEY",
+    base_url_env_first = "OPENAI_BASE_URL",
+);
 
 /// Error envelope returned by OpenAI-compatible providers alongside 2xx
 /// statuses. Providers spell the message field differently (`message`,
 /// `error`, nested objects), so anything that isn't a valid success payload
 /// is treated as an error envelope and the raw body is preserved for the
 /// caller; `message` is only used for logging.
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct ApiErrorResponse {
-    #[serde(default, alias = "error", deserialize_with = "error_message_or_value")]
     pub(crate) message: String,
 }
 
-fn error_message_or_value<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::String(message) => message,
-        other => other.to_string(),
-    })
+// Manual impl (not a field-level `alias = "error"`): the alias makes serde
+// treat `message` and `error` as one field, so a body carrying both keys
+// fails as a duplicate field instead of classifying as this envelope.
+impl<'de> Deserialize<'de> for ApiErrorResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            message: crate::providers::internal::envelope::error_message(deserializer)?,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -307,11 +205,11 @@ pub(crate) enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use crate::client::{CompletionClient, EmbeddingsClient};
+    use crate::message;
     use crate::message::ImageDetail;
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
-    use crate::{OneOrMany, message};
     use serde_path_to_error::deserialize;
 
     #[test]
@@ -507,12 +405,12 @@ mod tests {
     #[test]
     fn test_message_to_message_conversion() {
         let user_message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::text("Hello")),
+            content: vec![message::UserContent::text("Hello")],
         };
 
         let assistant_message = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
+            content: vec![message::AssistantContent::text("Hi there!")],
         };
 
         let converted_user_message: Vec<Message> = user_message.clone().try_into().unwrap();
@@ -523,9 +421,9 @@ mod tests {
             Message::User { content, .. } => {
                 assert_eq!(
                     content.first(),
-                    UserContent::Text {
+                    Some(&UserContent::Text {
                         text: "Hello".to_string()
-                    }
+                    })
                 );
             }
             _ => panic!("Expected user message"),
@@ -555,9 +453,9 @@ mod tests {
     #[test]
     fn test_message_from_message_conversion() {
         let user_message = Message::User {
-            content: OneOrMany::one(UserContent::Text {
+            content: vec![UserContent::Text {
                 text: "Hello".to_string(),
-            }),
+            }],
             name: None,
         };
 
@@ -580,7 +478,7 @@ mod tests {
 
         match converted_user_message.clone() {
             message::Message::User { content } => {
-                assert_eq!(content.first(), message::UserContent::text("Hello"));
+                assert_eq!(content.first(), Some(&message::UserContent::text("Hello")));
             }
             _ => panic!("Expected user message"),
         }
@@ -589,7 +487,7 @@ mod tests {
             message::Message::Assistant { content, .. } => {
                 assert_eq!(
                     content.first(),
-                    message::AssistantContent::text("Hi there!")
+                    Some(&message::AssistantContent::text("Hi there!"))
                 );
             }
             _ => panic!("Expected assistant message"),
@@ -606,9 +504,9 @@ mod tests {
     #[test]
     fn test_user_message_single_text_serializes_as_string() {
         let user_message = Message::User {
-            content: OneOrMany::one(UserContent::Text {
+            content: vec![UserContent::Text {
                 text: "Hello world".to_string(),
-            }),
+            }],
             name: None,
         };
 
@@ -621,7 +519,7 @@ mod tests {
     #[test]
     fn test_user_message_multiple_parts_serializes_as_array() {
         let user_message = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "What's in this image?".to_string(),
                 },
@@ -631,8 +529,7 @@ mod tests {
                         detail: Some(ImageDetail::default()),
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
 
@@ -646,12 +543,12 @@ mod tests {
     #[test]
     fn test_user_message_single_image_serializes_as_array() {
         let user_message = Message::User {
-            content: OneOrMany::one(UserContent::Image {
+            content: vec![UserContent::Image {
                 image_url: ImageUrl {
                     url: "https://example.com/image.jpg".to_string(),
                     detail: Some(ImageDetail::default()),
                 },
-            }),
+            }],
             name: None,
         };
 
@@ -663,30 +560,79 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::openai::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }
 
     #[test]
     fn test_legacy_chat_completion_model_type_annotation_still_compiles() {
-        let client = crate::providers::openai::Client::new("dummy-key")
-            .expect("Client::new() failed")
-            .completions_api();
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed")
+        .completions_api();
 
-        let _model: crate::providers::openai::completion::CompletionModel<reqwest::Client> =
-            client.completion_model("gpt-4o");
+        let _model: crate::providers::openai::completion::CompletionModel<
+            crate::test_utils::RecordingHttpClient,
+        > = client.completion_model("gpt-4o");
     }
 
     #[test]
     fn test_legacy_embedding_model_type_annotation_still_compiles() {
-        let client =
-            crate::providers::openai::Client::new("dummy-key").expect("Client::new() failed");
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
 
-        let _model: crate::providers::openai::EmbeddingModel<reqwest::Client> =
-            client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
+        let _model: crate::providers::openai::EmbeddingModel<
+            crate::test_utils::RecordingHttpClient,
+        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    }
+
+    #[test]
+    fn api_switch_preserves_non_completion_capabilities() {
+        use crate::client::ModelListingClient;
+        use crate::client::transcription::TranscriptionClient;
+
+        let client = crate::providers::openai::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed")
+        .completions_api();
+
+        let _: crate::providers::openai::GenericEmbeddingModel<
+            crate::providers::openai::OpenAICompletionsExt,
+            crate::test_utils::RecordingHttpClient,
+        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
+        let _: crate::providers::openai::CompletionsTranscriptionModel<_> =
+            client.transcription_model(crate::providers::openai::WHISPER_1);
+
+        fn assert_model_listing<T: ModelListingClient>(_: &T) {}
+        assert_model_listing(&client);
+
+        #[cfg(feature = "image")]
+        {
+            use crate::client::image_generation::ImageGenerationClient;
+            let _: crate::providers::openai::CompletionsImageGenerationModel<_> =
+                client.image_generation_model(crate::providers::openai::DALL_E_3);
+        }
+
+        #[cfg(feature = "audio")]
+        {
+            use crate::client::audio_generation::AudioGenerationClient;
+            let _: crate::providers::openai::audio_generation::CompletionsAudioGenerationModel<_> =
+                client.audio_generation_model(crate::providers::openai::TTS_1);
+        }
     }
 }

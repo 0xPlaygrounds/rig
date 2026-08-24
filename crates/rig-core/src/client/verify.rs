@@ -11,7 +11,6 @@ use thiserror::Error;
 /// the helpers read. The variant is kept for symmetry with the other capability
 /// errors and for future provider paths that preserve a 2xx error envelope.
 #[derive(Debug, Error)]
-#[non_exhaustive]
 pub enum VerifyError {
     #[error("invalid authentication")]
     InvalidAuthentication,
@@ -45,10 +44,9 @@ mod provider_response_tests {
     #[test]
     fn verify_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"message":"rate limited"}}"#;
-        let error = VerifyError::ProviderResponse(provider_response::ProviderResponseError {
-            status: None,
-            body: body.to_string(),
-        });
+        let error = VerifyError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status(body.to_string()),
+        );
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);
@@ -79,10 +77,9 @@ mod provider_response_tests {
 
     #[test]
     fn verify_error_provider_response_helpers_with_preserved_plain_text_body() {
-        let error = VerifyError::ProviderResponse(provider_response::ProviderResponseError {
-            status: None,
-            body: "not json".to_string(),
-        });
+        let error = VerifyError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status("not json".to_string()),
+        );
 
         assert_eq!(error.provider_response_body(), Some("not json"));
         assert!(error.provider_response_json().is_err());
@@ -136,5 +133,49 @@ mod provider_response_tests {
             .expect("raw body should be valid JSON")
             .expect("parsed JSON should be present");
         assert_eq!(json["error"]["type"], "server_error");
+    }
+
+    /// rig#2210: `verify` builds its own errors on three separate branches
+    /// (500, Anthropic's 529, and the generic non-success tail). Each must
+    /// preserve the failed response's headers, so a rejected verification can
+    /// still be retried on the server's schedule.
+    #[tokio::test]
+    async fn verify_preserves_response_headers_on_every_failing_branch() {
+        use crate::client::VerifyClient;
+        use crate::providers::openai::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"slow down"}}"#;
+        for status in [
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::from_u16(529).expect("overloaded"),
+            StatusCode::TOO_MANY_REQUESTS,
+        ] {
+            let mut headers = http::HeaderMap::new();
+            headers.insert(http::header::RETRY_AFTER, "20".parse().expect("value"));
+            let http_client =
+                RecordingHttpClient::with_error_response_headers(status, body, headers);
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(http_client)
+                .build()
+                .expect("build client");
+
+            let error = client
+                .verify()
+                .await
+                .expect_err("verify should fail on a non-success status");
+
+            assert_eq!(
+                error
+                    .provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                "{status}: Retry-After not recoverable from a failed verify",
+            );
+            assert_eq!(error.provider_response_status(), Some(status));
+            assert_eq!(error.provider_response_body(), Some(body));
+        }
     }
 }

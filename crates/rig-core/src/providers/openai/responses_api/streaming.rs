@@ -2,8 +2,14 @@
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
-use crate::message::ReasoningContent;
+use crate::http_client::sse::GenericEventSource;
+use crate::providers::internal::adapter::{
+    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
+};
+use crate::providers::internal::sse_transport::{
+    FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream,
+};
+use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
@@ -11,11 +17,8 @@ use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::WasmCompatSend;
-use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, GenericResponsesCompletionModel, Output, ResponsesProviderExt};
 
@@ -72,6 +75,11 @@ pub struct StreamingCompletionResponse {
     /// The model identifier reported by the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The transport request id from the SSE connection's `x-request-id`
+    /// response header — not part of any stream frame; stamped by the
+    /// transport. `None` when the provider did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 impl StreamingCompletionResponse {
@@ -80,6 +88,7 @@ impl StreamingCompletionResponse {
     pub fn new(usage: ResponsesUsage) -> Self {
         Self {
             usage,
+            provider_request_id: None,
             reasoning_metadata: None,
             reasoning_context: None,
             status: None,
@@ -110,6 +119,7 @@ impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
             .with_optional_response_id(response.response_id)
+            .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_model(response.model)
     }
 }
@@ -118,7 +128,8 @@ impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
 ///
 /// Maps only the terminal record; every incremental event passes through
 /// untouched.
-pub(crate) fn normalize_responses_stream(
+#[doc(hidden)]
+pub fn normalize_responses_stream(
     provider: &str,
     raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
 ) -> streaming::StreamingCompletionResponse {
@@ -134,38 +145,40 @@ pub(crate) fn normalize_responses_stream(
     streaming::StreamingCompletionResponse::stream(provider, normalized)
 }
 
-pub(crate) fn reasoning_choices_from_done_item(
-    id: &str,
-    summary: &[ReasoningSummary],
-    content: &[String],
-    encrypted_content: Option<&str>,
-) -> Vec<RawStreamingChoice<StreamingCompletionResponse>> {
-    let mut choices = summary
-        .iter()
-        .map(|reasoning_summary| match reasoning_summary {
-            ReasoningSummary::SummaryText { text } => RawStreamingChoice::Reasoning {
-                id: Some(id.to_owned()),
-                content: ReasoningContent::Summary(text.to_owned()),
-            },
-        })
-        .collect::<Vec<_>>();
+/// The done item's blocks as ONE authoritative end-of-part restatement.
+///
+/// Every block — summaries, content texts, `encrypted_content` — belongs to
+/// one `rs_*` reasoning item, so it must land in one part: emitting a
+/// whole-block choice per entry made every block after the first a sibling
+/// part under the same key, and history then replayed duplicate reasoning
+/// input items carrying the identical `rs_*` id. The restatement supersedes
+/// the delta-built part in place (wire field order: summary, content,
+/// encrypted). `None` when the item carries no blocks — an empty done item
+/// says nothing at the boundary.
+pub(crate) fn reasoning_end_from_done_item(
+    id: &crate::streaming::StreamPartId,
+    provider_id: Option<&crate::streaming::WireId>,
+    summary: Vec<ReasoningSummary>,
+    content: Vec<String>,
+    encrypted_content: Option<String>,
+) -> Option<RawStreamingChoice<StreamingCompletionResponse>> {
+    // Same builder as the unary decode, so the restatement and the
+    // non-streaming conversion of one item cannot drift.
+    let blocks = super::reasoning_content_blocks(summary, content, encrypted_content);
 
-    choices.extend(content.iter().map(|text| RawStreamingChoice::Reasoning {
-        id: Some(id.to_owned()),
-        content: ReasoningContent::Text {
-            text: text.to_owned(),
-            signature: None,
-        },
-    }));
-
-    if let Some(encrypted_content) = encrypted_content.filter(|s| !s.is_empty()) {
-        choices.push(RawStreamingChoice::Reasoning {
-            id: Some(id.to_owned()),
-            content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
-        });
+    if blocks.is_empty() {
+        return None;
     }
 
-    choices
+    Some(RawStreamingChoice::ReasoningEnd {
+        id: id.clone(),
+        reasoning: Some(crate::message::Reasoning {
+            id: provider_id.map(|provider_id| provider_id.as_str().to_owned()),
+            content: blocks,
+        }),
+        signature: None,
+        wire_sent: true,
+    })
 }
 
 impl From<&StreamingCompletionResponse> for crate::completion::Usage {
@@ -188,7 +201,7 @@ pub struct ResponseChunk {
 
 /// Response chunk type.
 /// Renames are used to ensure that this type gets (de)serialized properly.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum ResponseChunkKind {
     #[serde(rename = "response.created")]
     ResponseCreated,
@@ -246,7 +259,21 @@ fn is_known_responses_event_type(kind: &str) -> bool {
             | "response.reasoning_summary_text.delta"
             | "response.reasoning_summary_text.done"
             | "response.reasoning_text.delta"
+            | "response.reasoning_text.done"
     )
+}
+
+/// Classify one Responses SSE frame; see
+/// [`crate::providers::internal::wire`] for the dispatch contract.
+///
+/// Shared by the live SSE loop, the buffered [`raw_choices_from_sse_body`]
+/// path, and the websocket session so all apply the same known/unknown
+/// boundary. Provider `error` events (and the websocket-only `response.done`)
+/// are checked separately before this, because their `type` is outside the
+/// modeled set yet must not be skipped as unknown.
+#[doc(hidden)]
+pub fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChunk> {
+    wire::classify_tagged_frame(data, "type", is_known_responses_event_type)
 }
 
 fn provider_response_from_responses_sse_data(data: &str) -> Option<CompletionError> {
@@ -256,13 +283,15 @@ fn provider_response_from_responses_sse_data(data: &str) -> Option<CompletionErr
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum ResponsesStreamOptions {
+#[doc(hidden)]
+pub enum ResponsesStreamOptions {
     Strict,
     StrictWithImmediateToolCalls,
 }
 
 impl ResponsesStreamOptions {
-    pub(crate) const fn strict() -> Self {
+    #[doc(hidden)]
+    pub const fn strict() -> Self {
         Self::Strict
     }
 
@@ -275,21 +304,28 @@ impl ResponsesStreamOptions {
     }
 }
 
+/// The payload of every content-bearing `data:` line in a buffered SSE body.
+///
+/// Blank lines, non-`data:` fields (SSE comments, `event:`), and the `[DONE]`
+/// sentinel are skipped, so both buffered readers below see exactly the frame
+/// payloads a live transport would deliver.
+fn sse_data_frames(body: &str) -> impl Iterator<Item = &str> {
+    body.lines()
+        .map(|line| {
+            line.strip_prefix("data:")
+                .map(str::trim)
+                .unwrap_or_default()
+        })
+        .filter(|data| !data.is_empty() && *data != "[DONE]")
+}
+
 pub(crate) fn parse_sse_completion_body(
     body: &str,
     provider_name: &str,
 ) -> Result<CompletionResponse, CompletionError> {
     let mut completed = None;
 
-    for line in body.lines() {
-        let data = line
-            .strip_prefix("data:")
-            .map(str::trim)
-            .unwrap_or_default();
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-
+    for data in sse_data_frames(body) {
         if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
             if let StreamingCompletionChunk::Response(chunk) = chunk {
                 let ResponseChunk { kind, response, .. } = *chunk;
@@ -310,9 +346,8 @@ pub(crate) fn parse_sse_completion_body(
             continue;
         }
 
-        let value = match serde_json::from_str::<serde_json::Value>(data) {
-            Ok(value) => value,
-            Err(_) => continue,
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
+            continue;
         };
 
         match value.get("type").and_then(serde_json::Value::as_str) {
@@ -339,7 +374,8 @@ pub(crate) fn parse_sse_completion_body(
     })
 }
 
-pub(crate) struct RawChoiceAccumulator {
+#[doc(hidden)]
+pub struct RawChoiceAccumulator {
     final_usage: ResponsesUsage,
     reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
@@ -348,16 +384,56 @@ pub(crate) struct RawChoiceAccumulator {
     message_id: Option<String>,
     response_id: Option<String>,
     model: Option<String>,
+    /// Buffered tool-input end events for calls delivered whole by
+    /// `output_item.done`, flushed at the terminal (or before a terminal
+    /// error). Assembly and internal-id correlation live in the shared
+    /// accumulator, keyed by the function-call item id the added/delta/done
+    /// events share.
     tool_calls: Vec<StreamingRawChoice>,
-    tool_call_internal_ids: std::collections::HashMap<String, String>,
     /// Whether a genuine terminal event (`response.completed` or
     /// `response.incomplete`) arrived. Without one the stream was truncated,
     /// and `finish` withholds the terminal record.
     saw_terminal: bool,
+    /// Slot-scoped reasoning identity, mirroring `tool_slots`: one assembly
+    /// key per output slot, fixed at the slot's FIRST reasoning event (wire
+    /// `rs_*` id when it carries one, else minted `output-{index}`) and
+    /// reused by every later frame regardless of the id it carries.
+    /// Gateways and ChatGPT's envelope-less replay bodies omit the id on a
+    /// subset of a slot's events; per-event resolution split one slot into
+    /// `Wire("rs_1")` and `Minted(Output, i)` halves, and the done item
+    /// superseded only one of them — the other survived as an orphaned
+    /// partial part carrying the same provider id (#2258 F3 and its mixed
+    /// generalization).
+    reasoning_slots: std::collections::HashMap<u64, crate::streaming::StreamPartId>,
+    /// Tool-call identities minted for function-call items whose wire events
+    /// carried no `fc_*` id (gateways and the ChatGPT envelope-less replay
+    /// bodies), keyed by output slot. Mirrors `minted_reasoning_ids`: the
+    /// added/delta/done events of one item must all share one assembly key —
+    /// forwarding `""` verbatim would let two parallel id-less calls share the
+    /// empty key, and an id-less delta whose done restates a real `fc_*` id
+    /// would leave the fragments dangling under a different key.
+    /// Slot-scoped tool identity: one assembly key per output slot, fixed at
+    /// the slot's first event (wire `fc_*` id, else minted `output-{index}`),
+    /// reused by every later event regardless of the id it carries — mixed
+    /// id/id-less events on one slot can no longer split assembly keys.
+    tool_slots: crate::providers::internal::tool_call_bridge::ToolCallBridge<u64>,
+    /// The `call_…` correlator each open slot announced on
+    /// `output_item.added`, kept beside the bridge so a slot closed by the
+    /// terminal drain (its `output_item.done` frame was lost) still
+    /// finalizes with the dual-wire identity Responses replay pairs on.
+    pending_call_ids: std::collections::HashMap<u64, String>,
+    /// The message item whose text block is currently open. A text or
+    /// refusal delta carrying a different `item_id` opens a new text block
+    /// (`TextStart` keyed by that item id), so two `message` output items
+    /// aggregate as two distinct text parts instead of concatenating.
+    /// Deltas without an `item_id` (ChatGPT's envelope-less replays) extend
+    /// the open block, or open a boundary-minted one downstream.
+    current_text_item: Option<String>,
 }
 
 impl RawChoiceAccumulator {
-    pub(crate) fn new(initial_usage: ResponsesUsage) -> Self {
+    #[doc(hidden)]
+    pub fn new(initial_usage: ResponsesUsage) -> Self {
         Self {
             final_usage: initial_usage,
             reasoning_metadata: None,
@@ -368,12 +444,62 @@ impl RawChoiceAccumulator {
             response_id: None,
             model: None,
             tool_calls: Vec::new(),
-            tool_call_internal_ids: std::collections::HashMap::new(),
             saw_terminal: false,
+            reasoning_slots: std::collections::HashMap::new(),
+            tool_slots:
+                crate::providers::internal::tool_call_bridge::ToolCallBridge::with_minted_namespace(
+                    crate::streaming::SyntheticIds::output(),
+                ),
+            pending_call_ids: std::collections::HashMap::new(),
+            current_text_item: None,
         }
     }
 
-    pub(crate) fn decode_item_chunk(
+    /// Open the text block for the message item a text/refusal delta belongs
+    /// to, when the wire identifies it and it differs from the open one.
+    fn start_text_item(&mut self, item_id: Option<&str>, immediate: &mut Vec<StreamingRawChoice>) {
+        if let Some(item_id) = item_id
+            && self.current_text_item.as_deref() != Some(item_id)
+        {
+            self.current_text_item = Some(item_id.to_string());
+            immediate.push(streaming::RawStreamingChoice::TextStart {
+                id: crate::streaming::StreamPartId::wire(item_id.to_string()),
+                additional_params: None,
+            });
+        }
+    }
+
+    /// The slot's reasoning assembly key, fixed at its first reasoning
+    /// event: the wire's `rs_*` id when that first frame carries one, else
+    /// a minted `output-{index}` identity. Every later frame on the slot
+    /// reuses the stored key regardless of the id it carries — the same
+    /// discipline as `tool_slots` — so mixed id/id-less frames cannot
+    /// split one slot's assembly. A late-arriving wire id upgrades the
+    /// part's durable `provider_id` (carried as data on each event), never
+    /// the accumulation key.
+    fn reasoning_slot_key(
+        &mut self,
+        output_index: u64,
+        item_id: Option<&str>,
+    ) -> crate::streaming::StreamPartId {
+        if let Some(key) = self.reasoning_slots.get(&output_index) {
+            return key.clone();
+        }
+        // Minted from the bridge's ONE counter (tool_call_bridge's own
+        // invariant): a second sequence stamping `Minted{Output, index}`
+        // could collide with an assembly the bridge minted the same value
+        // for. The per-slot map above, not the mint, is what keeps the key
+        // stable across the slot's frames.
+        let key = item_id.map_or_else(
+            || self.tool_slots.minted_ids().mint(),
+            crate::streaming::StreamPartId::wire,
+        );
+        self.reasoning_slots.insert(output_index, key.clone());
+        key
+    }
+
+    #[doc(hidden)]
+    pub fn decode_item_chunk(
         &mut self,
         chunk: ItemChunk,
         options: ResponsesStreamOptions,
@@ -382,8 +508,8 @@ impl RawChoiceAccumulator {
 
         let ItemChunk {
             item_id: outer_item_id,
+            output_index,
             data: item,
-            ..
         } = chunk;
 
         match item {
@@ -391,55 +517,86 @@ impl RawChoiceAccumulator {
                 item: Output::FunctionCall(func),
                 ..
             }) => {
-                let internal_call_id = self
-                    .tool_call_internal_ids
-                    .entry(func.id.clone())
-                    .or_insert_with(crate::id::generate)
-                    .clone();
+                // A function-call item interleaving a message item closes the
+                // open text block; forget it so a later delta for that message
+                // re-emits `TextStart` and reactivates its block downstream.
+                self.current_text_item = None;
+                // Slot identity is established here once (wire `fc_*` id,
+                // else a minted `output-{index}`) and reused for every later
+                // event on this slot — gateways and ChatGPT's envelope-less
+                // replay bodies can omit the id on any subset of a slot's
+                // events, and event-scoped resolution would split the
+                // assembly key.
+                let key = self
+                    .tool_slots
+                    .open(output_index, Some(&func.id), Some(&func.name))
+                    .key()
+                    .to_owned();
+                if !func.call_id.is_empty() {
+                    self.pending_call_ids
+                        .insert(output_index, func.call_id.clone());
+                }
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id: func.id,
-                    internal_call_id,
+                    id: key,
                     content: streaming::ToolCallDeltaContent::Name(func.name),
                 });
             }
             ItemChunkKind::OutputItemDone(message) => {
+                // Any completed item ends the block it carried; a text delta
+                // arriving afterwards belongs to a (re)opened block.
+                self.current_text_item = None;
                 self.push_output_item_done(
                     message.item,
+                    output_index,
                     &mut immediate,
                     options.emits_completed_tool_calls_immediately(),
                 );
             }
-            ItemChunkKind::OutputTextDelta(delta) => {
-                immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
+            // Text and refusal deltas are the same visible-text stream: a
+            // refusal is the assistant's message for that turn, and both
+            // (re)open the item's text block before their fragment.
+            ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
+            | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
+                self.start_text_item(outer_item_id.as_deref(), &mut immediate);
+                immediate.push(streaming::RawStreamingChoice::Message(delta));
             }
-            ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
+            // Summary and raw-reasoning deltas differ only in which wire
+            // event carries them; both are fragments of the output item's
+            // reasoning block and accumulate under its slot identity.
+            ItemChunkKind::ReasoningSummaryTextDelta(SummaryTextChunk { delta, .. })
+            | ItemChunkKind::ReasoningTextDelta(DeltaTextChunkWithItemId { delta, .. }) => {
+                // Reasoning interleaving text closes the open text block
+                // downstream (`PartsAccumulator::reasoning_delta`); forget the
+                // open message item so a later delta for the *same* item
+                // re-emits `TextStart {id}` and reactivates its block instead
+                // of silently opening a boundary-minted sibling (#2258 P2).
+                self.current_text_item = None;
+                let id = self.reasoning_slot_key(output_index, outer_item_id.as_deref());
                 immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: None,
-                    reasoning: delta.delta,
+                    id,
+                    provider_id: outer_item_id
+                        .clone()
+                        .and_then(crate::streaming::WireId::new),
+                    reasoning: delta,
                 });
-            }
-            ItemChunkKind::ReasoningTextDelta(delta) => {
-                immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: outer_item_id,
-                    reasoning: delta.delta,
-                });
-            }
-            ItemChunkKind::RefusalDelta(delta) => {
-                immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                if let Some(item_id) = outer_item_id {
-                    let internal_call_id = self
-                        .tool_call_internal_ids
-                        .entry(item_id.clone())
-                        .or_insert_with(crate::id::generate)
-                        .clone();
-                    immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                        id: item_id,
-                        internal_call_id,
-                        content: streaming::ToolCallDeltaContent::Delta(delta.delta),
-                    });
-                }
+                // Tool output interleaving text is a block boundary too.
+                self.current_text_item = None;
+                // The slot's established identity keys the fragment; an
+                // id-less delta on a never-opened slot mints it here so the
+                // fragments survive truncation before the authoritative
+                // `output_item.done` restatement (#2258 P3). A late wire id
+                // updates the slot's reported id without moving the key.
+                let slot = self
+                    .tool_slots
+                    .open(output_index, outer_item_id.as_deref(), None);
+                slot.saw_arguments_delta = true;
+                let key = slot.key().clone();
+                immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
+                    id: key,
+                    content: streaming::ToolCallDeltaContent::Delta(delta.delta),
+                });
             }
             _ => {}
         }
@@ -447,7 +604,8 @@ impl RawChoiceAccumulator {
         immediate
     }
 
-    pub(crate) fn record_response_chunk(
+    #[doc(hidden)]
+    pub fn record_response_chunk(
         &mut self,
         kind: ResponseChunkKind,
         response: CompletionResponse,
@@ -460,6 +618,19 @@ impl RawChoiceAccumulator {
             // downstream, matching the unary path's `map_finish_reason`.
             ResponseChunkKind::ResponseCompleted | ResponseChunkKind::ResponseIncomplete => {
                 self.saw_terminal = true;
+                // The provider proved the turn ended, so a slot still open
+                // here lost only its `output_item.done` frame — the same
+                // terminal-drain the sibling adapters ship (Interactions at
+                // `interaction.completed`, chat-compat at `finish_reason`).
+                // Closing it lets the shared accumulator finalize the call
+                // from its streamed fragments (parse-or-drop), instead of
+                // discarding a provider-completed call as truncation.
+                for (index, slot) in self.tool_slots.drain_ordered_indexed() {
+                    let mut end = slot.end_event(streaming::UnparseableToolInput::Drop);
+                    end.call_id = self.pending_call_ids.remove(&index);
+                    self.tool_calls
+                        .push(streaming::RawStreamingChoice::ToolInputEnd(end));
+                }
                 // The terminal event is the only place the stream learns how the
                 // turn ended, which model answered, and which assistant message
                 // (`msg_...`, not the response's `resp_...`) carried the output.
@@ -497,26 +668,86 @@ impl RawChoiceAccumulator {
     fn push_output_item_done(
         &mut self,
         item: Output,
+        output_index: u64,
         immediate: &mut Vec<StreamingRawChoice>,
         emit_completed_tool_calls_immediately: bool,
     ) {
         match item {
             Output::FunctionCall(func) => {
-                let internal_call_id = self
-                    .tool_call_internal_ids
-                    .entry(func.id.clone())
-                    .or_insert_with(crate::id::generate)
-                    .clone();
-                let tool_call =
-                    streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
-                        .with_internal_call_id(internal_call_id)
-                        .with_call_id(func.call_id);
+                // The done item restates the call whole; its fields are
+                // authoritative over any assembled fragments, and the shared
+                // accumulator correlates by the shared item id (minting the
+                // internal id if no fragments preceded).
+                //
+                // Identity mirrors the reasoning arm below: when this slot's
+                // added/delta events carried no `fc_*` id they were keyed by
+                // the minted `output-{index}` identity, and the done event
+                // must find that same key (even when it restates a real id)
+                // or the assembled fragments dangle. A slot with no minted
+                // identity keeps the wire id, minting only when it is empty.
+                let slot = self.tool_slots.remove(output_index);
+                // The done item restates its own call_id; the announce-time
+                // copy is only for slots the terminal drain must close.
+                self.pending_call_ids.remove(&output_index);
+                let item_id = match &slot {
+                    // The slot's established key wins even when the done item
+                    // restates a real `fc_*` id — assembled fragments must
+                    // not dangle under a different key.
+                    Some(slot) => slot.key().clone(),
+                    // Minted from the bridge's ONE counter: a done-only call
+                    // stamping `Minted{Output, index}` from a second sequence
+                    // could collide with a mid-assembly key the bridge minted
+                    // the same value for, consuming that assembly under the
+                    // wrong call.
+                    None if func.id.is_empty() => self.tool_slots.minted_ids().mint(),
+                    None => crate::streaming::StreamPartId::wire(func.id.clone()),
+                };
+                let mut end = streaming::ToolInputEnd::new(
+                    item_id.clone(),
+                    streaming::UnparseableToolInput::Drop,
+                );
+                end.name = Some(func.name);
+                // The finalized call reports the authoritative wire id even
+                // when assembly keyed on a minted slot identity (the
+                // accumulator honors the override).
+                end.tool_id = crate::streaming::WireId::new(func.id.clone());
+                // The restated arguments are authoritative when they parse. A
+                // turn cut by `max_output_tokens` mid-tool-call restates them
+                // truncated mid-JSON (item status `incomplete`); routing the
+                // raw string through the assembly buffer instead lets the
+                // shared accumulator apply the settled truncation policy
+                // (`UnparseableToolInput::Drop` — partial arguments never
+                // fabricate a call), including when no argument fragments
+                // preceded the done item.
+                match func.arguments.parse() {
+                    Ok(arguments) => end.arguments = Some(arguments),
+                    // Fragments already streamed these bytes into the
+                    // assembly buffer — re-emitting the restatement doubled
+                    // them (rendered twice by delta consumers and
+                    // double-charged against the accumulation bound). Only a
+                    // fragment-less done item (pure replay of a truncated
+                    // restatement) routes its raw string through the buffer,
+                    // so the truncation policy still has bytes to judge.
+                    Err(_) => {
+                        let saw_fragments =
+                            slot.as_ref().is_some_and(|slot| slot.saw_arguments_delta);
+                        if !saw_fragments {
+                            immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
+                                id: item_id,
+                                content: streaming::ToolCallDeltaContent::Delta(
+                                    func.arguments.as_str().to_owned(),
+                                ),
+                            });
+                        }
+                    }
+                }
+                end.call_id = Some(func.call_id);
+                let end = streaming::RawStreamingChoice::ToolInputEnd(end);
 
                 if emit_completed_tool_calls_immediately {
-                    immediate.push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                    immediate.push(end);
                 } else {
-                    self.tool_calls
-                        .push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                    self.tool_calls.push(end);
                 }
             }
             Output::Reasoning {
@@ -526,11 +757,25 @@ impl RawChoiceAccumulator {
                 encrypted_content,
                 ..
             } => {
-                immediate.extend(reasoning_choices_from_done_item(
-                    &id,
-                    &summary,
-                    &content,
-                    encrypted_content.as_deref(),
+                // The done item resolves through the slot map: its full
+                // blocks must share whatever identity the slot's deltas
+                // established (wire or minted) to supersede the delta-built
+                // part — keying them by the item's own `rs_*` id would
+                // append the restated content beside a minted-keyed part.
+                // A slot with no established identity keeps the wire id
+                // (the pure-replay shape). The durable handle is the item's
+                // real `rs_*` id regardless of the accumulation key.
+                let provider_id = crate::streaming::WireId::new(id.clone());
+                let key = self
+                    .reasoning_slots
+                    .remove(&output_index)
+                    .unwrap_or(crate::streaming::StreamPartId::wire(id));
+                immediate.extend(reasoning_end_from_done_item(
+                    &key,
+                    provider_id.as_ref(),
+                    summary,
+                    content,
+                    encrypted_content,
                 ));
             }
             Output::Message(message) => {
@@ -541,7 +786,7 @@ impl RawChoiceAccumulator {
             // the raw item to stream consumers, mirroring how the non-streaming
             // decode preserves it on `CompletionResponse.output`.
             Output::Unknown(value) => {
-                immediate.push(streaming::RawStreamingChoice::Unknown(value));
+                immediate.push(streaming::RawStreamingChoice::Unknown(value.into()));
             }
         }
     }
@@ -549,11 +794,13 @@ impl RawChoiceAccumulator {
     /// Drain the buffered fully-delivered tool calls without finishing the
     /// stream. The errored-terminal path flushes these before the error and
     /// must not produce a terminal record.
-    pub(crate) fn take_tool_calls(&mut self) -> Vec<StreamingRawChoice> {
+    #[doc(hidden)]
+    pub fn take_tool_calls(&mut self) -> Vec<StreamingRawChoice> {
         std::mem::take(&mut self.tool_calls)
     }
 
-    pub(crate) fn finish(mut self) -> Vec<StreamingRawChoice> {
+    #[doc(hidden)]
+    pub fn finish(mut self) -> Vec<StreamingRawChoice> {
         let mut choices = Vec::new();
         choices.append(&mut self.tool_calls);
         // Only a genuine terminal event (`response.completed` or
@@ -567,6 +814,8 @@ impl RawChoiceAccumulator {
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,
+                // Stamped by the transport layer.
+                provider_request_id: None,
                 reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
                 status: self.status,
@@ -580,160 +829,94 @@ impl RawChoiceAccumulator {
     }
 }
 
+/// Repair an envelope-less Responses frame so the shared typed decode can
+/// interpret it.
+///
+/// ChatGPT's replayed (unary) SSE bodies omit envelope bookkeeping fields
+/// (`sequence_number`, `output_index`, `content_index`, `summary_index`)
+/// that the typed frame decode requires. Those fields are bookkeeping only —
+/// no semantic decision reads them beyond the reasoning-identity fallback,
+/// which treats a missing `output_index` as `0` anyway — so injecting
+/// neutral zeros where they are absent turns salvage into a preprocessing
+/// step in front of the ONE event interpreter instead of a second one.
+/// Data-level fields (`delta`, `item`, `response`, …) are never touched, so
+/// a frame that is defective in its content still fails the re-decode.
+///
+/// **Policy decision — buffered-only, deliberately asymmetric with the live
+/// loop (#2258 F8):** a *live* SSE or websocket frame with a known `type` but
+/// a missing envelope field classifies `Corrupt` and surfaces as an in-band
+/// `Err` item; it is never repaired. Only ChatGPT's replayed unary bodies
+/// verifiably omit the envelope bookkeeping (every recorded live Copilot and
+/// OpenAI cassette carries full envelopes), so on a live wire an
+/// envelope-less known frame is evidence of a defective gateway, and
+/// silently repairing it would mask the defect the `Corrupt` classification
+/// exists to surface. The old live behavior (skip) hid the frame entirely;
+/// the `Err` item is the stated uniform policy for defective known frames.
+///
+/// **Known limit — identity collapse, and why the obvious fix is worse
+/// (#2258 G2):** the injected `output_index: 0` is the reasoning-identity
+/// fallback's key when `item_id` is also absent (see `reasoning_item_id` in
+/// [`RawChoiceAccumulator::decode_item_chunk`]). A body that omits BOTH
+/// `item_id` *and* `output_index` across two or more items therefore collapses
+/// them onto the single minted identity `output-0`, merging what the provider
+/// sent as separate reasoning parts. A sweep of every recorded cassette found
+/// **zero** bodies of that shape: ChatGPT's replayed bodies drop the
+/// bookkeeping fields but keep `item_id`, and every body that drops `item_id`
+/// carries `output_index`. So the collapse is reachable in principle and
+/// unobserved in practice.
+///
+/// It is deliberately NOT fixed with a per-frame counter (mint `0, 1, 2, …` as
+/// frames arrive). Envelope-less bodies are exactly the ones where consecutive
+/// frames belong to the SAME item: a counter would hand every delta of one
+/// reasoning block a different index, shattering one item into N single-delta
+/// parts. That is a real regression against a real recorded shape — it breaks
+/// `envelope_less_reasoning_deltas_are_superseded_by_their_done_item`, whose
+/// whole point is that the deltas and their `output_item.done` share one
+/// identity. Any future fix must key on something the body actually carries
+/// (item boundaries), not on arrival order.
+///
+/// Returns `None` when the frame is not a JSON object (nothing to repair).
+fn repair_envelope_less_frame(data: &str) -> Option<String> {
+    let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?;
+    let object = value.as_object_mut()?;
+    for field in [
+        "sequence_number",
+        "output_index",
+        "content_index",
+        "summary_index",
+    ] {
+        object
+            .entry(field)
+            .or_insert_with(|| serde_json::Value::from(0));
+    }
+    serde_json::to_string(&value).ok()
+}
+
 pub(crate) fn raw_choices_from_sse_body(
     body: &str,
     initial_usage: ResponsesUsage,
 ) -> Result<Vec<StreamingRawChoice>, CompletionError> {
-    let mut raw_choices = Vec::new();
-    let mut accumulator = RawChoiceAccumulator::new(initial_usage);
-    let options = ResponsesStreamOptions::strict();
-
-    for line in body.lines() {
-        let data = line
-            .strip_prefix("data:")
-            .map(str::trim)
-            .unwrap_or_default();
-        if data.is_empty() || data == "[DONE]" {
-            continue;
+    // Framing layer for the buffered (unary) Responses SSE body: line
+    // splitting, sentinel skipping, and the provider `error` envelope
+    // pre-check (which fails the operation, mirroring the live transport).
+    // Classification and policy live in the buffered driver.
+    let mut frames = Vec::new();
+    for data in sse_data_frames(body) {
+        if let Some(error) = provider_response_from_responses_sse_data(data) {
+            return Err(error);
         }
 
-        if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
-            match chunk {
-                StreamingCompletionChunk::Delta(chunk) => {
-                    raw_choices.extend(accumulator.decode_item_chunk(chunk, options));
-                }
-                StreamingCompletionChunk::Response(chunk) => {
-                    let ResponseChunk { kind, response, .. } = *chunk;
-                    accumulator.record_response_chunk(kind, response, data)?;
-                }
-            }
-            continue;
-        }
-
-        // This is a buffered unary path: there is no stream to carry error
-        // items, so a corrupt frame that would be yielded as an `Err` item on
-        // the live loop must instead fail the whole operation — the
-        // alternative is a successful-but-incomplete completion.
-        let value = match serde_json::from_str::<serde_json::Value>(data) {
-            Ok(value) => value,
-            Err(error) => {
-                return Err(CompletionError::ResponseError(format!(
-                    "invalid JSON frame in buffered Responses SSE body: {error}"
-                )));
-            }
-        };
-
-        let kind = value.get("type").and_then(serde_json::Value::as_str);
-        let malformed = |kind: &str| {
-            CompletionError::ResponseError(format!(
-                "malformed `{kind}` event in buffered Responses SSE body"
-            ))
-        };
-
-        match kind {
-            Some(kind @ ("response.output_text.delta" | "response.refusal.delta")) => {
-                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
-                    return Err(malformed(kind));
-                };
-                raw_choices.push(streaming::RawStreamingChoice::Message(delta.to_owned()));
-            }
-            Some(kind @ "response.reasoning_summary_text.delta") => {
-                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
-                    return Err(malformed(kind));
-                };
-                raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: None,
-                    reasoning: delta.to_owned(),
-                });
-            }
-            Some(kind @ "response.reasoning_text.delta") => {
-                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
-                    return Err(malformed(kind));
-                };
-                raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: value
-                        .get("item_id")
-                        .and_then(serde_json::Value::as_str)
-                        .map(ToOwned::to_owned),
-                    reasoning: delta.to_owned(),
-                });
-            }
-            Some(kind @ "response.output_item.added") => {
-                let Some(item) = value
-                    .get("item")
-                    .cloned()
-                    .and_then(|item| serde_json::from_value::<Output>(item).ok())
-                else {
-                    return Err(malformed(kind));
-                };
-                if let Output::FunctionCall(func) = item {
-                    let internal_call_id = accumulator
-                        .tool_call_internal_ids
-                        .entry(func.id.clone())
-                        .or_insert_with(crate::id::generate)
-                        .clone();
-                    raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
-                        id: func.id,
-                        internal_call_id,
-                        content: streaming::ToolCallDeltaContent::Name(func.name),
-                    });
-                }
-            }
-            Some(kind @ "response.output_item.done") => {
-                let Some(item) = value
-                    .get("item")
-                    .cloned()
-                    .and_then(|item| serde_json::from_value::<Output>(item).ok())
-                else {
-                    return Err(malformed(kind));
-                };
-                accumulator.push_output_item_done(item, &mut raw_choices, false);
-            }
-            Some(kind @ "response.function_call_arguments.delta") => {
-                let (Some(item_id), Some(delta)) = (
-                    value.get("item_id").and_then(serde_json::Value::as_str),
-                    value.get("delta").and_then(serde_json::Value::as_str),
-                ) else {
-                    return Err(malformed(kind));
-                };
-                let internal_call_id = accumulator
-                    .tool_call_internal_ids
-                    .entry(item_id.to_owned())
-                    .or_insert_with(crate::id::generate)
-                    .clone();
-                raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id: item_id.to_owned(),
-                    internal_call_id,
-                    content: streaming::ToolCallDeltaContent::Delta(delta.to_owned()),
-                });
-            }
-            Some(kind @ ("response.completed" | "response.failed" | "response.incomplete")) => {
-                let Some(response) = value.get("response").cloned() else {
-                    return Err(malformed(kind));
-                };
-                let response = serde_json::from_value::<CompletionResponse>(response)?;
-                let chunk_kind = match kind {
-                    "response.completed" => ResponseChunkKind::ResponseCompleted,
-                    "response.failed" => ResponseChunkKind::ResponseFailed,
-                    _ => ResponseChunkKind::ResponseIncomplete,
-                };
-                accumulator.record_response_chunk(chunk_kind, response, data)?;
-            }
-            Some("error") => {
-                return Err(provider_response_from_responses_error_value(&value, data));
-            }
-            // A known event type that failed the typed decode above and
-            // carries none of the content handled here is a data-level defect.
-            Some(kind) if is_known_responses_event_type(kind) => {
-                return Err(malformed(kind));
-            }
-            // Unknown event types stay skippable for forward compatibility.
-            _ => {}
-        }
+        frames.push(WireFrame::Text(data.to_owned()));
     }
 
-    raw_choices.extend(accumulator.finish());
-    Ok(raw_choices)
+    // The SAME interpreter as the live loop (`classify_responses_frame`
+    // feeding `RawChoiceAccumulator`), under [`run_wire_buffered`]'s
+    // no-stream policy: there is no stream to carry `Err` items, so `Corrupt`
+    // frames — and adapter-detected data errors like `response.failed` — fail
+    // the whole operation instead of returning a silently partial completion.
+    // Buffered classification adds the envelope-repair salvage; see
+    // [`ResponsesAdapter::buffered`].
+    run_wire_buffered(frames, ResponsesAdapter::buffered(initial_usage))
 }
 
 pub(crate) async fn completion_response_from_sse_body(
@@ -741,13 +924,8 @@ pub(crate) async fn completion_response_from_sse_body(
     body: &str,
     raw_response: CompletionResponse,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    let raw_choices = raw_choices_from_sse_body(
-        body,
-        raw_response
-            .usage
-            .clone()
-            .unwrap_or_else(ResponsesUsage::new),
-    )?;
+    let raw_choices =
+        raw_choices_from_sse_body(body, raw_response.usage.unwrap_or_else(ResponsesUsage::new))?;
     completion_response_from_raw_choices(provider, raw_choices, &raw_response)
         .await?
         .ok_or_else(|| CompletionError::ResponseError("Response contained no parts".to_owned()))
@@ -760,17 +938,13 @@ pub(crate) async fn completion_response_from_sse_body(
 /// terminal body fills any gap it left (usage, message ID, finish reason,
 /// model). Returns `Ok(None)` when the replay produced no content, leaving the
 /// caller to decide how to fall back.
-pub(crate) async fn completion_response_from_raw_choices(
+#[doc(hidden)]
+pub async fn completion_response_from_raw_choices(
     provider: &str,
     raw_choices: Vec<StreamingRawChoice>,
     raw_response: &CompletionResponse,
 ) -> Result<Option<completion::CompletionResponse>, CompletionError> {
-    let stream = futures::stream::iter(
-        raw_choices
-            .into_iter()
-            .map(Ok::<_, CompletionError>)
-            .collect::<Vec<_>>(),
-    );
+    let stream = futures::stream::iter(raw_choices.into_iter().map(Ok::<_, CompletionError>));
     let mut stream = normalize_responses_stream(provider, Box::pin(stream));
 
     while let Some(item) = stream.next().await {
@@ -786,17 +960,17 @@ pub(crate) async fn completion_response_from_raw_choices(
     // message text only in the terminal body while streaming other kinds as
     // deltas. A replay with no message text takes the body's message content;
     // everything replayed is kept.
-    let mut contents = stream.choice.iter().cloned().collect::<Vec<_>>();
+    let mut choice = std::mem::take(&mut stream.choice);
     // Presence of ANY streamed text — even whitespace — means the deltas were
     // the content channel; merging the body then would duplicate it.
-    let replay_has_message_text = contents.iter().any(|content| {
+    let replay_has_message_text = choice.iter().any(|content| {
         matches!(
             content,
             completion::AssistantContent::Text(text) if !text.text.is_empty()
         )
     });
     if !replay_has_message_text {
-        contents.extend(
+        choice.extend(
             raw_response
                 .output
                 .iter()
@@ -805,13 +979,12 @@ pub(crate) async fn completion_response_from_raw_choices(
                 .flat_map(<Vec<completion::AssistantContent>>::from),
         );
     }
-    let choice = crate::OneOrMany::many(contents).unwrap_or_else(|_| stream.choice.clone());
 
     let terminal = stream.response.clone();
-    let usage = terminal
-        .as_ref()
-        .map(|terminal| terminal.usage)
-        .unwrap_or_else(|| usage_from_raw_response(raw_response));
+    let usage = terminal.as_ref().map_or_else(
+        || usage_from_raw_response(raw_response),
+        |terminal| terminal.usage,
+    );
     let message_id = stream
         .message_id
         .clone()
@@ -845,7 +1018,7 @@ pub(crate) async fn completion_response_from_raw_choices(
     ))
 }
 
-fn choice_is_empty(choice: &crate::OneOrMany<completion::AssistantContent>) -> bool {
+fn choice_is_empty(choice: &[completion::AssistantContent]) -> bool {
     choice.iter().all(|content| match content {
         completion::AssistantContent::Text(text) => text.text.trim().is_empty(),
         completion::AssistantContent::Reasoning(reasoning) => reasoning.content.is_empty(),
@@ -885,7 +1058,7 @@ where
 }
 
 pub(crate) fn raw_stream_from_event_source_with_options<HttpClient, RequestBody>(
-    mut event_source: GenericEventSource<HttpClient, RequestBody>,
+    event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
     options: ResponsesStreamOptions,
 ) -> streaming::RawStreamingResult<StreamingCompletionResponse>
@@ -893,128 +1066,189 @@ where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
 {
-    let stream = stream! {
-        let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
-        let span = tracing::Span::current();
-
-        let mut pending_error = None;
-
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                    continue;
-                }
-                Ok(Event::Message(evt)) => {
-                    if evt.data.trim().is_empty() || evt.data == "[DONE]" {
-                        continue;
-                    }
-
-                    if let Some(error) = provider_response_from_responses_sse_data(&evt.data) {
-                        pending_error = Some(error);
-                        break;
-                    }
-
-                    let data = match serde_json::from_str::<StreamingCompletionChunk>(&evt.data) {
-                        Ok(data) => data,
-                        Err(error) => {
-                            // An unknown `type` is an event this client
-                            // doesn't model yet (xAI and other
-                            // Responses-compatible gateways emit extras) —
-                            // skip it for forward compatibility, mirroring
-                            // `ItemChunkKind::Unknown`. A known type that
-                            // fails to decode, or a frame that isn't JSON at
-                            // all, is a corrupt frame: surface it but keep
-                            // consuming — SSE self-synchronizes on blank
-                            // lines, so a later genuine terminal event can
-                            // still complete the stream, and without one the
-                            // missing `saw_terminal` suppresses the terminal
-                            // record.
-                            let is_unknown_event = serde_json::from_str::<serde_json::Value>(&evt.data)
-                                .is_ok_and(|value| {
-                                    value
-                                        .get("type")
-                                        .and_then(serde_json::Value::as_str)
-                                        .is_some_and(|kind| !is_known_responses_event_type(kind))
-                                });
-                            if is_unknown_event {
-                                tracing::warn!(
-                                    "skipping unrecognized Responses SSE event: {:?}",
-                                    error
-                                );
-                            } else {
-                                yield Err(CompletionError::from(error));
-                            }
-                            continue;
-                        }
-                    };
-
-                    match data {
-                        StreamingCompletionChunk::Delta(chunk) => {
-                            for choice in accumulator.decode_item_chunk(chunk, options) {
-                                yield Ok(choice);
-                            }
-                        }
-                        StreamingCompletionChunk::Response(chunk) => {
-                            let ResponseChunk { kind, response, .. } = *chunk;
-                            if matches!(kind, ResponseChunkKind::ResponseCompleted) {
-                                span.record("gen_ai.response.id", response.id.as_str());
-                                span.record("gen_ai.response.model", response.model.as_str());
-                            }
-                            if let Err(error) = accumulator.record_response_chunk(
-                                kind,
-                                response,
-                                &evt.data,
-                            ) {
-                                pending_error = Some(error);
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => {
-                    event_source.close();
-                }
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    pending_error = Some(CompletionError::from_stream_transport(error));
-                    break;
-                }
+    // The wire's in-band provider `error` envelope is a terminal transport
+    // condition, detected pre-classification exactly as an HTTP failure
+    // would be.
+    open_wire_stream(
+        event_source,
+        SseTransportOptions {
+            open_log: OpenLog::Trace,
+            stream_ended_is_error: false,
+            log_transport_errors: true,
+        },
+        |data| {
+            if data.trim().is_empty() || data == "[DONE]" {
+                return FrameDisposition::Skip;
             }
+            if let Some(error) = provider_response_from_responses_sse_data(&data) {
+                // A terminal failure: the driver flushes fully-delivered
+                // content, yields this error last, and emits no terminal
+                // record.
+                return FrameDisposition::Fail(error);
+            }
+            FrameDisposition::Frame(data)
+        },
+        ResponsesAdapter::live(options),
+        span,
+    )
+}
+
+/// One classified Responses frame, carrying its raw payload alongside the
+/// decoded chunk: `response.failed` preserves the raw event body as the
+/// provider error body, exactly as the pre-migration loop did.
+pub(crate) struct ResponsesFrameEvent {
+    raw: String,
+    chunk: StreamingCompletionChunk,
+}
+
+/// The OpenAI Responses SSE wire as a [`WireAdapter`], shared by the live
+/// loop ([`run_wire_stream`]) and the buffered unary path
+/// ([`run_wire_buffered`]).
+///
+/// Holds the per-stream assembly state ([`RawChoiceAccumulator`]); frame
+/// triage policy lives in the drivers, not here. The two modes differ only in
+/// classification: the buffered mode adds the envelope-repair salvage for
+/// ChatGPT's replayed bodies (see [`repair_envelope_less_frame`] for why the
+/// live wire deliberately does NOT repair).
+pub(crate) struct ResponsesAdapter {
+    accumulator: RawChoiceAccumulator,
+    options: ResponsesStreamOptions,
+    /// Buffered-only envelope salvage; `false` on the live wire.
+    repair_envelopes: bool,
+    /// A `response.failed` event ended the turn: the flush-then-`Err`
+    /// sequence has been pushed and the driver stops consuming.
+    finished: bool,
+}
+
+impl ResponsesAdapter {
+    fn live(options: ResponsesStreamOptions) -> Self {
+        Self {
+            accumulator: RawChoiceAccumulator::new(ResponsesUsage::new()),
+            options,
+            repair_envelopes: false,
+            finished: false,
         }
+    }
 
-        event_source.close();
+    fn buffered(initial_usage: ResponsesUsage) -> Self {
+        Self {
+            accumulator: RawChoiceAccumulator::new(initial_usage),
+            options: ResponsesStreamOptions::strict(),
+            repair_envelopes: true,
+            finished: false,
+        }
+    }
+}
 
-        // Tool calls the provider fully delivered are content: they flush
-        // before the terminal error, which then ends the stream with no
-        // terminal record, preserving the failure signal.
-        if let Some(error) = pending_error {
-            for tool_call in accumulator.take_tool_calls() {
-                yield Ok(tool_call);
-            }
-            yield Err(error);
+impl WireAdapter for ResponsesAdapter {
+    type Frame = WireFrame;
+    type Event = ResponsesFrameEvent;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<ResponsesFrameEvent> {
+        let data = frame.as_str().into_owned();
+        let event = if self.repair_envelopes {
+            // Buffered bodies (ChatGPT's replayed unary SSE) omit envelope
+            // bookkeeping fields; salvage through the SAME interpreter, with
+            // the operation-error wording the buffered driver surfaces
+            // verbatim.
+            wire::classify_with_repair(
+                &data,
+                classify_responses_frame,
+                repair_envelope_less_frame,
+                |corrupt| {
+                    <serde_json::Error as serde::de::Error>::custom(format!(
+                        "invalid JSON frame in buffered Responses SSE body: {corrupt}"
+                    ))
+                },
+                || {
+                    let kind = serde_json::from_str::<serde_json::Value>(&data)
+                        .ok()
+                        .and_then(|value| {
+                            value
+                                .get("type")
+                                .and_then(serde_json::Value::as_str)
+                                .map(ToOwned::to_owned)
+                        })
+                        .unwrap_or_default();
+                    <serde_json::Error as serde::de::Error>::custom(format!(
+                        "malformed `{kind}` event in buffered Responses SSE body"
+                    ))
+                },
+            )
+        } else {
+            classify_responses_frame(&data)
+        };
+        event.map(|chunk| ResponsesFrameEvent { raw: data, chunk })
+    }
+
+    fn interpret(&mut self, event: ResponsesFrameEvent, out: &mut AdapterOutput<Self::Response>) {
+        if self.finished {
             return;
         }
 
-        let final_usage = accumulator.final_usage.clone();
-
-        for tool_call in accumulator.finish() {
-            yield Ok(tool_call)
+        match event.chunk {
+            StreamingCompletionChunk::Delta(chunk) => {
+                out.extend(
+                    self.accumulator
+                        .decode_item_chunk(chunk, self.options)
+                        .into_iter()
+                        .map(Ok),
+                );
+            }
+            StreamingCompletionChunk::Response(chunk) => {
+                let ResponseChunk { kind, response, .. } = *chunk;
+                if matches!(kind, ResponseChunkKind::ResponseCompleted) {
+                    let span = tracing::Span::current();
+                    span.record("gen_ai.response.id", response.id.as_str());
+                    span.record("gen_ai.response.model", response.model.as_str());
+                }
+                if let Err(error) = self
+                    .accumulator
+                    .record_response_chunk(kind, response, &event.raw)
+                {
+                    // `response.failed`: fully-delivered tool calls flush
+                    // before the terminal error, which ends the stream with
+                    // no terminal record, preserving the failure signal.
+                    out.extend(self.accumulator.take_tool_calls().into_iter().map(Ok));
+                    out.push(Err(error));
+                    self.finished = true;
+                }
+            }
         }
+    }
 
+    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
+        let accumulator = std::mem::replace(
+            &mut self.accumulator,
+            RawChoiceAccumulator::new(ResponsesUsage::new()),
+        );
+        let final_usage = accumulator.final_usage;
+
+        // Flush buffered tool calls, then the terminal record when a genuine
+        // terminal event arrived; EOF without one is truncation and the
+        // accumulator withholds the record (deferral, never synthesis).
+        out.extend(accumulator.finish().into_iter().map(Ok));
+
+        let span = tracing::Span::current();
         span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
         span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
         let cached_tokens = final_usage
             .input_tokens_details
             .as_ref()
-            .map(|d| d.cached_tokens)
-            .unwrap_or(0);
+            .map_or(0, |d| d.cached_tokens);
         span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
-
     }
-    .instrument(span);
 
-    Box::pin(stream)
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput<Self::Response>) {
+        // Tool calls the provider fully delivered are content: they flush
+        // before the terminal error reaches the consumer.
+        out.extend(self.accumulator.take_tool_calls().into_iter().map(Ok));
+    }
+
+    fn is_finished(&self) -> bool {
+        self.finished
+    }
 }
 
 /// An item message chunk from OpenAI's Responses API.
@@ -1064,10 +1298,27 @@ pub enum ItemChunkKind {
     ReasoningSummaryTextDone(SummaryTextChunk),
     #[serde(rename = "response.reasoning_text.delta")]
     ReasoningTextDelta(DeltaTextChunkWithItemId),
-    /// Catch-all for unknown item chunk types (e.g., `web_search_call` events).
-    /// This prevents unknown streaming events from breaking deserialization.
-    #[serde(other)]
-    Unknown,
+    /// Terminator for a raw-reasoning block, restating the text the
+    /// `response.reasoning_text.delta` events already streamed.
+    ///
+    /// Modeled but not acted on — it falls into `decode_item_chunk`'s no-op
+    /// arm exactly like [`Self::ReasoningSummaryTextDone`], because the
+    /// accumulated deltas are already the authoritative content and replaying
+    /// the restatement would double the reasoning text.
+    ///
+    /// The variant is what makes naming the tag in
+    /// `is_known_responses_event_type` safe: the classify layer sends every
+    /// KNOWN tag straight to `decode_known`, so listing the tag without a
+    /// variant to decode into would turn today's benign warn-and-skip into an
+    /// in-band `Corrupt`/`Err` on every raw-reasoning block (#2258 G4). The
+    /// two edits only make sense together.
+    #[serde(rename = "response.reasoning_text.done")]
+    ReasoningTextDone(OutputTextChunk),
+    // No `#[serde(other)]` catch-all: unknown event types are triaged by the
+    // classify layer (`classify_responses_frame` checks the `type` tag against
+    // `is_known_responses_event_type` BEFORE decoding), so a frame that
+    // reaches this decoder with an unmodeled tag is a known-set/enum drift
+    // and must fail loudly (`Corrupt`) rather than be silently absorbed.
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1083,7 +1334,7 @@ pub struct ContentPartChunk {
     pub part: ContentPartChunkPart,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPartChunkPart {
     OutputText {
@@ -1101,6 +1352,58 @@ pub enum ContentPartChunkPart {
     /// [`Output::Unknown`](super::Output).
     #[serde(untagged)]
     Unknown(serde_json::Value),
+}
+
+/// Hand-written tag dispatch instead of a trailing `#[serde(untagged)]`
+/// variant: on an internally-tagged enum the untagged fallback also swallows
+/// a *known* tag with an invalid payload, silently demoting a data-level
+/// defect to a skippable unknown part
+/// (`rig-2257-code-review-findings-34ee8ba5.md` P2). Here a known part tag
+/// must decode fully or error; only an unmodeled (or absent) tag falls back
+/// to [`ContentPartChunkPart::Unknown`], preserving the value verbatim.
+///
+/// Two documented edges of the hand dispatch (#2258 F8):
+/// - A part with **duplicate `type` keys** dispatches on the **last**
+///   occurrence, because `serde_json::Value` keeps the last duplicate, while
+///   a derived internally-tagged enum takes the first. Duplicate keys are
+///   not something any Responses gateway emits; the divergence is accepted
+///   and pinned by test rather than papered over with a custom map visitor.
+/// - A **non-string `type`** is a data-level defect of the tagged shape, not
+///   an unmodeled part kind: it errors (classifying the frame `Corrupt`)
+///   instead of degrading to an `Unknown` no-op.
+impl<'de> Deserialize<'de> for ContentPartChunkPart {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let text_field = |part: &str| -> Result<String, D::Error> {
+            value
+                .get("text")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "`{part}` content part is missing a string `text` field"
+                    ))
+                })
+        };
+        match value.get("type").cloned() {
+            Some(serde_json::Value::String(tag)) => match tag.as_str() {
+                "output_text" => Ok(Self::OutputText {
+                    text: text_field("output_text")?,
+                }),
+                "summary_text" => Ok(Self::SummaryText {
+                    text: text_field("summary_text")?,
+                }),
+                _ => Ok(Self::Unknown(value)),
+            },
+            Some(_) => Err(serde::de::Error::custom(
+                "content part `type` must be a string",
+            )),
+            None => Ok(Self::Unknown(value)),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1165,10 +1468,9 @@ pub enum SummaryPartChunkPart {
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + 'static,
     Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
+    H: Clone + WasmCompatSend + 'static,
 {
     /// Open a stream whose terminal record stays provider-native.
     ///
@@ -1184,36 +1486,53 @@ where
     ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
-        let mut request = self.create_completion_request(completion_request)?;
-        request.stream = Some(true);
+        let (request_model, request) = self.create_provider_request(completion_request, true)?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Responses streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Responses streaming completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
-            .post("/responses")?
+            .post(Ext::RESPONSES_PATH)?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,
-            &request.model,
+            &request_model,
             CompletionOperation::ChatStreaming,
         )
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
+        let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
+            Some(header) => {
+                let (event_source, slot) = event_source.capture_request_id(header);
+                (event_source, Some(slot))
+            }
+            None => (event_source, None),
+        };
 
-        Ok(raw_stream_from_event_source(event_source, span))
+        let options = if Ext::EMITS_COMPLETE_TOOL_CALLS_IMMEDIATELY {
+            ResponsesStreamOptions::strict_with_immediate_tool_calls()
+        } else {
+            ResponsesStreamOptions::strict()
+        };
+        let stream = raw_stream_from_event_source_with_options(event_source, span, options);
+        Ok(
+            crate::providers::internal::sse_transport::stamp_terminal_request_id(
+                stream,
+                request_id_slot,
+                Ext::REQUEST_ID_HEADER,
+                |response, id| response.provider_request_id = Some(id),
+            ),
+        )
     }
 
     pub(crate) async fn stream(
@@ -1229,14 +1548,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        ItemChunkKind, StreamingCompletionChunk, raw_choices_from_sse_body,
-        reasoning_choices_from_done_item,
+        ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator,
+        ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
+        raw_choices_from_sse_body, reasoning_end_from_done_item,
     };
     use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
+    use crate::providers::internal::wire::WireEvent;
     use crate::providers::openai::responses_api::{
         AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
         ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
@@ -1247,10 +1568,205 @@ mod tests {
     use futures::StreamExt;
     use serde_json::{self, json};
 
+    #[test]
+    fn classify_known_event_decodes() {
+        let frame = json!({
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "hi",
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Known(StreamingCompletionChunk::Delta(_))
+        ));
+    }
+
+    #[test]
+    fn classify_unknown_event_type_is_unknown() {
+        let frame = json!({
+            "type": "response.web_search_call.searching",
+            "output_index": 0,
+            "sequence_number": 1,
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Unknown { event_type, .. } if event_type == "response.web_search_call.searching"
+        ));
+    }
+
+    /// #2258 G4: `response.reasoning_text.done` terminates every raw-reasoning
+    /// block on all three Responses surfaces. It used to be absent from the
+    /// known-event set, so each block logged a spurious "unknown event" warn
+    /// and passed through as `Unknown`.
+    ///
+    /// Both halves of the fix are asserted here, because either alone is a
+    /// regression: the tag must be KNOWN (no `Unknown`), and `ItemChunkKind`
+    /// must carry a variant for it (no `Corrupt`, which is what naming the tag
+    /// without the variant would have produced — strictly worse than the warn).
+    ///
+    /// No recorded cassette contains this event; the wire shape is the
+    /// Responses spec's, so this unit test is the pin.
+    #[test]
+    fn classify_reasoning_text_done_is_known_and_decodes() {
+        let frame = json!({
+            "type": "response.reasoning_text.done",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 7,
+            "text": "the model's raw chain of thought",
+        })
+        .to_string();
+
+        let event = classify_responses_frame(&frame);
+        assert!(
+            !matches!(event, WireEvent::Unknown { .. }),
+            "the tag must be in the known-event set: {event:?}"
+        );
+        assert!(
+            !matches!(event, WireEvent::Corrupt(_)),
+            "a known tag with no matching ItemChunkKind variant decodes to Corrupt, which the \
+             driver surfaces as an in-band Err — worse than the warn it replaced: {event:?}"
+        );
+        assert!(matches!(
+            event,
+            WireEvent::Known(StreamingCompletionChunk::Delta(chunk))
+                if matches!(chunk.data, ItemChunkKind::ReasoningTextDone(_))
+        ));
+    }
+
+    /// The done event restates text the deltas already streamed, so it must be
+    /// a no-op: replaying it would double every raw-reasoning block.
+    #[test]
+    fn reasoning_text_done_emits_nothing() {
+        let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
+        let chunk: ItemChunk = serde_json::from_value(json!({
+            "type": "response.reasoning_text.done",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 7,
+            "text": "the model's raw chain of thought",
+        }))
+        .expect("reasoning text done event should deserialize");
+
+        let emitted = accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict());
+        assert!(
+            emitted.is_empty(),
+            "the done restatement must not re-emit the reasoning text: {emitted:?}"
+        );
+    }
+
+    #[test]
+    fn classify_invalid_json_is_corrupt() {
+        assert!(matches!(
+            classify_responses_frame("{not json"),
+            WireEvent::Corrupt(_)
+        ));
+    }
+
+    #[test]
+    fn classify_known_event_with_defective_payload_is_corrupt() {
+        let frame = json!({
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": 42,
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Corrupt(_)
+        ));
+    }
+
+    // The P2 probe shape from `rig-2257-code-review-findings-34ee8ba5.md`: a
+    // known part tag whose payload is schema-defective must classify as
+    // `Corrupt`, not slide into the unknown-part catch-all.
+    #[test]
+    fn classify_defective_known_content_part_is_corrupt() {
+        let frame = json!({
+            "type": "response.content_part.added",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "part": {"type": "output_text", "text": 42},
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Corrupt(_)
+        ));
+    }
+
+    #[test]
+    fn content_part_known_tag_decodes() {
+        let part: ContentPartChunkPart =
+            serde_json::from_value(json!({"type": "output_text", "text": "hi"})).unwrap();
+        assert!(matches!(part, ContentPartChunkPart::OutputText { text } if text == "hi"));
+    }
+
+    #[test]
+    fn content_part_known_tag_with_defective_payload_errors() {
+        let result = serde_json::from_value::<ContentPartChunkPart>(
+            json!({"type": "output_text", "text": 42}),
+        );
+        assert!(result.is_err());
+        let result = serde_json::from_value::<ContentPartChunkPart>(
+            json!({"type": "summary_text", "text": 42}),
+        );
+        assert!(result.is_err());
+    }
+
+    // A non-string `type` is a data-level defect of the tagged shape, never a
+    // skippable unknown part (#2258 F8).
+    #[test]
+    fn content_part_non_string_type_errors() {
+        let result =
+            serde_json::from_value::<ContentPartChunkPart>(json!({"type": 42, "text": "hi"}));
+        assert!(result.is_err());
+        let result =
+            serde_json::from_value::<ContentPartChunkPart>(json!({"type": null, "text": "hi"}));
+        assert!(result.is_err());
+    }
+
+    // Pins the documented duplicate-key edge (#2258 F8): `serde_json::Value`
+    // keeps the last duplicate key, so the hand dispatch resolves on the LAST
+    // `type` — unlike a derived internally-tagged enum, which takes the first.
+    #[test]
+    fn content_part_duplicate_type_key_dispatches_on_the_last_occurrence() {
+        let part: ContentPartChunkPart =
+            serde_json::from_str(r#"{"type":"bogus","type":"output_text","text":"hi"}"#).unwrap();
+        assert!(matches!(part, ContentPartChunkPart::OutputText { text } if text == "hi"));
+    }
+
+    // `refusal` and `reasoning_text` part tags are not in the modeled set:
+    // they must stay skippable no-ops (the content arrives via the
+    // corresponding delta events), round-tripping the value verbatim.
+    #[test]
+    fn content_part_unknown_tag_is_preserved_verbatim() {
+        let wire = json!({"type": "refusal", "refusal": "no"});
+        let part: ContentPartChunkPart = serde_json::from_value(wire.clone()).unwrap();
+        let ContentPartChunkPart::Unknown(value) = &part else {
+            panic!("unmodeled part tag must fall back to Unknown");
+        };
+        assert_eq!(value, &wire);
+        assert_eq!(serde_json::to_value(&part).unwrap(), wire);
+    }
+
     fn sample_response(status: ResponseStatus) -> CompletionResponse {
         CompletionResponse {
             id: "resp_123".to_string(),
             object: ResponseObject::Response,
+            provider_request_id: None,
             created_at: 0,
             status,
             error: None,
@@ -1381,7 +1897,7 @@ mod tests {
     }
 
     #[test]
-    fn reasoning_done_item_emits_summary_then_encrypted() {
+    fn reasoning_done_item_fuses_summary_content_and_encrypted_into_one_end() {
         let summary = vec![
             ReasoningSummary::SummaryText {
                 text: "step 1".to_string(),
@@ -1391,38 +1907,39 @@ mod tests {
             },
         ];
         let content = vec!["private reasoning".to_string()];
-        let choices =
-            reasoning_choices_from_done_item("rs_1", &summary, &content, Some("enc_blob"));
+        let end = reasoning_end_from_done_item(
+            &crate::streaming::StreamPartId::wire("rs_1"),
+            crate::streaming::WireId::new("rs_1").as_ref(),
+            summary,
+            content,
+            Some("enc_blob".to_string()),
+        );
 
-        assert_eq!(choices.len(), 4);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "rs_1" && text == "step 1"
-        ));
-        assert!(matches!(
-            choices.get(1),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "rs_1" && text == "step 2"
-        ));
-        assert!(matches!(
-            choices.get(2),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Text { text, signature: None },
-            }) if id == "rs_1" && text == "private reasoning"
-        ));
-        assert!(matches!(
-            choices.get(3),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Encrypted(data),
-            }) if id == "rs_1" && data == "enc_blob"
-        ));
+        // ONE end event carrying every block in wire field order — never a
+        // choice per block, which made siblings under one `rs_*` id.
+        let Some(RawStreamingChoice::ReasoningEnd {
+            id,
+            reasoning: Some(reasoning),
+            signature: None,
+            wire_sent: true,
+        }) = end
+        else {
+            panic!("expected one wire-sent ReasoningEnd restatement");
+        };
+        assert_eq!(id, crate::streaming::StreamPartId::wire("rs_1"));
+        assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+        assert_eq!(
+            reasoning.content,
+            vec![
+                ReasoningContent::Summary("step 1".to_string()),
+                ReasoningContent::Summary("step 2".to_string()),
+                ReasoningContent::Text {
+                    text: "private reasoning".to_string(),
+                    signature: None,
+                },
+                ReasoningContent::Encrypted("enc_blob".to_string()),
+            ]
+        );
     }
 
     #[test]
@@ -1446,12 +1963,66 @@ mod tests {
         let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
             .expect("sse body should decode");
 
+        // The done item arrives as one wire-sent end restatement whose
+        // single block is the reasoning text.
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Text { text, signature: None },
-            }) if id == "rs_text_1" && text == "visible reasoning"
+            Some(RawStreamingChoice::ReasoningEnd {
+                id,
+                reasoning: Some(reasoning),
+                wire_sent: true,
+                ..
+            }) if id == &crate::streaming::StreamPartId::wire("rs_text_1")
+                && reasoning.content
+                    == vec![ReasoningContent::Text {
+                        text: "visible reasoning".to_string(),
+                        signature: None,
+                    }]
+        ));
+    }
+
+    /// Envelope-less replay shape (ChatGPT bodies): an id-less summary
+    /// delta mints an Output-kind key, the done item restates the whole
+    /// block under the SAME adopted minted key, and visible text follows.
+    /// The driver's boundary law must treat the same-key whole block as a
+    /// close — this exact body used to abort every debug build
+    /// (sequence-law O1, Responses variant).
+    #[test]
+    fn envelope_less_reasoning_then_text_decodes_without_violation() {
+        let body = format!(
+            "data: {}\ndata: {}\ndata: {}\n",
+            json!({
+                "type": "response.reasoning_summary_text.delta",
+                "output_index": 0,
+                "summary_index": 0,
+                "sequence_number": 1,
+                "delta": "thinking",
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 2,
+                "item": {
+                    "type": "reasoning",
+                    "id": "",
+                    "summary": [{ "type": "summary_text", "text": "thinking, complete" }],
+                    "status": "completed"
+                },
+            }),
+            json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 1,
+                "content_index": 0,
+                "sequence_number": 3,
+                "delta": "the answer",
+            }),
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("sse body should decode without a sequence-law violation");
+        assert!(choices.iter().any(
+            |choice| matches!(choice, RawStreamingChoice::Message(text) if text == "the answer")
         ));
     }
 
@@ -1474,8 +2045,8 @@ mod tests {
 
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::ReasoningDelta { id: Some(id), reasoning })
-                if id == "rs_delta_1" && reasoning == "thinking"
+            Some(RawStreamingChoice::ReasoningDelta { id, provider_id: _, reasoning })
+                if id == &crate::streaming::StreamPartId::wire("rs_delta_1") && reasoning == "thinking"
         ));
     }
 
@@ -1510,7 +2081,7 @@ mod tests {
         });
         assert_eq!(
             unknown,
-            Some(&item),
+            Some(&item.into()),
             "the raw web_search_call item should reach the consumer verbatim",
         );
     }
@@ -1520,32 +2091,68 @@ mod tests {
         let summary = vec![ReasoningSummary::SummaryText {
             text: "only summary".to_string(),
         }];
-        let choices = reasoning_choices_from_done_item("rs_2", &summary, &[], None);
+        let end = reasoning_end_from_done_item(
+            &crate::streaming::StreamPartId::wire("rs_2"),
+            crate::streaming::WireId::new("rs_2").as_ref(),
+            summary,
+            Vec::new(),
+            None,
+        );
 
-        assert_eq!(choices.len(), 1);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "rs_2" && text == "only summary"
-        ));
+        let Some(RawStreamingChoice::ReasoningEnd {
+            id,
+            reasoning: Some(reasoning),
+            ..
+        }) = end
+        else {
+            panic!("expected one ReasoningEnd restatement");
+        };
+        assert_eq!(id, crate::streaming::StreamPartId::wire("rs_2"));
+        assert_eq!(
+            reasoning.content,
+            vec![ReasoningContent::Summary("only summary".to_string())]
+        );
     }
 
     #[test]
     fn empty_encrypted_reasoning_is_not_emitted() {
         let content = vec!["visible reasoning".to_string()];
 
-        let choices = reasoning_choices_from_done_item("rs_1", &[], &content, Some(""));
+        let end = reasoning_end_from_done_item(
+            &crate::streaming::StreamPartId::wire("rs_1"),
+            crate::streaming::WireId::new("rs_1").as_ref(),
+            Vec::new(),
+            content,
+            Some(String::new()),
+        );
 
-        assert_eq!(choices.len(), 1);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                content: ReasoningContent::Text { text, .. },
-                ..
-            }) if text == "visible reasoning"
-        ));
+        let Some(RawStreamingChoice::ReasoningEnd {
+            reasoning: Some(reasoning),
+            ..
+        }) = end
+        else {
+            panic!("expected one ReasoningEnd restatement");
+        };
+        assert_eq!(
+            reasoning.content,
+            vec![ReasoningContent::Text {
+                text: "visible reasoning".to_string(),
+                signature: None,
+            }],
+            "an empty encrypted payload contributes no block"
+        );
+
+        // An entirely empty done item says nothing at the boundary.
+        assert!(
+            reasoning_end_from_done_item(
+                &crate::streaming::StreamPartId::wire("rs_1"),
+                crate::streaming::WireId::new("rs_1").as_ref(),
+                Vec::new(),
+                Vec::new(),
+                Some(String::new()),
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1767,6 +2374,83 @@ mod tests {
         assert_eq!(final_response.usage.total_tokens, 15);
     }
 
+    /// A multi-block reasoning done item (summaries + `encrypted_content`)
+    /// aggregates as exactly ONE reasoning part carrying every block in wire
+    /// order — never sibling parts sharing one `rs_*` id, which would replay
+    /// as duplicate reasoning input items carrying the identical id on the
+    /// next request.
+    #[tokio::test]
+    async fn multi_block_reasoning_done_item_yields_one_part() {
+        let reasoning_done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 1,
+            "item": {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [
+                    {"type": "summary_text", "text": "step 1"},
+                    {"type": "summary_text", "text": "step 2"}
+                ],
+                "content": [],
+                "encrypted_content": "enc_blob"
+            }
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "sequence_number": 2,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[reasoning_done, completed]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut completed_reasoning = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Reasoning { reasoning, .. } =
+                item.expect("stream items should be ok")
+            {
+                completed_reasoning.push(reasoning);
+            }
+        }
+
+        assert_eq!(
+            completed_reasoning.len(),
+            1,
+            "one done item must complete exactly one reasoning part, got {completed_reasoning:?}"
+        );
+        let reasoning = completed_reasoning.first().expect("one part");
+        assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+        assert_eq!(
+            reasoning.content,
+            vec![
+                ReasoningContent::Summary("step 1".to_string()),
+                ReasoningContent::Summary("step 2".to_string()),
+                ReasoningContent::Encrypted("enc_blob".to_string()),
+            ],
+            "every block survives, in wire order, inside the one part"
+        );
+
+        // The aggregated choice replays as exactly one reasoning input item.
+        let choice = stream.choice;
+        let reasoning_parts = choice
+            .iter()
+            .filter(|content| matches!(content, crate::message::AssistantContent::Reasoning(_)))
+            .count();
+        assert_eq!(
+            reasoning_parts, 1,
+            "history must carry one reasoning part per rs_* id, got {choice:?}"
+        );
+    }
+
     /// A `response.failed` after a fully-delivered tool call: the tool call is
     /// content and flushes first, the terminal error follows, and nothing
     /// (least of all a terminal record) comes after it.
@@ -1818,7 +2502,11 @@ mod tests {
             StreamedAssistantContent::ToolCall { tool_call, .. } => tool_call,
             other => panic!("expected the flushed tool call first, got {other:?}"),
         };
-        assert_eq!(tool_call.id, "fc_123");
+        // The correlator drives rig's id; the item id rides on `provider`.
+        assert_eq!(tool_call.id, "call_123");
+        let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+        assert_eq!(provider.call_id, "call_123");
+        assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
         assert_eq!(tool_call.function.name, "example_tool");
 
         let err = stream
@@ -1887,7 +2575,9 @@ mod tests {
             .expect("the flushed tool call must precede the transport error")
         {
             StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                assert_eq!(tool_call.id, "fc_123");
+                assert_eq!(tool_call.id, "call_123");
+                let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+                assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
             }
             other => panic!("expected the flushed tool call first, got {other:?}"),
         }
@@ -2247,6 +2937,720 @@ mod tests {
         );
     }
 
+    /// Envelope-less frames (ChatGPT's replayed bodies) are repaired and fed
+    /// through the same typed interpreter as the live loop, so the buffered
+    /// path agrees with the live path's semantics.
+    #[test]
+    fn envelope_less_frames_repair_onto_the_shared_interpreter() {
+        let completed = json!({
+            "type": "response.completed",
+            "response": sample_response(ResponseStatus::Completed),
+        });
+
+        // A ChatGPT-style text delta with no envelope bookkeeping fields.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.output_text.delta", "delta": "hi" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an envelope-less delta must repair and decode");
+        assert!(
+            choices
+                .iter()
+                .any(|choice| matches!(choice, RawStreamingChoice::Message(text) if text == "hi"))
+        );
+
+        // Live-path parity, pinned: a function-call-arguments delta with no
+        // `item_id` is keyed by the minted slot identity (the repair injects
+        // `output_index: 0`), matching the live loop — it must flow into
+        // assembly instead of vanishing.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.function_call_arguments.delta", "delta": "{}" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an id-less args delta must repair and decode");
+        assert!(choices.iter().any(|choice| matches!(
+            choice,
+            RawStreamingChoice::ToolCallDelta { id, .. } if id == &crate::streaming::MintKind::Output.for_wire_index(0)
+        )));
+
+        // Live-path parity, pinned: an envelope-less bookkeeping event whose
+        // data is intact (`.done` events) is a no-op, not an error as the old
+        // salvage made it.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.output_text.done", "text": "hi" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an envelope-less done event must repair to the live no-op");
+        assert!(
+            choices
+                .iter()
+                .any(|choice| matches!(choice, RawStreamingChoice::FinalResponse(_)))
+        );
+
+        // An envelope-less reasoning summary delta keys by the repaired
+        // `output_index`, matching the live derivation.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an envelope-less summary delta must repair and decode");
+        assert!(choices.iter().any(|choice| matches!(
+            choice,
+            RawStreamingChoice::ReasoningDelta { id, provider_id: _, reasoning }
+                if id == &crate::streaming::MintKind::Output.for_wire_index(0) && reasoning == "think"
+        )));
+    }
+
+    /// The `max_output_tokens`-mid-tool-call shape: `arguments_delta`
+    /// frames stream partial JSON and the done item restates the same
+    /// truncated bytes (unparseable). Re-emitting the restatement as
+    /// another raw delta put the partial JSON in the buffer TWICE — a
+    /// delta-reassembling consumer rendered it twice and the bytes were
+    /// double-charged against the accumulation bound. Fragments seen →
+    /// the buffer already holds the bytes; only a fragment-less done item
+    /// (pure replay of a truncated restatement) still routes its raw
+    /// string through the buffer at all (#2258 P3).
+    #[test]
+    fn an_unparseable_restatement_is_not_reemitted_over_streamed_fragments() {
+        let delta = json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc_1",
+            "output_index": 0,
+            "sequence_number": 1,
+            "delta": "{\"x\":481",
+        });
+        let done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 2,
+            "item": {
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "add",
+                "arguments": "{\"x\":481",
+                "status": "incomplete"
+            },
+        });
+        let body = format!(
+            "data: {delta}
+data: {done}
+"
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the truncated shape must decode");
+        let raw_fragments: Vec<&str> = choices
+            .iter()
+            .filter_map(|choice| match choice {
+                RawStreamingChoice::ToolCallDelta {
+                    content: crate::streaming::ToolCallDeltaContent::Delta(fragment),
+                    ..
+                } => Some(fragment.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            raw_fragments,
+            vec!["{\"x\":481"],
+            "the streamed fragment is buffered once; the restatement adds nothing"
+        );
+    }
+
+    /// The pure-replay half of the same policy: a truncated restatement
+    /// with NO preceding fragments must still reach the buffer (else the
+    /// bytes never arrive and the truncation policy has nothing to judge).
+    #[test]
+    fn a_fragmentless_unparseable_restatement_still_reaches_the_buffer() {
+        let done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 1,
+            "item": {
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "add",
+                "arguments": "{\"x\":481",
+                "status": "incomplete"
+            },
+        });
+        let body = format!(
+            "data: {done}
+"
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the replayed truncated shape must decode");
+        let raw_fragments = choices
+            .iter()
+            .filter(|choice| {
+                matches!(
+                    choice,
+                    RawStreamingChoice::ToolCallDelta {
+                        content: crate::streaming::ToolCallDeltaContent::Delta(_),
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(raw_fragments, 1, "the raw bytes must reach the buffer once");
+    }
+
+    /// A slot mixing id-bearing and id-less reasoning frames (gateways and
+    /// ChatGPT's envelope-less replay bodies omit the id on a subset of a
+    /// slot's events) must key every frame — and the done item — by ONE
+    /// slot identity, the same discipline `tool_slots` applies. Per-event
+    /// resolution split the slot into `Wire("rs_1")` and `Minted(Output, 0)`,
+    /// and the done item superseded only one of them: the other survived as
+    /// an orphaned partial part carrying the same provider id.
+    #[tokio::test]
+    async fn mixed_id_and_id_less_reasoning_frames_share_one_slot_key() {
+        let with_id = json!({
+            "type": "response.reasoning_summary_text.delta",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "summary_index": 0,
+            "sequence_number": 1,
+            "delta": "s1 ",
+        });
+        let id_less = json!({
+            "type": "response.reasoning_summary_text.delta",
+            "output_index": 0,
+            "summary_index": 0,
+            "sequence_number": 2,
+            "delta": "s2",
+        });
+        let done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 3,
+            "item": {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [{"type": "summary_text", "text": "s1 s2"}],
+                "content": [],
+                "status": "completed",
+            },
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "response": sample_response(ResponseStatus::Completed),
+        });
+        let body = format!("data: {with_id}\ndata: {id_less}\ndata: {done}\ndata: {completed}\n");
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the mixed slot must decode");
+        let mut keys = std::collections::HashSet::new();
+        for choice in &raw_choices {
+            match choice {
+                RawStreamingChoice::ReasoningDelta { id, .. } => {
+                    keys.insert(id.clone());
+                }
+                RawStreamingChoice::ReasoningEnd { id, .. } => {
+                    keys.insert(id.clone());
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(
+            keys.len(),
+            1,
+            "one slot, one assembly key — got {keys:?} across {raw_choices:?}"
+        );
+
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("the mixed slot should normalize")
+                .expect("a reasoning-bearing stream is not empty");
+        let reasoning_parts = response
+            .choice
+            .iter()
+            .filter(|content| matches!(content, crate::completion::AssistantContent::Reasoning(_)))
+            .count();
+        assert_eq!(
+            reasoning_parts, 1,
+            "the done item supersedes the one delta-built part; nothing orphans"
+        );
+    }
+
+    /// #2258 F3: an id-less reasoning delta is keyed by the minted
+    /// `output-{index}` identity, and the slot's `output_item.done` full block
+    /// (which always carries the real `rs_*` id) must adopt that minted
+    /// identity — otherwise the restated summary appends beside the
+    /// delta-built part and duplicates it. This is the ChatGPT envelope-less
+    /// replay shape: the repair injects `output_index: 0` into the delta while
+    /// the done item arrives envelope-full.
+    #[tokio::test]
+    async fn envelope_less_reasoning_deltas_are_superseded_by_their_done_item() {
+        let delta = json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" });
+        let done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 2,
+            "item": {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [{"type": "summary_text", "text": "think"}],
+                "content": [],
+                "status": "completed",
+            },
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "response": sample_response(ResponseStatus::Completed),
+        });
+        let body = format!("data: {delta}\ndata: {done}\ndata: {completed}\n");
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the envelope-less reasoning replay must decode");
+        // The done item's restatement shares the minted per-slot identity.
+        assert!(raw_choices.iter().any(|choice| matches!(
+            choice,
+            RawStreamingChoice::ReasoningEnd { id, reasoning: Some(_), .. }
+                if id == &crate::streaming::MintKind::Output.for_wire_index(0)
+        )));
+
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("chatgpt", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a reasoning-bearing replay is not empty");
+
+        let reasoning: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reasoning.len(),
+            1,
+            "deltas and their full block must collapse to one reasoning item: {reasoning:?}"
+        );
+        let occurrences = reasoning
+            .iter()
+            .flat_map(|item| item.content.iter())
+            .filter(|content| match content {
+                ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
+                    text.contains("think")
+                }
+                _ => false,
+            })
+            .count();
+        assert_eq!(
+            occurrences, 1,
+            "the restated summary must supersede its deltas, not duplicate them"
+        );
+    }
+
+    /// #2258 P2: text deltas for one message item interleaved with reasoning
+    /// must aggregate as ONE text part. Interleaving reasoning closes the open
+    /// text block downstream, so the adapter must re-emit `TextStart` with the
+    /// same item id when the item's text resumes — the accumulator's keyed
+    /// reactivation then reopens the block instead of minting a sibling.
+    #[tokio::test]
+    async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
+        let events = [
+            json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "hello "
+            }),
+            json!({
+                "type": "response.reasoning_summary_text.delta",
+                "item_id": "rs_2",
+                "output_index": 1,
+                "summary_index": 0,
+                "sequence_number": 2,
+                "delta": "because"
+            }),
+            json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 3,
+                "delta": "world"
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 4,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the interleaved stream must decode");
+        // The resumed item re-announces its block: two `TextStart { msg_1 }`.
+        let starts = raw_choices
+            .iter()
+            .filter(|choice| {
+                matches!(
+                    choice,
+                    RawStreamingChoice::TextStart { id, .. } if id == &crate::streaming::StreamPartId::wire("msg_1")
+                )
+            })
+            .count();
+        assert_eq!(
+            starts, 2,
+            "returning to the same item must re-emit its TextStart: {raw_choices:?}"
+        );
+
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a text-bearing replay is not empty");
+        let texts: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            ["hello world"],
+            "same-item text must aggregate as one part around the reasoning"
+        );
+        assert!(
+            response.choice.iter().any(|content| matches!(
+                content,
+                crate::completion::AssistantContent::Reasoning(_)
+            )),
+            "the interleaved reasoning must survive"
+        );
+    }
+
+    /// #2258 P3: two parallel function calls whose events all lack `fc_*` ids
+    /// must not share the `""` assembly key — each slot gets a minted
+    /// `output-{index}` identity shared by its added/delta/done events, so two
+    /// distinct calls assemble.
+    /// A slot whose `added` event carries a real `fc_*` id but whose later
+    /// args delta arrives id-less must keep ONE assembly key: slot-scoped
+    /// identity (the bridge) makes event-scoped key-splitting
+    /// unrepresentable, and the finalized call reports the wire id.
+    #[tokio::test]
+    async fn mixed_id_and_id_less_events_share_one_slot_key() {
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_real",
+                    "call_id": "call_a",
+                    "name": "tool_a",
+                    "arguments": "",
+                    "status": "in_progress",
+                },
+            }),
+            // Id-less delta for the same slot: must resolve to the slot's
+            // established key, not mint a second identity.
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"x\":1}"
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 3,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_real",
+                    "call_id": "call_a",
+                    "name": "tool_a",
+                    "arguments": "{\"x\":1}",
+                    "status": "completed",
+                },
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 4,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the mixed-id stream must decode");
+
+        // Every tool event (name delta, args delta, input end) carries the
+        // slot's single key — no fragment dangles under a second identity.
+        let mut keys: Vec<crate::streaming::StreamPartId> = raw_choices
+            .iter()
+            .filter_map(|choice| match choice {
+                RawStreamingChoice::ToolCallDelta { id, .. } => Some(id.clone()),
+                RawStreamingChoice::ToolInputEnd(end) => Some(end.id.clone()),
+                _ => None,
+            })
+            .collect();
+        keys.dedup();
+        assert_eq!(
+            keys,
+            [crate::streaming::StreamPartId::wire("fc_real")],
+            "one slot, one assembly key"
+        );
+
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a tool-bearing replay is not empty");
+        let call = response
+            .choice
+            .iter()
+            .find_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => Some(call.clone()),
+                _ => None,
+            })
+            .expect("the call finalizes");
+        assert_eq!(call.function.name, "tool_a");
+        assert_eq!(call.function.arguments, serde_json::json!({"x": 1}));
+    }
+
+    #[tokio::test]
+    async fn parallel_id_less_function_calls_assemble_distinctly() {
+        let call_item = |name: &str, call_id: &str, arguments: &str| {
+            json!({
+                "type": "function_call",
+                "call_id": call_id,
+                "name": name,
+                "arguments": arguments,
+                "status": "completed",
+            })
+        };
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": call_item("tool_a", "call_a", ""),
+            }),
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 1,
+                "sequence_number": 2,
+                "item": call_item("tool_b", "call_b", ""),
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 3,
+                "delta": "{\"x\":1}"
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 1,
+                "sequence_number": 4,
+                "delta": "{\"y\":2}"
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 5,
+                "item": call_item("tool_a", "call_a", "{\"x\":1}"),
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 1,
+                "sequence_number": 6,
+                "item": call_item("tool_b", "call_b", "{\"y\":2}"),
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 7,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the id-less parallel-call stream must decode");
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a tool-bearing replay is not empty");
+
+        let mut calls: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => Some((
+                    call.function.name.clone(),
+                    call.function.arguments.to_string(),
+                )),
+                _ => None,
+            })
+            .collect();
+        calls.sort();
+        assert_eq!(
+            calls,
+            [
+                ("tool_a".to_owned(), json!({"x": 1}).to_string()),
+                ("tool_b".to_owned(), json!({"y": 2}).to_string()),
+            ],
+            "each id-less slot must assemble its own call"
+        );
+    }
+
+    /// A lost `output_item.done` frame followed by a healthy
+    /// `response.completed` must not discard the call as truncation: the
+    /// provider proved the turn ended, so the still-open slot closes at the
+    /// terminal and finalizes from its streamed fragments — with the full
+    /// dual-wire identity the added event announced. The same
+    /// terminal-drain the sibling adapters ship (Interactions at
+    /// `interaction.completed`, chat-compat at `finish_reason`).
+    #[tokio::test]
+    async fn a_lost_done_frame_does_not_discard_a_provider_completed_call() {
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "call_abc",
+                    "name": "get_weather",
+                    "arguments": "",
+                    "status": "in_progress",
+                },
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"city\":\"Paris\"}"
+            }),
+            // The output_item.done frame is lost; the terminal still arrives.
+            json!({
+                "type": "response.completed",
+                "sequence_number": 3,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the stream must decode");
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a tool-bearing replay is not empty");
+
+        let calls: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 1, "the provider-completed call must survive");
+        let call = calls[0];
+        assert_eq!(call.function.name, "get_weather");
+        assert_eq!(call.function.arguments, json!({"city": "Paris"}));
+        let provider = call.provider.as_ref().expect("the wire issued ids");
+        assert_eq!(provider.call_id, "call_abc");
+        assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
+    }
+
+    /// #2258 P3: id-less argument fragments must surface as deltas (keyed by
+    /// the minted slot identity) rather than vanish; when the stream truncates
+    /// before the authoritative `output_item.done` restatement, the settled
+    /// truncation policy still applies — partial arguments never fabricate a
+    /// call.
+    #[tokio::test]
+    async fn id_less_args_deltas_surface_and_truncation_fabricates_no_call() {
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "call_id": "call_a",
+                    "name": "tool_a",
+                    "arguments": "",
+                    "status": "in_progress",
+                },
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"loc\":"
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the truncated id-less stream must decode");
+        // The fragment flowed into assembly under the minted identity.
+        assert!(
+            raw_choices.iter().any(|choice| matches!(
+                choice,
+                RawStreamingChoice::ToolCallDelta {
+                    id,
+                    content: crate::streaming::ToolCallDeltaContent::Delta(delta),
+                } if id == &crate::streaming::MintKind::Output.for_wire_index(0) && delta == "{\"loc\":"
+            )),
+            "the id-less args fragment must surface as a delta: {raw_choices:?}"
+        );
+
+        // No done restatement arrived: the truncation policy withholds the
+        // call rather than fabricating one from partial arguments.
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize");
+        assert!(
+            response.is_none(),
+            "partial arguments must not fabricate a call: {response:?}"
+        );
+    }
+
     #[test]
     fn refusal_content_part_frames_do_not_fail_the_buffered_body() {
         // The ChatGPT buffered route replays recorded SSE bodies; a refusal
@@ -2299,7 +3703,8 @@ data: {completed}
         use crate::providers::openai::responses_api::Output;
 
         let raw_choices = vec![RawStreamingChoice::ReasoningDelta {
-            id: Some("rs_1".to_string()),
+            provider_id: crate::streaming::WireId::new("rs_1"),
+            id: crate::streaming::StreamPartId::wire("rs_1"),
             reasoning: "thinking".to_string(),
         }];
 
@@ -2690,7 +4095,7 @@ data: {completed}
             match item {
                 Ok(StreamedAssistantContent::Text(chunk)) => text.push_str(&chunk.text),
                 Ok(StreamedAssistantContent::Final(final_response)) => {
-                    terminal = Some(final_response)
+                    terminal = Some(final_response);
                 }
                 Ok(other) => panic!("unexpected stream item: {other:?}"),
                 Err(err) => {

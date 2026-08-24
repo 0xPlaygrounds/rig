@@ -1,6 +1,7 @@
 //! VoyageAI embeddings smoke test.
 
-use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::client::DefaultTransportClient as _;
+use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
 use rig::providers::voyageai;
 

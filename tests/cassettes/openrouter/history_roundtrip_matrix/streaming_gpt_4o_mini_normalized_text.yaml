@@ -1,0 +1,32 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":24,"messages":[{"content":"Unicode context: café 東京. The marker is exactly: lantern-42.","role":"user"},{"content":[{"text":"lantern-42","type":"text"}],"role":"assistant"},{"content":"Reply with exactly the marker from the prior conversation.","role":"user"}],"model":"openai/gpt-4o-mini","provider":{"allow_fallbacks":false,"order":["OpenAI"]},"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"lan","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"tern","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"-","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"42","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":4,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":9e-6,"cost_details":{"upstream_inference_completions_cost":2.4e-6,"upstream_inference_cost":9e-6,"upstream_inference_prompt_cost":6.6e-6},"is_byok":false,"prompt_tokens":44,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":48}}
+
+    data: [DONE]
+

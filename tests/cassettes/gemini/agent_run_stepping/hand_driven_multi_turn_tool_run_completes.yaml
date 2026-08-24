@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":7,"y":4},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":197,"promptTokensDetails":[{"modality":"TEXT","tokenCount":197}],"serviceTier":"standard","thoughtsTokenCount":55,"totalTokenCount":270}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":7,"y":4},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":197,"promptTokensDetails":[{"modality":"TEXT","tokenCount":197}],"serviceTier":"standard","thoughtsTokenCount":67,"totalTokenCount":282}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,7 +34,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":11,"y":2},"name":"subtract"},"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":19,"promptTokenCount":229,"promptTokensDetails":[{"modality":"TEXT","tokenCount":229}],"serviceTier":"standard","thoughtsTokenCount":33,"totalTokenCount":281}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":11,"y":2},"name":"subtract"},"thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":19,"promptTokenCount":229,"promptTokensDetails":[{"modality":"TEXT","tokenCount":229}],"serviceTier":"standard","thoughtsTokenCount":41,"totalTokenCount":289}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -53,4 +53,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"9","thoughtSignature":"signature_REDACTED_3"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_3","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":261,"promptTokensDetails":[{"modality":"TEXT","tokenCount":261}],"serviceTier":"standard","thoughtsTokenCount":20,"totalTokenCount":282}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"9","thoughtSignature":"signature_REDACTED_3"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_3","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":261,"promptTokensDetails":[{"modality":"TEXT","tokenCount":261}],"serviceTier":"standard","thoughtsTokenCount":26,"totalTokenCount":288}}'

@@ -2,7 +2,6 @@ use super::client::{OpenRouterExt, Usage};
 use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
 use crate::telemetry::ProviderResponseExt;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     providers::internal::openai_chat_completions_compatible::map_openai_finish_reason,
@@ -382,7 +381,12 @@ impl ProviderPreferences {
     ///     .order(["anthropic", "openai"]);
     /// ```
     pub fn order(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.order = Some(providers.into_iter().map(|p| p.into()).collect());
+        self.order = Some(
+            providers
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        );
         self
     }
 
@@ -398,7 +402,12 @@ impl ProviderPreferences {
     ///     .allow_fallbacks(false);
     /// ```
     pub fn only(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.only = Some(providers.into_iter().map(|p| p.into()).collect());
+        self.only = Some(
+            providers
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        );
         self
     }
 
@@ -413,7 +422,12 @@ impl ProviderPreferences {
     ///     .ignore(["deepinfra"]);
     /// ```
     pub fn ignore(mut self, providers: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.ignore = Some(providers.into_iter().map(|p| p.into()).collect());
+        self.ignore = Some(
+            providers
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect(),
+        );
         self
     }
 
@@ -566,17 +580,53 @@ impl ProviderPreferences {
     }
 }
 
+fn deserialize_openrouter_choices_dropping_incomplete_tool_calls<'de, D>(
+    deserializer: D,
+) -> Result<Vec<Choice>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls_when(
+        deserializer,
+        |choice| {
+            let normalized = choice
+                .get("finish_reason")
+                .and_then(serde_json::Value::as_str)
+                .filter(|reason| !reason.is_empty());
+            if let Some(reason) = normalized {
+                return matches!(map_openai_finish_reason(reason), completion::FinishReason::Length);
+            }
+
+            choice
+                .get("native_finish_reason")
+                .and_then(serde_json::Value::as_str)
+                .filter(|reason| !reason.is_empty())
+                .is_some_and(|reason| {
+                    matches!(map_native_finish_reason(reason), completion::FinishReason::Length)
+                })
+        },
+    )
+}
+
 /// A openrouter completion object.
 ///
-/// For more information, see this link: <https://docs.openrouter.xyz/reference/create_chat_completion_v1_chat_completions_post>
+/// For more information, see the
+/// [OpenRouter Chat Completions reference](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
     pub id: String,
     pub object: String,
     pub created: u64,
     pub model: String,
+    #[serde(deserialize_with = "deserialize_openrouter_choices_dropping_incomplete_tool_calls")]
     pub choices: Vec<Choice>,
     pub system_fingerprint: Option<String>,
+    /// Upstream provider selected by OpenRouter for this response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Service tier reported by the routed provider, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
     pub usage: Option<Usage>,
 }
 
@@ -618,8 +668,12 @@ pub(crate) fn map_native_finish_reason(reason: &str) -> completion::FinishReason
     match reason.to_ascii_lowercase().as_str() {
         // OpenAI-compatible upstreams, plus Anthropic's `end_turn`/`stop_sequence`
         // and Gemini's `STOP`.
-        "stop" | "end_turn" | "stop_sequence" | "complete" => completion::FinishReason::Stop,
-        "length" | "max_tokens" | "model_length" => completion::FinishReason::Length,
+        "stop" | "end_turn" | "stop_sequence" | "complete" | "completed" => {
+            completion::FinishReason::Stop
+        }
+        "length" | "max_tokens" | "max_output_tokens" | "model_length" => {
+            completion::FinishReason::Length
+        }
         "tool_calls" | "function_call" | "tool_use" => completion::FinishReason::ToolCalls,
         "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
             completion::FinishReason::ContentFilter
@@ -644,33 +698,34 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
         let content = match &choice.message {
             Message::Assistant {
-                content,
+                content: message_content,
                 tool_calls,
                 reasoning,
                 reasoning_details,
                 images,
+                refusal,
                 ..
             } => {
-                let mut content = content
-                    .iter()
-                    .map(|c| match c {
-                        openai::AssistantContent::Text { text, .. } => {
-                            completion::AssistantContent::text(text)
-                        }
-                        openai::AssistantContent::Refusal { refusal } => {
-                            completion::AssistantContent::text(refusal)
-                        }
-                    })
-                    .collect::<Vec<_>>();
+                // A structured-output refusal arrives as a *sibling* of
+                // `content` (`{"content": null, "refusal": "…"}`), not as the
+                // `refusal` content part below — that spelling belongs to the
+                // Responses API, which this wire never sends. Reading only
+                // `content` dropped the refusal outright and normalized the
+                // turn to nothing, while `text_response` already fell back
+                // to the field and the streaming path already delivered it.
+                // The rule is shared with the OpenAI chat path so no two
+                // readers of this wire can disagree about it (#2332).
+                let refusal_fallback = openai::completion::assistant_refusal_fallback(
+                    message_content,
+                    refusal.as_deref(),
+                );
 
-                content.extend(tool_calls.iter().map(|call| {
-                    completion::AssistantContent::tool_call(
-                        &call.id,
-                        &call.function.name,
-                        call.function.arguments.clone(),
-                    )
-                }));
-
+                // Match the shared streaming adapter's canonical turn order:
+                // the model reasons, speaks, then acts. OpenRouter may place
+                // reasoning beside text and tool calls in one blocking
+                // message, so appending it after the calls made blocking and
+                // streaming histories disagree for the same provider turn.
+                let mut normalized_content = Vec::new();
                 let mut grouped_reasoning: HashMap<
                     Option<String>,
                     Vec<(usize, usize, message::ReasoningContent)>,
@@ -724,7 +779,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
                 if grouped_reasoning.is_empty() {
                     if let Some(reasoning) = reasoning {
-                        content.push(completion::AssistantContent::reasoning(reasoning));
+                        normalized_content.push(completion::AssistantContent::reasoning(reasoning));
                     }
                 } else {
                     for reasoning_id in reasoning_order {
@@ -732,7 +787,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                             continue;
                         };
                         blocks.sort_by_key(|(index, position, _)| (*index, *position));
-                        content.push(completion::AssistantContent::Reasoning(
+                        normalized_content.push(completion::AssistantContent::Reasoning(
                             message::Reasoning {
                                 id: reasoning_id,
                                 content: blocks
@@ -744,20 +799,45 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                     }
                 }
 
-                content.extend(images.iter().map(response_image_to_assistant_content));
+                normalized_content.extend(message_content.iter().map(|part| match part {
+                    openai::AssistantContent::Text { text, .. } => {
+                        completion::AssistantContent::text(text)
+                    }
+                    openai::AssistantContent::Refusal { refusal } => {
+                        completion::AssistantContent::text(refusal)
+                    }
+                }));
 
-                Ok(content)
+                if let Some(refusal) = refusal_fallback {
+                    normalized_content.push(completion::AssistantContent::text(refusal));
+                }
+
+                normalized_content.extend(tool_calls.iter().map(|call| {
+                    completion::AssistantContent::tool_call(
+                        &call.id,
+                        &call.function.name,
+                        call.function.arguments.clone(),
+                    )
+                }));
+
+                normalized_content.extend(images.iter().map(response_image_to_assistant_content));
+
+                Ok(normalized_content)
             }
             _ => Err(CompletionError::ResponseError(
                 "Response did not contain a valid message or tool call".into(),
             )),
         }?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        // A provider-truncated turn can legitimately have no surviving
+        // content (for example, its only tool call was cut off before the
+        // first usable argument token). Preserve the terminal diagnostic and
+        // metadata exactly as the shared OpenAI-compatible normalizer does;
+        // completed empty turns remain errors.
+        let choice = match &finish_reason {
+            Some(reason) if reason.truncated_output() => content,
+            _ => crate::message::require_non_empty_response(content)?,
+        };
 
         let usage = response
             .usage
@@ -778,62 +858,32 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 }
 
 impl ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Choice;
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<String> {
-        Some(self.id.clone())
+    fn response_id(&self) -> Option<&str> {
+        Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.clone())
+    fn response_model_name(&self) -> Option<&str> {
+        Some(self.model.as_str())
     }
 
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.choices.clone()
-    }
-
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         let response = self
             .choices
             .iter()
-            .filter_map(|choice| assistant_message_text_response(&choice.message))
+            .filter_map(|choice| {
+                openai::completion::assistant_message_text_response(&choice.message)
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
         (!response.is_empty()).then_some(response)
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
-        self.usage.clone()
+    fn usage(&self) -> Option<Self::Usage> {
+        self.usage
     }
-}
-
-fn assistant_message_text_response(message: &Message) -> Option<String> {
-    let Message::Assistant {
-        content, refusal, ..
-    } = message
-    else {
-        return None;
-    };
-
-    let mut segments = content
-        .iter()
-        .filter_map(|content| match content {
-            openai::AssistantContent::Text { text, .. } => (!text.is_empty()).then(|| text.clone()),
-            openai::AssistantContent::Refusal { refusal } => {
-                (!refusal.is_empty()).then(|| refusal.clone())
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if let Some(refusal) = refusal
-        && !refusal.is_empty()
-    {
-        segments.push(refusal.clone());
-    }
-
-    (!segments.is_empty()).then(|| segments.join("\n"))
 }
 
 // OpenRouter shares OpenAI's Chat Completions message model. The request and
@@ -854,13 +904,14 @@ fn parse_data_uri(url: &str) -> Option<(&str, &str)> {
     url.strip_prefix("data:")?.split_once(";base64,")
 }
 
-fn openrouter_response_image_params() -> serde_json::Value {
-    serde_json::json!({
-        "openrouter": {
+fn openrouter_response_image_params() -> Option<message::AdditionalParams> {
+    message::AdditionalParams::from_entries([(
+        "openrouter",
+        serde_json::json!({
             OPENROUTER_RESPONSE_ONLY_KEY: true,
             OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY: OPENROUTER_ASSISTANT_IMAGES_SOURCE,
-        }
-    })
+        }),
+    )])
 }
 
 fn response_image_to_assistant_content(image: &ResponseImage) -> completion::AssistantContent {
@@ -870,14 +921,14 @@ fn response_image_to_assistant_content(image: &ResponseImage) -> completion::Ass
             data: message::DocumentSourceKind::Base64(b64.to_string()),
             media_type: message::ImageMediaType::from_mime_type(mime),
             detail: None,
-            additional_params: Some(openrouter_response_image_params()),
+            additional_params: openrouter_response_image_params(),
         })
     } else {
         completion::AssistantContent::Image(message::Image {
             data: message::DocumentSourceKind::Url(url.clone()),
             media_type: None,
             detail: None,
-            additional_params: Some(openrouter_response_image_params()),
+            additional_params: openrouter_response_image_params(),
         })
     }
 }
@@ -886,11 +937,11 @@ fn is_openrouter_response_image(image: &message::Image) -> bool {
     image
         .additional_params
         .as_ref()
-        .and_then(|params| params.get("openrouter"))
+        .and_then(|params| params.wire_extras("openrouter"))
         .is_some_and(|params| {
             params
                 .get(OPENROUTER_RESPONSE_ONLY_KEY)
-                .and_then(|value| value.as_bool())
+                .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false)
                 && params
                     .get(OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY)
@@ -972,10 +1023,10 @@ fn user_content_to_openai(
                 },
             }),
             DocumentSourceKind::Base64(data) => {
-                let mime = media_type
-                    .as_ref()
-                    .map(|m| m.to_mime_type())
-                    .unwrap_or("application/pdf");
+                let mime = media_type.as_ref().map_or(
+                    "application/pdf",
+                    crate::completion::message::MimeType::to_mime_type,
+                );
                 let data_uri = format!("data:{mime};base64,{data}");
 
                 Ok(UserContent::File {
@@ -1050,26 +1101,21 @@ fn document_filename(media_type: Option<&DocumentMediaType>) -> Option<String> {
 }
 
 fn user_contents_to_messages(
-    value: OneOrMany<message::UserContent>,
+    value: Vec<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
-    fn flush_user_content(
-        messages: &mut Vec<Message>,
-        pending: &mut Vec<UserContent>,
-    ) -> Result<(), message::MessageError> {
+    fn flush_user_content(messages: &mut Vec<Message>, pending: &mut Vec<UserContent>) {
+        // An empty flush is a legal no-op — it fires between consecutive
+        // tool-result groups — not a conversion error. This early return is
+        // the only emptiness decision here; the pushed content is non-empty
+        // because of it.
         if pending.is_empty() {
-            return Ok(());
+            return;
         }
 
-        let content = OneOrMany::many(std::mem::take(pending)).map_err(|_| {
-            message::MessageError::ConversionError(
-                "OpenRouter user message did not contain any non-tool content".into(),
-            )
-        })?;
         messages.push(Message::User {
-            content,
+            content: std::mem::take(pending),
             name: None,
         });
-        Ok(())
     }
 
     let mut messages = Vec::new();
@@ -1078,7 +1124,12 @@ fn user_contents_to_messages(
     for content in value {
         match content {
             message::UserContent::ToolResult(tool_result) => {
-                flush_user_content(&mut messages, &mut pending)?;
+                flush_user_content(&mut messages, &mut pending);
+                // Prefer the provider-issued call id, matching the
+                // assistant echo (shared From<message::ToolCall>);
+                // provider-less results fall back to rig's minted
+                // handle — never empty.
+                let tool_call_id = tool_result.wire_call_id().to_owned();
                 let content = tool_result
                     .content
                     .into_iter()
@@ -1094,9 +1145,7 @@ fn user_contents_to_messages(
                     .collect::<Result<Vec<_>, _>>()?
                     .join("\n");
                 messages.push(Message::ToolResult {
-                    // Prefer the provider-issued call id, matching the
-                    // assistant echo (shared From<message::ToolCall>).
-                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
+                    tool_call_id,
                     content: openai::completion::ToolResultContentValue::String(content),
                 });
             }
@@ -1104,7 +1153,7 @@ fn user_contents_to_messages(
         }
     }
 
-    flush_user_content(&mut messages, &mut pending)?;
+    flush_user_content(&mut messages, &mut pending);
     Ok(messages)
 }
 
@@ -1118,6 +1167,12 @@ pub struct Choice {
     pub native_finish_reason: Option<String>,
     pub message: Message,
     pub finish_reason: Option<String>,
+    /// Per-token probability metadata returned when `logprobs` is requested.
+    ///
+    /// Normalized completions intentionally omit provider-native
+    /// probabilities; callers of `raw_completion` retain the complete object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
@@ -1138,7 +1193,7 @@ enum ToolCallAdditionalParams {
 /// stored on tool calls (signature / `additional_params`) so providers that
 /// require reasoning to be echoed back on tool-call turns keep working.
 fn assistant_contents_to_messages(
-    value: OneOrMany<message::AssistantContent>,
+    value: Vec<message::AssistantContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     let mut text_content = Vec::new();
     let mut tool_calls = Vec::new();
@@ -1165,34 +1220,38 @@ fn assistant_contents_to_messages(
                         }
                         ToolCallAdditionalParams::Minimal { id, format } => {
                             // Correlate with the id the wire tool call will
-                            // carry (call_id when present, else id).
+                            // carry (provider call id when present, else
+                            // rig's handle).
                             let id = id
-                                .or_else(|| tool_call.call_id.clone())
-                                .unwrap_or_else(|| tool_call.id.clone());
+                                .or_else(|| {
+                                    tool_call
+                                        .provider
+                                        .as_ref()
+                                        .map(|provider| provider.call_id.clone())
+                                })
+                                .unwrap_or_else(|| tool_call.id.as_str().to_owned());
                             if let Some(signature) = &tool_call.signature {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
                                     id: Some(id),
                                     format,
                                     index: None,
                                     data: signature.clone(),
-                                })
+                                });
                             }
                         }
                     }
                 } else if let Some(signature) = &tool_call.signature {
                     reasoning_details.push(ReasoningDetails::Encrypted {
-                        id: Some(
-                            tool_call
-                                .call_id
-                                .clone()
-                                .unwrap_or_else(|| tool_call.id.clone()),
-                        ),
+                        id: Some(tool_call.provider.as_ref().map_or_else(
+                            || tool_call.id.as_str().to_owned(),
+                            |provider| provider.call_id.clone(),
+                        )),
                         format: None,
                         index: None,
                         data: signature.clone(),
                     });
                 }
-                tool_calls.push(tool_call.into())
+                tool_calls.push(tool_call.into());
             }
             message::AssistantContent::Reasoning(r) => {
                 if r.content.is_empty() {
@@ -1201,12 +1260,16 @@ fn assistant_contents_to_messages(
                         reasoning = Some(display);
                     }
                 } else {
+                    // A block the stream aggregated without a wire id carries
+                    // the accumulator's shared "" identity; send it back as a
+                    // null id, the shape the non-streaming path produces.
+                    let reasoning_id = r.id.clone().filter(|id| !id.is_empty());
                     for reasoning_block in &r.content {
                         let index = Some(reasoning_details.len());
                         match reasoning_block {
                             message::ReasoningContent::Text { text, signature } => {
                                 reasoning_details.push(ReasoningDetails::Text {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     text: Some(text.clone()),
@@ -1215,7 +1278,7 @@ fn assistant_contents_to_messages(
                             }
                             message::ReasoningContent::Summary(summary) => {
                                 reasoning_details.push(ReasoningDetails::Summary {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     summary: summary.clone(),
@@ -1224,7 +1287,7 @@ fn assistant_contents_to_messages(
                             message::ReasoningContent::Encrypted(data)
                             | message::ReasoningContent::Redacted { data } => {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     data: data.clone(),
@@ -1460,7 +1523,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             model,
             messages: full_history,
             temperature: req.temperature,
-            max_tokens: None,
+            max_tokens: req.max_tokens,
             tools,
             tool_choice,
             additional_params,
@@ -1489,6 +1552,20 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 
     const STREAM_INCLUDE_USAGE: bool = false;
 
+    fn map_streaming_finish_reason(
+        &self,
+        finish_reason: Option<&str>,
+        native_finish_reason: Option<&str>,
+    ) -> Option<crate::completion::FinishReason> {
+        if let Some(reason) = finish_reason.filter(|reason| !reason.is_empty()) {
+            return Some(map_openai_finish_reason(reason));
+        }
+
+        native_finish_reason
+            .filter(|reason| !reason.is_empty())
+            .map(map_native_finish_reason)
+    }
+
     fn build_completion_request(
         &self,
         model: String,
@@ -1511,28 +1588,61 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
         Ok(())
     }
 
-    fn decorate_streaming_tool_call(
+    /// Encrypted reasoning (`{"type":"reasoning.encrypted"}`) is the turn's own
+    /// output, not tool-call metadata: it arrives with `reasoning: null` and an
+    /// `rs_*` id of its own, which never matches a `call_*` tool-call id, and it
+    /// arrives before any tool call opens. Emitting it as a reasoning block
+    /// matches the non-streaming path (which maps the same detail to
+    /// [`message::ReasoningContent::Encrypted`]) and is what lets the blob reach
+    /// the aggregated choice and be replayed on the next turn.
+    fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        message::ReasoningContent,
+    )> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
             serde_json::from_value::<ReasoningDetails>(detail.clone())
         else {
-            return;
-        };
-        let Some(id) = id else {
-            return;
-        };
-        let Some(tool_call) = tool_calls
-            .values_mut()
-            .find(|tool_call| tool_call.id.eq(&id))
-        else {
-            return;
+            return None;
         };
 
-        tool_call.signature = Some(data);
-        tool_call.additional_params = Some(detail.clone());
+        // The durable handle exists only when the wire issued one; an
+        // id-less detail keys accumulation by a minted key and replays with
+        // the id absent — no fabricated empty "wire" id, and no
+        // per-serializer empty-string filter downstream (84a43e9e #4).
+        // The mint kind is `EncryptedReasoning`, NOT `Reasoning`: the shared
+        // compat adapter accumulates `reasoning`/`reasoning_content` text
+        // under `Minted { Reasoning, 0 }`, and a whole block under that same
+        // key would restate — i.e. replace — the open text part. Distinct
+        // content classes get distinct minted keys.
+        let provider_id = id.and_then(crate::streaming::WireId::new);
+        let key = provider_id.as_ref().map_or(
+            crate::streaming::StreamPartId::minted(
+                crate::streaming::MintKind::EncryptedReasoning,
+                0,
+            ),
+            |id| crate::streaming::StreamPartId::wire(id.as_str()),
+        );
+        Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
+    }
+
+    /// Anthropic routes stream the plaintext in `delta.reasoning`, then send
+    /// its replay-required signature as a final signature-only
+    /// `reasoning.text` detail immediately before the tool call. Feed that
+    /// authoritative close into the shared lifecycle so the normalized
+    /// reasoning block is signed just like the blocking response.
+    fn streaming_reasoning_signature(&self, detail: &serde_json::Value) -> Option<String> {
+        let Ok(ReasoningDetails::Text {
+            signature: Some(signature),
+            ..
+        }) = serde_json::from_value::<ReasoningDetails>(detail.clone())
+        else {
+            return None;
+        };
+        (!signature.is_empty()).then_some(signature)
     }
 }
 
@@ -1544,8 +1654,7 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 /// [`raw_stream`](openai::completion::GenericCompletionModel::raw_stream) a
 /// stream whose terminal record stays provider-native — both over the same
 /// single request path as the normalized methods.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<OpenRouterExt, H>;
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<OpenRouterExt, H>;
 
 /// Final streaming response, shared with the OpenAI Chat Completions path.
 pub type StreamingCompletionResponse =
@@ -1578,8 +1687,11 @@ mod tests {
         // response conversion satisfies the normalization bound.
         use crate::client::CompletionClient;
 
-        let client =
-            crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let client = crate::providers::openrouter::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let model = client.completion_model(GEMINI_FLASH_2_0);
 
         assert_eq!(model.model, GEMINI_FLASH_2_0);
@@ -1587,16 +1699,16 @@ mod tests {
 
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             message::UserContent::text("before"),
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
-                OneOrMany::one(message::ToolResultContent::text("tool output")),
+                "tool",
+                vec![message::ToolResultContent::text("tool output")],
             ),
             message::UserContent::text("after"),
-        ])
-        .expect("mixed content should be non-empty");
+        ];
 
         let messages = user_contents_to_messages(content).expect("message conversion");
 
@@ -1606,9 +1718,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first(), UserContent::Text { text } if text == "before")
+            ] if matches!(before.first(), Some(UserContent::Text { text }) if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first(), UserContent::Text { text } if text == "after")
+                && matches!(after.first(), Some(UserContent::Text { text }) if text == "after")
         ));
     }
 
@@ -1617,7 +1729,7 @@ mod tests {
         let request = CompletionRequest {
             model: Some("google/gemini-2.5-flash".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1637,14 +1749,43 @@ mod tests {
         assert_eq!(serialized["model"], "google/gemini-2.5-flash");
     }
 
+    /// The caller's `max_tokens` must reach the serialized request body —
+    /// OpenRouter accepts `max_tokens` like OpenAI, and dropping it silently
+    /// removed the caller's output cap.
+    #[test]
+    fn openrouter_request_carries_caller_max_tokens() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec!["Hello".into()],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(512),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let openrouter_request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o-mini",
+            request,
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openrouter_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["max_tokens"], 512);
+    }
+
     #[test]
     fn openrouter_params_include_direct_request_documents() {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one(crate::message::Message::user(
-                "What is glarb-glarb?",
-            )),
+            chat_history: vec![crate::message::Message::user("What is glarb-glarb?")],
             documents: vec![crate::completion::request::Document {
                 id: "doc_1".to_string(),
                 text: "Definition of glarb-glarb: an ancient tool.".to_string(),
@@ -1678,7 +1819,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1749,7 +1890,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1801,7 +1942,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1867,6 +2008,43 @@ mod tests {
         assert_eq!(response.model, "google/gemini-2.5-flash");
         assert_eq!(response.choices.len(), 1);
         assert_eq!(response.choices[0].finish_reason, Some("stop".to_string()));
+        assert_eq!(response.choices[0].logprobs, None);
+        let serialized = serde_json::to_value(&response).unwrap();
+        assert!(
+            serialized["choices"][0].get("logprobs").is_none(),
+            "an absent optional native field stays absent when serialized"
+        );
+    }
+
+    #[test]
+    fn raw_completion_choice_retains_logprobs() {
+        let logprobs = json!({
+            "content": [{
+                "token": "cobalt",
+                "logprob": -0.01,
+                "bytes": [99],
+                "top_logprobs": []
+            }],
+            "refusal": null
+        });
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "gen-logprobs",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openai/gpt-4o-mini",
+            "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "native_finish_reason": "stop",
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": "cobalt"},
+                "logprobs": logprobs
+            }],
+            "usage": null
+        }))
+        .expect("OpenRouter's documented probability object should decode");
+
+        assert_eq!(response.choices[0].logprobs, Some(logprobs));
     }
 
     #[test]
@@ -2013,7 +2191,7 @@ mod tests {
         assert_eq!(converted.provider, "openrouter");
         assert!(matches!(
             converted.choice.first(),
-            completion::AssistantContent::Text(text) if text.text == "CONTENT"
+            Some(completion::AssistantContent::Text(text)) if text.text == "CONTENT"
         ));
     }
 
@@ -2035,6 +2213,7 @@ mod tests {
                 images: vec![],
             },
             finish_reason: finish_reason.map(str::to_string),
+            logprobs: None,
         };
 
         assert_eq!(
@@ -2052,6 +2231,14 @@ mod tests {
         assert_eq!(
             map_finish_reason(&choice(Some("content_filter"), None)),
             Some(FinishReason::ContentFilter)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(None, Some("completed"))),
+            Some(FinishReason::Stop)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(None, Some("max_output_tokens"))),
+            Some(FinishReason::Length)
         );
         // A reason OpenRouter could not translate survives verbatim rather
         // than reading as a natural stop.
@@ -2097,6 +2284,296 @@ mod tests {
 
         assert_eq!(
             converted.finish_reason(),
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+    }
+
+    /// The shared choice decoder tolerates the truncated JSON a
+    /// `max_tokens`-capped turn emits only under `finish_reason: length`, and
+    /// every normalizer built on it drops the unusable call rather than losing
+    /// the turn. Reproduced live on
+    /// DeepSeek (rig#2354) at 24/32/48/64-token budgets; the same wire type
+    /// backs OpenRouter, so the same turn shape is pinned here.
+    #[test]
+    fn openrouter_truncated_tool_arguments_do_not_destroy_the_response() {
+        let json = json!({
+            "id": "gen-truncated",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "deepseek/deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "length",
+                "message": {
+                    "role": "assistant",
+                    "content": "Acknowledged.",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "page", "arguments": "{\"team\":\"platform\"}"}
+                        },
+                        {
+                            "id": "call_2",
+                            "type": "function",
+                            "function": {"name": "file_report", "arguments": "{\"summary\": "}
+                        }
+                    ]
+                }
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 24, "total_tokens": 34}
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+        let names = converted
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                completion::AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["page"], "only the truncated call is dropped");
+        assert!(
+            converted.choice.iter().any(|content| matches!(
+                content,
+                completion::AssistantContent::Text(text) if text.text == "Acknowledged."
+            )),
+            "the turn's text survives: {:?}",
+            converted.choice
+        );
+        assert_eq!(converted.usage.total_tokens, 34);
+    }
+
+    #[test]
+    fn openrouter_native_length_fallback_tolerates_truncated_tool_arguments() {
+        let json = json!({
+            "id": "gen-native-truncated",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "anthropic/claude-haiku-4.5",
+            "choices": [{
+                "index": 0,
+                "finish_reason": null,
+                "native_finish_reason": "max_output_tokens",
+                "message": {
+                    "role": "assistant",
+                    "content": "still useful",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{\"q\":"}
+                    }]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json)
+            .expect("the native terminal reason should authorize narrow truncation tolerance");
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert!(
+            converted
+                .choice
+                .iter()
+                .all(|content| !matches!(content, completion::AssistantContent::ToolCall(_)))
+        );
+        assert!(matches!(
+            converted.choice.first(),
+            Some(completion::AssistantContent::Text(text)) if text.text == "still useful"
+        ));
+    }
+
+    #[test]
+    fn openrouter_length_preserves_an_empty_turn_after_dropping_its_only_call() {
+        for (finish_reason, native_finish_reason) in
+            [(Some("length"), None), (None, Some("max_output_tokens"))]
+        {
+            let response: CompletionResponse = serde_json::from_value(json!({
+                "id": "gen-empty-truncated",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "openai/gpt-4.1-mini",
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": finish_reason,
+                    "native_finish_reason": native_finish_reason,
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "lookup", "arguments": ""}
+                        }]
+                    }
+                }],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 1, "total_tokens": 11}
+            }))
+            .expect("outer length should permit dropping the incomplete call");
+            let converted = response
+                .normalize(PROVIDER_NAME)
+                .expect("an empty truncated turn still carries its diagnostic");
+
+            assert!(converted.choice.is_empty());
+            assert_eq!(
+                converted.finish_reason(),
+                Some(crate::completion::FinishReason::Length)
+            );
+            assert_eq!(converted.usage.total_tokens, 11);
+            assert_eq!(
+                converted.response_id.as_deref(),
+                Some("gen-empty-truncated")
+            );
+        }
+    }
+
+    #[test]
+    fn openrouter_content_filter_preserves_an_empty_turn() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "gen-filtered",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openai/gpt-4.1-mini",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "content_filter",
+                "message": {"role": "assistant", "content": null}
+            }]
+        }))
+        .unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert!(converted.choice.is_empty());
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::ContentFilter)
+        );
+    }
+
+    #[test]
+    fn openrouter_malformed_completed_tool_arguments_remain_loud() {
+        let json = json!({
+            "id": "gen-malformed",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "deepseek/deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "tool_calls",
+                "native_finish_reason": "max_output_tokens",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{\"q\":"}
+                    }]
+                }
+            }]
+        });
+
+        assert!(
+            serde_json::from_value::<CompletionResponse>(json).is_err(),
+            "only an outer output-length reason authorizes truncation tolerance"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_native_length_fallback_drops_partial_tool_call() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"gen-native-truncated","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{"role":"assistant","content":"still useful","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\"q\":"}}]},"finish_reason":null,"native_finish_reason":null}]}"#,
+                r#"{"id":"gen-native-truncated","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{},"finish_reason":null,"native_finish_reason":"max_output_tokens"}]}"#,
+                "[DONE]",
+            ]),
+        };
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("anthropic/claude-haiku-4.5");
+        let request = model.completion_request("lookup").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut terminal = None;
+        let mut saw_tool_call = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("native max_tokens truncation is tolerated") {
+                StreamedAssistantContent::ToolCall { .. } => saw_tool_call = true,
+                StreamedAssistantContent::Final(final_record) => terminal = Some(final_record),
+                _ => {}
+            }
+        }
+
+        assert!(
+            !saw_tool_call,
+            "the partial call must not become executable"
+        );
+        assert_eq!(
+            terminal.and_then(|record| record.finish_reason),
+            Some(crate::completion::FinishReason::Length)
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_normalized_reason_wins_over_native_length() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"gen-normalized-wins","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\"q\":"}}]},"finish_reason":null,"native_finish_reason":null}]}"#,
+                r#"{"id":"gen-normalized-wins","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls","native_finish_reason":"max_output_tokens"}]}"#,
+                "[DONE]",
+            ]),
+        };
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("anthropic/claude-haiku-4.5");
+        let request = model.completion_request("lookup").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut terminal = None;
+        let mut errors = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Final(final_record)) => terminal = Some(final_record),
+                Ok(_) => {}
+                Err(error) => errors.push(error.to_string()),
+            }
+        }
+
+        assert_eq!(errors.len(), 1, "the completed malformed call stays loud");
+        assert!(errors[0].contains("malformed JSON input"), "{}", errors[0]);
+        assert_eq!(
+            terminal.and_then(|record| record.finish_reason),
             Some(crate::completion::FinishReason::ToolCalls)
         );
     }
@@ -2741,9 +3218,9 @@ mod tests {
     #[test]
     fn test_message_user_with_text_serialization() {
         let message = Message::User {
-            content: OneOrMany::one(UserContent::Text {
+            content: vec![UserContent::Text {
                 text: "Hello".to_string(),
-            }),
+            }],
             name: None,
         };
         let json = serde_json::to_value(&message).unwrap();
@@ -2756,7 +3233,7 @@ mod tests {
     #[test]
     fn test_message_user_with_mixed_content_serialization() {
         let message = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Check this image:".to_string(),
                 },
@@ -2766,8 +3243,7 @@ mod tests {
                         detail: None,
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&message).unwrap();
@@ -2782,7 +3258,7 @@ mod tests {
     #[test]
     fn test_message_user_with_file_serialization() {
         let message = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Analyze this PDF:".to_string(),
                 },
@@ -2793,8 +3269,7 @@ mod tests {
                         filename: Some("document.pdf".to_string()),
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&message).unwrap();
@@ -2973,7 +3448,12 @@ mod tests {
                         {"type":"reasoning.summary","id":"rs_1","summary":"s1"},
                         {"type":"reasoning.text","id":"rs_1","text":"t1","signature":"sig_1"},
                         {"type":"reasoning.encrypted","id":"rs_1","data":"enc_1"}
-                    ]
+                    ],
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{}"}
+                    }]
                 }
             }]
         });
@@ -2982,11 +3462,305 @@ mod tests {
         let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
 
-        assert!(items.iter().any(|item| matches!(
-            item,
+        assert_eq!(items.len(), 3, "reasoning, text, then tool call");
+        assert!(matches!(
+            &items[0],
             completion::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
                 if id == "rs_1" && content.len() == 3
-        )));
+        ));
+        assert!(matches!(
+            &items[1],
+            completion::AssistantContent::Text(text) if text.text == "hello"
+        ));
+        assert!(matches!(
+            &items[2],
+            completion::AssistantContent::ToolCall(call) if call.function.name == "lookup"
+        ));
+    }
+
+    /// Encrypted `reasoning_details` on the streaming wire must reach the
+    /// aggregated choice and replay on the next turn.
+    ///
+    /// The SSE below mirrors the recorded OpenRouter shape
+    /// (`tests/cassettes/openrouter/streaming_tools/raw_stream_decorates_reasoning_tool_call_metadata.yaml`):
+    /// the detail arrives with `reasoning: null` and an `rs_*` id of its own,
+    /// one chunk *before* the `call_*` tool call opens. Routed through
+    /// tool-call decoration those two id namespaces never match, so the blob
+    /// was dropped on every streaming turn while the non-streaming path kept
+    /// it.
+    #[tokio::test]
+    async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":null,"reasoning_details":[{"type":"reasoning.encrypted","id":"rs_1","format":"openai-responses-v1","index":0,"data":"enc_blob"}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":\"Tokyo\"}"}}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("openai/o4-mini");
+        let request = model.completion_request("weather?").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut events: Vec<&'static str> = Vec::new();
+        let mut streamed_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            match chunk.expect("stream item should be ok") {
+                StreamedAssistantContent::Reasoning { reasoning, .. } => {
+                    assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+                    assert!(matches!(
+                        reasoning.content.first(),
+                        Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                    ));
+                    events.push("reasoning");
+                }
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    streamed_tool_calls.push(tool_call);
+                    events.push("tool_call");
+                }
+                _ => {}
+            }
+        }
+
+        // Wire order: the reasoning block precedes the tool call it was
+        // recorded before.
+        assert_eq!(events, vec!["reasoning", "tool_call"]);
+
+        // The tool call is *not* where the blob lives: decoration by the
+        // detail's own id could never match the call's id.
+        let tool_call = streamed_tool_calls.first().expect("streamed tool call");
+        assert_eq!(tool_call.id, "call_1");
+        assert!(tool_call.signature.is_none());
+        assert!(tool_call.additional_params.is_none());
+
+        // (a) the encrypted block reaches the aggregated choice ...
+        let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
+                    if id == "rs_1"
+                        && matches!(
+                            content.first(),
+                            Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                        )
+            )),
+            "encrypted reasoning must reach the aggregated choice: {choice:#?}"
+        );
+
+        // ... and (b) replays into the next turn's request messages.
+        let messages =
+            assistant_contents_to_messages(stream.choice.clone()).expect("history conversion");
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+        assert!(
+            reasoning_details.iter().any(|detail| matches!(
+                detail,
+                ReasoningDetails::Encrypted { id: Some(id), data, .. }
+                    if id == "rs_1" && data == "enc_blob"
+            )),
+            "encrypted reasoning must replay as a reasoning_details entry: {reasoning_details:#?}"
+        );
+    }
+
+    /// Anthropic-routed OpenRouter streams put the replay-required signature
+    /// in a final `reasoning.text` detail with no text of its own. The shared
+    /// `delta.reasoning` field carries the preceding plaintext, so the detail
+    /// must close and sign that same block before the tool call is emitted.
+    #[tokio::test]
+    async fn streaming_anthropic_reasoning_signature_reaches_choice_and_replays() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"think first","reasoning_details":[{"type":"reasoning.text","format":"anthropic-claude-v1","index":0,"text":"think first"}]},"finish_reason":null,"native_finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_details":[{"type":"reasoning.text","format":"anthropic-claude-v1","index":0,"signature":"sig-live-shape"}]},"finish_reason":null,"native_finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"toolu_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},"finish_reason":null,"native_finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"anthropic/claude-haiku-4.5","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls","native_finish_reason":"tool_use"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("anthropic/claude-haiku-4.5");
+        let request = model.completion_request("lookup").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+        while let Some(item) = stream.next().await {
+            item.expect("signed reasoning stream item");
+        }
+
+        let choice = stream.choice.clone().into_iter().collect::<Vec<_>>();
+        assert!(matches!(
+            choice.first(),
+            Some(message::AssistantContent::Reasoning(message::Reasoning { content, .. }))
+                if matches!(
+                    content.first(),
+                    Some(message::ReasoningContent::Text { text, signature: Some(signature) })
+                        if text == "think first" && signature == "sig-live-shape"
+                )
+        ));
+        assert!(matches!(
+            choice.get(1),
+            Some(message::AssistantContent::ToolCall(call)) if call.function.name == "lookup"
+        ));
+
+        let messages = assistant_contents_to_messages(choice).expect("history conversion");
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("expected assistant history message");
+        };
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Text {
+                text: Some(text),
+                signature: Some(signature),
+                ..
+            }) if text == "think first" && signature == "sig-live-shape"
+        ));
+    }
+
+    /// An id-less encrypted detail must not clobber the reasoning text
+    /// accumulating under the wire's constant minted key.
+    ///
+    /// The shared compat adapter keys `reasoning` text deltas by
+    /// `Minted { Reasoning, 0 }`; the id-less encrypted detail arrives as a
+    /// whole block while that part is still open. Keyed identically, the
+    /// whole block would *restate* — replace — the open text part
+    /// (pre-fix, all accumulated reasoning text was lost). Keyed as
+    /// `EncryptedReasoning` it is a sibling: both parts reach the
+    /// aggregated choice.
+    #[tokio::test]
+    async fn id_less_encrypted_detail_does_not_replace_open_reasoning_text() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"deep "},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":"thought"},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":null,"reasoning_details":[{"type":"reasoning.encrypted","id":null,"format":"openai-responses-v1","index":0,"data":"enc_blob"}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("openai/o4-mini");
+        let request = model.completion_request("weather?").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Text { text, .. }) if text == "deep thought"
+                    )
+            )),
+            "the accumulated reasoning text must survive the encrypted detail: {choice:#?}"
+        );
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { id: None, content })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                    )
+            )),
+            "the encrypted blob must reach the choice as its own part: {choice:#?}"
+        );
+    }
+
+    /// An encrypted detail the wire sends without an id streams under its
+    /// own minted `EncryptedReasoning` key; it must still replay, and with
+    /// a null wire id rather than an empty string.
+    #[test]
+    fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
+        use crate::providers::openai::completion::OpenAICompatibleProvider as _;
+
+        let detail = json!({
+            "type": "reasoning.encrypted",
+            "id": null,
+            "format": null,
+            "index": 0,
+            "data": "enc_blob",
+        });
+        let (id, provider_id, content) = OpenRouterExt
+            .streaming_detail_reasoning(&detail)
+            .expect("encrypted detail should map to reasoning");
+        // 84a43e9e #4, closed: an id-less detail keys accumulation by a
+        // minted (opaque) key and carries NO durable handle — a fabricated
+        // "wire" empty id is unrepresentable, so no serializer needs an
+        // empty-string filter.
+        assert!(
+            id.is_minted(),
+            "id-less details key by a minted key: {id:?}"
+        );
+        assert!(
+            provider_id.is_none(),
+            "absence is None, never a fabricated id"
+        );
+        assert!(matches!(
+            content,
+            message::ReasoningContent::Encrypted(ref data) if data == "enc_blob"
+        ));
+
+        let messages = assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(
+            message::Reasoning {
+                id: provider_id.map(|id| id.into_string()),
+                content: vec![content],
+            },
+        )])
+        .unwrap();
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted { id: None, data, .. }) if data == "enc_blob"
+        ));
     }
 
     #[test]
@@ -3003,10 +3777,9 @@ mod tests {
             ],
         };
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::Reasoning(reasoning),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(reasoning)])
+                .unwrap();
         let Message::Assistant {
             reasoning,
             reasoning_details,
@@ -3031,21 +3804,18 @@ mod tests {
 
     #[test]
     fn test_tool_call_signature_without_params_uses_wire_id_for_encrypted_detail() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            additional_params: None,
-        };
+        )
+        .with_signature(Some("sig-data".to_string()));
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::ToolCall(tool_call),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::ToolCall(tool_call)])
+                .unwrap();
 
         let Message::Assistant {
             reasoning_details, ..
@@ -3066,23 +3836,21 @@ mod tests {
 
     #[test]
     fn test_tool_call_minimal_params_fall_back_to_wire_id() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            // Minimal params carrying only a format: the detail id must
-            // still correlate with the wire tool-call id.
-            additional_params: Some(json!({"format": "anthropic"})),
-        };
+        )
+        .with_signature(Some("sig-data".to_string()))
+        // Minimal params carrying only a format: the detail id must
+        // still correlate with the wire tool-call id.
+        .with_additional_params(Some(json!({"format": "anthropic"})));
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::ToolCall(tool_call),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::ToolCall(tool_call)])
+                .unwrap();
 
         let Message::Assistant {
             reasoning_details, ..
@@ -3111,10 +3879,9 @@ mod tests {
             }],
         };
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::Reasoning(reasoning),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(reasoning)])
+                .unwrap();
 
         let Message::Assistant {
             reasoning_details,
@@ -3414,7 +4181,7 @@ mod tests {
     #[test]
     fn test_message_conversion_with_pdf() {
         let rig_message = message::Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::UserContent::Text(message::Text::new(
                     "Summarize this document".to_string(),
                 )),
@@ -3423,8 +4190,7 @@ mod tests {
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,
                 }),
-            ])
-            .unwrap(),
+            ],
         };
 
         let openrouter_messages: Vec<Message> = messages_from_rig_message(rig_message).unwrap();
@@ -3435,8 +4201,10 @@ mod tests {
                 assert_eq!(content.len(), 2);
 
                 // First should be text
-                match content.first_ref() {
-                    UserContent::Text { text, .. } => assert_eq!(text, "Summarize this document"),
+                match content.first() {
+                    Some(UserContent::Text { text, .. }) => {
+                        assert_eq!(text, "Summarize this document");
+                    }
                     _ => panic!("Expected Text"),
                 }
             }
@@ -3551,7 +4319,7 @@ mod tests {
     #[test]
     fn test_message_user_with_audio_serialization() {
         let msg = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Transcribe this audio:".to_string(),
                 },
@@ -3561,8 +4329,7 @@ mod tests {
                         format: AudioMediaType::MP3,
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&msg).unwrap();
@@ -3626,7 +4393,7 @@ mod tests {
     #[test]
     fn test_message_user_with_video_serialization() {
         let msg = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Describe this video:".to_string(),
                 },
@@ -3635,8 +4402,7 @@ mod tests {
                         url: "https://example.com/video.mp4".to_string(),
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&msg).unwrap();
@@ -3673,7 +4439,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: crate::OneOrMany::one(crate::message::Message::user("Hello")),
+            chat_history: vec![crate::message::Message::user("Hello")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -3927,11 +4693,10 @@ mod tests {
             },
         });
 
-        let content = OneOrMany::many(vec![
+        let content = vec![
             completion::AssistantContent::text("Here is your image."),
             generated_image,
-        ])
-        .unwrap();
+        ];
         let messages = assistant_contents_to_messages(content).unwrap();
 
         assert_eq!(messages.len(), 1);
@@ -3953,7 +4718,7 @@ mod tests {
             },
         });
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(generated_image)).unwrap();
+        let messages = assistant_contents_to_messages(vec![generated_image]).unwrap();
 
         assert!(
             messages.is_empty(),
@@ -3969,7 +4734,7 @@ mod tests {
             None,
         );
 
-        let err = assistant_contents_to_messages(OneOrMany::one(image)).unwrap_err();
+        let err = assistant_contents_to_messages(vec![image]).unwrap_err();
 
         match err {
             message::MessageError::ConversionError(message) => assert!(
@@ -3988,13 +4753,10 @@ mod tests {
             },
         });
 
-        let messages = assistant_contents_to_messages(
-            OneOrMany::many(vec![
-                completion::AssistantContent::text("Keep this text."),
-                generated_image,
-            ])
-            .unwrap(),
-        )
+        let messages = assistant_contents_to_messages(vec![
+            completion::AssistantContent::text("Keep this text."),
+            generated_image,
+        ])
         .unwrap();
 
         let serialized = serde_json::to_value(&messages).unwrap();
@@ -4029,5 +4791,250 @@ mod tests {
             serialized.get("images").is_none(),
             "images field must not appear in serialized assistant message"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Refusal fallback — wire shapes the live gateway will not produce on
+    // demand. The recorded cells live in
+    // `tests/providers/openrouter/cassette/refusal_matrix.rs`.
+    // -----------------------------------------------------------------------
+
+    fn refusal_response(message: serde_json::Value) -> CompletionResponse {
+        serde_json::from_value(json!({
+            "id": "gen-refusal",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openai/gpt-4o",
+            "choices": [{ "index": 0, "message": message, "finish_reason": "stop" }],
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn raw_completion_response_retains_routing_metadata() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "gen-routing",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openai/gpt-4o-mini",
+            "provider": "OpenAI",
+            "service_tier": "default",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }]
+        }))
+        .expect("live OpenRouter routing metadata should deserialize");
+
+        assert_eq!(response.provider.as_deref(), Some("OpenAI"));
+        assert_eq!(response.service_tier.as_deref(), Some("default"));
+    }
+
+    fn text_parts(response: &completion::CompletionResponse) -> Vec<String> {
+        response
+            .choice
+            .iter()
+            .filter_map(|part| match part {
+                completion::AssistantContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The recorded shape: `content` held at `null` with the refusal beside
+    /// it. Before the fix this normalized to nothing and errored.
+    #[test]
+    fn refusal_fallback_surfaces_a_null_content_refusal() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm very sorry, but I can't assist with that request.",
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(
+            text_parts(&converted),
+            vec!["I'm very sorry, but I can't assist with that request."]
+        );
+    }
+
+    /// An absent `content` key reads the same as an explicit `null`.
+    #[test]
+    fn refusal_fallback_surfaces_a_missing_content_refusal() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "refusal": "No.",
+        }));
+
+        assert_eq!(
+            text_parts(&response.normalize(PROVIDER_NAME).unwrap()),
+            vec!["No."]
+        );
+    }
+
+    /// An empty-string `content` decodes as one empty text part, which carries
+    /// no text — so the refusal is still the turn's only *visible* content.
+    ///
+    /// This path keeps the empty part alongside it: unlike the shared OpenAI
+    /// normalizer, OpenRouter's does not filter empty content parts. That is
+    /// pre-existing behavior for any `"content": ""` turn and the fallback
+    /// neither causes nor changes it; the assertion records both halves rather
+    /// than claiming a filter this code does not have.
+    #[test]
+    fn refusal_fallback_surfaces_a_refusal_beside_empty_content() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": "",
+            "refusal": "No.",
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(
+            text_parts(&converted),
+            vec!["".to_owned(), "No.".to_owned()]
+        );
+    }
+
+    /// The whole-message rule: real content wins, and the fallback stays out
+    /// of the way. This is the shape the streaming path would deliver *both*
+    /// halves of, so pinning it records the difference rather than assuming it
+    /// away (see `assistant_refusal_fallback`).
+    #[test]
+    fn refusal_fallback_defers_to_non_empty_content() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": "Here is the answer.",
+            "refusal": "I'm sorry.",
+        }));
+
+        assert_eq!(
+            text_parts(&response.normalize(PROVIDER_NAME).unwrap()),
+            vec!["Here is the answer."]
+        );
+    }
+
+    /// An empty refusal string is not a refusal.
+    #[test]
+    fn refusal_fallback_ignores_an_empty_refusal() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "ping", "arguments": "{}" }
+            }],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert!(text_parts(&converted).is_empty(), "{:?}", converted.choice);
+        assert_eq!(converted.choice.len(), 1);
+    }
+
+    /// A tool-calls-only turn holds `content` at `null` with no refusal: the
+    /// shape the fallback must leave exactly as it was.
+    #[test]
+    fn refusal_fallback_leaves_a_tool_call_turn_alone() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "ping", "arguments": "{}" }
+            }],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(converted.choice.len(), 1);
+        assert!(matches!(
+            converted.choice.first(),
+            Some(completion::AssistantContent::ToolCall(_))
+        ));
+    }
+
+    /// A refusal can arrive on a turn that also carries tool calls; the
+    /// refusal is the turn's text and the calls survive beside it.
+    #[test]
+    fn refusal_fallback_coexists_with_tool_calls() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I can't help with that.",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "ping", "arguments": "{}" }
+            }],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(text_parts(&converted), vec!["I can't help with that."]);
+        assert!(
+            converted
+                .choice
+                .iter()
+                .any(|part| matches!(part, completion::AssistantContent::ToolCall(_)))
+        );
+    }
+
+    /// Reasoning blocks are not text, so a reasoning-carrying refusal turn
+    /// still needs the fallback for its visible content.
+    #[test]
+    fn refusal_fallback_applies_beside_reasoning_details() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I can't help with that.",
+            "reasoning_details": [
+                { "type": "reasoning.summary", "id": "rs_1", "format": "openai-responses-v1",
+                  "index": 0, "summary": "considered" }
+            ],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(text_parts(&converted), vec!["I can't help with that."]);
+        assert!(
+            converted
+                .choice
+                .iter()
+                .any(|part| matches!(part, completion::AssistantContent::Reasoning(_)))
+        );
+    }
+
+    /// The Responses-API spelling — a `refusal` *content part* — still works;
+    /// the fix adds the sibling-field rule without displacing it, and the two
+    /// must not both fire.
+    #[test]
+    fn refusal_fallback_does_not_double_up_with_a_refusal_content_part() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": [{ "type": "refusal", "refusal": "I can't help with that." }],
+            "refusal": "I can't help with that.",
+        }));
+
+        assert_eq!(
+            text_parts(&response.normalize(PROVIDER_NAME).unwrap()),
+            vec!["I can't help with that."]
+        );
+    }
+
+    /// The raw text view and the normalized response must never disagree
+    /// about whether a refused turn said anything — the internal
+    /// inconsistency that made this bug visible.
+    #[test]
+    fn refusal_fallback_keeps_raw_and_normalized_text_in_step() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm sorry, but I can't help with that.",
+        }));
+
+        let raw_text = response.text_response().unwrap();
+        let normalized = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert_eq!(text_parts(&normalized), vec![raw_text]);
     }
 }

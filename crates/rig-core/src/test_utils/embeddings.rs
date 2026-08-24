@@ -4,7 +4,7 @@ use crate::{
     Embed,
     client::Nothing,
     embeddings::{
-        Embedding, EmbeddingError, EmbeddingModel,
+        Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse,
         embed::{EmbedError, TextEmbedder},
     },
     wasm_compat::WasmCompatSend,
@@ -15,29 +15,34 @@ use crate::{
 pub struct MockEmbeddingModel;
 
 impl EmbeddingModel for MockEmbeddingModel {
-    const MAX_DOCUMENTS: usize = 5;
-
-    type Client = Nothing;
-
-    fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-        Self
+    fn max_documents(&self) -> usize {
+        5
     }
 
     fn ndims(&self) -> usize {
         10
     }
 
-    async fn embed_texts(
+    async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<Vec<Embedding>, EmbeddingError> {
-        Ok(documents
-            .into_iter()
-            .map(|document| Embedding {
-                document,
-                vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-            })
-            .collect())
+    ) -> Result<EmbeddingResponse, EmbeddingError> {
+        Ok(EmbeddingResponse::new(
+            documents
+                .into_iter()
+                .map(|document| Embedding {
+                    document,
+                    vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                })
+                .collect(),
+            "mock",
+        ))
+    }
+}
+
+impl crate::client::ConstructEmbeddingModel<Nothing> for MockEmbeddingModel {
+    fn construct(_: &Nothing, _: String, _: Option<usize>) -> Self {
+        Self
     }
 }
 

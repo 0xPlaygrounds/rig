@@ -10,8 +10,6 @@ use lancedb::{
 };
 use rig_core::vector_store::VectorStoreError;
 
-use crate::lancedb_to_rig_error;
-
 /// Trait that facilitates the conversion of columnar data returned by a lanceDb query to serde_json::Value.
 /// Used whenever a lanceDb table is queried.
 pub(crate) trait QueryToJson {
@@ -23,10 +21,10 @@ impl QueryToJson for lancedb::query::VectorQuery {
         let record_batches = self
             .execute()
             .await
-            .map_err(lancedb_to_rig_error)?
+            .map_err(VectorStoreError::datastore)?
             .try_collect::<Vec<_>>()
             .await
-            .map_err(lancedb_to_rig_error)?;
+            .map_err(VectorStoreError::datastore)?;
 
         record_batches.deserialize()
     }
@@ -44,9 +42,9 @@ impl FilterTableColumns for Arc<Schema> {
             .filter_map(|field| match field.data_type() {
                 DataType::FixedSizeList(inner, ..) => match inner.data_type() {
                     DataType::Float64 => None,
-                    _ => Some(field.name().to_string()),
+                    _ => Some(field.name().clone()),
                 },
-                _ => Some(field.name().to_string()),
+                _ => Some(field.name().clone()),
             })
             .collect()
     }
@@ -86,7 +84,7 @@ mod tests {
                 "my_bool".to_string(),
                 "my_list".to_string()
             ]
-        )
+        );
     }
 
     #[tokio::test]
@@ -108,6 +106,6 @@ mod tests {
 
         let columns = Arc::new(schema).filter_embeddings();
 
-        assert_eq!(columns, vec!["id".to_string(), "my_bool".to_string()])
+        assert_eq!(columns, vec!["id".to_string(), "my_bool".to_string()]);
     }
 }

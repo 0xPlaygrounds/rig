@@ -37,23 +37,18 @@ fn generated_paths_follow_cargo_dependency_renames() -> Result<(), Box<dyn std::
     Ok(())
 }
 
-/// A contextual tool without `rig`/`rig-agent` reachable must fail with the
-/// macro's targeted diagnostic, not an unresolved `::rig_agent` path error.
+/// A contextual tool compiles with `rig-core` alone (here under a Cargo
+/// rename): `Tool`/`ToolContext` are rig-core's, so the macro never needs
+/// `rig`/`rig-agent` to be reachable.
 #[test]
-fn contextual_tool_without_runtime_crate_gets_a_targeted_error()
--> Result<(), Box<dyn std::error::Error>> {
+fn contextual_tool_compiles_with_rig_core_only() -> Result<(), Box<dyn std::error::Error>> {
     let output = check_fixture("core_only_contextual")?;
 
-    if output.status.success() {
-        return Err("fixture `core_only_contextual` unexpectedly compiled".into());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !stderr.contains(
-        "contextual tools (`&mut ToolContext`) require a dependency on `rig` or `rig-agent`",
-    ) {
+    if !output.status.success() {
         return Err(format!(
-            "fixture `core_only_contextual` failed without the targeted diagnostic:\n{stderr}"
+            "fixture `core_only_contextual` failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
         )
         .into());
     }

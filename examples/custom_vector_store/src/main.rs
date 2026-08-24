@@ -8,7 +8,7 @@ use redis::{
     vector_sets::{VAddOptions, VSimOptions, VectorAddInput, VectorSimilaritySearchInput},
 };
 use rig::{
-    client::{EmbeddingsClient, ProviderClient},
+    client::{DefaultTransportClient, EmbeddingsClient},
     embeddings::EmbeddingModel,
     providers::openai,
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
@@ -216,14 +216,14 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Adding documents to Redis vector store...");
     for (i, doc) in documents.iter().enumerate() {
         store
-            .add_document(&format!("doc_{}", i), &doc.content, doc)
+            .add_document(&format!("doc_{i}"), &doc.content, doc)
             .await?;
         println!("  Added: '{}'", doc.title);
     }
 
     // Query the vector store
     let query = "What programming language is best for systems programming?";
-    println!("\nQuery: '{}'", query);
+    println!("\nQuery: '{query}'");
 
     // Create a query
     let req = VectorSearchRequest::builder()

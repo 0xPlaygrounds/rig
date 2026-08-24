@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":1,"messages":[{"content":"Write the word cobalt exactly 100 times, separated by spaces.","role":"user"}],"model":"mistral-small-latest"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"c","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":1,"prompt_tokens":30,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":31}}'

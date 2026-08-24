@@ -1,10 +1,4 @@
-use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client,
-};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 
 // ================================================================
 // Together AI Client
@@ -18,7 +12,7 @@ pub struct TogetherExtBuilder;
 
 type TogetherApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<TogetherExt, H>;
+pub type Client<H> = client::Client<TogetherExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<TogetherExtBuilder, TogetherApiKey, H>;
 
@@ -47,61 +41,36 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Together
     }
 }
 
-impl<H> Capabilities<H> for TogetherExt {
-    type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
+client::impl_capabilities!(
+    TogetherExt,
+    completion = super::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+);
 
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_default_provider_builder!(
+    TogetherExtBuilder => TogetherExt,
+    api_key = TogetherApiKey,
+    base_url = TOGETHER_AI_BASE_URL,
+);
 
-impl ProviderBuilder for TogetherExtBuilder {
-    type Extension<H>
-        = TogetherExt
-    where
-        H: http_client::HttpClientExt;
-    type ApiKey = TogetherApiKey;
-
-    const BASE_URL: &'static str = TOGETHER_AI_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: http_client::HttpClientExt,
-    {
-        Ok(TogetherExt)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Together AI client from the `TOGETHER_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("TOGETHER_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_from_env!(
+    TogetherExt,
+    input = String,
+    api_key_env = "TOGETHER_API_KEY"
+);
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::together::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::together::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::together::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

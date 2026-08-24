@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Call record_external_ref.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise a schema the strict compiler rejects.","input_schema":{"$ref":"https://example.com/schemas/input.json"},"name":"record_external_ref","strict":true}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"tools.0.custom.input_schema.type: Field required","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'

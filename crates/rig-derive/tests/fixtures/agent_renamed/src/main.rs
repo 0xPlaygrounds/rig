@@ -44,6 +44,8 @@ fn main() {
     assert_embed::<EmbeddedDocument>();
 
     // Portable core items stay reachable through the explicit `core` namespace
-    // even under a renamed `rig-agent` dependency.
-    let _reachable: Option<agent_runtime::core::OneOrMany<u8>> = None;
+    // even under a renamed `rig-agent` dependency. The probe must be a rig_core
+    // *root* export (it was `OneOrMany` until that type's removal), not a std
+    // type the prelude would resolve anyway.
+    let _reachable: Option<agent_runtime::core::ProviderResponseError> = None;
 }

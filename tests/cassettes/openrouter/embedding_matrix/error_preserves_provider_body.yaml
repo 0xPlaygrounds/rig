@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":["Rust values memory safety and predictable performance.","Streaming responses arrive incrementally instead of all at once.","Embeddings turn text into numeric vectors for similarity search."],"model":"no-such/embedding-model"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":400,"message":"Model no-such/embedding-model does not exist"}}'

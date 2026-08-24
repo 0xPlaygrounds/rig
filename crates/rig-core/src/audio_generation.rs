@@ -1,76 +1,142 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
+use crate::completion::{ResponseIdentity, Usage};
 use crate::markers::{Missing, Provided};
-use crate::{
-    http_client, provider_response,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use thiserror::Error;
+use std::sync::Arc;
 
-/// Errors returned by audio generation models.
+crate::provider_response::provider_error_enum!(
+    ///
+    /// HTTP audio failures preserve the provider's status and body: a non-success
+    /// response surfaces as [`Self::HttpError`], and a provider error envelope
+    /// returned with a 2xx status surfaces as [`Self::ProviderResponse`] (for
+    /// example the Hyperbolic audio path). Both are read by the helpers.
+    AudioGenerationError, "audio generation" {
+        /// Error building the audio generation request
+        #[error("RequestError: {0}")]
+        RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
+    }
+);
+
+/// The normalized audio generation response: the audio plus the metadata
+/// every provider can report, attributed to the provider that produced it.
 ///
-/// Inspect provider failures with [`Self::provider_response_body`],
-/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
-///
-/// HTTP audio failures preserve the provider's status and body: a non-success
-/// response surfaces as [`Self::HttpError`], and a provider error envelope
-/// returned with a 2xx status surfaces as [`Self::ProviderResponse`] (for
-/// example the Hyperbolic audio path). Both are read by the helpers.
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum AudioGenerationError {
-    /// Http error (e.g.: connection error, timeout, etc.)
-    #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::Error),
-
-    /// Json error (e.g.: serialization, deserialization)
-    #[error("JsonError: {0}")]
-    JsonError(#[from] serde_json::Error),
-
-    /// Error building the audio generation request
-    #[error("RequestError: {0}")]
-    RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    /// Error parsing the audio generation response
-    #[error("ResponseError: {0}")]
-    ResponseError(String),
-
-    /// Error returned by the audio generation model provider
-    #[error("ProviderError: {0}")]
-    ProviderError(String),
-
-    /// Raw error response preserved from the audio generation model provider
-    #[error("ProviderResponseError: {0}")]
-    ProviderResponse(provider_response::ProviderResponseError),
-}
-
-crate::provider_response::impl_provider_response_helpers!(AudioGenerationError);
-
-pub struct AudioGenerationResponse<T> {
+/// This type is concrete — it carries no provider type parameter — so the
+/// provider does not leak into the request builder or into any caller holding
+/// a model. The provider's own payload stays reachable through a model's
+/// inherent `raw_audio_generation` method, which performs the same request and
+/// returns the provider's native type, and through [`Self::raw`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioGenerationResponse {
+    /// The generated audio bytes.
     pub audio: Vec<u8>,
-    pub response: T,
+    /// Usage as the provider reported it. Zero-valued when the provider
+    /// reported none — the same sentinel [`Usage`] documents for completions.
+    #[serde(default)]
+    pub usage: Usage,
+    /// Stable descriptor name of the provider that produced this response,
+    /// for example `"openai"`. Always populated.
+    pub provider: String,
+    /// Provider-reported model identifier, when the wire response named one.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Provider-assigned response-scoped identifier, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    /// The provider's transport-level request identifier, taken from the HTTP
+    /// response headers — the id provider support asks for. `None` means the
+    /// provider reported none; that is a documented outcome, never an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
+    /// The provider's own response for this call: the value the model's
+    /// inherent `raw_audio_generation` would have returned, serialized.
+    /// Most text-to-speech endpoints answer with the audio bytes directly and
+    /// no JSON envelope; those providers leave this `Null` and
+    /// `raw_audio_generation` returns the bytes.
+    /// `Value::Null` otherwise means the value was built without a provider
+    /// behind it (a test double), never that the provider sent nothing.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
 }
 
-pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync {
-    type Response: Send + Sync;
+impl AudioGenerationResponse {
+    /// Create a response from its required parts; optional metadata starts
+    /// unset and is filled in with the `with_*` helpers.
+    pub fn new(audio: Vec<u8>, provider: impl Into<String>) -> Self {
+        Self {
+            audio,
+            usage: Usage::new(),
+            provider: provider.into(),
+            model: None,
+            response_id: None,
+            provider_request_id: None,
+            raw: serde_json::Value::Null,
+        }
+    }
 
-    type Client;
+    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
+    /// `message_id` is always `None`: nothing here is replayed as an
+    /// assistant message.
+    pub fn identity(&self) -> ResponseIdentity {
+        ResponseIdentity {
+            message_id: None,
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
+    }
+}
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
+crate::provider_response::modality_response_metadata_setters!(AudioGenerationResponse);
 
+/// Convert a provider's own audio generation payload into the normalized
+/// [`AudioGenerationResponse`].
+///
+/// The provider descriptor name is an *input*, never something the conversion
+/// knows — several providers share one wire shape, and a hardcoded name would
+/// mislabel every provider but one. A trait rather than `TryFrom<(&str, T)>`
+/// so that out-of-tree provider extensions can implement it on their own
+/// response type without tripping the orphan rule.
+pub trait NormalizeAudioGenerationResponse {
+    /// Normalize this payload, attributing it to `provider`.
+    fn normalize(self, provider: &str) -> Result<AudioGenerationResponse, AudioGenerationError>;
+}
+
+/// Trait defining an audio generation (text-to-speech) model.
+///
+/// The trait describes only what a model *does*: it has no associated types.
+/// Construction lives on the capability client trait, and `Clone` is required
+/// only by [`AudioGenerationModel::audio_generation_request`], which hands the builder its own
+/// copy. The trait is implemented for `Arc<M>` by forwarding.
+pub trait AudioGenerationModel: WasmCompatSend + WasmCompatSync {
     fn audio_generation(
         &self,
         request: AudioGenerationRequest,
-    ) -> impl std::future::Future<
-        Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
-    > + Send;
+    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, AudioGenerationError>>
+    + WasmCompatSend;
 
-    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing> {
+    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing>
+    where
+        Self: Sized + Clone,
+    {
         AudioGenerationRequestBuilder::new(self.clone())
     }
 }
-#[non_exhaustive]
+
+impl<M> AudioGenerationModel for Arc<M>
+where
+    M: AudioGenerationModel,
+{
+    fn audio_generation(
+        &self,
+        request: AudioGenerationRequest,
+    ) -> impl std::future::Future<Output = Result<AudioGenerationResponse, AudioGenerationError>>
+    + WasmCompatSend {
+        (**self).audio_generation(request)
+    }
+}
+
 pub struct AudioGenerationRequest {
     pub text: String,
     pub voice: String,
@@ -78,7 +144,6 @@ pub struct AudioGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-#[non_exhaustive]
 pub struct AudioGenerationRequestBuilder<M, T = Missing, V = Missing>
 where
     M: AudioGenerationModel,
@@ -149,34 +214,46 @@ where
     M: AudioGenerationModel,
 {
     pub fn build(self) -> AudioGenerationRequest {
-        AudioGenerationRequest {
-            text: self.text.0,
-            voice: self.voice.0,
-            speed: self.speed,
-            additional_params: self.additional_params,
-        }
+        self.into_parts().1
     }
 
-    pub async fn send(self) -> Result<AudioGenerationResponse<M::Response>, AudioGenerationError> {
-        let model = self.model.clone();
+    fn into_parts(self) -> (M, AudioGenerationRequest) {
+        let Self {
+            model,
+            text,
+            voice,
+            speed,
+            additional_params,
+        } = self;
+        (
+            model,
+            AudioGenerationRequest {
+                text: text.0,
+                voice: voice.0,
+                speed,
+                additional_params,
+            },
+        )
+    }
 
-        model.audio_generation(self.build()).await
+    pub async fn send(self) -> Result<AudioGenerationResponse, AudioGenerationError> {
+        let (model, request) = self.into_parts();
+        model.audio_generation(request).await
     }
 }
 
 #[cfg(test)]
 mod provider_response_tests {
     use super::*;
+    use crate::{http_client, provider_response};
     use http::StatusCode;
 
     #[test]
     fn audio_generation_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"message":"invalid voice"}}"#;
-        let error =
-            AudioGenerationError::ProviderResponse(provider_response::ProviderResponseError {
-                status: None,
-                body: body.to_string(),
-            });
+        let error = AudioGenerationError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status(body.to_string()),
+        );
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);

@@ -19,7 +19,8 @@
 //! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::{client::ProviderClient, providers::openai};
+//! use rig_core::providers::openai;
+//! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let openai = openai::Client::from_env()?;
@@ -55,8 +56,9 @@
 //! Passive RAG agent example
 //! ```no_run
 //! use rig_agent::{completion::Prompt, prelude::*};
+//! use rig_reqwest::prelude::*;
 //! use rig_core::{
-//!     client::{EmbeddingsClient, ProviderClient},
+//!     client::EmbeddingsClient,
 //!     embeddings::EmbeddingsBuilder,
 //!     providers::openai,
 //!     vector_store::in_memory_store::InMemoryVectorStore,
@@ -102,7 +104,6 @@
 mod builder;
 mod completion;
 pub mod hook;
-pub mod model;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
@@ -118,18 +119,21 @@ pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
     HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
-    ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch, RetryRequest, RunId,
-    Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction,
+    ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
+    RetryRequest, RunEntry, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
+    SettledOutcome, StepEventKind, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction,
     ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
-pub use model::ModelHandle;
 pub use prompt_request::streaming::{
-    MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
+    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingPromptRequest,
+    StreamingResult, stream_to_stdout,
 };
 pub use prompt_request::{
-    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, Standard,
-    TypedPromptRequest, TypedPromptResponse,
+    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, ResponseIdentity,
+    Standard, TypedPromptRequest, TypedPromptResponse,
 };
+pub use rig_core::completion::{ModelHandle, ModelRef};
 pub use rig_core::message::Text;
+pub use rig_run::{RunSpec, TurnTools};
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;

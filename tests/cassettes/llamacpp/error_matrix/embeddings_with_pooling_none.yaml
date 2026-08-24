@@ -1,0 +1,16 @@
+when:
+  path: /v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":["hello"],"model":"Qwen3-Embedding-0.6B-Q8_0"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":400,"message":"Pooling type ''none'' is not OAI compatible. Please use a different pooling type","type":"invalid_request_error"}}'

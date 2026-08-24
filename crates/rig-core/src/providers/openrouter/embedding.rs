@@ -6,7 +6,7 @@ impl OpenAIEmbeddingsCompatible for OpenRouterExt {
     const REQUIRES_USAGE: bool = false;
 }
 
-pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<OpenRouterExt, H>;
+pub type EmbeddingModel<H> = GenericEmbeddingModel<OpenRouterExt, H>;
 
 #[cfg(test)]
 mod tests {
@@ -39,7 +39,7 @@ mod tests {
             .user("user-123");
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding request should succeed");
 

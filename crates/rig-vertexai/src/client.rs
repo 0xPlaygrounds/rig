@@ -80,8 +80,8 @@ impl ClientBuilder {
     /// Set the Google Cloud project ID explicitly.
     ///
     /// If not set, will fall back to `GOOGLE_CLOUD_PROJECT` environment variable.
-    pub fn with_project(mut self, project: &str) -> Self {
-        self.project = Some(project.to_string());
+    pub fn with_project(mut self, project: impl Into<String>) -> Self {
+        self.project = Some(project.into());
         self
     }
 
@@ -89,8 +89,8 @@ impl ClientBuilder {
     ///
     /// If not set, will fall back to `GOOGLE_CLOUD_LOCATION` environment variable,
     /// or default to "global" if the env var is also not set.
-    pub fn with_location(mut self, location: &str) -> Self {
-        self.location = Some(location.to_string());
+    pub fn with_location(mut self, location: impl Into<String>) -> Self {
+        self.location = Some(location.into());
         self
     }
 
@@ -105,7 +105,7 @@ impl ClientBuilder {
 
     /// Build the client with the configured values, falling back to environment variables where not set.
     ///
-    /// The Vertex AI client is built lazily on first use via `get_inner()`.
+    /// The Vertex AI client is built lazily on first use via `inner()`.
     pub fn build(self) -> Result<Client, VertexAiClientError> {
         let project = self
             .project
@@ -203,9 +203,7 @@ impl Client {
         &self.location
     }
 
-    pub async fn get_inner(
-        &self,
-    ) -> Result<&vertexai::client::PredictionService, VertexAiClientError> {
+    pub async fn inner(&self) -> Result<&vertexai::client::PredictionService, VertexAiClientError> {
         let credentials = self.credentials.clone();
         self.vertex_client
             .get_or_init(|| async {

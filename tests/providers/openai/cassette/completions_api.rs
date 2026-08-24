@@ -1,10 +1,8 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
-
-use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::completion::NormalizeCompletionResponse;
 use rig::completion::Prompt;
-use rig::message::{AssistantContent, Message, ToolChoice};
+use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
@@ -64,7 +62,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
                 .await
                 .expect("raw completions api request should succeed");
             let raw_text = raw
-                .get_text_response()
+                .text_response()
                 .expect("raw completions api response should contain assistant text");
 
             let response: rig::completion::CompletionResponse = raw
@@ -245,10 +243,17 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
                 .expect("raw completions api stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message =
-                Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
+                Message::User {
+        content: vec![UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+        )],
+    };
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

@@ -1,0 +1,62 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"A farmer has 17 sheep. All but 9 run away. Then he buys twice as many as he has left, and sells 5. Work through it step by step, then give the final count on its own line.","type":"text"}],"role":"user"}],"model":"claude-opus-4-8","stream":true,"thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_1
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-opus-4-8","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":64,"output_tokens":2,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"signature":"","thinking":"","type":"thinking"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"thinking":"","type":"thinking_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"signature":"signature_REDACTED_1","type":"signature_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"# Step-by-Step Solution\n\n**Step 1: Start with 17 sheep.**\nThe farmer begins with 17 sheep.\n\n**Step 2: \"All but 9 run away","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":".\"**\nThis phrase means every sheep *except* 9 runs away. So the number that stays behind is **9**.\n(The trick here is that \"all but 9\"","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" = 9 remaining, not 17 − 9.)\n\n**Step 3: He buys twice as many as he has left.**\nHe has 9 left. Twice as many is 9 × 2 = 18.\nNew total: 9 + 18","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" = **27**.\n\n**Step 4: He sells 5.**\n27 − 5 = **22**.\n\n**22**","type":"text_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":64,"output_tokens":287,"output_tokens_details":{"thinking_tokens":69}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

@@ -1,0 +1,42 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"/no_think Invent a two-word name for a fictional harbour town. Reply with the name only.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","n":2,"seed":11,"stream":true,"stream_options":{"include_usage":true},"temperature":1.4}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant"},"finish_reason":null,"index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{"content":"T"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{"content":"T"},"finish_reason":null,"index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{"content":"ide"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{"content":"ide"},"finish_reason":null,"index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{"content":"haven"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{"content":"ve"},"finish_reason":null,"index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498","timings":{"cache_n":27,"predicted_ms":55.587,"predicted_n":8,"predicted_per_second":125.9287243420224,"predicted_per_token_ms":7.941000000000001,"prompt_ms":6.85,"prompt_n":1,"prompt_per_second":145.98540145985402,"prompt_per_token_ms":6.85},"usage":{"completion_tokens":8,"prompt_tokens":28,"prompt_tokens_details":{"cached_tokens":27},"total_tokens":36}}
+
+    data: {"choices":[{"delta":{},"finish_reason":"stop","index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498"}
+
+    data: {"choices":[],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion.chunk","system_fingerprint":"b10499-6d05498","timings":{"cache_n":27,"predicted_ms":55.569,"predicted_n":8,"predicted_per_second":125.9695153772787,"predicted_per_token_ms":7.938428571428572,"prompt_ms":6.973,"prompt_n":1,"prompt_per_second":143.4102968593145,"prompt_per_token_ms":6.973},"usage":{"completion_tokens":8,"prompt_tokens":28,"prompt_tokens_details":{"cached_tokens":27},"total_tokens":36}}
+
+    data: [DONE]
+

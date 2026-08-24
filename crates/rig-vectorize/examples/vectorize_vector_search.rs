@@ -13,12 +13,13 @@
 
 use rig_core::{
     Embed,
-    client::{EmbeddingsClient, ProviderClient},
+    client::EmbeddingsClient,
     embeddings::EmbeddingsBuilder,
     providers::openai::{self, Client},
     vector_store::request::VectorSearchRequest,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
+use rig_reqwest::prelude::*;
 use rig_vectorize::VectorizeVectorStore;
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
@@ -64,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     let query = "What is a linglingdong?";
-    println!("\nSearching for: {}", query);
+    println!("\nSearching for: {query}");
 
     let request = VectorSearchRequest::builder()
         .query(query)
@@ -75,7 +76,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("\nResults:");
     for (score, id, word) in results {
-        println!("  Score: {:.4}, ID: {}", score, id);
+        println!("  Score: {score:.4}, ID: {id}");
         println!("    Definition: {}", word.definition);
     }
 

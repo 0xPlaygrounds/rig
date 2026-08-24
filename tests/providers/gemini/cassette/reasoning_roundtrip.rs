@@ -39,3 +39,20 @@ async fn nonstreaming() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn reasoning_delta_hook_streaming() {
+    with_gemini_cassette("reasoning_delta_hook/streaming", |client| async move {
+        reasoning::run_reasoning_delta_hook_streaming(
+            client.completion_model("gemini-2.5-flash"),
+            serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 2048, "includeThoughts": true }
+                }
+            }),
+            "gemini",
+        )
+        .await;
+    })
+    .await;
+}

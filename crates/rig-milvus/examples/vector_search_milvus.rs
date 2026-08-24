@@ -1,9 +1,9 @@
-use rig_core::client::ProviderClient;
 use rig_core::vector_store::InsertDocuments;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed, client::EmbeddingsClient, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex,
 };
+use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let vector_store =
         rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)
-            .auth(milvus_user, milvus_password);
+            .auth(&milvus_user, &milvus_password);
 
     // create test documents with mocked embeddings
     let words = vec![

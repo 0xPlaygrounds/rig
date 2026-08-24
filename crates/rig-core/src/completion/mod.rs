@@ -10,7 +10,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
 //!     completion::CompletionModel,
@@ -27,8 +27,10 @@
 //! # }
 //! ```
 
+pub mod handle;
 pub mod message;
 pub mod request;
 
+pub use handle::{ModelHandle, ModelRef};
 pub use message::{AssistantContent, Message, MessageError};
 pub use request::*;

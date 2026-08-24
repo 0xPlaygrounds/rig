@@ -1,3 +1,4 @@
+use rig::client::DefaultTransportClient as _;
 use rig::{completion::Prompt, prelude::*, providers::gemini};
 use rig_agent::test_utils::MockImageGeneratorTool;
 

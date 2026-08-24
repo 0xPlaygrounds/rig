@@ -1,0 +1,167 @@
+# The single source for the Rust CI environment. Before this action existed,
+# the checkout+toolchain+sccache+nextest stanza was pasted into every job and
+# the cache-fingerprint env block was hand-copied between ci.yaml and
+# nightly.yaml with a comment begging the copies to stay identical — the same
+# copy-drift class check-toolchain-pin.sh polices for toolchain pins, with no
+# tripwire at all. A drifted copy would not fail: the two lanes would just
+# silently stop sharing build fingerprints.
+#
+# The toolchain is resolved from rust-toolchain.toml — the pin cargo itself
+# obeys — so no workflow carries a version copy anymore (RUST_VERSION is
+# gone). It is passed explicitly as the `toolchain` input rather than letting
+# setup-rust-toolchain discover the file natively, deliberately: native
+# discovery honors the file's `components`/`targets` pins (rust-analyzer,
+# rust-src, wasm — wanted for local development), which every CI job would
+# then download; the explicit input keeps CI installing only what each job
+# asks for via `components`/`target` here.
+#
+# NOT included, deliberately: `actions/checkout` (a repo-local action cannot
+# run before the repo exists) and the provider secrets (none are used — the
+# cassette suites replay with a dummy key and every live test is
+# `#[ignore]`-gated).
+name: Rust setup
+description: Toolchain from rust-toolchain.toml, shared cache env, and optional sccache/nextest/protoc
+
+inputs:
+  components:
+    description: Comma-separated toolchain components (e.g. clippy, rustfmt)
+    default: ""
+  target:
+    description: Additional compilation target (e.g. wasm32-unknown-unknown)
+    default: ""
+  cache:
+    description: Enable rust-cache (disable for jobs that compile nothing)
+    default: "true"
+  cache-save-if:
+    description: >-
+      Additional rust-cache save gate. Cache writes are always restricted to
+      the default branch so pull-request merge refs can restore but cannot
+      evict the reusable caches they consume.
+    default: "true"
+  sccache:
+    description: >-
+      Enable sccache with the GitHub Actions cache backend. Reserved for the
+      critical-path jobs: every enabled job adds thousands of small
+      per-compilation-unit cache entries, and the repo's 10GB Actions cache
+      quota is contended — exceeding it evicts rust-cache blobs LRU-style
+      and randomly re-colds whole jobs, which costs far more than sccache
+      saves.
+    default: "false"
+  nextest:
+    description: Install cargo-nextest
+    default: "false"
+  protoc:
+    description: Install the system protoc (required whenever the lance chain builds)
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    # Runs BEFORE setup-rust-toolchain on purpose: its rust-cache computes
+    # the cache key from the env visible at restore time, so exporting the
+    # CARGO_* values first keeps every job's key derived from the same
+    # values — the whole point of single-sourcing them.
+    #
+    # Full debuginfo is the single largest avoidable compile cost in CI:
+    # `line-tables-only` keeps what CI actually consumes — file and line
+    # numbers in a panic backtrace — and drops variable/type debuginfo. Set
+    # as env rather than a `[profile]` in Cargo.toml so local `cargo test`
+    # keeps full debuginfo for debuggers, and as `dev` + `test` because test
+    # targets build under `test` while their dependencies build under `dev`.
+    # CARGO_INCREMENTAL is pinned off because sccache cannot cache
+    # incremental compilation and CI gains nothing from it anyway.
+    - name: Resolve toolchain and export shared cargo env
+      shell: bash
+      run: |
+        channel=$(grep -E '^\s*channel\s*=' rust-toolchain.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+        if [ -z "$channel" ]; then
+          echo "::error::could not read [toolchain] channel from rust-toolchain.toml"
+          exit 1
+        fi
+        {
+          echo "RIG_CI_TOOLCHAIN=$channel"
+          echo "CARGO_PROFILE_DEV_DEBUG=line-tables-only"
+          echo "CARGO_PROFILE_TEST_DEBUG=line-tables-only"
+          echo "CARGO_INCREMENTAL=0"
+        } >> "$GITHUB_ENV"
+
+    - name: Install Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: ${{ env.RIG_CI_TOOLCHAIN }}
+        components: ${{ inputs.components }}
+        target: ${{ inputs.target }}
+        cache: ${{ inputs.cache }}
+        cache-save-if: ${{ inputs.cache-save-if == 'true' && github.ref == 'refs/heads/main' }}
+
+    # rust-cache (inside setup-rust-toolchain above) persists *dependency*
+    # artifacts but always recompiles the workspace's own crates; sccache
+    # caches individual rustc invocations in the GitHub Actions cache, so
+    # unchanged workspace members stop recompiling too. Opt-in per job: it
+    # only pays off where workspace crates compile (it cannot cache
+    # clippy-driver or rustdoc, which is why the clippy/doc jobs skip it).
+    #
+    # `version` is pinned deliberately. Left empty, the action resolves the
+    # release through an authenticated `repos.getLatestRelease` API call on
+    # every run of every sccache-enabled job — a network round-trip that has
+    # nothing to do with building rig and that took down a whole `main` run
+    # when a runner's egress proxy served a self-signed certificate
+    # (`HttpError: self-signed certificate`, run 31576834062). A pinned tag
+    # skips the call entirely and goes straight to the release asset, so the
+    # only remaining network dependency is the download itself.
+    #
+    # `disable_annotations` makes the action's post step return before it
+    # shells out to `sccache --show-stats`. That post step is not optional
+    # and runs even when the install failed, where `$SCCACHE_PATH` is unset
+    # and it dies with `Unable to locate executable file: undefined` — a
+    # second, independent job failure from the same root cause. Silencing it
+    # costs only the per-job cache-hit annotation.
+    #
+    # Together with `continue-on-error`, sccache is now strictly best-effort:
+    # if the download fails the job compiles without it (slower, still
+    # correct) instead of failing. The wrapper is exported only on success,
+    # because pointing RUSTC_WRAPPER at a binary that was never installed
+    # would break every subsequent cargo invocation.
+    - name: Run sccache
+      id: sccache
+      if: inputs.sccache == 'true'
+      continue-on-error: true
+      uses: mozilla/sccache-action@v0.0.11
+      with:
+        version: v0.17.0
+        disable_annotations: "true"
+
+    - name: Enable sccache as the rustc wrapper
+      if: inputs.sccache == 'true'
+      shell: bash
+      run: |
+        if [ "${{ steps.sccache.outcome }}" != "success" ]; then
+          echo "::warning::sccache install failed; building without it"
+          exit 0
+        fi
+        {
+          echo "SCCACHE_GHA_ENABLED=true"
+          echo "RUSTC_WRAPPER=sccache"
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            # PR caches are scoped to their merge ref and cannot warm other
+            # branches. Read the default branch's entries without creating
+            # thousands of short-lived, quota-consuming PR entries.
+            echo "SCCACHE_GHA_RW_MODE=READ_ONLY"
+          fi
+        } >> "$GITHUB_ENV"
+
+    - name: Install nextest
+      if: inputs.nextest == 'true'
+      uses: taiki-e/install-action@v2
+      with:
+        tool: nextest
+
+    # apt rather than a prebuilt-binary installer: the lance build scripts
+    # shell out to a *system* protoc and also need its well-known-type
+    # includes on the include path; the distro package guarantees both. A
+    # cache hit can mask a broken protoc install until the first cold
+    # rebuild (see ci.yaml's history), so this stays the boring option.
+    - name: Install Protoc
+      if: inputs.protoc == 'true'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler

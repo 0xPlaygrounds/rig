@@ -159,7 +159,9 @@ fn visible_len(item: &StreamedAssistantContent) -> usize {
     match item {
         StreamedAssistantContent::Text(t) => t.text.chars().count(),
         StreamedAssistantContent::ReasoningDelta { reasoning, .. } => reasoning.chars().count(),
-        StreamedAssistantContent::Reasoning(r) => r.display_text().chars().count(),
+        StreamedAssistantContent::Reasoning { reasoning: r, .. } => {
+            r.display_text().chars().count()
+        }
         _ => 0,
     }
 }
@@ -202,7 +204,7 @@ where
         match tokio::time::timeout(READ_TIMEOUT, stream.next()).await {
             // (4) Stall / half-open: no bytes within the read window.
             Err(_elapsed) => {
-                reason = Some(format!("stall: no data within {:?}", READ_TIMEOUT));
+                reason = Some(format!("stall: no data within {READ_TIMEOUT:?}"));
                 break;
             }
             // Stream ended.
@@ -222,9 +224,11 @@ where
             Ok(Some(Ok(item))) => match item {
                 StreamedAssistantContent::Text(text) => output.push_str(&text.text),
                 StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
-                    output.push_str(&reasoning)
+                    output.push_str(&reasoning);
                 }
-                StreamedAssistantContent::Reasoning(r) => output.push_str(&r.display_text()),
+                StreamedAssistantContent::Reasoning { reasoning: r, .. } => {
+                    output.push_str(&r.display_text());
+                }
                 StreamedAssistantContent::Final(resp) => {
                     // Authoritative usage. A premature clean close (shape #3)
                     // never emits a Final at all — the absence of a terminal

@@ -8,7 +8,6 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::OneOrMany;
 use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message, TypedPrompt};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
@@ -321,7 +320,7 @@ fn assert_complex_invocations(log: &InvocationLog) {
 
 struct ToolEvent {
     message_index: usize,
-    name_or_id: String,
+    name: String,
 }
 
 fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
@@ -332,7 +331,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_call.function.name.clone(),
+                        name: tool_call.function.name.clone(),
                     });
                 }
             }
@@ -349,7 +348,7 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
                 if let UserContent::ToolResult(tool_result) = item {
                     results.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_result.id.clone(),
+                        name: tool_result.name.clone(),
                     });
                 }
             }
@@ -365,7 +364,7 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     assert_eq!(
         calls
             .iter()
-            .map(|call| call.name_or_id.as_str())
+            .map(|call| call.name.as_str())
             .collect::<Vec<_>>(),
         expected_tools,
         "caller-owned chat history should preserve tool call order"
@@ -520,14 +519,13 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
             let calls = history_tool_calls(&history);
             let call_names = calls
                 .iter()
-                .map(|call| call.name_or_id.as_str())
+                .map(|call| call.name.as_str())
                 .collect::<Vec<_>>();
             anyhow::ensure!(
                 calls.len() == 2
                     && call_names.contains(&AlphaSignal::NAME)
                     && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools in one model turn, saw {:?}",
-                call_names
+                "expected both zero-argument tools in one model turn, saw {call_names:?}"
             );
             anyhow::ensure!(
                 calls[0].message_index == calls[1].message_index,
@@ -636,13 +634,17 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(AssistantContent::tool_call(
+                    content: vec![AssistantContent::tool_call(
                         "call_REDACTED_1",
                         AlphaSignal::NAME,
                         json!({}),
-                    )),
+                    )],
                 })
-                .message(Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT))
+                .message(Message::tool_result(
+                    "call_REDACTED_1",
+                    AlphaSignal::NAME,
+                    ALPHA_SIGNAL_OUTPUT,
+                ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)

@@ -100,7 +100,7 @@ impl LifecycleRecorder {
         self.run_ids
             .lock()
             .expect("run_ids")
-            .insert(ctx.run_id().as_str().to_string());
+            .insert(ctx.run_id().to_string());
         *self.streaming.lock().expect("streaming") = Some(ctx.is_streaming());
         *self.agent_name.lock().expect("agent_name") = ctx.agent_name().map(str::to_string);
         self.breadcrumbs
@@ -174,11 +174,7 @@ impl AgentHook for ScratchpadReader {
         ctx: &HookContext,
         _event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        let tally = ctx
-            .scratchpad()
-            .get::<ToolCallTally>()
-            .map(|t| t.0)
-            .unwrap_or(0);
+        let tally = ctx.scratchpad().get::<ToolCallTally>().map_or(0, |t| t.0);
         self.tallies.lock().expect("tallies").push(tally);
         ModelTurnAction::continue_run()
     }
@@ -391,9 +387,21 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
                 .build();
 
             let response = agent
+                // Spelled out as two labelled output lines because this run is now
+                // genuinely at temperature 0. Until the gemini `create_request_body`
+                // fix, the hook's `.temperature(0.0)` never reached
+                // `generationConfig`, so this recorded at Gemini's default 1.0; at a
+                // real 0 the model answered only the arithmetic half ("42") and
+                // dropped the lookup. The injected document is present on every
+                // completion call either way (verified against the recorded turn-1
+                // and turn-2 request bodies), so this is model terseness, not a
+                // context-injection failure. The assertion is unchanged — only the
+                // prompt is made explicit enough to actually exercise it.
                 .prompt(
-                    "Two things: (1) tell me the vault access code, and (2) use a tool to compute \
-                     41 + 1.",
+                    "Use a tool to compute 41 + 1. Then reply with exactly two lines:\n\
+                     Line 1: `SUM: <the result>`\n\
+                     Line 2: `CODE: <the vault access code from the provided context>`\n\
+                     Both lines are required; do not stop after the first.",
                 )
                 .max_turns(5)
                 // Inject the secret via extra_context and narrow the advertised
@@ -551,12 +559,12 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                         StreamedAssistantContent::Text(_) => events.push("text"),
                         StreamedAssistantContent::ToolCall { .. } => events.push("tool_call"),
                         StreamedAssistantContent::ToolCallDelta { .. } => {
-                            events.push("tool_call_delta")
+                            events.push("tool_call_delta");
                         }
                         _ => {}
                     },
                     Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
-                        events.push("tool_execution_committed")
+                        events.push("tool_execution_committed");
                     }
                     Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         ..

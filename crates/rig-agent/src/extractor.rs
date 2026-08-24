@@ -7,6 +7,7 @@
 //! ```no_run
 //! use rig_agent::prelude::*;
 //! use rig_core::providers::openai;
+//! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the OpenAI client
@@ -33,7 +34,7 @@
 use std::marker::PhantomData;
 
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use rig_core::{
     message::{Message, ToolChoice},
@@ -75,7 +76,7 @@ pub enum ExtractionError {
 /// Extractor for structured data from text
 pub struct Extractor<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     agent: Agent,
     _t: PhantomData<T>,
@@ -90,15 +91,46 @@ where
 #[must_use = "an extraction override does nothing until an extract method is awaited"]
 pub struct ExtractorRun<'a, T>
 where
-    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     extractor: &'a Extractor<T>,
-    model: ModelHandle,
+    model: Option<ModelHandle>,
+}
+
+/// Generate the `Extractor` methods that delegate to the same-named
+/// [`ExtractorRun`] method on [`Extractor::default_run`], appending the
+/// retry-semantics doc paragraphs shared by all of them. Methods marked
+/// `=> usage` also carry the shared usage-accounting paragraph.
+macro_rules! forward_default_run {
+    (@usage_doc usage) => {
+        "\nUsage accumulates across all retry attempts, including attempts that received\n\
+         a billed response but failed extraction (e.g. the model never called `submit`).\n\
+         Attempts whose completion call itself returned an error (e.g. network failures\n\
+         or unparseable provider responses) contribute no usage, and when every attempt\n\
+         fails the returned error carries no usage information at all."
+    };
+    ($( $(#[$attr:meta])* $name:ident ( $($arg:ident : $ty:ty),* ) -> $ret:ty
+        $(=> $usage:ident)?; )+) => {$(
+        $(#[$attr])*
+        ///
+        /// The function will retry the extraction if the initial attempt fails or
+        /// if the model does not call the `submit` tool.
+        ///
+        /// The number of retries is determined by the `retries` field on the Extractor struct.
+        $(#[doc = forward_default_run!(@usage_doc $usage)])?
+        pub async fn $name(
+            &self,
+            text: impl Into<Message> + WasmCompatSend,
+            $($arg: $ty),*
+        ) -> Result<$ret, ExtractionError> {
+            self.default_run().$name(text $(, $arg)*).await
+        }
+    )+};
 }
 
 impl<T> Extractor<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     /// Set a different default model for this extractor's subsequent attempts.
     pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
@@ -113,7 +145,15 @@ where
     pub fn using_model(&self, model: ModelHandle) -> ExtractorRun<'_, T> {
         ExtractorRun {
             extractor: self,
-            model,
+            model: Some(model),
+        }
+    }
+
+    /// A run with no model override: the extractor's own default model.
+    fn default_run(&self) -> ExtractorRun<'_, T> {
+        ExtractorRun {
+            extractor: self,
+            model: None,
         }
     }
 
@@ -125,77 +165,22 @@ where
         self.using_model(ModelHandle::new(model))
     }
 
-    /// Attempts to extract data from the given text with a number of retries.
-    ///
-    /// The function will retry the extraction if the initial attempt fails or
-    /// if the model does not call the `submit` tool.
-    ///
-    /// The number of retries is determined by the `retries` field on the Extractor struct.
-    pub async fn extract(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-    ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text.into(), vec![], None).await?;
-        Ok(data)
-    }
+    forward_default_run! {
+        /// Attempts to extract data from the given text with a number of retries.
+        extract() -> T;
 
-    /// Attempts to extract data from the given text with a number of retries.
-    ///
-    /// The function will retry the extraction if the initial attempt fails or
-    /// if the model does not call the `submit` tool.
-    ///
-    /// The number of retries is determined by the `retries` field on the Extractor struct.
-    pub async fn extract_with_chat_history(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text.into(), chat_history, None).await?;
-        Ok(data)
-    }
+        /// Attempts to extract data from the given text with a number of retries.
+        extract_with_chat_history(chat_history: Vec<Message>) -> T;
 
-    /// Attempts to extract data from the given text with a number of retries,
-    /// returning both the extracted data and accumulated token usage.
-    ///
-    /// The function will retry the extraction if the initial attempt fails or
-    /// if the model does not call the `submit` tool.
-    ///
-    /// The number of retries is determined by the `retries` field on the Extractor struct.
-    ///
-    /// Usage accumulates across all retry attempts, including attempts that received
-    /// a billed response but failed extraction (e.g. the model never called `submit`).
-    /// Attempts whose completion call itself returned an error (e.g. network failures
-    /// or unparseable provider responses) contribute no usage, and when every attempt
-    /// fails the returned error carries no usage information at all.
-    pub async fn extract_with_usage(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-    ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text.into(), vec![], None).await?;
-        Ok(ExtractionResponse { data, usage })
-    }
+        /// Attempts to extract data from the given text with a number of retries,
+        /// returning both the extracted data and accumulated token usage.
+        extract_with_usage() -> ExtractionResponse<T> => usage;
 
-    /// Attempts to extract data from the given text with a number of retries,
-    /// providing chat history context, and returning both the extracted data
-    /// and accumulated token usage.
-    ///
-    /// The function will retry the extraction if the initial attempt fails or
-    /// if the model does not call the `submit` tool.
-    ///
-    /// The number of retries is determined by the `retries` field on the Extractor struct.
-    ///
-    /// Usage accumulates across all retry attempts, including attempts that received
-    /// a billed response but failed extraction (e.g. the model never called `submit`).
-    /// Attempts whose completion call itself returned an error (e.g. network failures
-    /// or unparseable provider responses) contribute no usage, and when every attempt
-    /// fails the returned error carries no usage information at all.
-    pub async fn extract_with_chat_history_with_usage(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text.into(), chat_history, None).await?;
-        Ok(ExtractionResponse { data, usage })
+        /// Attempts to extract data from the given text with a number of retries,
+        /// providing chat history context, and returning both the extracted data
+        /// and accumulated token usage.
+        extract_with_chat_history_with_usage(chat_history: Vec<Message>) -> ExtractionResponse<T>
+            => usage;
     }
 
     /// Runs the extraction with the retry semantics shared by all public
@@ -297,18 +282,14 @@ where
 
 impl<T> ExtractorRun<'_, T>
 where
-    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     /// Extract structured data with the run-local model.
     pub async fn extract(
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self
-            .extractor
-            .retry_extract(text.into(), vec![], Some(&self.model))
-            .await?;
-        Ok(data)
+        Ok(self.extract_with_usage(text).await?.data)
     }
 
     /// Extract structured data with chat history and the run-local model.
@@ -317,11 +298,10 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self
-            .extractor
-            .retry_extract(text.into(), chat_history, Some(&self.model))
-            .await?;
-        Ok(data)
+        Ok(self
+            .extract_with_chat_history_with_usage(text, chat_history)
+            .await?
+            .data)
     }
 
     /// Extract structured data and usage with the run-local model.
@@ -329,11 +309,8 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self
-            .extractor
-            .retry_extract(text.into(), vec![], Some(&self.model))
-            .await?;
-        Ok(ExtractionResponse { data, usage })
+        self.extract_with_chat_history_with_usage(text, vec![])
+            .await
     }
 
     /// Extract structured data with chat history and usage using the run-local model.
@@ -344,7 +321,7 @@ where
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
         let (data, usage) = self
             .extractor
-            .retry_extract(text.into(), chat_history, Some(&self.model))
+            .retry_extract(text.into(), chat_history, self.model.as_ref())
             .await?;
         Ok(ExtractionResponse { data, usage })
     }
@@ -353,16 +330,33 @@ where
 /// Builder for the Extractor
 pub struct ExtractorBuilder<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     agent_builder: AgentBuilder,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
 
+/// Generate the `ExtractorBuilder` setters that forward verbatim to the inner
+/// [`AgentBuilder`] method of the same name. Doc comments live at each
+/// invocation; `preamble` (which wraps its argument) and `retries`
+/// (builder-local) stay hand-written.
+macro_rules! forward_agent_builder {
+    ($( $(#[$attr:meta])* $name:ident $([$gen:ident : $($bound:tt)+])?
+        ( $($arg:ident : $ty:ty),* );)+) => {$(
+        $(#[$attr])*
+        pub fn $name $(<$gen>)? (mut self, $($arg: $ty),*) -> Self
+        $(where $gen: $($bound)+)?
+        {
+            self.agent_builder = self.agent_builder.$name($($arg),*);
+            self
+        }
+    )+};
+}
+
 impl<T> ExtractorBuilder<T>
 where
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new<M>(model: M) -> Self
     where
@@ -397,56 +391,34 @@ where
         self
     }
 
-    /// Add a context document to the extractor
-    pub fn context(mut self, doc: &str) -> Self {
-        self.agent_builder = self.agent_builder.context(doc);
-        self
-    }
+    forward_agent_builder! {
+        /// Add a context document to the extractor
+        context(doc: &str);
 
-    /// Add dynamic context retrieved from a vector store on every extraction attempt.
-    ///
-    /// This delegates to [`AgentBuilder::dynamic_context`] and therefore uses the
-    /// same completion-call hook lifecycle as an agent.
-    pub fn dynamic_context<I>(mut self, samples: usize, index: I) -> Self
-    where
-        I: VectorStoreIndexDyn + 'static,
-    {
-        self.agent_builder = self.agent_builder.dynamic_context(samples, index);
-        self
-    }
+        /// Add dynamic context retrieved from a vector store on every extraction attempt.
+        ///
+        /// This delegates to [`AgentBuilder::dynamic_context`] and therefore uses the
+        /// same completion-call hook lifecycle as an agent.
+        dynamic_context[I: VectorStoreIndexDyn + 'static](samples: usize, index: I);
 
-    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
-        self.agent_builder = self.agent_builder.additional_params(params);
-        self
-    }
+        additional_params(params: serde_json::Value);
 
-    /// Set the maximum number of tokens for the completion
-    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.agent_builder = self.agent_builder.max_tokens(max_tokens);
-        self
+        /// Set the maximum number of tokens for the completion
+        max_tokens(max_tokens: u64);
+
+        /// Set the `tool_choice` option for the inner Agent.
+        tool_choice(choice: ToolChoice);
+
+        /// Add a provider-independent lifecycle hook to every extraction attempt.
+        ///
+        /// Completion-response hooks receive canonical Rig content, usage, prompt,
+        /// and message ID fields, just like hooks attached directly to an agent.
+        add_hook[H: AgentHook + 'static](hook: H);
     }
 
     /// Set the maximum number of retries for the extractor.
     pub fn retries(mut self, retries: u64) -> Self {
         self.retries = Some(retries);
-        self
-    }
-
-    /// Set the `tool_choice` option for the inner Agent.
-    pub fn tool_choice(mut self, choice: ToolChoice) -> Self {
-        self.agent_builder = self.agent_builder.tool_choice(choice);
-        self
-    }
-
-    /// Add a provider-independent lifecycle hook to every extraction attempt.
-    ///
-    /// Completion-response hooks receive canonical Rig content, usage, prompt,
-    /// and message ID fields, just like hooks attached directly to an agent.
-    pub fn add_hook<H>(mut self, hook: H) -> Self
-    where
-        H: AgentHook + 'static,
-    {
-        self.agent_builder = self.agent_builder.add_hook(hook);
         self
     }
 
@@ -476,6 +448,7 @@ mod tests {
     use rig_core::vector_store::{
         VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
     };
+    use serde::Deserialize;
 
     #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
     struct Person {
@@ -498,8 +471,8 @@ mod tests {
     }
 
     fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
-        AssistantContent::ToolCall(ToolCall::new(
-            id.to_string(),
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
             ToolFunction::new(name.to_string(), arguments),
         ))
     }
@@ -565,7 +538,7 @@ mod tests {
         ) -> ObservationAction {
             *self.snapshot.lock().expect("extractor response snapshot") = Some((
                 event.prompt.clone(),
-                event.content.iter().cloned().collect(),
+                event.content.clone(),
                 event.usage,
                 event.message_id.map(str::to_owned),
             ));
@@ -592,7 +565,7 @@ mod tests {
     impl VectorStoreIndex for ExtractorContextIndex {
         type Filter = Filter<serde_json::Value>;
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+        async fn top_n<T: DeserializeOwned + WasmCompatSend>(
             &self,
             req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -929,8 +902,7 @@ mod tests {
         let turn = MockTurn::from_contents([
             tool_call("unknown", "unexpected", json!({})),
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        ])
-        .expect("two tool calls");
+        ]);
         let model = MockCompletionModel::new([turn]);
 
         let response = ExtractorBuilder::<Person>::new(model)
@@ -949,7 +921,6 @@ mod tests {
             tool_call("unknown", "unexpected", json!({})),
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
         ])
-        .expect("two tool calls")
         .with_usage(usage(7));
         let model = MockCompletionModel::new([turn]);
 
@@ -967,8 +938,7 @@ mod tests {
         let turn = MockTurn::from_contents([
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
             tool_call("unknown", "unexpected", json!({})),
-        ])
-        .expect("two tool calls");
+        ]);
 
         let response = extractor(MockCompletionModel::new([turn]), 0)
             .extract("John")
@@ -984,8 +954,7 @@ mod tests {
             tool_call("unknown-before", "unexpected_before", json!({})),
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
             tool_call("unknown-after", "unexpected_after", json!({})),
-        ])
-        .expect("three tool calls");
+        ]);
 
         let response = extractor(MockCompletionModel::new([turn]), 0)
             .extract("John")

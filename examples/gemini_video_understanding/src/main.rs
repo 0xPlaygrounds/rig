@@ -7,7 +7,6 @@ use rig::message::{Message, UserContent, Video};
 use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use rig::{
-    OneOrMany,
     completion::Prompt,
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
@@ -18,18 +17,17 @@ const VIDEO_URL: &str = "https://www.youtube.com/watch?v=emtHJIxLwEc";
 
 fn build_video_prompt() -> Result<Message> {
     Ok(Message::User {
-        content: OneOrMany::many(vec![
+        content: vec![
             UserContent::text("Summarize the video."),
             UserContent::Video(Video {
                 data: rig::message::DocumentSourceKind::Url(VIDEO_URL.to_string()),
                 media_type: None,
-                additional_params: Some(json!({
-                    "video_metadata": {
-                        "fps": 0.2
-                    }
-                })),
+                additional_params: rig::message::AdditionalParams::from_entries([(
+                    "video_metadata",
+                    json!({ "fps": 0.2 }),
+                )]),
             }),
-        ])?,
+        ],
     })
 }
 

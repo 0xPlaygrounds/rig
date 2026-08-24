@@ -1,0 +1,15 @@
+[package]
+name = "http_middleware"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rig = { workspace = true }
+anyhow = { workspace = true }
+bytes = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

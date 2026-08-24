@@ -1,7 +1,8 @@
 //! xAI audio generation smoke test covering provider-specific additional parameters.
 
 use rig::audio_generation::AudioGenerationModel;
-use rig::client::ProviderClient;
+
+use rig::client::DefaultTransportClient as _;
 use rig::client::audio_generation::AudioGenerationClient;
 use rig::providers::xai;
 use serde_json::json;

@@ -1,0 +1,16 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"guardrailConfig":{"guardrailIdentifier":"fytaiyvapuzp","guardrailVersion":"DRAFT","trace":"enabled"},"inferenceConfig":{"maxTokens":64},"messages":[{"content":[{"text":"Explain a gravitational singularity in one sentence."}],"role":"user"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-amzn-requestid
+    value: req_REDACTED_1
+  body: '{"metrics":{"latencyMs":271},"output":{"message":{"content":[{"text":"Blocked by guardrail."}],"role":"assistant"}},"stopReason":"guardrail_intervened","trace":{"guardrail":{"actionReason":"Guardrail blocked.","inputAssessment":{"fytaiyvapuzp":{"appliedGuardrailDetails":{"guardrailArn":"arn:aws:bedrock:us-east-1:account_REDACTED_1:guardrail/fytaiyvapuzp","guardrailId":"fytaiyvapuzp","guardrailOrigin":["REQUEST"],"guardrailOwnership":"SELF","guardrailVersion":"DRAFT"},"invocationMetrics":{"guardrailCoverage":{"textCharacters":{"guarded":52,"total":52}},"guardrailProcessingLatency":114,"usage":{"automatedReasoningPolicies":0,"automatedReasoningPolicyUnits":0,"contentPolicyImageUnits":0,"contentPolicyUnits":0,"contextualGroundingPolicyUnits":0,"sensitiveInformationPolicyFreeUnits":0,"sensitiveInformationPolicyUnits":0,"topicPolicyUnits":0,"wordPolicyUnits":1}},"wordPolicy":{"customWords":[{"action":"BLOCKED","detected":true,"match":"gravitational singularity"}]}}}}},"usage":{"inputTokens":0,"outputTokens":0,"serverToolUsage":{},"totalTokens":0}}'

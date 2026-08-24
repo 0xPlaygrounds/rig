@@ -1,7 +1,8 @@
 //! Hyperbolic audio generation smoke test.
 
 use rig::audio_generation::AudioGenerationModel;
-use rig::client::ProviderClient;
+
+use rig::client::DefaultTransportClient as _;
 use rig::client::audio_generation::AudioGenerationClient;
 use rig::providers::hyperbolic;
 

@@ -1,0 +1,33 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You must use the provided tools before answering.","type":"text"}],"role":"system"},{"content":"Call fetch_motto and fetch_config, then summarize both outputs in one sentence.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","temperature":0.0,"tools":[{"function":{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Fetch the service configuration object.","name":"fetch_config","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"fetch_motto"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"fetch_config"},"id":"call_REDACTED_2","type":"function"}]}}],"cost":{"diem":0,"usd":0.0001040625},"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":12,"prompt_tokens":1078,"total_tokens":1090},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You must use the provided tools before answering.","type":"text"}],"role":"system"},{"content":"Call fetch_motto and fetch_config, then summarize both outputs in one sentence.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"fetch_motto"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"fetch_config"},"id":"call_REDACTED_2","type":"function"}]},{"content":"steady hands\ncalm waters","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"{\"service\":\"cassette-lab\",\"max_retries\":3}","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"mistral-small-3-2-24b-instruct","temperature":0.0,"tools":[{"function":{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Fetch the service configuration object.","name":"fetch_config","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The workshop motto is \"steady hands, calm waters\" and the service configuration indicates that the service is \"cassette-lab\" with a maximum of 3 retries.","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[]}}],"cost":{"diem":0,"usd":0.00011743749999999999},"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":37,"prompt_tokens":1154,"total_tokens":1191},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

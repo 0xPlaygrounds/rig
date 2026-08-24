@@ -10,11 +10,30 @@ pub const MISTRAL_EMBED: &str = "mistral-embed";
 /// Codestral embedding model with configurable output dimensions.
 pub const CODESTRAL_EMBED: &str = "codestral-embed";
 
-pub const MAX_DOCUMENTS: usize = 1024;
+/// Most inputs Mistral accepts in one `/v1/embeddings` request. Verified
+/// against the live API: 256 succeeds, 257 is rejected with
+/// `"Too many inputs in request, split into more batches."`.
+pub const MAX_DOCUMENTS: usize = 256;
+
+/// Output dimensions of `mistral-embed`. `codestral-embed` is configurable and
+/// is left to the caller's `dimensions`.
+const MISTRAL_EMBED_NDIMS: usize = 1024;
 
 impl OpenAIEmbeddingsCompatible for MistralExt {
     const PROVIDER_NAME: &'static str = "mistral";
+    // Mistral reports its transport id on every response, embeddings
+    // included; inheriting the trait's `None` default silently dropped it
+    // (latent since the id capture landed for completions in #2313's wake).
+    // Pinned by `embedding_matrix/bug_mistral_request_id_dropped`.
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("mistral-correlation-id");
     const SUPPORTS_USER: bool = false;
+    const MAX_DOCUMENTS: usize = MAX_DOCUMENTS;
+
+    fn default_ndims(model: &str) -> Option<usize> {
+        // Mistral's models are absent from OpenAI's table, so without this
+        // every Mistral embedding model reported `ndims() == 0`.
+        matches!(model, MISTRAL_EMBED | "mistral-embed-2312").then_some(MISTRAL_EMBED_NDIMS)
+    }
 
     fn embeddings_path(&self) -> String {
         "/v1/embeddings".to_string()
@@ -30,6 +49,15 @@ impl OpenAIEmbeddingsCompatible for MistralExt {
         };
 
         if !matches!(model, "codestral-embed" | "codestral-embed-2505") {
+            // A fixed-width model naming its own width is not a request for
+            // the unsupported parameter — it is the shared path echoing back
+            // the dimension `default_ndims` reported. Send nothing and let the
+            // model emit its native width. Any *other* value is still a real
+            // request for a parameter Mistral does not accept here.
+            if Self::default_ndims(model) == Some(dimensions) {
+                return Ok(None);
+            }
+
             return Err(EmbeddingError::UnsupportedParameter {
                 provider: Self::PROVIDER_NAME,
                 parameter: "dimensions",
@@ -48,7 +76,7 @@ impl OpenAIEmbeddingsCompatible for MistralExt {
     }
 }
 
-pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<MistralExt, H>;
+pub type EmbeddingModel<H> = GenericEmbeddingModel<MistralExt, H>;
 
 #[cfg(test)]
 mod tests {
@@ -66,6 +94,24 @@ mod tests {
         "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3] }]
     }"#;
 
+    /// The same stub, widened to `width` values.
+    ///
+    /// A model handle built with an explicit width now requires the response
+    /// to have that width, so a cell that declares one has to hand back
+    /// vectors of it — a stub contradicting its own model was always an
+    /// inconsistency, and is now a caught one.
+    fn response_body(width: usize) -> String {
+        let embedding = (0..width)
+            .map(|index| format!("{}", index as f64 / 1000.0))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            r#"{{"id":"emb-1","object":"list","model":"mistral-embed",
+                 "usage":{{"prompt_tokens":5,"total_tokens":5}},
+                 "data":[{{"object":"embedding","index":0,"embedding":[{embedding}]}}]}}"#
+        )
+    }
+
     fn client(http_client: RecordingHttpClient) -> mistral::Client<RecordingHttpClient> {
         mistral::Client::builder()
             .api_key("dummy-key")
@@ -76,17 +122,17 @@ mod tests {
 
     #[tokio::test]
     async fn codestral_embeddings_map_dimensions_and_mistral_usage() {
-        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let http_client = RecordingHttpClient::new(response_body(512));
         let model = client(http_client.clone())
             .embedding_model_with_ndims(CODESTRAL_EMBED, 512)
             .encoding_format(EncodingFormat::Float);
 
         let response = model
-            .embed_texts_with_usage(["hello".to_string()])
+            .embed_texts_response(["hello".to_string()])
             .await
             .expect("embedding request should succeed");
 
-        assert_eq!(response.embeddings[0].vec, vec![0.1, 0.2, 0.3]);
+        assert_eq!(response.embeddings[0].vec.len(), 512);
         assert_eq!(response.usage.input_tokens, 5);
         assert_eq!(response.usage.total_tokens, 5);
 
@@ -184,5 +230,51 @@ mod tests {
             }
         ));
         assert!(http_client.requests().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+
+    /// The chunk size `EmbeddingsBuilder` uses. Recording the 256-input
+    /// success it guards would commit ~5 MB of returned vectors to a fixture;
+    /// the cap it must stay under is pinned live in
+    /// `tests/providers/mistral/capability_edges.rs`.
+    #[test]
+    fn builder_chunks_at_mistrals_cap_not_openais() {
+        use crate::client::EmbeddingsClient;
+        use crate::embeddings::EmbeddingModel as _;
+        assert_eq!(MAX_DOCUMENTS, 256);
+        let client =
+            super::super::Client::new_with("key", crate::test_utils::RecordingHttpClient::new(""))
+                .expect("client");
+        assert_eq!(
+            client.embedding_model(super::MISTRAL_EMBED).max_documents(),
+            256,
+            "the generic model must take the provider's cap; the shared default is OpenAI's 1024, \
+             which Mistral rejects"
+        );
+    }
+
+    /// `mistral-embed` is fixed-width, and its width is what `ndims()` must
+    /// report — a model declaring 0 cannot size a vector store.
+    #[test]
+    fn mistral_embed_declares_its_width_without_requesting_it() {
+        assert_eq!(MistralExt::default_ndims(MISTRAL_EMBED), Some(1024));
+        assert_eq!(MistralExt::default_ndims(CODESTRAL_EMBED), None);
+
+        // The declared width must not become a `dimensions` request field:
+        // Mistral rejects that parameter for every model but Codestral.
+        assert!(matches!(
+            MistralExt.embedding_dimensions(MISTRAL_EMBED, Some(1024)),
+            Ok(None)
+        ));
+        // Any other value is still a genuine request for the parameter.
+        assert!(
+            MistralExt
+                .embedding_dimensions(MISTRAL_EMBED, Some(512))
+                .is_err()
+        );
     }
 }

@@ -1,8 +1,6 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
-
-use rig::OneOrMany;
 use rig::completion::CompletionModel;
-use rig::message::{AssistantContent, Message};
+use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
@@ -190,10 +188,17 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .expect("raw responses stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message =
-                Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
+                Message::User {
+        content: vec![UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+        )],
+    };
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

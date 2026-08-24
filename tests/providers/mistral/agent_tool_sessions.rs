@@ -8,7 +8,6 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::OneOrMany;
 use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
@@ -642,8 +641,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                 calls.len() == 2
                     && call_names.contains(&AlphaSignal::NAME)
                     && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools, saw {:?}",
-                call_names
+                "expected both zero-argument tools, saw {call_names:?}"
             );
             anyhow::ensure!(
                 calls[0].message_index == calls[1].message_index,
@@ -748,15 +746,15 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(AssistantContent::tool_call(
+                    content: vec![AssistantContent::tool_call(
                         tool_call_id,
                         AlphaSignal::NAME,
                         json!({}),
-                    )),
+                    )],
                 })
-                .message(Message::tool_result_with_call_id(
+                .message(Message::tool_result(
+                    tool_call_id,
                     AlphaSignal::NAME,
-                    Some(tool_call_id.to_string()),
                     ALPHA_SIGNAL_OUTPUT,
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
@@ -844,8 +842,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
                 .collect::<Vec<_>>();
             anyhow::ensure!(
                 specific_calls == vec![BetaSignal::NAME],
-                "specific tool choice should force only lookup_orchard_label, saw {:?}",
-                specific_calls
+                "specific tool choice should force only lookup_orchard_label, saw {specific_calls:?}"
             );
 
             let none = model
