@@ -66,8 +66,8 @@ impl IndexConfig {
         }
     }
 
-    pub fn index_name(mut self, index_name: &str) -> Self {
-        self.index_name = index_name.to_string();
+    pub fn index_name(mut self, index_name: impl Into<String>) -> Self {
+        self.index_name = index_name.into();
         self
     }
 
@@ -76,14 +76,14 @@ impl IndexConfig {
         self
     }
 
-    pub fn embedding_property(mut self, embedding_property: &str) -> Self {
-        self.embedding_property = embedding_property.to_string();
+    pub fn embedding_property(mut self, embedding_property: impl Into<String>) -> Self {
+        self.embedding_property = embedding_property.into();
         self
     }
 
     /// Sets the node label that [`InsertDocuments`] writes to.
-    pub fn node_label(mut self, node_label: &str) -> Self {
-        self.node_label = Some(node_label.to_string());
+    pub fn node_label(mut self, node_label: impl Into<String>) -> Self {
+        self.node_label = Some(node_label.into());
         self
     }
 }

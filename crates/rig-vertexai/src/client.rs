@@ -80,8 +80,8 @@ impl ClientBuilder {
     /// Set the Google Cloud project ID explicitly.
     ///
     /// If not set, will fall back to `GOOGLE_CLOUD_PROJECT` environment variable.
-    pub fn with_project(mut self, project: &str) -> Self {
-        self.project = Some(project.to_string());
+    pub fn with_project(mut self, project: impl Into<String>) -> Self {
+        self.project = Some(project.into());
         self
     }
 
@@ -89,8 +89,8 @@ impl ClientBuilder {
     ///
     /// If not set, will fall back to `GOOGLE_CLOUD_LOCATION` environment variable,
     /// or default to "global" if the env var is also not set.
-    pub fn with_location(mut self, location: &str) -> Self {
-        self.location = Some(location.to_string());
+    pub fn with_location(mut self, location: impl Into<String>) -> Self {
+        self.location = Some(location.into());
         self
     }
 

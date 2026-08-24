@@ -152,7 +152,7 @@ impl ProviderBuilder for AzureExtBuilder {
 
 impl<H> ClientBuilder<H> {
     /// API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
-    pub fn api_version(mut self, api_version: &str) -> Self {
+    pub fn api_version(mut self, api_version: impl Into<String>) -> Self {
         self.ext_mut().api_version = api_version.into();
 
         self
@@ -162,7 +162,7 @@ impl<H> ClientBuilder<H> {
     ///
     /// This defaults to `2025-04-01-preview`, the first deployment-scoped
     /// Azure API release that exposes text-to-speech.
-    pub fn audio_api_version(mut self, api_version: &str) -> Self {
+    pub fn audio_api_version(mut self, api_version: impl Into<String>) -> Self {
         self.ext_mut().audio_api_version = api_version.into();
 
         self

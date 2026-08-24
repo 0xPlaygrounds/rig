@@ -86,7 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let translator_tool = TranslatorTool(translator_agent);
 
     let multi_agent_system = AgentBuilder::new(model)
-        .preamble(&format!(
+        .preamble(format!(
             "You are a helpful assistant that can work with text in any language. \
             When you receive input that is not in English, or contains grammatical errors \
             use the {TRANSLATOR_TOOL_NAME} tool first to ensure proper English, then provide your response. \
