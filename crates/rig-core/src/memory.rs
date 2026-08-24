@@ -116,6 +116,50 @@ pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
 }
 
+/// Owned-future companions to [`ConversationMemory`]: the same operations,
+/// but taking an `Arc`'d backend and an owned [`ConversationId`] so the
+/// returned future is `'static` — the shape an executor-agnostic host (an ECS
+/// system spawning a task, a channel pump) needs, without per-call-site
+/// clone-into-`async move` ceremony. The borrowed trait methods remain the
+/// implementation surface; these are wrappers.
+pub trait ConversationMemoryExt: ConversationMemory {
+    /// [`ConversationMemory::load`] as an owned, `'static` future.
+    fn load_owned(
+        self: Arc<Self>,
+        conversation_id: ConversationId,
+    ) -> WasmBoxedFuture<'static, Result<Vec<Message>, MemoryError>>
+    where
+        Self: 'static,
+    {
+        Box::pin(async move { self.load(&conversation_id).await })
+    }
+
+    /// [`ConversationMemory::append`] as an owned, `'static` future.
+    fn append_owned(
+        self: Arc<Self>,
+        conversation_id: ConversationId,
+        messages: Vec<Message>,
+    ) -> WasmBoxedFuture<'static, Result<(), MemoryError>>
+    where
+        Self: 'static,
+    {
+        Box::pin(async move { self.append(&conversation_id, messages).await })
+    }
+
+    /// [`ConversationMemory::clear`] as an owned, `'static` future.
+    fn clear_owned(
+        self: Arc<Self>,
+        conversation_id: ConversationId,
+    ) -> WasmBoxedFuture<'static, Result<(), MemoryError>>
+    where
+        Self: 'static,
+    {
+        Box::pin(async move { self.clear(&conversation_id).await })
+    }
+}
+
+impl<M: ConversationMemory + ?Sized> ConversationMemoryExt for M {}
+
 // Forwarding impls so callers can pass smart pointers (`Arc<M>`, `Box<M>`,
 // including unsized trait objects) wherever a memory trait is expected. Each
 // arm forwards every method of one trait through `(**self)` for the listed
@@ -430,6 +474,30 @@ mod tests {
 
     fn assistant(text: &str) -> Message {
         Message::assistant(text)
+    }
+
+    /// The `*_owned` companions return `Send + 'static` futures (spawnable on
+    /// any executor) and behave exactly like the borrowed methods, including
+    /// through an `Arc<dyn ConversationMemory>`.
+    #[tokio::test]
+    async fn owned_futures_are_static_and_match_borrowed_behavior() {
+        fn assert_send_static<T: Send + 'static>(value: T) -> T {
+            value
+        }
+
+        let mem: Arc<dyn ConversationMemory> = Arc::new(InMemoryConversationMemory::new());
+        let id = ConversationId::from("c-owned");
+        assert_send_static(mem.clone().append_owned(id.clone(), vec![user("hello")]))
+            .await
+            .unwrap();
+        let loaded = assert_send_static(mem.clone().load_owned(id.clone()))
+            .await
+            .unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_send_static(mem.clone().clear_owned(id.clone()))
+            .await
+            .unwrap();
+        assert!(mem.load(&id).await.unwrap().is_empty());
     }
 
     #[tokio::test]
