@@ -294,7 +294,7 @@ pub enum StreamedResolution {
 ///
 /// Deliberately exhaustive: a driver must handle every event, so adding a
 /// variant is a breaking change by design.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StreamedTurnEvent {
     /// Forward the ingested item to the consumer as-is (text, reasoning, or
     /// reasoning deltas, after accumulation).

@@ -171,7 +171,7 @@ pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
 ///
 /// Deliberately exhaustive: a driver must handle every step, so adding a
 /// variant is a breaking change by design.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentRunStep {
     /// Send a completion request to the model and feed the result back via
     /// [`AgentRun::model_response`].
@@ -341,7 +341,7 @@ impl ModelTurn {
 ///
 /// Deliberately exhaustive: a driver must handle every outcome, so adding a
 /// variant is a breaking change by design.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelTurnOutcome {
     /// The turn was accepted. Unless `response_hook_suppressed` is set, the
     /// driver should run its completion-response hook now, then call
@@ -2004,6 +2004,34 @@ mod tests {
             Some(seen)
         );
         assert!(InternalCallId::new().to_raw() > seen);
+    }
+
+    /// The step and outcome types round-trip: a host caching an in-flight
+    /// step in serializable state (a saved world) can restore it.
+    #[test]
+    fn run_step_and_outcome_round_trip_through_serde() {
+        let step = AgentRunStep::CallModel {
+            prompt: Message::user("hi"),
+            history: vec![Message::assistant("prior")],
+            turn: 1,
+        };
+        let json = serde_json::to_string(&step).expect("serialize step");
+        let restored: AgentRunStep = serde_json::from_str(&json).expect("deserialize step");
+        let AgentRunStep::CallModel { turn, .. } = restored else {
+            panic!("wrong variant");
+        };
+        assert_eq!(turn, 1);
+
+        let outcome = ModelTurnOutcome::Continue {
+            response_hook_suppressed: true,
+        };
+        let json = serde_json::to_string(&outcome).expect("serialize outcome");
+        assert!(matches!(
+            serde_json::from_str::<ModelTurnOutcome>(&json).expect("deserialize outcome"),
+            ModelTurnOutcome::Continue {
+                response_hook_suppressed: true
+            }
+        ));
     }
 
     #[test]
