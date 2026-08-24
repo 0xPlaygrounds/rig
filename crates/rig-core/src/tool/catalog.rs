@@ -84,6 +84,24 @@ impl ToolCatalog {
             .publish_to(context)
     }
 
+    /// [`execute`](Self::execute) as an owned, `'static` future: takes the
+    /// catalog and context by value (cloning a catalog is an `Arc` bump per
+    /// pinned handle) so the future can be spawned on any executor — the
+    /// shape an ECS system or task pool needs, without per-call-site
+    /// clone-into-`async move` ceremony. Returns the mutated context
+    /// alongside the result so callers observe the published dispatch
+    /// metadata exactly as `execute`'s `&mut` contract provides it. The
+    /// future is `Send + 'static` on native (pinned by test).
+    pub async fn execute_owned(
+        self,
+        tool_name: String,
+        args: String,
+        mut context: ToolContext,
+    ) -> (ToolResult, ToolContext) {
+        let result = self.execute(&tool_name, &args, &mut context).await;
+        (result, context)
+    }
+
     /// Moves the definitions out of the catalog. Per-turn request assembly is
     /// the usual consumer and never reads them again, so it takes them
     /// instead of deep-cloning every tool's JSON schema each turn.
@@ -156,6 +174,35 @@ mod tests {
 
         let missing = catalog.execute("gamma", "{}", &mut context).await;
         assert!(!missing.is_success(), "retrieval-only tools are not pinned");
+    }
+
+    /// `execute_owned` matches `execute` (result and published context) and
+    /// its future is `Send + 'static` — spawnable on any executor.
+    #[tokio::test]
+    async fn execute_owned_matches_execute_and_is_static() {
+        fn assert_send_static<T: Send + 'static>(value: T) -> T {
+            value
+        }
+
+        let mut set = ToolSet::default();
+        set.add_portable_dynamic_tool(portable("alpha"));
+        let catalog = set.catalog();
+
+        let mut context = ToolContext::new();
+        let borrowed = catalog.execute("alpha", "{}", &mut context).await;
+
+        let (owned, owned_context) = assert_send_static(catalog.clone().execute_owned(
+            "alpha".to_string(),
+            "{}".to_string(),
+            ToolContext::new(),
+        ))
+        .await;
+        assert_eq!(owned.output().as_text(), borrowed.output().as_text());
+        assert_eq!(
+            format!("{owned_context:?}"),
+            format!("{context:?}"),
+            "owned dispatch publishes the same context metadata"
+        );
     }
 
     #[tokio::test]

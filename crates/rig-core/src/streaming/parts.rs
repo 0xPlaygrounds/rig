@@ -31,6 +31,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::completion::CompletionError;
+use crate::id::InternalCallId;
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
 use crate::streaming::identity::{StreamPartId, SyntheticIds, WireId};
 use crate::streaming::{ToolInputEnd, UnparseableToolInput};
@@ -91,7 +92,7 @@ struct OpenToolInput {
     /// Assembly key: every fragment of one call carries this key.
     id: StreamPartId,
     /// Rig-minted correlation id, created when the call opens.
-    internal_call_id: String,
+    internal_call_id: InternalCallId,
     /// Tool name; a later non-empty name fragment replaces it.
     name: String,
     /// Concatenated raw argument fragments. `None` until a fragment arrives —
@@ -453,8 +454,8 @@ impl PartsAccumulator {
         &mut self,
         id: &StreamPartId,
         tool_call: ToolCall,
-        minted_internal_call_id: String,
-    ) -> String {
+        minted_internal_call_id: InternalCallId,
+    ) -> InternalCallId {
         let position = self
             .open_tool_inputs
             .iter()
@@ -522,7 +523,7 @@ impl PartsAccumulator {
     ///
     /// A later non-empty name replaces the recorded one (OpenAI-compatible
     /// wire semantics: the established name is the last non-empty value).
-    pub(crate) fn tool_name_delta(&mut self, id: &StreamPartId, name: &str) -> String {
+    pub(crate) fn tool_name_delta(&mut self, id: &StreamPartId, name: &str) -> InternalCallId {
         let index = self.ensure_open_tool_input(id);
         match self.open_tool_inputs.get_mut(index) {
             Some(input) => {
@@ -532,17 +533,17 @@ impl PartsAccumulator {
                 if !name.is_empty() {
                     name.clone_into(&mut input.name);
                 }
-                input.internal_call_id.clone()
+                input.internal_call_id
             }
             // Unreachable (`ensure` returns a live index); degrade to a
             // fresh id rather than panic.
-            None => crate::id::generate(),
+            None => InternalCallId::new(),
         }
     }
 
     /// Append a streamed argument fragment to the call's buffer, opening the
     /// call if `id` has no open call. Returns the call's minted internal id.
-    pub(crate) fn tool_args_delta(&mut self, id: &StreamPartId, fragment: &str) -> String {
+    pub(crate) fn tool_args_delta(&mut self, id: &StreamPartId, fragment: &str) -> InternalCallId {
         let index = self.ensure_open_tool_input(id);
         match self.open_tool_inputs.get_mut(index) {
             Some(input) => {
@@ -570,11 +571,11 @@ impl PartsAccumulator {
                 } else {
                     buffer.push_str(fragment);
                 }
-                input.internal_call_id.clone()
+                input.internal_call_id
             }
             // Unreachable (`ensure` returns a live index); degrade to a
             // fresh id rather than panic.
-            None => crate::id::generate(),
+            None => InternalCallId::new(),
         }
     }
 
@@ -591,7 +592,7 @@ impl PartsAccumulator {
     pub(crate) fn tool_input_end(
         &mut self,
         end: ToolInputEnd,
-    ) -> Result<Option<(ToolCall, String)>, CompletionError> {
+    ) -> Result<Option<(ToolCall, InternalCallId)>, CompletionError> {
         let position = self
             .open_tool_inputs
             .iter()
@@ -621,12 +622,12 @@ impl PartsAccumulator {
 
         let (internal_call_id, opened_id, mut name, buffer) = match open.as_ref() {
             Some(input) => (
-                input.internal_call_id.clone(),
+                input.internal_call_id,
                 input.id.clone(),
                 input.name.clone(),
                 input.buffer.clone(),
             ),
-            None => (crate::id::generate(), end.id.clone(), String::new(), None),
+            None => (InternalCallId::new(), end.id.clone(), String::new(), None),
         };
         let overflowed = open.as_ref().is_some_and(|input| input.overflowed);
         // The assembly key is opaque; a wire-derived key doubles as the
@@ -746,7 +747,7 @@ impl PartsAccumulator {
                 self.finished_tools.remove(id);
                 self.open_tool_inputs.push(OpenToolInput {
                     id: id.clone(),
-                    internal_call_id: crate::id::generate(),
+                    internal_call_id: InternalCallId::new(),
                     name: String::new(),
                     buffer: None,
                     overflowed: false,
@@ -1012,7 +1013,7 @@ mod tests {
         accumulator.tool_call(
             &pid("call_1"),
             call_named("call_1", "probe"),
-            "internal-probe".to_owned(),
+            InternalCallId::new(),
         );
         accumulator.reasoning_end(
             &pid("rs_1"),
@@ -1688,11 +1689,8 @@ mod tests {
         let published = accumulator.tool_name_delta(&pid("tc1"), "add");
         accumulator.tool_args_delta(&pid("tc1"), "{\"x\":1}");
 
-        let adopted = accumulator.tool_call(
-            &pid("tc1"),
-            call_named("tc1", "add"),
-            "freshly-minted".to_owned(),
-        );
+        let adopted =
+            accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"), InternalCallId::new());
         assert_eq!(adopted, published);
         assert_eq!(
             accumulator
@@ -1708,11 +1706,7 @@ mod tests {
     fn an_end_after_a_full_call_for_the_same_key_is_a_no_op() {
         let mut accumulator = PartsAccumulator::new();
         accumulator.tool_name_delta(&pid("tc1"), "add");
-        accumulator.tool_call(
-            &pid("tc1"),
-            call_named("tc1", "add"),
-            "freshly-minted".to_owned(),
-        );
+        accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"), InternalCallId::new());
         let mut done = end("tc1", UnparseableToolInput::Drop);
         done.name = Some("add".to_owned());
         done.arguments = Some(serde_json::json!({"x": 1}));
@@ -1736,11 +1730,7 @@ mod tests {
     fn fragments_reusing_a_finished_key_open_a_fresh_call() {
         let mut accumulator = PartsAccumulator::new();
         let first = accumulator.tool_name_delta(&pid("tc1"), "add");
-        accumulator.tool_call(
-            &pid("tc1"),
-            call_named("tc1", "add"),
-            "freshly-minted".to_owned(),
-        );
+        accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"), InternalCallId::new());
         let second = accumulator.tool_name_delta(&pid("tc1"), "subtract");
         assert_ne!(second, first);
         accumulator.tool_args_delta(&pid("tc1"), "{\"y\":2}");
@@ -1766,8 +1756,7 @@ mod tests {
                 arguments: serde_json::json!({"x": 1}),
             },
         );
-        let adopted =
-            accumulator.tool_call(&pid("call_late"), restated, "freshly-minted".to_owned());
+        let adopted = accumulator.tool_call(&pid("call_late"), restated, InternalCallId::new());
         assert_eq!(adopted, published);
         assert!(
             accumulator
@@ -1794,8 +1783,7 @@ mod tests {
                 arguments: serde_json::json!({"x": 1}),
             },
         );
-        let adopted =
-            accumulator.tool_call(&pid("call_late"), restated, "freshly-minted".to_owned());
+        let adopted = accumulator.tool_call(&pid("call_late"), restated, InternalCallId::new());
         assert_eq!(adopted, published);
         assert!(
             accumulator
@@ -1822,8 +1810,7 @@ mod tests {
                 arguments: serde_json::json!({"x": 1}),
             },
         );
-        let adopted =
-            accumulator.tool_call(&pid("call_late"), restated, "freshly-minted".to_owned());
+        let adopted = accumulator.tool_call(&pid("call_late"), restated, InternalCallId::new());
         assert_eq!(adopted, published);
         assert!(
             accumulator
@@ -1851,12 +1838,9 @@ mod tests {
                 arguments: serde_json::json!({"zone": "UTC"}),
             },
         );
-        let adopted =
-            accumulator.tool_call(&pid("call_other"), unrelated, "fresh-internal".to_owned());
-        assert_eq!(
-            adopted, "fresh-internal",
-            "an unrelated call has nothing to adopt"
-        );
+        let fresh = InternalCallId::new();
+        let adopted = accumulator.tool_call(&pid("call_other"), unrelated, fresh);
+        assert_eq!(adopted, fresh, "an unrelated call has nothing to adopt");
 
         // The assembly still finalizes from its own end, streamed args intact.
         let (weather, internal) = accumulator
@@ -1893,12 +1877,9 @@ mod tests {
                 arguments: serde_json::json!({"x": 99}),
             },
         );
-        let adopted = accumulator.tool_call(
-            &pid("call_other"),
-            second_invocation,
-            "fresh-internal".to_owned(),
-        );
-        assert_eq!(adopted, "fresh-internal");
+        let fresh = InternalCallId::new();
+        let adopted = accumulator.tool_call(&pid("call_other"), second_invocation, fresh);
+        assert_eq!(adopted, fresh);
         assert!(
             accumulator
                 .tool_input_end(end("tool-0", UnparseableToolInput::Error))
@@ -1913,12 +1894,10 @@ mod tests {
         let mut accumulator = PartsAccumulator::new();
         let first = accumulator.tool_name_delta(&pid("tool-0"), "add");
         let second = accumulator.tool_name_delta(&pid("tool-1"), "subtract");
-        let published = accumulator.tool_call(
-            &pid("call_late"),
-            call_named("call_late", "add"),
-            "freshly-minted".to_owned(),
-        );
-        assert_eq!(published, "freshly-minted");
+        let minted = InternalCallId::new();
+        let published =
+            accumulator.tool_call(&pid("call_late"), call_named("call_late", "add"), minted);
+        assert_eq!(published, minted);
         assert_ne!(published, first);
         assert_ne!(published, second);
     }

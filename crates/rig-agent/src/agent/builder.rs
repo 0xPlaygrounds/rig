@@ -286,7 +286,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     ///
     /// Most agents are reused across users or threads; prefer setting the id
     /// per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
+    pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
         self
     }

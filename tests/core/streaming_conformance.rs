@@ -720,7 +720,7 @@ mod interleaved_constant_id_reasoning {
                     "id-less calls surface a minted durable id"
                 );
                 assert_eq!(tool_call.provider, None, "no fabricated provider id");
-                internal_ids.push(internal_call_id.clone());
+                internal_ids.push(*internal_call_id);
                 minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
@@ -858,7 +858,7 @@ mod interleaved_constant_id_reasoning {
                     tool_call.provider, None,
                     "no name-as-id provider-id fallback"
                 );
-                internal_ids.push(internal_call_id.clone());
+                internal_ids.push(*internal_call_id);
                 minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }

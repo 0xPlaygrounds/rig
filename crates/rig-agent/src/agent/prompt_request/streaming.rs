@@ -1,3 +1,4 @@
+use rig_core::id::InternalCallId;
 use rig_core::{
     message::{AssistantContent, UserContent},
     telemetry::SpanCombinator,
@@ -86,7 +87,7 @@ pub enum MultiTurnStreamItem {
         /// Rig-generated id correlating this execution with the model tool call
         /// ([`StreamedAssistantContent::ToolCall::internal_call_id`]) and the
         /// resulting [`StreamedUserContent::ToolResult`].
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
     },
     /// A streamed user content item: the **result** of an executed (or
     /// hook-skipped) tool call. The tool batch commits and surfaces atomically at
@@ -459,7 +460,10 @@ pub(crate) fn drive_agent<S>(
     mut run: AgentRun,
     agent_span: tracing::Span,
     created_agent_span: bool,
-    memory_handle: Option<(Arc<dyn rig_core::memory::ConversationMemory>, String)>,
+    memory_handle: Option<(
+        Arc<dyn rig_core::memory::ConversationMemory>,
+        rig_core::id::ConversationId,
+    )>,
     is_streaming: bool,
 ) -> impl Stream<Item = Result<DriveItem, StreamingError>>
 where
@@ -825,7 +829,7 @@ where
     struct PreparedToolCall {
         tool_call: rig_core::message::ToolCall,
         preresolved_result: Option<UserContent>,
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
         span: tracing::Span,
     }
     // How a settled tool call is surfaced on the stream once the batch succeeds:
@@ -845,7 +849,7 @@ where
     // batch settles.
     struct CollectedToolResult {
         content: UserContent,
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
         surface: ToolSurface,
     }
 
@@ -861,7 +865,7 @@ where
         // model turn) and gets no execute span.
         let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
         for pending in calls {
-            let internal_call_id = pending.internal_call_id.unwrap_or_else(rig_core::id::generate);
+            let internal_call_id = pending.internal_call_id.unwrap_or_else(rig_core::id::InternalCallId::new);
             let (span, preresolved_result) = match pending.preresolved_result {
                 Some(result) => (tracing::Span::none(), Some(result)),
                 None => {
@@ -869,7 +873,7 @@ where
                         yield Ok(MultiTurnStreamItem::stream_item(
                             StreamedAssistantContent::ToolCall {
                                 tool_call: pending.tool_call.clone(),
-                                internal_call_id: internal_call_id.clone(),
+                                internal_call_id,
                             },
                         ));
                     }
@@ -927,7 +931,7 @@ where
                             hook_ctx,
                             tool_snapshot,
                             &tool_call,
-                            &internal_call_id,
+                            internal_call_id,
                             full_history_for_errors,
                         )
                         .await;
@@ -1007,7 +1011,7 @@ where
                     ToolSurface::Executed(tool_call) => {
                         surface_items.push(MultiTurnStreamItem::ToolExecutionCommitted {
                             tool_call: *tool_call,
-                            internal_call_id: internal_call_id.clone(),
+                            internal_call_id,
                         });
                         true
                     }
@@ -1313,7 +1317,7 @@ impl TurnSource for StreamingTurnSource {
                                         .on_tool_call_delta(
                                             hook_ctx,
                                             ToolCallDelta {
-                                                internal_call_id: &internal_call_id,
+                                                internal_call_id,
                                                 tool_name: delta_name,
                                                 delta: delta_text,
                                             },
@@ -1421,7 +1425,7 @@ impl TurnSource for StreamingTurnSource {
                                         yield Ok(MultiTurnStreamItem::StreamUserItem(
                                             StreamedUserContent::ToolResult {
                                                 tool_result: *tool_result,
-                                                internal_call_id: invalid.internal_call_id.clone(),
+                                                internal_call_id: invalid.internal_call_id,
                                             },
                                         ));
                                     }
@@ -3551,7 +3555,7 @@ mod migrated_tests {
         }
     }
 
-    type RecordedToolCallDelta = (String, Option<String>, String);
+    type RecordedToolCallDelta = (InternalCallId, Option<String>, String);
     type RecordedReasoningDelta = (String, Option<String>, String, String);
 
     #[derive(Clone)]
@@ -3674,7 +3678,7 @@ mod migrated_tests {
                     delta,
                 } => {
                     let record = (
-                        internal_call_id.to_string(),
+                        internal_call_id,
                         tool_name.map(str::to_string),
                         delta.to_string(),
                     );
@@ -3942,7 +3946,7 @@ mod migrated_tests {
                     delta,
                 } => {
                     let record = (
-                        internal_call_id.to_string(),
+                        internal_call_id,
                         tool_name.map(str::to_string),
                         delta.to_string(),
                     );
@@ -4366,7 +4370,7 @@ mod migrated_tests {
                     tool_result,
                     internal_call_id,
                 })) => {
-                    assert!(!internal_call_id.is_empty());
+                    let _ = internal_call_id;
                     skipped_tool_result = Some(tool_result);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -5028,10 +5032,7 @@ mod migrated_tests {
             context.tool_call_id
         );
         assert!(
-            context
-                .internal_call_id
-                .as_deref()
-                .is_some_and(|id| !id.is_empty()),
+            context.internal_call_id.is_some(),
             "internal call id is minted by the shared accumulator"
         );
         assert!(context.is_streaming);
@@ -5145,10 +5146,7 @@ mod migrated_tests {
                     tool_result,
                     internal_call_id,
                 })) => {
-                    assert!(
-                        !internal_call_id.is_empty(),
-                        "internal call id is minted by the shared accumulator"
-                    );
+                    let _ = internal_call_id;
                     skipped_tool_result = Some(tool_result);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -6065,28 +6063,21 @@ mod migrated_tests {
         // rather than a scripted literal.
         let internal = stream_deltas
             .first()
-            .map(|delta| delta.0.clone())
+            .map(|delta| delta.0)
             .expect("at least one delta");
-        assert!(!internal.is_empty());
         assert_eq!(
             hook.observed(),
             vec![
-                (internal.clone(), Some("add".to_string()), String::new()),
-                (internal.clone(), None, "{\"x\":".to_string()),
-                (internal.clone(), None, "1}".to_string()),
+                (internal, Some("add".to_string()), String::new()),
+                (internal, None, "{\"x\":".to_string()),
+                (internal, None, "1}".to_string()),
             ]
         );
         assert_eq!(
             stream_deltas,
             vec![
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Name("add".to_string())
-                ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Name("add".to_string())),
+                (internal, ToolCallDeltaContent::Delta("{\"x\":".to_string())),
                 (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
@@ -6459,20 +6450,13 @@ mod migrated_tests {
         // rather than a scripted literal.
         let internal = deltas
             .first()
-            .map(|delta| delta.0.clone())
+            .map(|delta| delta.0)
             .expect("at least one delta");
-        assert!(!internal.is_empty());
         assert_eq!(
             deltas,
             vec![
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Name("add".to_string())
-                ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Name("add".to_string())),
+                (internal, ToolCallDeltaContent::Delta("{\"x\":".to_string())),
                 (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
@@ -6516,28 +6500,21 @@ mod migrated_tests {
         // rather than a scripted literal.
         let internal = stream_deltas
             .first()
-            .map(|delta| delta.0.clone())
+            .map(|delta| delta.0)
             .expect("at least one delta");
-        assert!(!internal.is_empty());
         assert_eq!(
             hook.observed(),
             vec![
-                (internal.clone(), Some("add".to_string()), String::new()),
-                (internal.clone(), None, "{\"x\":".to_string()),
-                (internal.clone(), None, "1}".to_string()),
+                (internal, Some("add".to_string()), String::new()),
+                (internal, None, "{\"x\":".to_string()),
+                (internal, None, "1}".to_string()),
             ]
         );
         assert_eq!(
             stream_deltas,
             vec![
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Name("add".to_string())
-                ),
-                (
-                    internal.clone(),
-                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
-                ),
+                (internal, ToolCallDeltaContent::Name("add".to_string())),
+                (internal, ToolCallDeltaContent::Delta("{\"x\":".to_string())),
                 (internal, ToolCallDeltaContent::Delta("1}".to_string())),
             ]
         );
@@ -6584,7 +6561,7 @@ mod migrated_tests {
         let observed = hook.observed();
         assert_eq!(observed.len(), 1);
         let first = observed.first().expect("one observed delta");
-        assert!(!first.0.is_empty());
+
         assert_eq!(first.1, Some("add".to_string()));
         assert_eq!(first.2, String::new());
         assert!(!saw_delta);
@@ -7559,7 +7536,7 @@ mod migrated_tests {
             "user prompt + assistant response in final history: {final_history:?}"
         );
 
-        let stored = memory.load("stream-thread").await.unwrap();
+        let stored = memory.load(&"stream-thread".into()).await.unwrap();
         assert_eq!(stored.len(), 2, "memory should contain user + assistant");
     }
 
@@ -7656,7 +7633,7 @@ mod migrated_tests {
 
         let memory = InMemoryConversationMemory::new();
         memory
-            .append("t1", vec![Message::user("from-memory")])
+            .append(&"t1".into(), vec![Message::user("from-memory")])
             .await
             .unwrap();
 
@@ -7676,7 +7653,7 @@ mod migrated_tests {
             }
         }
 
-        let stored = memory.load("t1").await.unwrap();
+        let stored = memory.load(&"t1".into()).await.unwrap();
         assert_eq!(
             stored.len(),
             1,
@@ -7702,7 +7679,7 @@ mod migrated_tests {
             }
         }
 
-        let stored = memory.load("default").await.unwrap();
+        let stored = memory.load(&"default".into()).await.unwrap();
         assert!(stored.is_empty(), "without_memory disables save");
     }
 
@@ -7734,7 +7711,7 @@ mod migrated_tests {
             .with_filter(|msgs: Vec<Message>| msgs.into_iter().rev().take(2).rev().collect());
         memory
             .append(
-                "t1",
+                &"t1".into(),
                 vec![
                     Message::user("1"),
                     Message::assistant("2"),

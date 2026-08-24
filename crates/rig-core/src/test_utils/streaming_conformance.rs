@@ -25,6 +25,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use futures::future::BoxFuture;
 
+use crate::id::InternalCallId;
 use crate::{
     completion::{CompletionError, FinishReason},
     http_client,
@@ -446,23 +447,23 @@ pub fn assert_valid_event_stream(
     );
 
     // Law 4: delta-before-completion.
-    let mut seen_delta_ids: Vec<&str> = Vec::new();
-    let mut completed_ids: Vec<&str> = Vec::new();
+    let mut seen_delta_ids: Vec<InternalCallId> = Vec::new();
+    let mut completed_ids: Vec<InternalCallId> = Vec::new();
     for item in &ok_items {
         match item {
             Item::ToolCallDelta {
                 internal_call_id, ..
             } => {
                 assert!(
-                    !completed_ids.contains(&internal_call_id.as_str()),
+                    !completed_ids.contains(internal_call_id),
                     "law 4: a delta for internal id {internal_call_id} arrived after its \
                      completed call"
                 );
-                seen_delta_ids.push(internal_call_id);
+                seen_delta_ids.push(*internal_call_id);
             }
             Item::ToolCall {
                 internal_call_id, ..
-            } => completed_ids.push(internal_call_id),
+            } => completed_ids.push(*internal_call_id),
             _ => {}
         }
     }

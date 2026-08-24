@@ -56,7 +56,7 @@ pub(crate) mod shared_parts {
         let tool_call = RawStreamingToolCall {
             id,
             tool_id,
-            internal_call_id: crate::id::generate(),
+            internal_call_id: crate::id::InternalCallId::new(),
             // Gemini is a single-identifier wire: its one id travels as
             // `tool_id` and `call_id` stays unset. Filling both from the same
             // id would take the dual-wire arm downstream and fabricate an

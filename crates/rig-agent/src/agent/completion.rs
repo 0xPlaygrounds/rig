@@ -12,6 +12,7 @@ use crate::{
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
 use rig_core::completion::ModelHandle;
+use rig_core::id::ConversationId;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -204,7 +205,7 @@ pub(crate) struct AgentConfig {
     /// Optional conversation memory backend that loads/saves history per conversation id.
     pub(crate) memory: Option<Arc<dyn rig_core::memory::ConversationMemory>>,
     /// Optional conversation id used when none is set per-request.
-    pub(crate) conversation_id: Option<String>,
+    pub(crate) conversation_id: Option<ConversationId>,
 }
 
 impl AgentConfig {
