@@ -806,6 +806,29 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### The `discord-bot` feature is gone; the integration is an example
+
+`rig`'s `discord-bot` feature, rig-agent's `discord-bot` feature, and
+`rig_agent::integrations::discord_bot` (`DiscordExt`, `DiscordBotError`) are
+removed. `serenity` 0.12.5 is the newest published release and pins `rustls`
+0.22, whose `rustls-webpki` 0.102.8 carries four unpatched advisories — a
+reachable CRL-parsing panic plus three name-constraint/CRL-authority
+weaknesses — with no version to bump to. A demo-grade integration is not worth
+putting that in the dependency graph of everyone who builds the facade with
+`--all-features`.
+
+The code moved verbatim to `examples/discord_bot`, which is now excluded from
+the workspace and carries its own lockfile, so `serenity` is out of the
+workspace `Cargo.lock` entirely. If you were using `DiscordExt`, copy
+`examples/discord_bot/src/discord_bot.rs` into your own crate and depend on
+`serenity` directly — it is ~230 lines over the public `Agent` API and needs
+nothing internal. Two incidental trims came with the move: the unused
+`DiscordExt::into_discord_bot_from_env` default method and the
+`DiscordBotError::MissingToken` variant it fed.
+
+Run the example with `cargo run --manifest-path examples/discord_bot/Cargo.toml`
+(`-p discord_bot` no longer resolves).
+
 ### Run lifecycle hooks and transport middleware
 
 The agent hook surface gained a pre-run and a terminal event, and the erased
@@ -1070,7 +1093,7 @@ unchanged. What changes:
   `ErasedTool` (and `is_live`), `ToolSet::add_erased`, `ToolServer::erased_tool`,
   `AgentBuilder::erased_tool`, `ToolServerHandle::{add_managed_erased_tools,
   reconcile_managed_erased_tools}`, `Agent::tool_server_handle()`. rig-agent's `tokio` is
-  optional, enabled only by `discord-bot` (and `test-utils`).
+  optional, enabled only by `test-utils`.
 
 ### rig-core has no default transport; the bundled reqwest transport is the new `rig-reqwest` crate
 

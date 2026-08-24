@@ -31,7 +31,6 @@ rig-run = { path = "../rig-run", version = "0.42.0" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-serenity = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"], optional = true }
 tracing = { workspace = true }
@@ -53,4 +52,3 @@ audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
 test-utils = ["rig-core/test-utils", "dep:tokio"]
-discord-bot = ["dep:serenity", "dep:tokio"]

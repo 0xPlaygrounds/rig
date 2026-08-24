@@ -1,4 +1,6 @@
-use rig::integrations::discord_bot::DiscordExt;
+mod discord_bot;
+
+use discord_bot::DiscordExt;
 use rig::prelude::*;
 use rig::providers::openai;
 
