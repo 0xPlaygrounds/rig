@@ -3,6 +3,7 @@
 //! [`RequestPatch`] — the shape of one turn's request.
 
 use rig_core::completion::Document;
+use rig_core::id::InternalCallId;
 use rig_core::message::{Message, ToolChoice};
 
 /// Diagnostics for an invalid model-emitted tool call.
@@ -14,7 +15,7 @@ pub struct InvalidToolCallContext {
     /// minted handle. Absent only when no call object exists at all.
     pub tool_call_id: Option<String>,
     /// Rig correlation id, when present.
-    pub internal_call_id: Option<String>,
+    pub internal_call_id: Option<InternalCallId>,
     /// Emitted JSON arguments, when present.
     pub args: Option<String>,
     /// Executable tools advertised for the turn.

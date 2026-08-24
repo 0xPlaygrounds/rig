@@ -170,7 +170,7 @@ impl AgentHook for ForceSystemProbeOnFirstTurn {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FailureRecord {
-    internal_call_id: String,
+    internal_call_id: rig::id::InternalCallId,
     tool_name: String,
     kind: ToolErrorKind,
     code: Option<String>,
@@ -184,7 +184,7 @@ struct FailureLedger(Vec<FailureRecord>);
 struct FailureRecorder;
 
 fn failure_record(
-    internal_call_id: &str,
+    internal_call_id: rig::id::InternalCallId,
     tool_name: &str,
     result: &ToolResult,
     tool_context: &ToolContext,
@@ -194,7 +194,7 @@ fn failure_record(
     };
 
     Some(FailureRecord {
-        internal_call_id: internal_call_id.to_string(),
+        internal_call_id,
         tool_name: tool_name.to_string(),
         kind: error.kind(),
         code: error.code().map(str::to_string),
@@ -248,7 +248,10 @@ fn decide(record: &FailureRecord) -> PolicyDecision {
     }
 }
 
-fn policy_action(ledger: Option<&FailureLedger>, internal_call_id: &str) -> ToolResultAction {
+fn policy_action(
+    ledger: Option<&FailureLedger>,
+    internal_call_id: rig::id::InternalCallId,
+) -> ToolResultAction {
     let decision = ledger
         .and_then(|ledger| {
             ledger
@@ -398,14 +401,13 @@ mod tests {
             structured_failure(Operation::ConnectNetwork).await;
 
         let mut ledger = FailureLedger::default();
-        let fatal_record = failure_record(
-            "fatal-call",
-            SystemProbe::NAME,
-            &fatal_result,
-            &fatal_context,
-        );
+        let fatal_call = rig::id::InternalCallId::new();
+        let recoverable_call = rig::id::InternalCallId::new();
+        let missing_call = rig::id::InternalCallId::new();
+        let fatal_record =
+            failure_record(fatal_call, SystemProbe::NAME, &fatal_result, &fatal_context);
         let recoverable_record = failure_record(
-            "recoverable-call",
+            recoverable_call,
             SystemProbe::NAME,
             &recoverable_result,
             &recoverable_context,
@@ -421,18 +423,18 @@ mod tests {
         ledger.0.push(recoverable_record);
 
         assert!(matches!(
-            policy_action(Some(&ledger), "fatal-call"),
+            policy_action(Some(&ledger), fatal_call),
             ToolResultAction::Stop(_)
         ));
         assert_eq!(
-            policy_action(Some(&ledger), "recoverable-call"),
+            policy_action(Some(&ledger), recoverable_call),
             ToolResultAction::Keep
         );
         assert_eq!(
-            policy_action(Some(&ledger), "missing-call"),
+            policy_action(Some(&ledger), missing_call),
             ToolResultAction::Keep
         );
-        assert_eq!(policy_action(None, "fatal-call"), ToolResultAction::Keep);
+        assert_eq!(policy_action(None, fatal_call), ToolResultAction::Keep);
     }
 
     #[tokio::test]
@@ -440,7 +442,7 @@ mod tests {
         let (result, _context) = structured_failure(Operation::ReadDisk).await;
         assert!(
             failure_record(
-                "current-call",
+                rig::id::InternalCallId::new(),
                 SystemProbe::NAME,
                 &result,
                 &ToolContext::new(),
@@ -449,7 +451,7 @@ mod tests {
         );
 
         let stale = FailureLedger(vec![FailureRecord {
-            internal_call_id: "stale-call".to_string(),
+            internal_call_id: rig::id::InternalCallId::new(),
             tool_name: SystemProbe::NAME.to_string(),
             kind: ToolErrorKind::Other,
             code: Some("EIO".to_string()),
@@ -457,7 +459,7 @@ mod tests {
             resource: "/stale",
         }]);
         assert_eq!(
-            policy_action(Some(&stale), "current-call"),
+            policy_action(Some(&stale), rig::id::InternalCallId::new()),
             ToolResultAction::Keep
         );
     }

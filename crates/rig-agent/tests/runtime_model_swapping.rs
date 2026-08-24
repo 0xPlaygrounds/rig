@@ -941,7 +941,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         Vec<CompletionRequest>,
         Vec<usize>,
         Vec<&'static str>,
-        Vec<String>,
+        Vec<rig_core::id::InternalCallId>,
     ) {
         let (alpha, beta) = routing_models();
         let beta_script = beta.0.clone();
@@ -1063,11 +1063,9 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
     );
     // The correlation id is minted by the shared accumulator when the call's
     // first fragment arrives; every downstream stage must carry that one id.
-    let correlation = stream_internal_call_ids
+    let correlation = *stream_internal_call_ids
         .first()
-        .expect("at least one correlated event")
-        .clone();
-    assert!(!correlation.is_empty());
+        .expect("at least one correlated event");
     assert_eq!(
         stream_internal_call_ids,
         vec![correlation; 5],

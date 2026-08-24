@@ -173,7 +173,7 @@ pub struct AgentRunner {
 /// [`AgentRunner::resolve_history_and_memory`].
 pub(crate) type HistoryAndMemory = (
     Option<Vec<Message>>,
-    Option<(Arc<dyn ConversationMemory>, String)>,
+    Option<(Arc<dyn ConversationMemory>, rig_core::id::ConversationId)>,
 );
 
 impl AgentRunner {
@@ -416,7 +416,7 @@ impl AgentRunner {
     }
 
     /// Set the conversation id used to load and persist memory for this run.
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
+    pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
         self
     }
@@ -552,7 +552,7 @@ pub(crate) async fn resolve_completion_call(
 /// Append a finished run's messages to conversation memory, logging and
 /// proceeding on failure. Shared `Done`-arm behavior for both drivers.
 pub(crate) async fn append_run_messages(
-    memory_handle: Option<&(Arc<dyn ConversationMemory>, String)>,
+    memory_handle: Option<&(Arc<dyn ConversationMemory>, rig_core::id::ConversationId)>,
     messages: &[Message],
 ) {
     // Clone into an owned vec only when there is a backend to append to — the
@@ -607,7 +607,7 @@ pub(crate) async fn run_single_tool(
     ctx: &HookContext,
     tool_snapshot: &ToolRegistrySnapshot,
     tool_call: &ToolCall,
-    internal_call_id: &str,
+    internal_call_id: rig_core::id::InternalCallId,
     error_history: &[Message],
 ) -> Result<ToolCallOutcome, PromptError> {
     let hooks = &runner.config.hooks;
@@ -3160,13 +3160,13 @@ mod migrated_tests {
         }
 
         assert_eq!(delta_ids.len(), 2, "one name delta and one argument delta");
-        let correlated = delta_ids.first().expect("a delta id").clone();
+        let correlated = *delta_ids.first().expect("a delta id");
         assert!(
             delta_ids.iter().all(|id| *id == correlated),
             "the fragments of one call share one id: {delta_ids:?}"
         );
-        assert_eq!(completed_ids, vec![correlated.clone()]);
-        assert_eq!(executed_ids, vec![correlated.clone()]);
+        assert_eq!(completed_ids, vec![correlated]);
+        assert_eq!(executed_ids, vec![correlated]);
         assert_eq!(result_ids, vec![correlated]);
     }
 

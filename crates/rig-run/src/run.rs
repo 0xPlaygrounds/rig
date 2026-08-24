@@ -71,6 +71,23 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionError, CompletionResponse, FinishReason, ToolDefinition};
+use rig_core::id::InternalCallId;
+
+/// Deserialize a persisted internal call id, advancing this process's mint
+/// counter past it so ids minted after a resume cannot collide with ids the
+/// run's consumers already saw in tool-call deltas.
+fn de_persisted_internal_call_id<'de, D>(
+    deserializer: D,
+) -> Result<Option<InternalCallId>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let id = <Option<InternalCallId> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(id) = id {
+        InternalCallId::advance_past(id.to_raw());
+    }
+    Ok(id)
+}
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
@@ -190,8 +207,8 @@ pub struct PendingToolCall {
     /// the call arrived via a streamed turn. Persisted with the run state so
     /// a resumed process keeps emitting the IDs consumers already saw in
     /// tool-call deltas. Drivers generate a fresh ID when absent.
-    #[serde(default)]
-    pub internal_call_id: Option<String>,
+    #[serde(default, deserialize_with = "de_persisted_internal_call_id")]
+    pub internal_call_id: Option<InternalCallId>,
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -241,7 +258,10 @@ impl ModelTurn {
     /// finish reason is the response's normalized
     /// [`finish_reason()`](CompletionResponse::finish_reason) accessor, never
     /// a raw provider field.
-    pub fn from_response(resp: &CompletionResponse, prepared: &crate::prepare::PreparedRequest) -> Self {
+    pub fn from_response(
+        resp: &CompletionResponse,
+        prepared: &crate::prepare::PreparedRequest,
+    ) -> Self {
         Self::from_response_parts(
             resp,
             prepared.executable_tool_names.clone(),
@@ -399,7 +419,7 @@ struct TurnState {
     /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
     #[serde(default)]
-    internal_call_ids: Vec<(String, String)>,
+    internal_call_ids: Vec<(String, InternalCallId)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1286,7 +1306,7 @@ impl AgentRun {
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        internal_call_ids: Vec<(String, String)>,
+        internal_call_ids: Vec<(String, InternalCallId)>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
             message_id,
@@ -1640,7 +1660,7 @@ impl AgentRun {
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.clone(),
             tool_call_id: Some(invalid.tool_call.id.as_str().to_owned()),
-            internal_call_id: Some(invalid.internal_call_id.clone()),
+            internal_call_id: Some(invalid.internal_call_id),
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),
             allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
@@ -1965,6 +1985,28 @@ mod tests {
     }
 
     #[test]
+    fn deserializing_a_persisted_internal_call_id_advances_the_mint_counter() {
+        // A run persisted by an earlier process may carry ids far ahead of
+        // this process's counter; loading it must advance the counter so
+        // fresh mints cannot collide with ids consumers already saw.
+        let seen = InternalCallId::new().to_raw() + 50_000;
+        let json = format!(
+            r#"{{"tool_call":{},"preresolved_result":null,"internal_call_id":{seen}}}"#,
+            serde_json::to_string(&ToolCall::from_wire(
+                "call_1",
+                ToolFunction::new("add".to_string(), json!({"x": 1})),
+            ))
+            .expect("serialize call")
+        );
+        let restored: PendingToolCall = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(
+            restored.internal_call_id.map(InternalCallId::to_raw),
+            Some(seen)
+        );
+        assert!(InternalCallId::new().to_raw() > seen);
+    }
+
+    #[test]
     fn from_response_matches_hand_assembly_field_for_field() {
         let resp = CompletionResponse::new(
             vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
@@ -1979,8 +2021,7 @@ mod tests {
 
         let executable = tool_names(&["add"]);
         let allowed = tool_names(&["add", "final_output"]);
-        let turn =
-            ModelTurn::from_response_parts(&resp, executable.clone(), allowed.clone());
+        let turn = ModelTurn::from_response_parts(&resp, executable.clone(), allowed.clone());
 
         let expected = ModelTurn::new(
             resp.message_id.clone(),
