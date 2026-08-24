@@ -127,19 +127,19 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
 
 impl<ToolState> AgentBuilder<ToolState> {
     /// Set the name of the agent
-    pub fn name(mut self, name: &str) -> Self {
+    pub fn name(mut self, name: impl Into<String>) -> Self {
         self.config.name = Some(name.into());
         self
     }
 
     /// Set the description of the agent
-    pub fn description(mut self, description: &str) -> Self {
+    pub fn description(mut self, description: impl Into<String>) -> Self {
         self.config.description = Some(description.into());
         self
     }
 
     /// Set the system prompt
-    pub fn preamble(mut self, preamble: &str) -> Self {
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
         self.config.preamble = Some(preamble.into());
         self
     }
@@ -161,7 +161,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     }
 
     /// Add a static context document to the agent
-    pub fn context(mut self, doc: &str) -> Self {
+    pub fn context(mut self, doc: impl Into<String>) -> Self {
         self.config.static_context.push(Document {
             id: format!("static_doc_{}", self.config.static_context.len()),
             text: doc.into(),

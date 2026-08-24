@@ -694,7 +694,7 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
 
             let raw = model.raw_completion(request).await.expect("raw turn");
             let raw_reasoning = raw
-                .get_usage()
+                .usage()
                 .and_then(|usage| usage.completion_tokens_details)
                 .map(|details| details.reasoning_tokens as u64)
                 .expect("the raw usage must model the breakdown");
@@ -736,7 +736,7 @@ async fn blocking_cost_and_cache_details_still_map() {
                 .build();
 
             let raw = model.raw_completion(request).await.expect("raw turn");
-            let usage = raw.get_usage().expect("usage");
+            let usage = raw.usage().expect("usage");
 
             assert!(usage.cost > 0.0, "{usage:?}");
             assert!(usage.prompt_tokens_details.is_some(), "{usage:?}");

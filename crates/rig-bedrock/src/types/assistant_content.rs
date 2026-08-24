@@ -38,15 +38,15 @@ pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
 impl ProviderResponseExt for AwsConverseOutput {
     type Usage = completion::Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         None // Bedrock Converse API doesn't return a response ID
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         None // Bedrock doesn't echo model name in response
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         let output = self.0.output.as_ref()?;
         let message = output.as_message().ok()?;
         let response = message
@@ -66,7 +66,7 @@ impl ProviderResponseExt for AwsConverseOutput {
         }
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         self.0.usage().map(normalize_usage)
     }
 }
@@ -434,38 +434,38 @@ mod tests {
     }
 
     #[test]
-    fn provider_response_ext_get_text_response() {
+    fn provider_response_ext_text_response() {
         let out = make_output("hello world", None);
-        assert_eq!(out.get_text_response(), Some("hello world".to_string()));
+        assert_eq!(out.text_response(), Some("hello world".to_string()));
     }
 
     #[test]
     fn provider_response_ext_response_id_is_none() {
         let out = make_output("x", None);
-        assert!(out.get_response_id().is_none());
-        assert!(out.get_response_model_name().is_none());
+        assert!(out.response_id().is_none());
+        assert!(out.response_model_name().is_none());
     }
 
     #[test]
-    fn provider_response_ext_get_usage_with_tokens() {
+    fn provider_response_ext_usage_with_tokens() {
         let out = make_output("x", Some(make_usage(100, 50, 150)));
-        let usage = out.get_usage().unwrap();
+        let usage = out.usage().unwrap();
         assert_eq!(usage.input_tokens, 100);
         assert_eq!(usage.output_tokens, 50);
         assert_eq!(usage.total_tokens, 150);
     }
 
     #[test]
-    fn provider_response_ext_get_usage_none_when_missing() {
+    fn provider_response_ext_usage_none_when_missing() {
         let out = make_output("x", None);
-        assert!(out.get_usage().is_none());
+        assert!(out.usage().is_none());
     }
 
     #[test]
-    fn get_token_usage_delegates_to_provider_response_ext() {
+    fn token_usage_delegates_to_provider_response_ext() {
         let out = make_output("x", Some(make_usage(10, 20, 30)));
         assert_eq!(
-            out.get_usage().unwrap_or_default(),
+            out.usage().unwrap_or_default(),
             completion::Usage {
                 input_tokens: 10,
                 output_tokens: 20,
@@ -476,15 +476,12 @@ mod tests {
     }
 
     #[test]
-    fn get_token_usage_zero_when_no_usage() {
+    fn token_usage_zero_when_no_usage() {
         let out = make_output("x", None);
         // Zero-valued usage is rig's documented sentinel for "the provider
         // reported no usage metrics".
-        assert_eq!(
-            out.get_usage().unwrap_or_default(),
-            completion::Usage::new()
-        );
-        assert!(!out.get_usage().unwrap_or_default().has_values());
+        assert_eq!(out.usage().unwrap_or_default(), completion::Usage::new());
+        assert!(!out.usage().unwrap_or_default().has_values());
     }
 
     #[test]

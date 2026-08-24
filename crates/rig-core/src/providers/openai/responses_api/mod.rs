@@ -2464,19 +2464,19 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
     /// The response ID (`resp_...`), which is deliberately *not* the assistant
     /// message ID (`msg_...`) that the normalized response carries.
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         Some(self.model.as_str())
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         output_text_response(&self.output)
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         self.usage
     }
 }

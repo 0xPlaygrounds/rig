@@ -1390,15 +1390,15 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         Some(self.model.as_str())
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         let response = self
             .choices
             .iter()
@@ -1413,7 +1413,7 @@ impl ProviderResponseExt for CompletionResponse {
         }
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         self.usage
     }
 }
@@ -2491,7 +2491,7 @@ where
             |response| {
                 let span = tracing::Span::current();
                 span.record_response_metadata(response);
-                let usage = response.get_usage().map(Into::into).unwrap_or_default();
+                let usage = response.usage().map(Into::into).unwrap_or_default();
                 span.record_token_usage(&usage);
             },
         )
@@ -3235,7 +3235,7 @@ mod tests {
         };
 
         assert_eq!(
-            response.get_text_response(),
+            response.text_response(),
             Some("first\nsecond\nthird".to_owned())
         );
     }
@@ -3287,7 +3287,7 @@ mod tests {
             usage: None,
         };
 
-        assert_eq!(response.get_text_response(), Some("blocked".to_owned()));
+        assert_eq!(response.text_response(), Some("blocked".to_owned()));
     }
 
     /// One chat-completions turn, built from the wire shape a structured-output
@@ -3338,7 +3338,7 @@ mod tests {
             "refusal": "I'm sorry, I can't help with that."
         });
         let raw_text = refusal_response(message.clone())
-            .get_text_response()
+            .text_response()
             .expect("raw text view");
 
         assert_eq!(

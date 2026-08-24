@@ -184,7 +184,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 .raw_completion(first_request)
                 .await
                 .expect("first document citation turn should succeed");
-            let first_turn_raw_text = first_turn_raw.get_text_response();
+            let first_turn_raw_text = first_turn_raw.text_response();
             let first_turn: rig::completion::CompletionResponse = first_turn_raw
                 .normalize(ANTHROPIC_PROVIDER)
                 .expect("first document citation turn should normalize");

@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(core, agent, bedrock, gemini-grpc)* [**breaking**] `telemetry::ProviderResponseExt` methods drop their `get_` prefix: `get_response_id` → `response_id`, `get_response_model_name` → `response_model_name`, `get_text_response` → `text_response`, `get_usage` → `usage` — continuing the `get_`-prefix sweep across all provider impls
+- *(agent, core, neo4j, vertexai)* builder setters that stored an owned `String` now take `impl Into<String>` instead of `&str` (`AgentBuilder::{name, description, preamble, context}`, Azure `api_version`/`audio_api_version`, Anthropic `anthropic_version`/`anthropic_beta`, neo4j `SearchParams` setters, Vertex AI `with_project`/`with_location`) — every existing `&str` call site still compiles, and an owned `String` is no longer copied
 - *(core, agent, bedrock, vertexai)* [**breaking**] accessors drop their `get_` prefix per Rust naming convention: `ToolCatalog`-side `get_tool_definitions` → `tool_definitions` (rig-core contextual tools), `ToolServerHandle::get_tool_defs` → `tool_defs` (rig-agent), and `Client::get_inner` → `inner` (rig-bedrock, rig-vertexai)
 
 ### Fixed

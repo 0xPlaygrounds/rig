@@ -564,7 +564,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 impl ProviderResponseExt for GenerateContentResponse {
     type Usage = proto::UsageMetadata;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         if self.response_id.is_empty() {
             None
         } else {
@@ -572,7 +572,7 @@ impl ProviderResponseExt for GenerateContentResponse {
         }
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         if self.model_version.is_empty() {
             None
         } else {
@@ -580,7 +580,7 @@ impl ProviderResponseExt for GenerateContentResponse {
         }
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         self.candidates.first().and_then(|c| {
             c.content.as_ref().and_then(|content| {
                 let text: Vec<String> = content
@@ -610,7 +610,7 @@ impl ProviderResponseExt for GenerateContentResponse {
         })
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         self.usage_metadata
     }
 }
@@ -1159,7 +1159,7 @@ mod tests {
     /// There is no cassette harness for this transport (it is protobuf over
     /// gRPC, not HTTP), so the wire shape is stated directly.
     #[test]
-    fn get_text_response_skips_thought_parts() {
+    fn text_response_skips_thought_parts() {
         let response = proto::GenerateContentResponse {
             candidates: vec![proto::Candidate {
                 content: Some(proto::Content {
@@ -1185,7 +1185,7 @@ mod tests {
         };
 
         assert_eq!(
-            response.get_text_response().as_deref(),
+            response.text_response().as_deref(),
             Some("The answer is 42."),
             "reasoning must not be reported as the response text"
         );

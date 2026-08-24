@@ -125,20 +125,20 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = openai::Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
-        self.openai.get_response_id()
+    fn response_id(&self) -> Option<&str> {
+        self.openai.response_id()
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
-        self.openai.get_response_model_name()
+    fn response_model_name(&self) -> Option<&str> {
+        self.openai.response_model_name()
     }
 
-    fn get_text_response(&self) -> Option<String> {
-        self.openai.get_text_response()
+    fn text_response(&self) -> Option<String> {
+        self.openai.text_response()
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
-        self.openai.get_usage()
+    fn usage(&self) -> Option<Self::Usage> {
+        self.openai.usage()
     }
 }
 
@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(response.predicted_tokens_per_second(), Some(118.3));
 
         // The OpenAI half is intact and normalizes exactly as before.
-        assert_eq!(response.get_response_id(), Some("chatcmpl-abc"));
+        assert_eq!(response.response_id(), Some("chatcmpl-abc"));
         assert_eq!(
             response.openai.system_fingerprint.as_deref(),
             Some("b10499-6d05498")
@@ -211,7 +211,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("should decode without timings: {error}"));
         assert!(response.timings.is_none());
         assert!(response.predicted_tokens_per_second().is_none());
-        assert_eq!(response.get_text_response().as_deref(), Some("ok"));
+        assert_eq!(response.text_response().as_deref(), Some("ok"));
     }
 
     /// Round-tripping must not invent or lose the extra field.

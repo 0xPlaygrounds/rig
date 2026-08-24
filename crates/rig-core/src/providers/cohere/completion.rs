@@ -50,15 +50,15 @@ impl CompletionResponse {
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         None
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         let Message::Assistant { ref content, .. } = self.message else {
             return None;
         };
@@ -78,7 +78,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
         if res.is_empty() { None } else { Some(res) }
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         self.usage
     }
 }

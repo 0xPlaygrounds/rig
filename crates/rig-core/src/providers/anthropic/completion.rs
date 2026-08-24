@@ -111,15 +111,15 @@ pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         Some(self.model.as_str())
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         let res = self
             .content
             .iter()
@@ -135,7 +135,7 @@ impl ProviderResponseExt for CompletionResponse {
         if res.is_empty() { None } else { Some(res) }
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         Some(self.usage)
     }
 }
@@ -6358,7 +6358,7 @@ mod tests {
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
         // The wire response is consumed by the conversion, so read the
         // provider-native text off it first.
-        let raw_text_response = response.get_text_response();
+        let raw_text_response = response.text_response();
         let converted = response.normalize("anthropic").unwrap();
         assert_eq!(converted.choice.len(), 3);
         assert_eq!(
@@ -6715,7 +6715,7 @@ mod tests {
         };
 
         assert_eq!(
-            response.get_text_response().as_deref(),
+            response.text_response().as_deref(),
             Some("According to the document, the grass is green and the sky is blue.")
         );
     }

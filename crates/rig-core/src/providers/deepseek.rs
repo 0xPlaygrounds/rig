@@ -196,15 +196,15 @@ pub struct CompletionResponse {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         self.model.as_deref()
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         self.choices
             .iter()
             .find_map(|choice| match &choice.message {
@@ -213,7 +213,7 @@ impl ProviderResponseExt for CompletionResponse {
             })
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         Some(self.usage)
     }
 }

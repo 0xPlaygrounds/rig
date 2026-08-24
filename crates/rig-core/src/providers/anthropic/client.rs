@@ -119,7 +119,7 @@ client::impl_provider_from_env!(
 /// # }
 /// ```
 impl<H> ClientBuilder<H> {
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
+    pub fn anthropic_version(self, anthropic_version: impl Into<String>) -> Self {
         self.over_ext(|ext| AnthropicBuilder {
             anthropic_version: anthropic_version.into(),
             ..ext
@@ -135,7 +135,7 @@ impl<H> ClientBuilder<H> {
         })
     }
 
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
+    pub fn anthropic_beta(self, anthropic_beta: impl Into<String>) -> Self {
         self.over_ext(|mut ext| {
             ext.anthropic_betas.push(anthropic_beta.into());
 
@@ -204,7 +204,7 @@ macro_rules! impl_anthropic_compatible_builder {
                 H,
             >
         {
-            pub fn anthropic_version(self, anthropic_version: &str) -> Self {
+            pub fn anthropic_version(self, anthropic_version: impl Into<String>) -> Self {
                 self.over_ext(|mut ext| {
                     ext.anthropic.anthropic_version = anthropic_version.into();
                     ext
@@ -220,7 +220,7 @@ macro_rules! impl_anthropic_compatible_builder {
                 })
             }
 
-            pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
+            pub fn anthropic_beta(self, anthropic_beta: impl Into<String>) -> Self {
                 self.over_ext(|mut ext| {
                     ext.anthropic.anthropic_betas.push(anthropic_beta.into());
                     ext

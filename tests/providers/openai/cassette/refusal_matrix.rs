@@ -19,7 +19,7 @@
 //! * history round-trip (`TryFrom<Message> for message::Message`) → the
 //!   conversion error `Neither `content` nor `tool_calls` was provided`.
 //!
-//! Meanwhile `ProviderResponseExt::get_text_response` *did* fall back to the
+//! Meanwhile `ProviderResponseExt::text_response` *did* fall back to the
 //! field, so the raw text view and the normalized response disagreed about
 //! whether the turn had said anything — and the same rig-level request driven
 //! through the Responses API surfaced the refusal fine.
@@ -218,7 +218,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
                 })
                 .expect("the recorded turn must carry a top-level refusal");
             let raw_text = raw
-                .get_text_response()
+                .text_response()
                 .expect("the raw text view already reported the refusal");
 
             let normalized: rig::completion::CompletionResponse =

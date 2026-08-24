@@ -261,7 +261,7 @@ impl CompletionModel {
 
             let span = tracing::Span::current();
             span.record_response_metadata(&aws_output);
-            span.record_token_usage(&aws_output.get_usage().unwrap_or_default());
+            span.record_token_usage(&aws_output.usage().unwrap_or_default());
 
             Ok(aws_output)
         }

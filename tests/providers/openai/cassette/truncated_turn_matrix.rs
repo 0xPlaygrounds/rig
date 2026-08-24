@@ -212,7 +212,7 @@ async fn chat_blocking_raw_and_normalized_agree() {
                     .map(|choice| choice.finish_reason.as_str()),
                 Some("length")
             );
-            assert_eq!(raw.get_text_response(), None);
+            assert_eq!(raw.text_response(), None);
 
             let normalized: rig::completion::CompletionResponse =
                 raw.normalize("openai").expect("normalization");

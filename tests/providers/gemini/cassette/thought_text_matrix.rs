@@ -13,7 +13,7 @@
 //!   `response.text` was **the model's private reasoning** and the actual
 //!   transcript, sitting in parts[1], was dropped. A transcript split across
 //!   several text parts lost everything after the first, too.
-//! * `ProviderResponseExt::get_text_response` collected *every* text part,
+//! * `ProviderResponseExt::text_response` collected *every* text part,
 //!   gluing the chain-of-thought onto the answer. Rig's other Gemini
 //!   transport (the Interactions API) and Anthropic both exclude reasoning
 //!   from that method, so the REST wire was the odd one out.
@@ -35,24 +35,24 @@
 //! | 4 | `transcription_with_thoughts_on_gemini_3_flash` | transcription | `thinkingLevel` dialect |
 //! | 5 | `transcription_with_thoughts_and_temperature` | transcription | temperature alongside thoughts |
 //! | 6 | `transcription_with_a_large_thinking_budget` | transcription | long reasoning before the transcript |
-//! | 7 | `text_response_skips_thoughts_on_gemini_2_5_flash` | `get_text_response` | the bug's second reader |
-//! | 8 | `text_response_skips_thoughts_on_gemini_3_flash` | `get_text_response` | `thinkingLevel` dialect |
-//! | 9 | `text_response_with_thinking_disabled_is_unchanged` | `get_text_response` | no-thoughts regression guard |
-//! | 10 | `text_response_on_gemini_2_5_flash_lite` | `get_text_response` | third model |
-//! | 11 | `text_response_on_gemini_3_1_flash_lite` | `get_text_response` | pre-thinking model family |
-//! | 12 | `text_response_with_a_large_thinking_budget` | `get_text_response` | long reasoning |
-//! | 13 | `text_response_with_a_preamble` | `get_text_response` | `systemInstruction` present |
-//! | 14 | `text_response_on_a_tool_call_turn` | `get_text_response` | thought part beside a `functionCall` |
-//! | 15 | `text_response_with_structured_output` | `get_text_response` | `responseJsonSchema` turn |
-//! | 16 | `text_response_across_two_candidates` | `get_text_response` | `candidateCount: 2` |
-//! | 17 | `text_response_is_none_when_the_turn_is_all_thought` | `get_text_response` | budget spent entirely on thinking |
+//! | 7 | `text_response_skips_thoughts_on_gemini_2_5_flash` | `text_response` | the bug's second reader |
+//! | 8 | `text_response_skips_thoughts_on_gemini_3_flash` | `text_response` | `thinkingLevel` dialect |
+//! | 9 | `text_response_with_thinking_disabled_is_unchanged` | `text_response` | no-thoughts regression guard |
+//! | 10 | `text_response_on_gemini_2_5_flash_lite` | `text_response` | third model |
+//! | 11 | `text_response_on_gemini_3_1_flash_lite` | `text_response` | pre-thinking model family |
+//! | 12 | `text_response_with_a_large_thinking_budget` | `text_response` | long reasoning |
+//! | 13 | `text_response_with_a_preamble` | `text_response` | `systemInstruction` present |
+//! | 14 | `text_response_on_a_tool_call_turn` | `text_response` | thought part beside a `functionCall` |
+//! | 15 | `text_response_with_structured_output` | `text_response` | `responseJsonSchema` turn |
+//! | 16 | `text_response_across_two_candidates` | `text_response` | `candidateCount: 2` |
+//! | 17 | `text_response_is_none_when_the_turn_is_all_thought` | `text_response` | budget spent entirely on thinking |
 //! | 18 | `streaming_twin_keeps_reasoning_out_of_the_text` | stream | streaming parity for the same request |
 //! | 19 | `text_response_matches_the_choice_text` (unit) | both | see below |
 //! | 20 | `transcription_joins_every_visible_text_part` (unit) | transcription | see below |
 //! | 21 | `transcription_rejects_a_thought_only_candidate` (unit) | transcription | see below |
 //! | 22 | `transcription_rejects_a_candidate_with_no_text_part` (unit) | transcription | see below |
-//! | 23 | `text_response_is_none_for_a_thought_only_candidate` (unit) | `get_text_response` | see below |
-//! | 24 | `text_response_still_ignores_non_model_roles` (unit) | `get_text_response` | see below |
+//! | 23 | `text_response_is_none_for_a_thought_only_candidate` (unit) | `text_response` | see below |
+//! | 24 | `text_response_still_ignores_non_model_roles` (unit) | `text_response` | see below |
 //! | 25 | `transcription_keeps_an_empty_visible_text_part` (unit) | transcription | see below |
 //! | 26 | `blocking_keeps_a_trailing_thought_signature` | blocking choice | Gemini 3's no-`thought`-flag signature |
 //! | 27 | `streaming_twin_agrees_on_a_trailing_thought_signature` | stream | the same bytes, the same choice |
@@ -412,9 +412,9 @@ async fn transcription_with_a_large_thinking_budget() {
     assert_thought_parts_recorded(SCENARIO, true);
 }
 
-// --- 7-17: the `get_text_response` reader ---------------------------------
+// --- 7-17: the `text_response` reader ---------------------------------
 
-/// One `get_text_response` cell: the provider-native reader and the
+/// One `text_response` cell: the provider-native reader and the
 /// normalized choice must agree about what the *text* of the turn was, and
 /// reasoning must appear in neither's text.
 struct TextResponseCell {
@@ -488,18 +488,18 @@ async fn text_response_body(
         }
     );
 
-    let text_response = raw.get_text_response();
+    let text_response = raw.text_response();
     for thought in &recorded_thoughts {
         if let Some(text) = text_response.as_deref() {
             assert!(
                 !text.contains(thought.as_str()),
-                "{scenario}: get_text_response must not carry the chain-of-thought"
+                "{scenario}: text_response must not carry the chain-of-thought"
             );
         }
     }
 
     // The two readers of one payload must agree. `choice_text` joins the
-    // normalized text blocks the same way `get_text_response` joins parts.
+    // normalized text blocks the same way `text_response` joins parts.
     let normalized: rig::completion::CompletionResponse =
         raw.try_into().expect("payload should normalize");
     assert_eq!(
@@ -761,7 +761,7 @@ async fn text_response_on_a_tool_call_turn() {
 
             // A tool-call turn's *text* is whatever visible text parts it has —
             // never the reasoning that preceded the call.
-            let text_response = raw.get_text_response().unwrap_or_default();
+            let text_response = raw.text_response().unwrap_or_default();
             let normalized: rig::completion::CompletionResponse =
                 raw.try_into().expect("payload should normalize");
             assert_eq!(
@@ -832,7 +832,7 @@ async fn text_response_across_two_candidates() {
     const SCENARIO: &str = "thought_text_matrix/text_response_across_two_candidates";
 
     // `candidateCount: 2` is the one shape where the two readers legitimately
-    // differ: `get_text_response` folds every candidate, while the normalized
+    // differ: `text_response` folds every candidate, while the normalized
     // choice is candidate 0 alone. The thought filter must still apply per
     // candidate rather than only to the first.
     with_gemini_thought_text_cassette(
@@ -867,9 +867,7 @@ async fn text_response_across_two_candidates() {
                 "the recorded turn should carry thought parts"
             );
 
-            let text_response = raw
-                .get_text_response()
-                .expect("a two-candidate turn has text");
+            let text_response = raw.text_response().expect("a two-candidate turn has text");
             for thought in &thoughts {
                 assert!(
                     !text_response.contains(thought.as_str()),
@@ -957,7 +955,7 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
                 "this cell's premise is a turn whose parts are all thoughts; got {visible:?}"
             );
             assert_eq!(
-                raw.get_text_response(),
+                raw.text_response(),
                 None,
                 "a turn that produced no visible text has no text response — returning the \
              chain-of-thought here is exactly the bug"
@@ -1178,7 +1176,7 @@ mod unit {
 
         for (index, parts) in layouts.into_iter().enumerate() {
             let response = response_with(parts, "model");
-            let text_response = response.get_text_response();
+            let text_response = response.text_response();
             let normalized: rig::completion::CompletionResponse =
                 response.try_into().expect("payload should normalize");
             let choice_text = normalized
@@ -1317,7 +1315,7 @@ mod unit {
     fn text_response_is_none_for_a_thought_only_candidate() {
         let response = response_with(vec![thought_part("Still working it out...")], "model");
         assert_eq!(
-            response.get_text_response(),
+            response.text_response(),
             None,
             "a candidate with no visible text has no text response"
         );
@@ -1430,7 +1428,7 @@ mod unit {
     fn text_response_still_ignores_non_model_roles() {
         let response = response_with(vec![text_part("answer")], "user");
         assert_eq!(
-            response.get_text_response(),
+            response.text_response(),
             None,
             "only model-role candidates contribute text"
         );
