@@ -18,7 +18,7 @@
 //!
 //! Two things already disagreed with that on `origin/main`:
 //!
-//! * `ProviderResponseExt::get_text_response` routes through
+//! * `ProviderResponseExt::text_response` routes through
 //!   `openai::completion::assistant_message_text_response`, which *does* apply
 //!   the fallback — so the raw text view and the normalized response disagreed
 //!   about whether the turn said anything;
@@ -232,7 +232,7 @@ async fn blocking_raw_and_normalized_agree() {
                 })
                 .expect("the recorded turn must carry a top-level refusal");
             let raw_text = raw
-                .get_text_response()
+                .text_response()
                 .expect("the raw text view already reported the refusal on origin/main");
 
             let normalized = raw.normalize("openrouter").expect("normalization");

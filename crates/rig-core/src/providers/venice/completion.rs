@@ -305,20 +305,20 @@ impl NormalizeCompletionResponse for CompletionResponse {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = <openai::CompletionResponse as ProviderResponseExt>::Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
-        self.openai.get_response_id()
+    fn response_id(&self) -> Option<&str> {
+        self.openai.response_id()
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
-        self.openai.get_response_model_name()
+    fn response_model_name(&self) -> Option<&str> {
+        self.openai.response_model_name()
     }
 
-    fn get_text_response(&self) -> Option<String> {
-        self.openai.get_text_response()
+    fn text_response(&self) -> Option<String> {
+        self.openai.text_response()
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
-        self.openai.get_usage()
+    fn usage(&self) -> Option<Self::Usage> {
+        self.openai.usage()
     }
 }
 
@@ -391,7 +391,7 @@ mod tests {
             serde_json::from_value(body).expect("response should decode");
 
         assert_eq!(response.openai.id, "chatcmpl-1");
-        assert_eq!(response.get_text_response().as_deref(), Some("hi"));
+        assert_eq!(response.text_response().as_deref(), Some("hi"));
         assert_eq!(response.cost.expect("cost").diem, 0.0);
         assert_eq!(response.web_search_citations().len(), 1);
         assert_eq!(response.web_search_citations()[0].title, "Rust");

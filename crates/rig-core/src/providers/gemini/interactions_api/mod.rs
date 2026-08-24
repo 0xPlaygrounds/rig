@@ -755,7 +755,7 @@ pub mod interactions_api_types {
     impl ProviderResponseExt for Interaction {
         type Usage = InteractionUsage;
 
-        fn get_response_id(&self) -> Option<&str> {
+        fn response_id(&self) -> Option<&str> {
             if self.id.is_empty() {
                 None
             } else {
@@ -763,11 +763,11 @@ pub mod interactions_api_types {
             }
         }
 
-        fn get_response_model_name(&self) -> Option<&str> {
+        fn response_model_name(&self) -> Option<&str> {
             self.model.as_deref()
         }
 
-        fn get_text_response(&self) -> Option<String> {
+        fn text_response(&self) -> Option<String> {
             let text = self
                 .output_contents()
                 .iter()
@@ -781,7 +781,7 @@ pub mod interactions_api_types {
             if text.is_empty() { None } else { Some(text) }
         }
 
-        fn get_usage(&self) -> Option<Self::Usage> {
+        fn usage(&self) -> Option<Self::Usage> {
             self.usage
         }
     }

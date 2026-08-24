@@ -887,15 +887,15 @@ pub mod gemini_api_types {
     impl ProviderResponseExt for GenerateContentResponse {
         type Usage = UsageMetadata;
 
-        fn get_response_id(&self) -> Option<&str> {
+        fn response_id(&self) -> Option<&str> {
             Some(self.response_id.as_str())
         }
 
-        fn get_response_model_name(&self) -> Option<&str> {
+        fn response_model_name(&self) -> Option<&str> {
             self.model_version.as_deref()
         }
 
-        fn get_text_response(&self) -> Option<String> {
+        fn text_response(&self) -> Option<String> {
             let str = self
                 .candidates
                 .iter()
@@ -913,7 +913,7 @@ pub mod gemini_api_types {
             if str.is_empty() { None } else { Some(str) }
         }
 
-        fn get_usage(&self) -> Option<Self::Usage> {
+        fn usage(&self) -> Option<Self::Usage> {
             self.usage_metadata.clone()
         }
     }
@@ -930,7 +930,7 @@ pub mod gemini_api_types {
     /// The *skip* rule lives here; the *join* rule stays with each caller,
     /// because they differ legitimately: a transcript is one continuous text
     /// whose part boundaries are not sentence boundaries, so transcription
-    /// concatenates, while `get_text_response` keeps the newline separator it
+    /// concatenates, while `text_response` keeps the newline separator it
     /// has always used between a candidate's blocks.
     pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
         content.parts.iter().filter_map(|part| match &part.part {

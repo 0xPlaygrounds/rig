@@ -152,21 +152,21 @@ pub type CompletionModel<H> =
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         match self {
             Self::Structured { id, .. } => Some(id.as_str()),
             Self::Simple(_) => None,
         }
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         match self {
             Self::Structured { model, .. } => Some(model.as_str()),
             Self::Simple(_) => None,
         }
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         match self {
             Self::Structured { choices, .. } => choices
                 .iter()
@@ -176,7 +176,7 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
         }
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         match self {
             Self::Structured { usage, .. } => usage.clone(),
             Self::Simple(_) => None,

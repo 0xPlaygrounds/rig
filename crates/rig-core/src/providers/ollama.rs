@@ -407,22 +407,22 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
     /// Ollama's chat API carries no response ID.
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         None
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         Some(self.model.as_str())
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         match &self.message {
             Message::Assistant { content, .. } if !content.is_empty() => Some(content.clone()),
             _ => None,
         }
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         Some(Usage::from(self))
     }
 }

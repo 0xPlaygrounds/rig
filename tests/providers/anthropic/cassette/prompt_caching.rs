@@ -313,7 +313,7 @@ fn assert_matrix_raw_response(
     prefix_ttl: Option<&CacheTtl>,
     context: &str,
 ) {
-    let text = response.get_text_response().unwrap_or_default();
+    let text = response.text_response().unwrap_or_default();
     assert_text_contains_cache_probe(&text, CACHE_PROBE_RESPONSE);
     assert_cache_creation_split(&response.usage, mode, prefix_ttl, context);
 }

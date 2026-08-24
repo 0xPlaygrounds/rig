@@ -711,7 +711,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 // `refusal` content part below — that spelling belongs to the
                 // Responses API, which this wire never sends. Reading only
                 // `content` dropped the refusal outright and normalized the
-                // turn to nothing, while `get_text_response` already fell back
+                // turn to nothing, while `text_response` already fell back
                 // to the field and the streaming path already delivered it.
                 // The rule is shared with the OpenAI chat path so no two
                 // readers of this wire can disagree about it (#2332).
@@ -860,15 +860,15 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 impl ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
 
-    fn get_response_id(&self) -> Option<&str> {
+    fn response_id(&self) -> Option<&str> {
         Some(self.id.as_str())
     }
 
-    fn get_response_model_name(&self) -> Option<&str> {
+    fn response_model_name(&self) -> Option<&str> {
         Some(self.model.as_str())
     }
 
-    fn get_text_response(&self) -> Option<String> {
+    fn text_response(&self) -> Option<String> {
         let response = self
             .choices
             .iter()
@@ -881,7 +881,7 @@ impl ProviderResponseExt for CompletionResponse {
         (!response.is_empty()).then_some(response)
     }
 
-    fn get_usage(&self) -> Option<Self::Usage> {
+    fn usage(&self) -> Option<Self::Usage> {
         self.usage
     }
 }
@@ -5032,7 +5032,7 @@ mod tests {
             "refusal": "I'm sorry, but I can't help with that.",
         }));
 
-        let raw_text = response.get_text_response().unwrap();
+        let raw_text = response.text_response().unwrap();
         let normalized = response.normalize(PROVIDER_NAME).unwrap();
 
         assert_eq!(text_parts(&normalized), vec![raw_text]);

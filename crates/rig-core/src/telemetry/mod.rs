@@ -925,16 +925,16 @@ pub trait ProviderResponseExt {
     type Usage: Serialize;
 
     /// Returns the provider response ID, if supplied.
-    fn get_response_id(&self) -> Option<&str>;
+    fn response_id(&self) -> Option<&str>;
 
     /// Returns the provider response model name, if supplied.
-    fn get_response_model_name(&self) -> Option<&str>;
+    fn response_model_name(&self) -> Option<&str>;
 
     /// Returns the primary text response, when available.
-    fn get_text_response(&self) -> Option<String>;
+    fn text_response(&self) -> Option<String>;
 
     /// Returns provider-native usage metrics, if supplied.
-    fn get_usage(&self) -> Option<Self::Usage>;
+    fn usage(&self) -> Option<Self::Usage>;
 }
 
 /// A trait designed specifically to be used with Spans for the purpose of recording telemetry.
@@ -984,11 +984,11 @@ impl SpanCombinator for tracing::Span {
             return;
         }
 
-        if let Some(id) = response.get_response_id() {
+        if let Some(id) = response.response_id() {
             self.record("gen_ai.response.id", id);
         }
 
-        if let Some(model_name) = response.get_response_model_name() {
+        if let Some(model_name) = response.response_model_name() {
             self.record("gen_ai.response.model", model_name);
         }
     }

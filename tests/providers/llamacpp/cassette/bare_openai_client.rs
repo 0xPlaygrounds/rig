@@ -308,7 +308,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .await
                 .expect("raw completions api request should succeed");
             let raw_text = raw
-                .get_text_response()
+                .text_response()
                 .expect("raw completions api response should contain assistant text");
             let response: rig::completion::CompletionResponse = raw
                 .normalize("openai")
