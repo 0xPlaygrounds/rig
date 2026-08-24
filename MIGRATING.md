@@ -806,6 +806,63 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
+
+Two identifiers that were bare `String`s are now dedicated types in
+`rig_core::id`, alongside `RunId`:
+
+- **`InternalCallId`** — the rig-generated correlator tying one tool call's
+  stream items together (argument deltas → completed call → execution →
+  result) — is now a `Copy + Hash + Ord` `NonZeroU64` counter id with
+  transparent serde, minted by the streaming assembler (it was a 21-char
+  nanoid `String`). It changes type everywhere it appears:
+  `StreamedAssistantContent::{ToolCall, ToolCallDelta}`,
+  `StreamedUserContent::ToolResult`, `RawStreamingToolCall`,
+  `MultiTurnStreamItem::ToolExecutionCommitted`,
+  `rig_run::PendingToolCall::internal_call_id`,
+  `rig_run::InvalidToolCallContext`, and the hook events
+  (`ToolCall`/`ToolResultEvent`/`ToolCallDelta`, where it was `&'a str` and is
+  now a by-value `InternalCallId`). Code that compared it to string literals
+  should compare ids; code that displayed it still can (`Display` renders the
+  decimal). **Serialized stream items and persisted runs now carry it as a
+  number** — run-state has no cross-version stability contract, so re-persist
+  runs with this release. Persisted ids loaded by a new process advance the
+  mint counter (`InternalCallId::advance_past`, wired into
+  `PendingToolCall`'s deserialize) so fresh mints cannot collide with ids
+  consumers already saw.
+- **`ConversationId`** — the key scoping `ConversationMemory` — is a
+  string-backed `Hash + Eq` newtype with transparent serde (`From<&str>`,
+  `From<String>`, `Display`, `as_str`). The `ConversationMemory` trait
+  methods, the rig-memory adapters (`on_demote`, `compact`, `forget`),
+  `InMemoryConversationMemory`'s keys, and the `conversation(..)` setters on
+  `AgentBuilder`/`AgentRunner`/prompt requests all use it; the setters take
+  `impl Into<ConversationId>`, so call sites passing strings compile
+  unchanged — only `ConversationMemory` implementors and callers of `load`/
+  `append`/`clear` with `&str` must wrap (`&"thread-1".into()`).
+
+### The protocol surface is fully data; owned-future entry points
+
+Groundwork for stepping `AgentRun` from a host scheduler (the upcoming Bevy
+plugin), all additive or derive-only:
+
+- `rig_run::ModelTurn::from_response(resp, &PreparedRequest)` (and
+  `from_response_parts`) is now the one blessed `CompletionResponse →
+  ModelTurn` conversion; rig-agent's runner uses it, and any external driver
+  must too — it settles the two inputs hand-assembly gets wrong (tool-name
+  sets from the *prepared request*; the normalized `finish_reason()`
+  accessor).
+- `AgentRunStep`, `PreparedRequest`, `RequestPatch`,
+  `InvalidToolCallContext`, `RetryRequest`, `InvalidToolCallAction`, and
+  `StreamedTurnEvent` derive `Serialize + Deserialize`; `ModelTurnOutcome` is
+  additionally `Clone`. `StreamedTurnAssembler` is now `Clone + Serialize +
+  Deserialize`, so a mid-stream streamed turn persists and resumes like a
+  blocking `AgentRun` (same no-cross-version caveat).
+- `ToolCatalog::execute_owned(self, name, args, context) → (ToolResult,
+  ToolContext)` and `ConversationMemoryExt::{load_owned, append_owned,
+  clear_owned}` (blanket-implemented, `Arc<Self>` + owned `ConversationId`)
+  provide `Send + 'static` futures for hosts that spawn tasks; the borrowed
+  methods remain the implementation surface.
+
 ### The `discord-bot` feature is gone; the integration is an example
 
 `rig`'s `discord-bot` feature, rig-agent's `discord-bot` feature, and
