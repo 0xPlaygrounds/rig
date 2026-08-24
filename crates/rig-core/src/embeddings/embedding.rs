@@ -320,23 +320,6 @@ impl ImageEmbeddingResponse {
 
 crate::provider_response::modality_response_metadata_setters!(ImageEmbeddingResponse);
 
-/// Convert a provider's own image embedding payload into the normalized [`ImageEmbeddingResponse`].
-///
-/// The provider descriptor name is an *input*, never something the conversion
-/// knows — several providers share one wire shape, and a hardcoded name would
-/// mislabel every provider but one. A trait rather than `TryFrom<(&str, T)>`
-/// so that out-of-tree provider extensions can implement it on their own
-/// response type without tripping the orphan rule.
-pub trait NormalizeImageEmbeddingResponse {
-    /// Normalize this payload, attributing it to `provider`. `documents` are
-    /// the inputs in request order, for [`Embedding::document`].
-    fn normalize(
-        self,
-        provider: &str,
-        documents: Vec<String>,
-    ) -> Result<ImageEmbeddingResponse, EmbeddingError>;
-}
-
 /// Trait for embedding models that can generate embeddings for images.
 pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of images the provider accepts in one request.
