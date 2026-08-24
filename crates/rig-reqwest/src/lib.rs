@@ -126,10 +126,8 @@ use std::pin::Pin;
 /// paths can still read the code; a response-less failure (connect, decode,
 /// timeout) becomes [`Error::Instance`].
 pub fn from_reqwest(err: reqwest::Error) -> Error {
-    match err.status() {
-        Some(status) => Error::InvalidStatusCode(status),
-        None => Error::instance(err),
-    }
+    err.status()
+        .map_or_else(|| Error::instance(err), Error::InvalidStatusCode)
 }
 
 /// Read the status, headers and body off a failed `reqwest::Response` and

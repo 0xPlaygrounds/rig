@@ -8,7 +8,7 @@
 //! The root `rig` facade re-exports this crate as `rig::postgres` when the
 //! `postgres` feature is enabled.
 
-use std::{fmt::Display, ops::RangeInclusive};
+use std::{fmt::Display, fmt::Write as _, ops::RangeInclusive};
 
 use rig_core::{
     Embed,
@@ -310,7 +310,7 @@ impl PostgresVectorStore {
             buf.push(c);
 
             if c == '$' {
-                buf.push_str(counter.to_string().as_str());
+                let _ = write!(buf, "{counter}");
                 counter += 1;
             }
         }

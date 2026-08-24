@@ -661,7 +661,7 @@ macro_rules! stateful_wrapper_common {
             /// Useful for telemetry and leak detection. Returns `0` if the
             /// internal state lock is poisoned.
             pub fn tracked_conversations(&self) -> usize {
-                self.state.lock().map(|g| g.len()).unwrap_or(0)
+                self.state.lock().map_or(0, |g| g.len())
             }
         }
 
@@ -1336,10 +1336,10 @@ fn truncate_summary(buf: &str, cap: usize) -> String {
     const MARKER: &str = "[\u{2026}truncated\u{2026}]\n";
     // Body starts right after the first newline in `buf`. If `buf` has
     // no newline at all there is no body to drop, so return as-is.
-    let header_prefix_len = match buf.find('\n') {
-        Some(i) => i + 1,
-        None => return buf.to_string(),
+    let Some(newline) = buf.find('\n') else {
+        return buf.to_string();
     };
+    let header_prefix_len = newline + 1;
     if buf.len() <= header_prefix_len {
         return buf.to_string();
     }

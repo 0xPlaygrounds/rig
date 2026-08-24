@@ -1263,6 +1263,8 @@ mod wasm_model_listing_compile_checks {
             .map(assert_model_listing_client);
     }
 
+    // Only referenced on the wasm target's compile pass; native builds see it
+    // as dead code.
     #[allow(dead_code)]
     fn compile_assertions() {
         assert_simple_model_listers_accept_wasm_only_http_clients();

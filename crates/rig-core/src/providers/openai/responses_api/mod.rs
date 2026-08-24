@@ -532,11 +532,9 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         }) => {
                             let url = match data {
                                 DocumentSourceKind::Base64(data) => {
-                                    let media_type = if let Some(media_type) = media_type {
-                                        media_type.to_mime_type().to_string()
-                                    } else {
-                                        String::new()
-                                    };
+                                    let media_type = media_type
+                                        .map(|media_type| media_type.to_mime_type().to_string())
+                                        .unwrap_or_default();
                                     format!("data:{media_type};base64,{data}")
                                 }
                                 DocumentSourceKind::Url(url) => url,

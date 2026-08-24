@@ -1172,7 +1172,7 @@ mod tests {
             "cache_control": {"type": "ephemeral", "ttl": "1h"}
         });
         let top_level_cache_control =
-            resolve_top_level_cache_control(false, &None, &mut additional_params).unwrap();
+            resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
         let mut tools =
             build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
                 vec![crate::completion::ToolDefinition {

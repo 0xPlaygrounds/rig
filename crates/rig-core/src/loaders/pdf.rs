@@ -76,7 +76,7 @@ impl Loadable for Vec<u8> {
 ///         .collect();
 ///
 ///     for content in contents {
-///         println!("{}", content);
+///         println!("{content}");
 ///     }
 ///
 ///     Ok(())
@@ -105,8 +105,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok(doc) => println!("{:?}", doc),
-    ///         Err(e) => eprintln!("Error reading pdf: {}", e),
+    ///         Ok(doc) => println!("{doc:?}"),
+    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -131,8 +131,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.load_with_path().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, doc)) => println!("{:?} {:?}", path, doc),
-    ///         Err(e) => eprintln!("Error reading pdf: {}", e),
+    ///         Ok((path, doc)) => println!("{path:?} {doc:?}"),
+    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -178,8 +178,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok(content) => println!("{}", content),
-    ///         Err(e) => eprintln!("Error reading pdf: {}", e),
+    ///         Ok(content) => println!("{content}"),
+    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -204,8 +204,8 @@ impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read_with_path().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, content)) => println!("{:?} {}", path, content),
-    ///         Err(e) => eprintln!("Error reading pdf: {}", e),
+    ///         Ok((path, content)) => println!("{path:?} {content}"),
+    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -238,8 +238,8 @@ impl<'a> PdfFileLoader<'a, Document> {
     ///     .into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok(page) => println!("{}", page),
-    ///         Err(e) => eprintln!("Error reading pdf: {}", e),
+    ///         Ok(page) => println!("{page}"),
+    ///         Err(e) => eprintln!("Error reading pdf: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -276,8 +276,8 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     ///     println!("{}", path.display());
     ///     for (pageno, result) in pages {
     ///         match result {
-    ///             Ok(content) => println!("Page {}: {}", pageno, content),
-    ///             Err(e) => eprintln!("Error reading page: {}", e),
+    ///             Ok(content) => println!("Page {pageno}: {content}"),
+    ///             Err(e) => eprintln!("Error reading page: {e}"),
     ///         }
     ///     }
     /// }

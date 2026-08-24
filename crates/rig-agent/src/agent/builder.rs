@@ -608,7 +608,7 @@ mod tests {
                 .tool(NamedTool::new())
                 .build(),
         ] {
-            let definitions = agent.tool_server_handle.get_tool_defs(None).await.unwrap();
+            let definitions = agent.tool_server_handle.tool_defs(None).await.unwrap();
             assert!(
                 definitions
                     .iter()
@@ -638,7 +638,7 @@ mod tests {
         assert!(
             retrieval_only
                 .tool_server_handle
-                .get_tool_defs(None)
+                .tool_defs(None)
                 .await
                 .unwrap()
                 .is_empty()
@@ -653,7 +653,7 @@ mod tests {
             )
             .build();
 
-        let always = agent.tool_server_handle.get_tool_defs(None).await.unwrap();
+        let always = agent.tool_server_handle.tool_defs(None).await.unwrap();
         assert_eq!(
             always
                 .iter()
@@ -664,7 +664,7 @@ mod tests {
 
         let with_retrieval = agent
             .tool_server_handle
-            .get_tool_defs(Some("add two numbers".to_string()))
+            .tool_defs(Some("add two numbers".to_string()))
             .await
             .unwrap();
         assert_eq!(

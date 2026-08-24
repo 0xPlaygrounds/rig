@@ -20,7 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(openai-compatible)* `OpenAICompatibleProvider::SUPPORTS_IMAGE_TOOL_RESULTS`, letting a server that honours an image inside a `role:"tool"` message receive one; enabled for llama.cpp (`providers::llamacpp`), off everywhere else because official OpenAI refuses it on Chat Completions (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(gemini)* explicit context caching (`cachedContents`) — create, reuse and delete a server-side cache that hits from the first request ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 
+### Changed
+
+- *(core, agent, bedrock, vertexai)* [**breaking**] accessors drop their `get_` prefix per Rust naming convention: `ToolCatalog`-side `get_tool_definitions` → `tool_definitions` (rig-core contextual tools), `ToolServerHandle::get_tool_defs` → `tool_defs` (rig-agent), and `Client::get_inner` → `inner` (rig-bedrock, rig-vertexai)
+
 ### Fixed
+
+- *(milvus)* `Filter` and `MilvusValue` are now re-exported from the crate root — `VectorStoreIndex::Filter` named them in public signatures, but their constructors were unreachable outside the crate
 
 - *(llamacpp)* refuse a specific-function `tool_choice` instead of sending one llama.cpp silently reads as `auto` — `llama-server` parses the field as a string and knows only `auto`/`none`/`required`, so a request naming one tool returned whichever tool the model picked (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(llamacpp)* `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` is `false`, which is what llama.cpp measurably does: it streams tool-call arguments one token at a time on every chat template tested (Qwen3, Llama 3.2, Mistral Small 3.2), including for zero-argument calls (by [gold-silver-copper](https://github.com/gold-silver-copper))

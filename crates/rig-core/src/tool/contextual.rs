@@ -778,7 +778,7 @@ impl ToolSet {
     }
 
     /// Provider-facing definitions in registration order.
-    pub fn get_tool_definitions(&self) -> Vec<ToolDefinition> {
+    pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .iter()
             .map(|(name, registration)| registration.tool.definition_with_name(name.clone()))
@@ -924,7 +924,7 @@ mod tests {
     async fn toolset_dispatch_snapshot_is_canonical_and_returns_result_metadata() {
         let mut set = ToolSet::default();
         set.add_tool(Echo);
-        let definitions = set.get_tool_definitions();
+        let definitions = set.tool_definitions();
         assert_eq!(definitions[0].name, "echo");
 
         let mut context = ToolContext::new();

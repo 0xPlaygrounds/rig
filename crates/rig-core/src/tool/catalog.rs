@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(catalog.definitions().len(), 2);
         assert_eq!(
             catalog.definitions(),
-            &set.get_tool_definitions()[..2],
+            &set.tool_definitions()[..2],
             "always-exposed definitions are the set's, in order"
         );
         assert!(set.contains("gamma") && !catalog.contains("gamma"));

@@ -105,7 +105,7 @@ impl ClientBuilder {
 
     /// Build the client with the configured values, falling back to environment variables where not set.
     ///
-    /// The Vertex AI client is built lazily on first use via `get_inner()`.
+    /// The Vertex AI client is built lazily on first use via `inner()`.
     pub fn build(self) -> Result<Client, VertexAiClientError> {
         let project = self
             .project
@@ -203,9 +203,7 @@ impl Client {
         &self.location
     }
 
-    pub async fn get_inner(
-        &self,
-    ) -> Result<&vertexai::client::PredictionService, VertexAiClientError> {
+    pub async fn inner(&self) -> Result<&vertexai::client::PredictionService, VertexAiClientError> {
         let credentials = self.credentials.clone();
         self.vertex_client
             .get_or_init(|| async {

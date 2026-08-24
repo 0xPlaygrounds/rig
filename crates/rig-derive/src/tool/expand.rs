@@ -143,10 +143,10 @@ pub(crate) fn expand_rig_tool(
     let fn_doc = extract_doc_comment(&input_fn.attrs);
     let tool_description = match &args.description {
         Some(desc) => quote! { #desc.to_string() },
-        None => match fn_doc {
-            Some(doc) => quote! { #doc.to_string() },
-            None => quote! { format!("Function to {}", #tool_name) },
-        },
+        None => fn_doc.map_or_else(
+            || quote! { format!("Function to {}", #tool_name) },
+            |doc| quote! { #doc.to_string() },
+        ),
     };
 
     // Classify parameters: model-facing fields are built independently from

@@ -192,14 +192,10 @@ impl std::fmt::Display for Usage {
             f,
             "Input tokens: {}\nCache read input tokens: {}\nCache creation input tokens: {}\nOutput tokens: {}",
             self.input_tokens,
-            match self.cache_read_input_tokens {
-                Some(token) => token.to_string(),
-                None => "n/a".to_string(),
-            },
-            match self.cache_creation_input_tokens {
-                Some(token) => token.to_string(),
-                None => "n/a".to_string(),
-            },
+            self.cache_read_input_tokens
+                .map_or_else(|| "n/a".to_string(), |token| token.to_string()),
+            self.cache_creation_input_tokens
+                .map_or_else(|| "n/a".to_string(), |token| token.to_string()),
             self.output_tokens
         )
     }
@@ -2704,12 +2700,12 @@ pub(super) fn extract_top_level_cache_control(
 
 pub(super) fn resolve_top_level_cache_control(
     automatic_caching: bool,
-    automatic_caching_ttl: &Option<CacheTtl>,
+    automatic_caching_ttl: Option<&CacheTtl>,
     additional_params: &mut serde_json::Value,
 ) -> Result<Option<CacheControl>, CompletionError> {
     let raw_cache_control = extract_top_level_cache_control(additional_params)?;
     let typed_cache_control = automatic_caching.then_some(CacheControl::Ephemeral {
-        ttl: automatic_caching_ttl.clone(),
+        ttl: automatic_caching_ttl.cloned(),
     });
 
     match (typed_cache_control, raw_cache_control) {
@@ -2855,7 +2851,7 @@ impl AnthropicCompletionRequest {
             .unwrap_or(serde_json::Value::Null);
         let top_level_cache_control = resolve_top_level_cache_control(
             automatic_caching,
-            &automatic_caching_ttl,
+            automatic_caching_ttl.as_ref(),
             &mut additional_params_payload,
         )?;
         let mut tools =

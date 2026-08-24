@@ -64,9 +64,9 @@ impl Loadable for PathBuf {
 ///     for (path, chapters) in contents {
 ///         println!("{}", path.display());
 ///         for (idx, chapter) in chapters {
-///             println!("Chapter {} begins", idx);
-///             println!("{}", chapter);
-///             println!("Chapter {} ends", idx);
+///             println!("Chapter {idx} begins");
+///             println!("{chapter}");
+///             println!("Chapter {idx} ends");
 ///         }
 ///     }
 ///
@@ -83,9 +83,9 @@ impl Loadable for PathBuf {
 ///     for (path, chapters) in contents {
 ///         println!("{}", path.display());
 ///         for (idx, chapter) in chapters {
-///             println!("Chapter {} begins", idx);
-///             println!("{}", chapter);
-///             println!("Chapter {} ends", idx);
+///             println!("Chapter {idx} begins");
+///             println!("{chapter}");
+///             println!("Chapter {idx} ends");
 ///         }
 ///     }
 ///
@@ -118,8 +118,8 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.load().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok(doc) => println!("{:?}", doc),
-    ///         Err(e) => eprintln!("Error reading epub: {}", e),
+    ///         Ok(doc) => println!("{doc:?}"),
+    ///         Err(e) => eprintln!("Error reading epub: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -146,8 +146,8 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.load_with_path().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, doc)) => println!("{:?} {:?}", path, doc),
-    ///         Err(e) => eprintln!("Error reading epub: {}", e),
+    ///         Ok((path, doc)) => println!("{path:?} {doc:?}"),
+    ///         Err(e) => eprintln!("Error reading epub: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -177,8 +177,8 @@ where
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.read().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok(content) => println!("{}", content),
-    ///         Err(e) => eprintln!("Error reading epub: {}", e),
+    ///         Ok(content) => println!("{content}"),
+    ///         Err(e) => eprintln!("Error reading epub: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -212,8 +212,8 @@ where
     /// let content = EpubFileLoader::<_, RawTextProcessor>::with_glob("tests/data/*.epub")?.read_with_path().into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, content)) => println!("{:?} {}", path, content),
-    ///         Err(e) => eprintln!("Error reading epub: {}", e),
+    ///         Ok((path, content)) => println!("{path:?} {content}"),
+    ///         Err(e) => eprintln!("Error reading epub: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -256,8 +256,8 @@ where
     ///     .into_iter();
     /// for result in content {
     ///     match result {
-    ///         Ok(chapter) => println!("{}", chapter),
-    ///         Err(e) => eprintln!("Error reading chapter: {}", e),
+    ///         Ok(chapter) => println!("{chapter}"),
+    ///         Err(e) => eprintln!("Error reading chapter: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -290,7 +290,7 @@ impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>
     ///     .into_iter();
     ///
     /// for result in content {
-    ///     println!("{:?}", result);
+    ///     println!("{result:?}");
     /// }
     /// # Ok(())
     /// # }

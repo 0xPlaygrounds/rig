@@ -77,7 +77,7 @@ impl Readable for Vec<u8> {
 ///         .collect();
 ///
 ///     for content in contents {
-///         println!("{}", content);
+///         println!("{content}");
 ///     }
 ///
 ///     Ok(())
@@ -104,8 +104,8 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     /// let content = FileLoader::with_glob("files/*.txt")?.read();
     /// for result in content {
     ///     match result {
-    ///         Ok(content) => println!("{}", content),
-    ///         Err(e) => eprintln!("Error reading file: {}", e),
+    ///         Ok(content) => println!("{content}"),
+    ///         Err(e) => eprintln!("Error reading file: {e}"),
     ///     }
     /// }
     /// # Ok(())
@@ -129,8 +129,8 @@ impl<'a, T: Readable + 'a> FileLoader<'a, T> {
     /// let content = FileLoader::with_glob("files/*.txt")?.read_with_path();
     /// for result in content {
     ///     match result {
-    ///         Ok((path, content)) => println!("{:?} {}", path, content),
-    ///         Err(e) => eprintln!("Error reading file: {}", e),
+    ///         Ok((path, content)) => println!("{path:?} {content}"),
+    ///         Err(e) => eprintln!("Error reading file: {e}"),
     ///     }
     /// }
     /// # Ok(())

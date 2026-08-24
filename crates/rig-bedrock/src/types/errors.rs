@@ -87,10 +87,7 @@ fn gated<E>(
     from_body: impl FnOnce(String) -> E,
     provider_error: impl FnOnce(String) -> E,
 ) -> E {
-    match message {
-        Some(msg) => from_body(msg),
-        None => provider_error(fallback),
-    }
+    message.map_or_else(|| provider_error(fallback), from_body)
 }
 
 const UNEXPECTED: &str = "An unexpected error occurred. Verify Internet connection or AWS keys";

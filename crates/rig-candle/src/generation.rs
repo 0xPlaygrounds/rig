@@ -82,13 +82,6 @@ struct RequestGenerationOverrides {
     repeat_last_n: Option<usize>,
 }
 
-fn override_or<T>(value: Option<T>, default: T) -> T {
-    match value {
-        Some(value) => value,
-        None => default,
-    }
-}
-
 pub(crate) fn effective_generation(
     request: &CompletionRequest,
     defaults: &GenerationConfig,
@@ -100,13 +93,13 @@ pub(crate) fn effective_generation(
         None => RequestGenerationOverrides::default(),
     };
     let generation = GenerationConfig {
-        max_tokens: override_or(request.max_tokens, defaults.max_tokens),
-        temperature: override_or(request.temperature, defaults.temperature),
+        max_tokens: request.max_tokens.unwrap_or(defaults.max_tokens),
+        temperature: request.temperature.unwrap_or(defaults.temperature),
         top_k: overrides.top_k.resolve(defaults.top_k),
         top_p: overrides.top_p.resolve(defaults.top_p),
-        seed: override_or(overrides.seed, defaults.seed),
-        repeat_penalty: override_or(overrides.repeat_penalty, defaults.repeat_penalty),
-        repeat_last_n: override_or(overrides.repeat_last_n, defaults.repeat_last_n),
+        seed: overrides.seed.unwrap_or(defaults.seed),
+        repeat_penalty: overrides.repeat_penalty.unwrap_or(defaults.repeat_penalty),
+        repeat_last_n: overrides.repeat_last_n.unwrap_or(defaults.repeat_last_n),
     };
     validate_generation(&generation, Some(vocab_size))?;
     Ok(generation)

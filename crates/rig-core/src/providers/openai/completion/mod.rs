@@ -887,10 +887,7 @@ impl TryFrom<message::UserContent> for UserContent {
                 DocumentSourceKind::Base64(data) => Ok(UserContent::Audio {
                     input_audio: InputAudio {
                         data,
-                        format: match media_type {
-                            Some(media_type) => media_type,
-                            None => AudioMediaType::MP3,
-                        },
+                        format: media_type.unwrap_or(AudioMediaType::MP3),
                     },
                 }),
                 DocumentSourceKind::Url(_) => Err(message::MessageError::ConversionError(

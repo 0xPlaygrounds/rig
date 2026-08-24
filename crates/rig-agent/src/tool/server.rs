@@ -368,7 +368,7 @@ impl ToolServerHandle {
     /// so a tick-driven host can call it every frame.
     ///
     /// For the retrieval-aware view that also selects dynamic tools for a
-    /// prompt, use the async [`get_tool_defs`](Self::get_tool_defs).
+    /// prompt, use the async [`tool_defs`](Self::tool_defs).
     pub fn snapshot(&self) -> ToolRegistrySnapshot {
         let tools = self.with_registry(|state| snapshot_registered_tools(state, &[]));
         ToolCatalog::from_registered(tools)
@@ -376,7 +376,7 @@ impl ToolServerHandle {
 
     /// Provider definitions of the registry as it stands — the definitions of
     /// [`snapshot`](Self::snapshot), synchronously. Equivalent to
-    /// `get_tool_defs(None)` without the future.
+    /// `tool_defs(None)` without the future.
     pub fn static_tool_defs(&self) -> Vec<ToolDefinition> {
         let mut snapshot = self.snapshot();
         snapshot.take_definitions()
@@ -399,7 +399,7 @@ impl ToolServerHandle {
     /// the registry as it stands, [`static_tool_defs`](Self::static_tool_defs)
     /// / [`snapshot`](Self::snapshot) give the same always-exposed definitions
     /// synchronously.
-    pub async fn get_tool_defs(
+    pub async fn tool_defs(
         &self,
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
@@ -589,7 +589,7 @@ mod tests {
         .with_liveness(move || live.load(Ordering::SeqCst))
     }
 
-    /// The sync snapshot and the async, prompt-less `get_tool_defs` read the
+    /// The sync snapshot and the async, prompt-less `tool_defs` read the
     /// same always-exposed registry in the same order.
     #[tokio::test]
     async fn sync_snapshot_matches_async_prompt_less_read() {
@@ -599,7 +599,7 @@ mod tests {
             .run();
 
         let sync_defs = handle.static_tool_defs();
-        let async_defs = handle.get_tool_defs(None).await.unwrap();
+        let async_defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(sync_defs.len(), 2);
         assert_eq!(sync_defs, async_defs);
 
@@ -632,7 +632,7 @@ mod tests {
         assert_eq!(handle.snapshot().names().collect::<Vec<_>>(), vec!["add"]);
         assert_eq!(handle.static_tool_defs().len(), 1);
         assert!(!handle.toolset().contains("remote"));
-        assert_eq!(handle.get_tool_defs(None).await.unwrap().len(), 1);
+        assert_eq!(handle.tool_defs(None).await.unwrap().len(), 1);
     }
 
     /// A snapshot pins implementations: it keeps executing the tool it was
@@ -798,7 +798,7 @@ mod tests {
         let handle = server.run();
 
         handle.add_tool(MockAddTool);
-        let res = handle.get_tool_defs(None).await.unwrap();
+        let res = handle.tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 1);
 
@@ -810,7 +810,7 @@ mod tests {
         assert_eq!(res, "7");
 
         handle.remove_tool("add");
-        let res = handle.get_tool_defs(None).await.unwrap();
+        let res = handle.tool_defs(None).await.unwrap();
 
         assert_eq!(res.len(), 0);
     }
@@ -855,7 +855,7 @@ mod tests {
             let handle = ToolServer::new().run();
             handle.add_tool(MockAddTool);
             handle.add_tool(MockSubtractTool);
-            handle.get_tool_defs(None).await.unwrap()
+            handle.tool_defs(None).await.unwrap()
         };
         via_add_tool.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -865,7 +865,7 @@ mod tests {
             toolset.add_tool(MockAddTool);
             toolset.add_tool(MockSubtractTool);
             handle.append_toolset(toolset);
-            handle.get_tool_defs(None).await.unwrap()
+            handle.tool_defs(None).await.unwrap()
         };
         via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -883,7 +883,7 @@ mod tests {
     pub async fn builder_tool_uses_canonical_static_name() {
         let handle = ToolServer::new().tool(NamedTool::new()).run();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, NamedTool::NAME);
     }
@@ -893,7 +893,7 @@ mod tests {
         let handle = ToolServer::new().run();
         handle.add_tool(NamedTool::new());
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0].name, NamedTool::NAME);
     }
@@ -907,7 +907,7 @@ mod tests {
             .run();
 
         let defs = handle
-            .get_tool_defs(Some("use the changing tool".to_string()))
+            .tool_defs(Some("use the changing tool".to_string()))
             .await
             .unwrap();
         assert_eq!(defs.len(), 1);
@@ -920,7 +920,7 @@ mod tests {
         handle.add_tool(MockSubtractTool);
         handle.add_tool(MockAddTool);
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(
             defs.iter().map(|def| def.name.as_str()).collect::<Vec<_>>(),
             vec!["subtract", "add"]
@@ -937,7 +937,7 @@ mod tests {
             .run();
 
         let defs = handle
-            .get_tool_defs(Some("add two numbers".to_string()))
+            .tool_defs(Some("add two numbers".to_string()))
             .await
             .unwrap();
         assert_eq!(
@@ -960,7 +960,7 @@ mod tests {
             )
             .run();
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(
             defs.iter()
                 .map(|definition| definition.name.as_str())
@@ -979,7 +979,7 @@ mod tests {
         toolset.add_tool(MockAddTool);
         handle.append_toolset(toolset);
 
-        let defs = handle.get_tool_defs(None).await.unwrap();
+        let defs = handle.tool_defs(None).await.unwrap();
         assert_eq!(
             defs.len(),
             1,
@@ -1008,13 +1008,13 @@ mod tests {
         let handle = server.run();
 
         // Test with None prompt - should only return static tools
-        let res = handle.get_tool_defs(None).await.unwrap();
+        let res = handle.tool_defs(None).await.unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].name, "add");
 
         // Test with Some prompt - should return both static and dynamic tools
         let res = handle
-            .get_tool_defs(Some("calculate difference".to_string()))
+            .tool_defs(Some("calculate difference".to_string()))
             .await
             .unwrap();
         assert_eq!(res.len(), 2);
@@ -1040,7 +1040,7 @@ mod tests {
 
         // Test with Some prompt - should only return static tool since dynamic tool is missing
         let res = handle
-            .get_tool_defs(Some("some query".to_string()))
+            .tool_defs(Some("some query".to_string()))
             .await
             .unwrap();
         assert_eq!(res.len(), 1);
@@ -1130,7 +1130,7 @@ mod tests {
         // If fetched sequentially, the first index will wait at the barrier forever.
         let get_defs = tokio::time::timeout(
             std::time::Duration::from_secs(1),
-            handle.get_tool_defs(Some("do math".to_string())),
+            handle.tool_defs(Some("do math".to_string())),
         )
         .await;
 
