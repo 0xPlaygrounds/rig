@@ -2291,7 +2291,7 @@ pub mod gemini_api_types {
                 // If this object has anyOf/oneOf/allOf, we need to extract properties from the composition.
                 let composition_source = extract_schema_from_composition_obj(obj);
                 let props_source = if obj.get("properties").is_none() {
-                    composition_source.clone().unwrap_or(obj.clone())
+                    composition_source.clone().unwrap_or_else(|| obj.clone())
                 } else {
                     obj.clone()
                 };

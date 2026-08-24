@@ -258,20 +258,13 @@ pub struct ToolDefinition {
     pub description: Option<String>,
     pub input_schema: serde_json::Value,
     /// Whether Anthropic must constrain tool arguments to `input_schema`.
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
     pub strict: bool,
     /// Cache breakpoint marker. Set on the last tool in the array to cache
     /// the tools layer independently of the system prompt. Anthropic accepts
     /// up to 4 `cache_control` markers per request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
-}
-
-// `skip_serializing_if` requires a `fn(&bool) -> bool`, so the trivially-copy
-// lint does not apply here.
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_false(value: &bool) -> bool {
-    !value
 }
 
 /// TTL for a cache control breakpoint.

@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(agent, core, neo4j, vertexai)* builder setters that stored an owned `String` now take `impl Into<String>` instead of `&str` (`AgentBuilder::{name, description, preamble, context}`, Azure `api_version`/`audio_api_version`, Anthropic `anthropic_version`/`anthropic_beta`, neo4j `SearchParams` setters, Vertex AI `with_project`/`with_location`) — every existing `&str` call site still compiles, and an owned `String` is no longer copied
 - *(core, agent, bedrock, vertexai)* [**breaking**] accessors drop their `get_` prefix per Rust naming convention: `ToolCatalog`-side `get_tool_definitions` → `tool_definitions` (rig-core contextual tools), `ToolServerHandle::get_tool_defs` → `tool_defs` (rig-agent), and `Client::get_inner` → `inner` (rig-bedrock, rig-vertexai)
 
+### Removed
+
+- *(core)* [**breaking**] `embeddings::NormalizeImageEmbeddingResponse` is deleted: nothing in the workspace or any provider implemented or consumed it (the image-embedding path erases through `ImageEmbeddingModel` directly). An out-of-tree implementor can define the same one-method trait locally; the text-side `NormalizeEmbeddingResponse` is unchanged
+- *(sqlite)* [**breaking**] `SqliteError` is deleted: the public enum was constructed and matched nowhere — the crate reports through `VectorStoreError` (internally via `SqliteInternalError`). Code naming `rig_sqlite::SqliteError` should switch to `rig_core::vector_store::VectorStoreError`
+
 ### Fixed
 
 - *(milvus)* `Filter` and `MilvusValue` are now re-exported from the crate root — `VectorStoreIndex::Filter` named them in public signatures, but their constructors were unreachable outside the crate

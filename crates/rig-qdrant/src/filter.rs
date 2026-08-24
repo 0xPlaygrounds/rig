@@ -165,7 +165,7 @@ impl QdrantFilter {
                     let key = is_empty
                         .get("key")
                         .and_then(|k| k.as_str())
-                        .ok_or(FilterError::MissingField("key".into()))?
+                        .ok_or_else(|| FilterError::MissingField("key".into()))?
                         .to_string();
 
                     Ok(Condition {
@@ -179,19 +179,17 @@ impl QdrantFilter {
                     let is_null_value = is_null
                         .get("value")
                         .and_then(serde_json::Value::as_bool)
-                        .ok_or(FilterError::Must(
-                        "is_null".into(),
-                        "have a 'value' field".into(),
-                    ))?;
+                        .ok_or_else(|| {
+                        FilterError::Must("is_null".into(), "have a 'value' field".into())
+                    })?;
 
                     // Get the key from the parent object
                     let key = value
                         .get("key")
                         .and_then(|k| k.as_str())
-                        .ok_or(FilterError::Must(
-                            "is_null".into(),
-                            "have a 'key' field".into(),
-                        ))?
+                        .ok_or_else(|| {
+                            FilterError::Must("is_null".into(), "have a 'key' field".into())
+                        })?
                         .to_string();
 
                     if is_null_value {

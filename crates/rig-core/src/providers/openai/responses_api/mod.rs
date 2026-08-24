@@ -730,7 +730,7 @@ pub struct ResponsesToolDefinition {
     /// or [`GenericResponsesCompletionModel::with_strict_tools`].
     #[serde(
         default,
-        skip_serializing_if = "is_false",
+        skip_serializing_if = "crate::json_utils::is_false",
         deserialize_with = "json_utils::null_or_default"
     )]
     pub strict: bool,
@@ -744,13 +744,6 @@ pub struct ResponsesToolDefinition {
 
 fn is_json_null(value: &Value) -> bool {
     value.is_null()
-}
-
-// `skip_serializing_if` requires a `fn(&bool) -> bool`, so the trivially-copy
-// lint does not apply here.
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_false(value: &bool) -> bool {
-    !value
 }
 
 impl ResponsesToolDefinition {
