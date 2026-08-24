@@ -70,7 +70,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{CompletionError, FinishReason, ToolDefinition};
+use rig_core::completion::{CompletionError, CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
@@ -228,6 +228,48 @@ pub struct ModelTurn {
 }
 
 impl ModelTurn {
+    /// The one blessed conversion from a provider response to a protocol
+    /// turn, given the [`PreparedRequest`](crate::prepare::PreparedRequest)
+    /// the call was prepared from.
+    ///
+    /// Every driver — rig-agent's futures runner and any external systems
+    /// driver — must build its turns through this (or
+    /// [`from_response_parts`](Self::from_response_parts) when it holds the
+    /// tool-name sets rather than the prepared request); hand-assembly is how
+    /// drivers drift. The subtle inputs it settles: the tool-name sets come
+    /// from the *prepared request*, never re-derived from the spec, and the
+    /// finish reason is the response's normalized
+    /// [`finish_reason()`](CompletionResponse::finish_reason) accessor, never
+    /// a raw provider field.
+    pub fn from_response(resp: &CompletionResponse, prepared: &crate::prepare::PreparedRequest) -> Self {
+        Self::from_response_parts(
+            resp,
+            prepared.executable_tool_names.clone(),
+            prepared.allowed_tool_names.clone(),
+        )
+    }
+
+    /// [`from_response`](Self::from_response) for a driver that carries the
+    /// per-turn tool-name sets by value instead of the whole prepared
+    /// request. The sets must originate from the prepared request of the same
+    /// attempt.
+    pub fn from_response_parts(
+        resp: &CompletionResponse,
+        executable_tool_names: BTreeSet<String>,
+        allowed_tool_names: BTreeSet<String>,
+    ) -> Self {
+        Self::new(
+            resp.message_id.clone(),
+            resp.choice.clone(),
+            resp.usage,
+            executable_tool_names,
+            allowed_tool_names,
+        )
+        .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
+        .with_finish_reason(resp.finish_reason())
+        .with_raw(resp.raw.clone())
+    }
+
     /// Create a model turn from response parts and the tool names advertised
     /// for the turn.
     pub fn new(
@@ -1920,6 +1962,46 @@ mod tests {
         assert_eq!(plain_prompt, logged_prompt);
         assert_eq!(plain_history, logged_history);
         assert_eq!(plain_turn, logged_turn);
+    }
+
+    #[test]
+    fn from_response_matches_hand_assembly_field_for_field() {
+        let resp = CompletionResponse::new(
+            vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
+            usage(11, 7),
+            "openai",
+        )
+        .with_message_id("msg_1".to_string())
+        .with_response_id("chatcmpl_1".to_string())
+        .with_provider_request_id("req_1".to_string())
+        .with_finish_reason(FinishReason::ToolCalls)
+        .with_raw(json!({"provider": "payload"}));
+
+        let executable = tool_names(&["add"]);
+        let allowed = tool_names(&["add", "final_output"]);
+        let turn =
+            ModelTurn::from_response_parts(&resp, executable.clone(), allowed.clone());
+
+        let expected = ModelTurn::new(
+            resp.message_id.clone(),
+            resp.choice.clone(),
+            resp.usage,
+            executable,
+            allowed,
+        )
+        .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
+        .with_finish_reason(resp.finish_reason())
+        .with_raw(resp.raw.clone());
+
+        assert_eq!(turn.message_id, expected.message_id);
+        assert_eq!(turn.response_id, expected.response_id);
+        assert_eq!(turn.provider_request_id, expected.provider_request_id);
+        assert_eq!(turn.choice, expected.choice);
+        assert_eq!(turn.usage, expected.usage);
+        assert_eq!(turn.executable_tool_names, expected.executable_tool_names);
+        assert_eq!(turn.allowed_tool_names, expected.allowed_tool_names);
+        assert_eq!(turn.finish_reason, expected.finish_reason);
+        assert_eq!(turn.raw, expected.raw);
     }
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {

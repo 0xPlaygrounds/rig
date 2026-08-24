@@ -888,23 +888,11 @@ impl TurnSource for UnaryTurnSource {
             // the two cannot report different reasons for one attempt.
             let attempt_finish_reason = resp.finish_reason();
 
-            let mut outcome = match run.model_response(
-                ModelTurn::new(
-                    resp.message_id.clone(),
-                    resp.choice.clone(),
-                    resp.usage,
-                    prepared.executable_tool_names,
-                    prepared.allowed_tool_names,
-                )
-                .with_identity(
-                    resp.response_id.clone(),
-                    resp.provider_request_id.clone(),
-                )
-                .with_finish_reason(attempt_finish_reason.clone())
-                // This attempt's captured raw payload (an `Arc` clone), so the
-                // run record carries the same payload the hooks observe below.
-                .with_raw(resp.raw.clone()),
-            ) {
+            let mut outcome = match run.model_response(ModelTurn::from_response_parts(
+                &resp,
+                prepared.executable_tool_names,
+                prepared.allowed_tool_names,
+            )) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     yield Err(Box::new(err).into());
