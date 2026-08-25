@@ -1335,18 +1335,11 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
-        let preamble = req.preamble.take();
         let mut instruction_parts = Vec::new();
         let mut input = {
-            let mut partial_history = vec![];
-            partial_history.extend(chat_history);
+            let mut full_history: Vec<InputItem> = Vec::new();
 
-            let mut full_history: Vec<InputItem> = preamble
-                .map(InputItem::system_message)
-                .into_iter()
-                .collect();
-
-            for history_item in partial_history {
+            for history_item in chat_history {
                 full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
             }
 
@@ -2524,7 +2517,6 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let (request_model, request) = self.create_provider_request(completion_request, false)?;
         let span = CompletionSpanBuilder::new(
@@ -2532,7 +2524,7 @@ where
             &request_model,
             CompletionOperation::Chat,
         )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+        .system_instructions(None, record_telemetry_content)
         .build();
         let body = serde_json::to_vec(&request)?;
 
@@ -3547,7 +3539,6 @@ mod tests {
     fn weather_tool_request() -> completion::CompletionRequest {
         completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![message::Message::user("what's the weather?")],
             documents: Vec::new(),
             tools: vec![weather_tool_definition()],
@@ -3717,8 +3708,7 @@ mod tests {
     fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
         completion::CompletionRequest {
             model: None,
-            preamble: Some(preamble.to_string()),
-            chat_history: vec![message::Message::user("Hello")],
+            chat_history: vec![crate::message::Message::system(preamble.to_string()), message::Message::user("Hello")],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -3733,7 +3723,6 @@ mod tests {
     fn system_only_request(system_text: &str) -> completion::CompletionRequest {
         completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![completion::Message::system(system_text)],
             documents: Vec::new(),
             tools: Vec::new(),
@@ -4174,7 +4163,6 @@ mod tests {
     fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 completion::Message::system("System prompt"),
                 completion::Message::assistant("Earlier assistant turn"),
@@ -5109,8 +5097,7 @@ mod tests {
     fn mocked_second_turn_request_omits_unreplayable_reasoning() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: Some("You are concise.".to_string()),
-            chat_history: vec![
+            chat_history: vec![crate::message::Message::system("You are concise.".to_string()),
                 completion::Message::User {
                     content: vec![message::UserContent::Text(Text::new(
                         "Think briefly, then answer.",
@@ -5616,7 +5603,6 @@ mod tests {
     fn url_pdf_in_full_completion_request_omits_filename() {
         let core_request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![url_pdf_message()],
             documents: Vec::new(),
             tools: Vec::new(),

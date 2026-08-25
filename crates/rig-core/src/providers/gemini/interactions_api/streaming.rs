@@ -130,10 +130,7 @@ where
             &self.model,
             CompletionOperation::InteractionsStreaming,
         )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
+        .system_instructions(None, completion_request.record_telemetry_content)
         .build();
 
         let request = create_request_body(self.model.clone(), completion_request, Some(true))?;

@@ -231,7 +231,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
@@ -265,7 +264,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
@@ -288,7 +286,6 @@ mod tests {
     fn moonshot_specific_tool_choice_is_rejected() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],
@@ -323,7 +320,6 @@ mod tests {
     fn moonshot_required_tool_choice_is_coerced() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],

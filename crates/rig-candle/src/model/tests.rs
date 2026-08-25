@@ -229,7 +229,6 @@ fn config_with(
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        preamble: None,
         chat_history: if messages.is_empty() {
             vec![Message::user("hello")]
         } else {

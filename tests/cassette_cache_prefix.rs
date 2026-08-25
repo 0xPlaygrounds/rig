@@ -588,8 +588,9 @@ fn determinism_probe_request() -> CompletionRequest {
     };
 
     CompletionRequest {
-        preamble: Some("You are a deterministic serialization probe.".to_owned()),
-        chat_history: vec![Message::User {
+        chat_history: vec![
+            Message::system("You are a deterministic serialization probe."),
+            Message::User {
             content: vec![UserContent::text("probe")],
         }],
         documents: vec![document],

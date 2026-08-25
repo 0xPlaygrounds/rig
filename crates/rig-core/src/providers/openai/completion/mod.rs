@@ -2159,7 +2159,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let CoreCompletionRequest {
             model: request_model,
-            preamble,
             chat_history: _,
             tools,
             temperature,
@@ -2170,14 +2169,10 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
-        let mut partial_history = Vec::new();
-        partial_history.extend(chat_history);
-
-        let mut full_history: Vec<Message> =
-            preamble.map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
+        let mut full_history: Vec<Message> = Vec::new();
 
         full_history.extend(
-            partial_history
+            chat_history
                 .into_iter()
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
@@ -2440,7 +2435,6 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<(Ext::Response, Option<String>), CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
@@ -2458,7 +2452,7 @@ where
             &request.model,
             CompletionOperation::Chat,
         )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+        .system_instructions(None, record_telemetry_content)
         .build();
 
         let modern_output_cap = self.sends_modern_output_cap(&request.model);
@@ -2688,7 +2682,6 @@ mod tests {
 
         CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![message::Message::User {
                 content: vec![message::UserContent::ToolResult(tool_result)],
             }],
@@ -2945,7 +2938,6 @@ mod tests {
     fn test_openai_request_uses_request_model_override() {
         let request = crate::completion::CompletionRequest {
             model: Some("gpt-4.1".to_string()),
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -2977,7 +2969,6 @@ mod tests {
     fn test_openai_request_uses_default_model_when_override_unset() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -3059,7 +3050,6 @@ mod tests {
     fn openai_chat_direct_request_keeps_documents_after_system_messages() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 crate::completion::Message::system("System prompt"),
                 crate::completion::Message::assistant("Earlier assistant turn"),
@@ -3513,7 +3503,6 @@ mod tests {
     fn test_max_tokens_is_forwarded_to_request() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -3550,7 +3539,6 @@ mod tests {
             model: "gpt-4o-mini".to_string(),
             request: crate::completion::CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: vec!["Hello".into()],
                 documents: vec![],
                 tools: vec![],
@@ -3706,7 +3694,6 @@ mod tests {
     fn test_max_tokens_omitted_when_none() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -3745,7 +3732,6 @@ mod tests {
     fn additional_params_function_tools_merge_and_native_tools_stay() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![crate::completion::ToolDefinition {
@@ -3800,7 +3786,6 @@ mod tests {
     fn request_conversion_errors_when_all_messages_are_filtered() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![message::Message::Assistant {
                 id: None,
                 content: vec![message::AssistantContent::reasoning("hidden")],
@@ -3832,7 +3817,6 @@ mod tests {
     fn request_conversion_omits_response_format_on_initial_tool_turn() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![message::Message::user(
                 "Hello, whats the weather in London?",
             )],
@@ -3891,7 +3875,6 @@ mod tests {
     fn request_conversion_restores_response_format_after_tool_result() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 message::Message::user("Hello, whats the weather in London?"),
                 message::Message::Assistant {
@@ -4741,7 +4724,6 @@ mod image_tool_result_gate_tests {
             model: "test-model".to_string(),
             request: crate::completion::CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: vec![message::Message::User {
                     content: vec![message::UserContent::ToolResult(message::ToolResult {
                         call: message::ToolCallId::new_or_mint("call_1"),

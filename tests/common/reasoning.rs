@@ -254,8 +254,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt.clone()],
+        chat_history: vec![Message::system(agent.preamble.clone()), turn1_prompt.clone()],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -336,8 +335,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
+        chat_history: vec![Message::system(agent.preamble.clone()), turn1_prompt, turn1_assistant, turn2_prompt],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -387,8 +385,7 @@ where
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt.clone()],
+        chat_history: vec![Message::system(agent.preamble.clone()), turn1_prompt.clone()],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -433,8 +430,7 @@ where
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
+        chat_history: vec![Message::system(agent.preamble.clone()), turn1_prompt, turn1_assistant, turn2_prompt],
         documents: vec![],
         tools: vec![],
         temperature: None,

@@ -656,15 +656,10 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         }
 
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut partial_history = vec![];
-        partial_history.extend(req.chat_history);
-
-        let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
-            vec![Message::System { content: preamble }]
-        });
+        let mut full_history: Vec<Message> = Vec::new();
 
         full_history.extend(
-            partial_history
+            req.chat_history
                 .into_iter()
                 .map(message::Message::try_into)
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
@@ -743,13 +738,12 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let llm_span =
             CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
-                .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+                .system_instructions(None, record_telemetry_content)
                 .build();
 
         crate::providers::internal::trace_json(

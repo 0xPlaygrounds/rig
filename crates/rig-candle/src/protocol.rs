@@ -96,9 +96,6 @@ fn validate_protocol_inputs(
     request: &CompletionRequest,
     protocol: ConversationProtocol,
 ) -> Result<(), CandleError> {
-    if let Some(preamble) = request.preamble.as_deref() {
-        validate_protocol_text(preamble, "preamble", protocol)?;
-    }
     for document in &request.documents {
         validate_protocol_text(&document.to_string(), "document", protocol)?;
     }
@@ -328,11 +325,7 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
 }
 
 fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
-    let mut messages = Vec::new();
-    if let Some(preamble) = &request.preamble {
-        messages.push(Message::system(preamble.clone()));
-    }
-    messages.extend(request.chat_history.iter().cloned());
+    let mut messages: Vec<Message> = request.chat_history.clone();
     if !request.documents.is_empty() {
         let context = request
             .documents
@@ -868,7 +861,6 @@ mod tests {
     fn request(messages: Vec<Message>) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: if messages.is_empty() {
                 vec![Message::user("fallback")]
             } else {

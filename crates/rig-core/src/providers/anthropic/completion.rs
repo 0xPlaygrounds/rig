@@ -1592,10 +1592,7 @@ where
             .clone()
             .unwrap_or_else(|| self.model.clone());
         let span = CompletionSpanBuilder::new(Ext::PROVIDER_NAME, &request_model, operation)
-            .system_instructions(
-                completion_request.preamble.as_deref(),
-                completion_request.record_telemetry_content,
-            )
+            .system_instructions(None, completion_request.record_telemetry_content)
             .build();
 
         if completion_request.max_tokens.is_none() {
@@ -2850,19 +2847,8 @@ impl AnthropicCompletionRequest {
         let mut tools =
             build_tool_definitions::<Ext>(req.tools, &mut additional_params_payload, strict_tools)?;
 
-        // Convert system prompt to array format for cache_control support
-        let mut system = if let Some(preamble) = req.preamble {
-            if preamble.is_empty() {
-                vec![]
-            } else {
-                vec![SystemContent::Text {
-                    text: preamble,
-                    cache_control: None,
-                }]
-            }
-        } else {
-            vec![]
-        };
+        // System prompt in array format for cache_control support
+        let mut system = vec![];
         system.extend(history_system);
 
         apply_prompt_cache_control(
@@ -3563,8 +3549,7 @@ mod tests {
     ) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("System prompt".to_string()),
-            chat_history: vec![message::Message::from("Hello")],
+            chat_history: vec![crate::message::Message::system("System prompt".to_string()), message::Message::from("Hello")],
             documents: Vec::new(),
             tools,
             temperature: None,
@@ -3577,12 +3562,14 @@ mod tests {
     }
 
     fn completion_request_with_history(
-        chat_history: Vec<message::Message>,
+        mut chat_history: Vec<message::Message>,
         preamble: Option<String>,
     ) -> CompletionRequest {
+        if let Some(preamble) = preamble {
+            chat_history.insert(0, message::Message::system(preamble));
+        }
         CompletionRequest {
             model: None,
-            preamble,
             chat_history,
             documents: Vec::new(),
             tools: Vec::new(),

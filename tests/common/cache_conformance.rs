@@ -267,9 +267,9 @@ impl CacheProbe {
     /// response short and the recording cheap; the tool list is cloned in a fixed
     /// order because a reordered tool set is itself one of the prefix moves this
     /// harness exists to catch.
-    fn request(&self, chat_history: Vec<Message>) -> CompletionRequest {
+    fn request(&self, mut chat_history: Vec<Message>) -> CompletionRequest {
+        chat_history.insert(0, Message::system(self.preamble.clone()));
         CompletionRequest {
-            preamble: Some(self.preamble.clone()),
             chat_history,
             documents: vec![],
             tools: self.tools.clone(),

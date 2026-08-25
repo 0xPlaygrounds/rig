@@ -1484,7 +1484,6 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let (request_model, request) = self.create_provider_request(completion_request, true)?;
 
@@ -1507,7 +1506,7 @@ where
             &request_model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+        .system_instructions(None, record_telemetry_content)
         .build();
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
