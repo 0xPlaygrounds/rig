@@ -36,7 +36,7 @@ use super::{
     ModelHandle,
     completion::{Agent, AgentConfig, PreparedCompletionRequest},
     hook::{
-        AgentHook, CompletionCall, CompletionCallAction,
+        AgentHook, CompletionCallAction, CompletionCallEvent,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
         InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
@@ -62,7 +62,8 @@ use crate::{
     json_utils,
     tool::{
         ToolContext, ToolDispatch, ToolResult,
-        server::{ToolRegistrySnapshot, ToolServerHandle},
+        server::ToolServerHandle,
+        ToolCatalog,
     },
 };
 
@@ -535,7 +536,7 @@ pub(crate) async fn resolve_completion_call(
     match hooks
         .on_completion_call(
             ctx,
-            CompletionCall {
+            CompletionCallEvent {
                 prompt,
                 history,
                 turn,
@@ -605,7 +606,7 @@ pub(crate) struct ToolCallOutcome {
 pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
     ctx: &HookContext,
-    tool_snapshot: &ToolRegistrySnapshot,
+    tool_snapshot: &ToolCatalog,
     tool_call: &ToolCall,
     internal_call_id: rig_core::id::InternalCallId,
     error_history: &[Message],
@@ -1008,7 +1009,7 @@ impl TurnSource for UnaryTurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_snapshot: Arc<ToolCatalog>,
     ) -> DriveStream<'a> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it

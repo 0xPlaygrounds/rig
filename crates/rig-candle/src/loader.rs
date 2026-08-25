@@ -20,7 +20,7 @@ use crate::generation::GenerationConfig;
 #[cfg(target_family = "wasm")]
 use crate::profile::ModelArchitecture;
 use crate::profile::{
-    ArtifactFormat, LoaderBackend, ModelFamily, ValidatedProfile, definition_for,
+    ArtifactFormat, LoaderBackend, ConversationProtocol, ValidatedProfile, definition_for,
     validate_identity, validate_tokenizer_requirements,
 };
 use crate::runtime::RuntimeDevice;
@@ -60,7 +60,7 @@ struct PreparedModel {
 
 pub(crate) fn load_model_with_family(
     artifacts: ModelArtifacts,
-    selected_family: Option<ModelFamily>,
+    selected_family: Option<ConversationProtocol>,
     generation: GenerationConfig,
     _max_concurrent_requests: usize,
 ) -> Result<LoadedModel, CandleError> {
@@ -124,7 +124,7 @@ pub(crate) fn load_model_with_family(
 
 pub(crate) fn load_gguf_model(
     data: GgufModelData<'_>,
-    selected_family: Option<ModelFamily>,
+    selected_family: Option<ConversationProtocol>,
     generation: GenerationConfig,
     _max_concurrent_requests: usize,
 ) -> Result<LoadedModel, CandleError> {
@@ -166,7 +166,7 @@ pub(crate) fn load_gguf_model(
 fn prepare_model(
     config_bytes: &[u8],
     tokenizer_bytes: &[u8],
-    selected_family: Option<ModelFamily>,
+    selected_family: Option<ConversationProtocol>,
     artifact_format: ArtifactFormat,
 ) -> Result<PreparedModel, CandleError> {
     let identity: ModelIdentity = serde_json::from_slice(config_bytes)
@@ -181,7 +181,7 @@ fn prepare_model(
     if is_qwen3 {
         let config: Qwen3Config = serde_json::from_slice(config_bytes)
             .map_err(|error| CandleError::Configuration(error.to_string()))?;
-        let detected_family = ModelFamily::Qwen3;
+        let detected_family = ConversationProtocol::Qwen3;
         if let Some(selected) = selected_family
             && selected != detected_family
         {

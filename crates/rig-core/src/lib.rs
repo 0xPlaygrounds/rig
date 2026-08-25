@@ -197,7 +197,7 @@ pub use rig_derive::Embed;
 // pulling in `rig-derive` themselves.
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use rig_derive::{rig_tool, rig_tool as tool_macro};
+pub use rig_derive::rig_tool;
 
 pub mod telemetry;
 

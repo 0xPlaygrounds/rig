@@ -9,7 +9,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::hook::{AgentHook, CompletionCall, CompletionCallAction, HookContext, RequestPatch},
+    agent::hook::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
     completion::{CompletionModel, Document},
     tool::{
         DynamicTool, PortableDynamicTool, Tool, ToolSet,
@@ -31,7 +31,7 @@ where
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        event: CompletionCall<'_>,
+        event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let query = event.prompt.rag_text().or_else(|| {
             event

@@ -10,7 +10,7 @@ use tokenizers::Tokenizer;
 
 use crate::CandleError;
 use crate::profile::{
-    BEGIN_OF_TEXT, ConfigValues, END_HEADER, END_OF_TURN, IM_END, IM_START, ModelFamily,
+    BEGIN_OF_TEXT, ConfigValues, END_HEADER, END_OF_TURN, IM_END, IM_START, ConversationProtocol,
     ProfileDefinition, START_HEADER, validate_config_requirements, validate_dimensions,
     validate_tokenizer_requirements,
 };
@@ -252,7 +252,7 @@ pub(crate) fn validate_positive_finite(field: &'static str, value: f32) -> Resul
     Ok(())
 }
 
-pub(crate) fn detect_model_family(tokenizer: &Tokenizer) -> Result<ModelFamily, CandleError> {
+pub(crate) fn detect_model_family(tokenizer: &Tokenizer) -> Result<ConversationProtocol, CandleError> {
     let llama3 = [BEGIN_OF_TEXT, START_HEADER, END_HEADER, END_OF_TURN]
         .iter()
         .all(|token| tokenizer.token_to_id(token).is_some());
@@ -260,8 +260,8 @@ pub(crate) fn detect_model_family(tokenizer: &Tokenizer) -> Result<ModelFamily, 
         .iter()
         .all(|token| tokenizer.token_to_id(token).is_some());
     match (llama3, smollm2) {
-        (true, false) => Ok(ModelFamily::Llama3),
-        (false, true) => Ok(ModelFamily::SmolLm2),
+        (true, false) => Ok(ConversationProtocol::Llama3),
+        (false, true) => Ok(ConversationProtocol::SmolLm2),
         (true, true) => Err(CandleError::UnsupportedModelFamily(
             "tokenizer ambiguously contains both Llama 3 and SmolLM2 control tokens".to_string(),
         )),

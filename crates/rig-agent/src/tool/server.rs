@@ -18,17 +18,6 @@ use rig_core::vector_store::{
     VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter,
 };
 
-/// A pinned view of the tool registry: provider definitions plus the exact
-/// implementations behind them — [`rig_core::tool::ToolCatalog`] under the
-/// name the agent runtime has always used.
-///
-/// The agent loop takes one per turn ([`ToolServerHandle::snapshot`] for the
-/// registry as it stands, the retrieval-aware `snapshot_tool_defs` for a
-/// prompt), so registration changes after a snapshot is built take effect on
-/// the next turn and calls from the current turn dispatch through these
-/// pinned handles.
-pub type ToolRegistrySnapshot = ToolCatalog;
-
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
     /// Vector indexes used to select retrieval-only tools for each prompt.
@@ -369,7 +358,7 @@ impl ToolServerHandle {
     ///
     /// For the retrieval-aware view that also selects dynamic tools for a
     /// prompt, use the async [`tool_defs`](Self::tool_defs).
-    pub fn snapshot(&self) -> ToolRegistrySnapshot {
+    pub fn snapshot(&self) -> ToolCatalog {
         let tools = self.with_registry(|state| snapshot_registered_tools(state, &[]));
         ToolCatalog::from_registered(tools)
     }
@@ -415,7 +404,7 @@ impl ToolServerHandle {
     pub(crate) async fn snapshot_tool_defs(
         &self,
         prompt: Option<String>,
-    ) -> Result<ToolRegistrySnapshot, ToolServerError> {
+    ) -> Result<ToolCatalog, ToolServerError> {
         let retrieval_indexes = {
             let state = self.state();
             state.retrieval_indexes.clone()
@@ -508,7 +497,7 @@ fn snapshot_registered_tools(
 const _: fn() = || {
     fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     assert_send_sync_static::<ToolSet>();
-    assert_send_sync_static::<ToolRegistrySnapshot>();
+    assert_send_sync_static::<ToolCatalog>();
 };
 
 #[derive(Debug, thiserror::Error)]

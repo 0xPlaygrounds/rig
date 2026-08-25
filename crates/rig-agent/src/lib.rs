@@ -86,7 +86,6 @@ pub use extractor::ExtractionResponse;
 pub use rig_derive::rig_tool;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use rig_derive::rig_tool as tool_macro;
 
 // Compile-time thread-safety contract: the agent surface must be safe to hold
 // in shared host state (worker pools, ECS resources) on native targets.
