@@ -1326,7 +1326,7 @@ where
         .max_tokens(384)
         .retries(0)
         .build()
-        .extract_with_usage(INPUT)
+        .extract(INPUT)
         .await?;
     validate_extraction_fields(
         SCENARIO,

@@ -63,7 +63,7 @@ fn always_tool_call_turn() -> MockTurn {
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Test 1: Standard path still returns a plain String (backward compat).
+/// Test 1: Standard path returns a plain String.
 #[tokio::test]
 async fn standard_prompt_returns_string() {
     let agent = AgentBuilder::new(simple_text_model(1)).build();
@@ -233,10 +233,10 @@ async fn multi_turn_messages_include_tool_calls() {
     assert_eq!(resp.usage.output_tokens, 12); // 8 + 4
 }
 
-/// Test 6: `PromptResponse::new()` backward compatibility — 2-argument constructor
-/// should still work, and `messages` should be `None`.
+/// Test 6: `PromptResponse::new()` — the 2-argument constructor seeds content
+/// from the output text, and `messages` starts as `None`.
 #[tokio::test]
-async fn prompt_response_new_backward_compat() {
+async fn prompt_response_new_seeds_content_from_output() {
     use rig::agent::PromptResponse;
 
     let resp = PromptResponse::new("output text", Usage::new());

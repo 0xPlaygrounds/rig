@@ -12,8 +12,8 @@ mod validation;
 
 pub use artifacts::{GgufModelData, ModelArtifacts, ModelData};
 pub use generation::GenerationConfig;
-pub use model::{CandleModel, CandleModelBuilder, LlamaModel, stream_from_events};
-pub use profile::{ConversationProtocol, ModelArchitecture, ModelFamily, Quantization};
+pub use model::{CandleModel, CandleModelBuilder, stream_from_events};
+pub use profile::{ConversationProtocol, ModelArchitecture, Quantization};
 pub use types::{CandleCompletionResponse, CandleError, FinishReason};
 
 pub(crate) use profile::{

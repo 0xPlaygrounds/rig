@@ -12,7 +12,7 @@ async fn extractor_smoke() {
         let extractor = client.extractor::<SmokePerson>(xai::GROK_3_MINI).build();
 
         let response = extractor
-            .extract_with_usage(EXTRACTOR_TEXT)
+            .extract(EXTRACTOR_TEXT)
             .await
             .expect("extractor request should succeed");
 

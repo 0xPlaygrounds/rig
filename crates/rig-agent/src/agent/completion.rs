@@ -9,7 +9,8 @@ use crate::{
         Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     streaming::{StreamingChat, StreamingPrompt},
-    tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
+    tool::ToolCatalog,
+    tool::server::{ToolServerError, ToolServerHandle},
 };
 use rig_core::completion::ModelHandle;
 use rig_core::id::ConversationId;
@@ -26,7 +27,7 @@ pub(crate) struct PreparedCompletionRequest {
     /// executes the prepared request.
     pub(crate) builder: CompletionRequestBuilder<ModelHandle>,
     /// Exact implementations behind this turn's provider definitions.
-    pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
+    pub(crate) tool_snapshot: Arc<ToolCatalog>,
     /// The definitions the request carries (executable tools plus, in Tool
     /// output mode, the synthetic output tool), for the run's `TurnTools`.
     pub(crate) advertised_tools: Vec<ToolDefinition>,
@@ -649,7 +650,6 @@ mod request_identity_tests {
     "max_tokens": 512,
     "model": null,
     "output_schema": null,
-    "preamble": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -766,7 +766,6 @@ mod request_identity_tests {
     "max_tokens": 512,
     "model": null,
     "output_schema": null,
-    "preamble": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -902,7 +901,6 @@ mod request_identity_tests {
     "max_tokens": 512,
     "model": null,
     "output_schema": null,
-    "preamble": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [

@@ -567,7 +567,7 @@ async fn capped_extractor_turn_on_reasoning_model() {
                 .await
                 .expect("a capped extraction must be accepted");
 
-            assert_eq!(person.first_name.as_deref(), Some("Ada"));
+            assert_eq!(person.data.first_name.as_deref(), Some("Ada"));
         },
     )
     .await;

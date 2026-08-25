@@ -187,7 +187,6 @@ pub(crate) fn create_grpc_request(
 ) -> Result<GenerateContentRequest, CompletionError> {
     let CompletionRequest {
         model: _,
-        preamble,
         chat_history,
         documents: _,
         tools,
@@ -210,13 +209,8 @@ pub(crate) fn create_grpc_request(
         contents.push(rig_message_to_grpc_content(msg)?);
     }
 
-    // Handle system instruction (preamble)
+    // Handle system instruction
     let mut system_parts = Vec::new();
-    if let Some(preamble) = preamble
-        && !preamble.is_empty()
-    {
-        system_parts.push(text_part(preamble));
-    }
     for content in history_system {
         if !content.is_empty() {
             system_parts.push(text_part(content));
@@ -1062,7 +1056,6 @@ mod tests {
             "gemini-2.5-flash",
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: vec![
                     // Driver-built: the executed name travels as data (a
                     // repair hook renamed the call: `sum` ran, not `add`).
@@ -1124,7 +1117,6 @@ mod tests {
             "gemini-2.5-flash",
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: vec![message::Message::user("forecast in Berlin?")],
                 documents: Vec::new(),
                 tools: vec![tool],

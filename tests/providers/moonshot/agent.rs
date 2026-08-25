@@ -11,7 +11,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     let client = moonshot::Client::from_env().expect("moonshot client should build");
     let agent = client
-        .agent(moonshot::MOONSHOT_CHAT)
+        .agent("moonshot-v1-128k")
         .preamble(BASIC_PREAMBLE)
         .temperature(0.5)
         .max_tokens(1024)

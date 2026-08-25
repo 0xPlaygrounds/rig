@@ -133,10 +133,7 @@ where
             &self.model,
             CompletionOperation::Interactions,
         )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
+        .system_instructions(None, completion_request.record_telemetry_content)
         .build();
 
         let request = self.create_completion_request(completion_request, Some(false))?;
@@ -324,15 +321,8 @@ pub(crate) fn create_request_body(
         Some(generation_config)
     };
 
-    let system_instruction = completion_request
-        .preamble
-        .or_else(|| {
-            if history_system.is_empty() {
-                None
-            } else {
-                Some(history_system.join("\n\n"))
-            }
-        })
+    let system_instruction = (!history_system.is_empty())
+        .then(|| history_system.join("\n\n"))
         .or(params.system_instruction.take());
 
     let mut tools = Vec::new();
@@ -2365,8 +2355,7 @@ mod tests {
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            preamble: Some("Be precise.".to_string()),
-            chat_history: vec![prompt],
+            chat_history: vec![Message::system("Be precise.".to_string()), prompt],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2445,7 +2434,6 @@ mod tests {
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            preamble: None,
             chat_history: vec![
                 // A driver-built result carries the executed name (a repair
                 // hook renamed the call: `sum` ran, not `add`).
@@ -2681,7 +2669,6 @@ mod tests {
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            preamble: None,
             chat_history: vec![Message::User {
                 content: vec![tool_result],
             }],

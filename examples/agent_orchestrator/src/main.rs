@@ -63,7 +63,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let mut vec: Vec<TaskResults> = Vec::new();
-    for task in specification.tasks {
+    for task in specification.data.tasks {
         let results = content_agent
             .extract(&format!(
                 "
@@ -74,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 task.original_task, task.style, task.guidelines
             ))
             .await?;
-        vec.push(results);
+        vec.push(results.data);
     }
 
     let judge_agent = openai_client

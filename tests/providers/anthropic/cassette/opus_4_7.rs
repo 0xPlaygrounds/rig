@@ -145,7 +145,7 @@ async fn messages_extractor_smoke() {
             let extractor = client.extractor::<SmokePerson>(CLAUDE_OPUS_4_7).build();
 
             let response = extractor
-                .extract_with_usage(EXTRACTOR_TEXT)
+                .extract(EXTRACTOR_TEXT)
                 .await
                 .expect("extractor request should succeed");
 

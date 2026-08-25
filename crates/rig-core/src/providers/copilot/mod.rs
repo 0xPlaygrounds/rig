@@ -585,7 +585,7 @@ impl RequestFacts {
         Self {
             initiator: request_initiator(request),
             has_vision: request_has_vision(request),
-            system_instructions: request.preamble.clone(),
+            system_instructions: None,
             record_telemetry_content: request.record_telemetry_content,
         }
     }

@@ -101,9 +101,6 @@ const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
 // Moonshot Completion API
 // ================================================================
 
-/// Moonshot v1 128K context model (legacy)
-pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
-
 /// Kimi K2 — Mixture-of-Experts model (1T total params, 32B active)
 pub const KIMI_K2: &str = "kimi-k2";
 
@@ -234,7 +231,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
@@ -268,7 +264,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
@@ -291,7 +286,6 @@ mod tests {
     fn moonshot_specific_tool_choice_is_rejected() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],
@@ -326,7 +320,6 @@ mod tests {
     fn moonshot_required_tool_choice_is_coerced() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],

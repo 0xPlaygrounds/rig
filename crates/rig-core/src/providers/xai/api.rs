@@ -52,10 +52,7 @@ pub(crate) fn create_completion_request(
         tracing::warn!("Structured outputs currently not supported for xAI");
     }
     let model = req.model.clone().unwrap_or(model);
-    let mut input = req
-        .preamble
-        .as_ref()
-        .map_or_else(Vec::new, |p| vec![Message::system(p)]);
+    let mut input = Vec::new();
     for message in chat_history {
         input.extend(Vec::<Message>::try_from(message)?);
     }
@@ -526,7 +523,6 @@ mod tests {
     fn xai_direct_request_keeps_documents_after_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 RigMessage::system("System prompt"),
                 RigMessage::assistant("Earlier assistant turn"),

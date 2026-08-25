@@ -69,10 +69,10 @@ async fn main() -> Result<()> {
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
-                    names.names.join(", "),
-                    topics.topics.join(", "),
-                    sentiment.sentiment,
-                    sentiment.confidence,
+                    names.data.names.join(", "),
+                    topics.data.topics.join(", "),
+                    sentiment.data.sentiment,
+                    sentiment.data.confidence,
                 ))
             }
         })

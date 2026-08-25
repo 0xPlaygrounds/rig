@@ -391,18 +391,6 @@ crate::providers::internal::model_listing::impl_model_lister!(
 // ================================================================
 // DeepSeek Completion API
 // ================================================================
-#[deprecated(
-    note = "The model names `deepseek-chat` and `deepseek-reasoner` will be deprecated on 2026/07/24. \
-    For compatibility, they correspond to the non-thinking mode and thinking mode of `deepseek-v4-flash`, \
-    respectively."
-)]
-pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
-#[deprecated(
-    note = "The model names `deepseek-chat` and `deepseek-reasoner` will be deprecated on 2026/07/24. \
-    For compatibility, they correspond to the non-thinking mode and thinking mode of `deepseek-v4-flash`, \
-    respectively."
-)]
-pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 pub const DEEPSEEK_V4_FLASH: &str = "deepseek-v4-flash";
 pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 

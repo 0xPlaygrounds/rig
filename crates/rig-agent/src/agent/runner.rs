@@ -36,7 +36,7 @@ use super::{
     ModelHandle,
     completion::{Agent, AgentConfig, PreparedCompletionRequest},
     hook::{
-        AgentHook, CompletionCall, CompletionCallAction,
+        AgentHook, CompletionCallAction, CompletionCallEvent,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
         InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
@@ -60,20 +60,10 @@ use rig_core::{
 use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
-    tool::{
-        ToolContext, ToolDispatch, ToolResult,
-        server::{ToolRegistrySnapshot, ToolServerHandle},
-    },
+    tool::{ToolCatalog, ToolContext, ToolDispatch, ToolResult, server::ToolServerHandle},
 };
 
 use super::UNKNOWN_AGENT_NAME;
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum UnhandledInvalidToolCallPolicy {
-    #[default]
-    Fail,
-    IgnoreForExtractor,
-}
 
 /// Build the per-turn `chat` span shared by both turn sources.
 ///
@@ -164,7 +154,6 @@ pub struct AgentRunner {
     pub(crate) output_tool_name: Option<String>,
     pub(crate) output_tool_description: Option<String>,
     pub(crate) augment_output_preamble: bool,
-    pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
@@ -190,7 +179,6 @@ impl AgentRunner {
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
-            unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
             concurrency: 1,
             error_usage: None,
         }
@@ -363,18 +351,6 @@ impl AgentRunner {
         self
     }
 
-    /// Ignore invalid tool calls when every registered hook declines to act.
-    ///
-    /// This is an internal compatibility policy for extractors, whose legacy
-    /// transport treated every non-`submit` call as irrelevant response
-    /// content. Hooks still receive the invalid-call event first and retain
-    /// full control over recovery or termination.
-    pub(crate) fn ignore_unhandled_invalid_tool_calls(mut self) -> Self {
-        self.unhandled_invalid_tool_call_policy =
-            UnhandledInvalidToolCallPolicy::IgnoreForExtractor;
-        self
-    }
-
     /// Opt in or out of recording sensitive request, response, and tool content
     /// on GenAI telemetry spans for this run.
     ///
@@ -535,7 +511,7 @@ pub(crate) async fn resolve_completion_call(
     match hooks
         .on_completion_call(
             ctx,
-            CompletionCall {
+            CompletionCallEvent {
                 prompt,
                 history,
                 turn,
@@ -605,7 +581,7 @@ pub(crate) struct ToolCallOutcome {
 pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
     ctx: &HookContext,
-    tool_snapshot: &ToolRegistrySnapshot,
+    tool_snapshot: &ToolCatalog,
     tool_call: &ToolCall,
     internal_call_id: rig_core::id::InternalCallId,
     error_history: &[Message],
@@ -909,12 +885,6 @@ impl TurnSource for UnaryTurnSource {
                             .await;
                         let resolution = match action {
                             Some(action) => run.resolve_invalid_tool_call(action),
-                            None
-                                if runner.unhandled_invalid_tool_call_policy
-                                    == UnhandledInvalidToolCallPolicy::IgnoreForExtractor =>
-                            {
-                                run.ignore_invalid_tool_call()
-                            }
                             None => run.resolve_invalid_tool_call(InvalidToolCallAction::fail()),
                         };
                         outcome = match resolution {
@@ -1008,7 +978,7 @@ impl TurnSource for UnaryTurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_snapshot: Arc<ToolCatalog>,
     ) -> DriveStream<'a> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it

@@ -55,9 +55,9 @@ async fn extract_backward_compatibility() -> Result<()> {
         .extract("John Doe is a 30 year old software engineer.")
         .await?;
 
-    anyhow::ensure!(person.name.as_deref() == Some("John Doe"));
-    anyhow::ensure!(person.age == Some(30));
-    assert_compatible_professions(person.profession.as_deref(), "software engineer")?;
+    anyhow::ensure!(person.data.name.as_deref() == Some("John Doe"));
+    anyhow::ensure!(person.data.age == Some(30));
+    assert_compatible_professions(person.data.profession.as_deref(), "software engineer")?;
 
     Ok(())
 }
@@ -71,7 +71,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         .build();
 
     let response: ExtractionResponse<Person> = extractor
-        .extract_with_usage("Jane Smith is a 45 year old data scientist.")
+        .extract("Jane Smith is a 45 year old data scientist.")
         .await?;
 
     anyhow::ensure!(response.data.name.as_deref() == Some("Jane Smith"));
@@ -97,7 +97,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     )];
 
     let response: ExtractionResponse<Address> = extractor
-        .extract_with_chat_history_with_usage(
+        .extract_with_chat_history(
             "The address is 123 Main St in Springfield, IL 62701.",
             chat_history,
         )
@@ -123,13 +123,13 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 
     let text = "Bob Johnson is a 55 year old retired teacher.";
     let person = extractor.extract(text).await?;
-    let response = extractor.extract_with_usage(text).await?;
+    let response = extractor.extract(text).await?;
 
-    anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
+    anyhow::ensure!(person.data.name.as_deref() == Some("Bob Johnson"));
     anyhow::ensure!(response.data.name.as_deref() == Some("Bob Johnson"));
-    anyhow::ensure!(person.age == Some(55));
+    anyhow::ensure!(person.data.age == Some(55));
     anyhow::ensure!(response.data.age == Some(55));
-    assert_compatible_professions(person.profession.as_deref(), "retired teacher")?;
+    assert_compatible_professions(person.data.profession.as_deref(), "retired teacher")?;
     assert_compatible_professions(response.data.profession.as_deref(), "retired teacher")?;
     anyhow::ensure!(response.usage.total_tokens > 0, "usage should be populated");
 
@@ -145,7 +145,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         .extractor::<Person>(EXTRACTOR_USAGE_TRACKING_MODEL)
         .build();
     let person_response = person_extractor
-        .extract_with_usage("Alice is a 25 year old developer.")
+        .extract("Alice is a 25 year old developer.")
         .await?;
     anyhow::ensure!(person_response.usage.total_tokens > 0);
 
@@ -153,7 +153,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         .extractor::<Address>(EXTRACTOR_USAGE_TRACKING_MODEL)
         .build();
     let address_response = address_extractor
-        .extract_with_usage("456 Oak Avenue, Cambridge, MA 02139")
+        .extract("456 Oak Avenue, Cambridge, MA 02139")
         .await?;
     anyhow::ensure!(address_response.usage.total_tokens > 0);
 

@@ -87,7 +87,7 @@
 //! | `context` | 1 | RAG context injection |
 //! | `embeddings` | 2 | `embed_texts` and the `Embed` derive (server 8081) |
 //! | `extractor` | 1 | the extractor facade |
-//! | `extractor_usage` | 5 | `extract_with_usage` and its backward-compatible twin |
+//! | `extractor_usage` | 5 | `extract` usage reporting across call shapes |
 //! | `image_tool_result` | 2 | an image in a tool result, plus its user-message control (server 8082) |
 //! | `loaders` | 1 | the file-loader facade feeding an agent |
 //! | `models` | 1 | `list_models` smoke |

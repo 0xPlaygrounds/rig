@@ -39,11 +39,11 @@ impl Prompt for ReasoningAgent {
                 tracing::error!("Extraction error: {:?}", e);
                 CompletionError::ProviderError("".into())
             })?;
-        if extracted.steps.is_empty() {
+        if extracted.data.steps.is_empty() {
             return Ok("No reasoning steps provided.".into());
         }
         let mut reasoning_prompt = String::new();
-        for (i, step) in extracted.steps.iter().enumerate() {
+        for (i, step) in extracted.data.steps.iter().enumerate() {
             reasoning_prompt.push_str(&format!("Step {}: {}\n", i + 1, step));
         }
         let response = self

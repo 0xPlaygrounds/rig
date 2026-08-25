@@ -24,7 +24,7 @@ use crate::{
         resolve_model_turn_action, run_single_tool,
     },
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::{ToolContext, server::ToolRegistrySnapshot},
+    tool::{ToolCatalog, ToolContext},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream, stream::FusedStream};
 use serde::{Deserialize, Serialize};
@@ -412,7 +412,7 @@ pub(crate) trait TurnSource: WasmCompatSend {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_snapshot: Arc<ToolCatalog>,
     ) -> DriveStream<'a>;
 
     /// Record run-level telemetry onto the agent span at `Done`. Gated on
@@ -495,7 +495,7 @@ where
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
-        let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
+        let mut pending_tool_snapshot: Option<Arc<ToolCatalog>> = None;
         // Live routing state stays in the driver, not the serde `AgentRun`. It
         // records the model behind the preceding *issued* attempt: it advances
         // immediately before the selected model's unary or streaming operation
@@ -816,7 +816,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
-    tool_snapshot: Arc<ToolRegistrySnapshot>,
+    tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
     forward_items: bool,
 ) -> DriveStream<'a>
@@ -1623,7 +1623,7 @@ impl TurnSource for StreamingTurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_snapshot: Arc<ToolCatalog>,
     ) -> DriveStream<'a> {
         // The streaming surface chains nothing onto its tool spans, and forwards
         // the ToolCall/ToolResult items to the consumer.
@@ -3416,20 +3416,14 @@ mod migrated_tests {
             })
         );
 
-        // Stream items serialized before the Option encoding was dropped used
-        // `"usage": null`; they must still deserialize.
-        let legacy: MultiTurnStreamItem = serde_json::from_value(serde_json::json!({
+        // The pre-monoid `Option` encoding (`"usage": null`) is no longer
+        // tolerated — usage is a required object.
+        serde_json::from_value::<MultiTurnStreamItem>(serde_json::json!({
             "type": "completionCall",
             "call_index": 3,
             "usage": null
         }))
-        .expect("legacy null-usage event should deserialize");
-        match legacy {
-            MultiTurnStreamItem::CompletionCall(call) => {
-                assert_eq!(call, CompletionCall::new(3, Usage::new()));
-            }
-            other => panic!("expected completion call event, got {other:?}"),
-        }
+        .expect_err("null usage must not deserialize");
     }
 
     #[test]

@@ -29,9 +29,6 @@ pub enum ConversationProtocol {
     Qwen3,
 }
 
-/// Backwards-compatible name for [`ConversationProtocol`].
-pub type ModelFamily = ConversationProtocol;
-
 /// Transformer architecture used to execute a loaded checkpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

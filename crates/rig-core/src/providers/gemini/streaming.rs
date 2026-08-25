@@ -405,10 +405,7 @@ where
             &request_model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
+        .system_instructions(None, completion_request.record_telemetry_content)
         .build();
         let mut request = create_request_body(completion_request)?;
         if let Some(name) = self.cached_content.as_deref() {

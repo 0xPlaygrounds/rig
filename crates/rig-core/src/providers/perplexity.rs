@@ -166,7 +166,6 @@ mod tests {
         // SUPPORTS_TOOLS = false it must be dropped before that validation.
         let mut request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello!".into()],
             documents: vec![],
             max_tokens: None,

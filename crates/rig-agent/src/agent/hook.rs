@@ -560,7 +560,7 @@ pub use rig_run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRe
 /// selection entirely and does not advance
 /// [`ModelSelection::previous_model`].
 #[derive(Clone, Copy)]
-pub struct CompletionCall<'a> {
+pub struct CompletionCallEvent<'a> {
     /// Prompt for this turn.
     pub prompt: &'a Message,
     /// History preceding the prompt.
@@ -1181,7 +1181,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        _event: CompletionCall<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> impl Future<Output = CompletionCallAction> + WasmCompatSend {
         async { CompletionCallAction::Continue }
     }
@@ -1317,7 +1317,7 @@ macro_rules! for_each_boxed_hook_event {
         $m!(
             completion_call,
             on_completion_call,
-            CompletionCall,
+            CompletionCallEvent,
             CompletionCallAction
         );
         $m!(
@@ -1642,7 +1642,7 @@ impl AgentHook for HookStack {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
-        event: CompletionCall<'_>,
+        event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let mut merged: Option<RequestPatch> = None;
         for hook in &self.hooks {
@@ -1839,7 +1839,7 @@ mod tests {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            _event: CompletionCall<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
             CompletionCallAction::patch(RequestPatch::new().temperature(self.0))
         }
@@ -1854,7 +1854,7 @@ mod tests {
         let action = outer
             .on_completion_call(
                 &HookContext::new(false, None),
-                CompletionCall {
+                CompletionCallEvent {
                     prompt: &prompt,
                     history: &[],
                     turn: 1,
@@ -2365,7 +2365,7 @@ mod migrated_tests {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            _event: CompletionCall<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
             self.log.lock().expect("log").push(self.label);
             if self.stop {
@@ -2384,9 +2384,9 @@ mod migrated_tests {
             args: "{}",
         }
     }
-    fn completion_call_event() -> CompletionCall<'static> {
+    fn completion_call_event() -> CompletionCallEvent<'static> {
         static PROMPT: std::sync::OnceLock<rig_core::message::Message> = std::sync::OnceLock::new();
-        CompletionCall {
+        CompletionCallEvent {
             prompt: PROMPT.get_or_init(|| rig_core::message::Message::user("hi")),
             history: &[],
             turn: 1,

@@ -188,6 +188,9 @@ pub mod stringified_json {
     }
 }
 
+/// Decode a string, a sequence, or a bare object into a `Vec` — `null` is a
+/// loud decode error. A bare object where a list is expected is one block,
+/// not a defect: several wires spell single-block content that way.
 pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     T: Deserialize<'de> + FromStr<Err = Infallible>,
@@ -202,7 +205,7 @@ where
         type Value = Vec<T>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, sequence, or null")
+            formatter.write_str("a string, sequence, or object")
         }
 
         fn visit_str<E>(self, value: &str) -> Result<Vec<T>, E>
@@ -220,19 +223,55 @@ where
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
         }
 
-        /// A bare object where a list is expected is one block, not a defect —
-        /// several wires spell single-block content that way. This arm comes
-        /// from the removed non-empty container's `string_or_one_or_many`,
-        /// whose callers (Anthropic `Message.content`, OpenAI system and user
-        /// content) now share this helper.
-        ///
-        /// The two were not interchangeable: this one also has
-        /// `visit_none`/`visit_unit`, so the migrated fields now accept `null`
-        /// where they used to raise a parse error. Those arms are load-bearing
-        /// for the OpenAI assistant-content field that already used this
-        /// helper — OpenAI sends `"content": null` for a tool-calls-only
-        /// message — so the widening is the price of sharing one helper, and it
-        /// is documented in MIGRATING rather than hidden.
+        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            Ok(vec![item])
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec(PhantomData))
+}
+
+/// [`string_or_vec`] widened to also decode `null` as an empty `Vec`.
+///
+/// Reserved for fields where `null` is a real wire shape — OpenAI sends
+/// `"content": null` on a tool-calls-only assistant message. Everywhere else
+/// use [`string_or_vec`], which keeps `null` a loud error.
+pub fn string_null_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: Deserialize<'de> + FromStr<Err = Infallible>,
+    D: Deserializer<'de>,
+{
+    struct StringNullOrVec<T>(PhantomData<fn() -> T>);
+
+    impl<'de, T> Visitor<'de> for StringNullOrVec<T>
+    where
+        T: Deserialize<'de> + FromStr<Err = Infallible>,
+    {
+        type Value = Vec<T>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string, sequence, object, or null")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Vec<T>, E>
+        where
+            E: de::Error,
+        {
+            let item = FromStr::from_str(value).map_err(de::Error::custom)?;
+            Ok(vec![item])
+        }
+
+        fn visit_seq<A>(self, seq: A) -> Result<Vec<T>, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+
         fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
         where
             M: MapAccess<'de>,
@@ -256,7 +295,7 @@ where
         }
     }
 
-    deserializer.deserialize_any(StringOrVec(PhantomData))
+    deserializer.deserialize_any(StringNullOrVec(PhantomData))
 }
 
 /// Deserializes `T`, mapping an explicit `null` to `T::default()`.
@@ -530,6 +569,12 @@ mod tests {
             content: Vec<Block>,
         }
 
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct NullTolerantHolder {
+            #[serde(deserialize_with = "super::super::string_null_or_vec")]
+            content: Vec<Block>,
+        }
+
         fn decode(json: serde_json::Value) -> Vec<Block> {
             serde_json::from_value::<Holder>(json)
                 .expect("shape should decode")
@@ -577,11 +622,22 @@ mod tests {
         }
 
         #[test]
-        fn null_is_an_empty_list() {
-            // Load-bearing: OpenAI sends `"content": null` for a message that
-            // carries only tool calls, so dropping this arm would turn a normal
-            // response into a decode error.
-            assert!(decode(serde_json::json!({"content": null})).is_empty());
+        fn null_is_a_loud_error() {
+            // `string_or_vec` is the strict default: `null` where a list is
+            // expected is malformed data, not canonical absence.
+            serde_json::from_value::<Holder>(serde_json::json!({"content": null}))
+                .expect_err("null must not decode");
+        }
+
+        #[test]
+        fn null_is_an_empty_list_only_for_the_null_tolerant_variant() {
+            // Load-bearing for `string_null_or_vec`'s one consumer: OpenAI
+            // sends `"content": null` for a message that carries only tool
+            // calls.
+            let holder: NullTolerantHolder =
+                serde_json::from_value(serde_json::json!({"content": null}))
+                    .expect("null tolerant variant should decode");
+            assert!(holder.content.is_empty());
         }
     }
 }

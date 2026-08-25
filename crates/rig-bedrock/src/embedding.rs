@@ -20,16 +20,6 @@ pub struct EmbeddingResponse {
     pub input_text_token_count: usize,
 }
 
-// The model-id string values are canonically defined in `crate::completion`;
-// these aliases keep this module's historical public names.
-pub use crate::completion::{
-    AMAZON_TITAN_EMBEDDINGS_G1_TEXT as AMAZON_TITAN_EMBED_TEXT_V1,
-    AMAZON_TITAN_MULTIMODAL_EMBEDDINGS_G1 as AMAZON_TITAN_EMBED_IMAGE_V1,
-    AMAZON_TITAN_TEXT_EMBEDDINGS_V2 as AMAZON_TITAN_EMBED_TEXT_V2_0,
-    COHERE_EMBED_ENGLISH as COHERE_EMBED_ENGLISH_V3,
-    COHERE_EMBED_MULTILINGUAL as COHERE_EMBED_MULTILINGUAL_V3,
-};
-
 #[derive(Clone)]
 pub struct EmbeddingModel {
     client: Client,
