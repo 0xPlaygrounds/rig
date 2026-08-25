@@ -4213,7 +4213,11 @@ mod tests {
         .unwrap();
 
         let completion_request = CompletionRequest {
-            chat_history: vec![Message::system("You are a helpful assistant".to_string()), documents_message, Message::user("What are my notes about?")],
+            chat_history: vec![
+                Message::system("You are a helpful assistant".to_string()),
+                documents_message,
+                Message::user("What are my notes about?"),
+            ],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -4278,7 +4282,10 @@ mod tests {
         use crate::message::Message;
 
         let completion_request = CompletionRequest {
-            chat_history: vec![Message::system("You are a helpful assistant".to_string()), Message::user("Hello")],
+            chat_history: vec![
+                Message::system("You are a helpful assistant".to_string()),
+                Message::user("Hello"),
+            ],
             documents: vec![], // No documents
             tools: vec![],
             temperature: None,

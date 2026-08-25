@@ -774,6 +774,9 @@ data: [DONE]"#;
     }
 
     fn chatgpt_conversion_request(chat_history: Vec<completion::Message>) -> ResponsesRequest {
+        let chat_history = std::iter::once(completion::Message::system("System one"))
+            .chain(chat_history)
+            .collect::<Vec<_>>();
         let client = crate::providers::chatgpt::Client::builder()
             .oauth()
             .http_client(crate::test_utils::RecordingHttpClient::new(""))
@@ -840,7 +843,10 @@ data: [DONE]"#;
             .create_request(completion::CompletionRequest {
                 record_telemetry_content: false,
                 model: None,
-                chat_history: vec![completion::Message::system("Respond tersely.".to_string()), completion::Message::user("hello")],
+                chat_history: vec![
+                    completion::Message::system("Respond tersely.".to_string()),
+                    completion::Message::user("hello"),
+                ],
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,

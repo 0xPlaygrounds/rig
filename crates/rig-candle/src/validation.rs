@@ -10,7 +10,7 @@ use tokenizers::Tokenizer;
 
 use crate::CandleError;
 use crate::profile::{
-    BEGIN_OF_TEXT, ConfigValues, END_HEADER, END_OF_TURN, IM_END, IM_START, ConversationProtocol,
+    BEGIN_OF_TEXT, ConfigValues, ConversationProtocol, END_HEADER, END_OF_TURN, IM_END, IM_START,
     ProfileDefinition, START_HEADER, validate_config_requirements, validate_dimensions,
     validate_tokenizer_requirements,
 };
@@ -252,7 +252,9 @@ pub(crate) fn validate_positive_finite(field: &'static str, value: f32) -> Resul
     Ok(())
 }
 
-pub(crate) fn detect_model_family(tokenizer: &Tokenizer) -> Result<ConversationProtocol, CandleError> {
+pub(crate) fn detect_model_family(
+    tokenizer: &Tokenizer,
+) -> Result<ConversationProtocol, CandleError> {
     let llama3 = [BEGIN_OF_TEXT, START_HEADER, END_HEADER, END_OF_TURN]
         .iter()
         .all(|token| tokenizer.token_to_id(token).is_some());

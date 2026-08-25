@@ -148,7 +148,7 @@ async fn responses_extractor_smoke() {
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("extractor request should succeed");
 
@@ -369,7 +369,7 @@ async fn chat_completions_extractor_smoke() {
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("chat completions extractor request should succeed");
 

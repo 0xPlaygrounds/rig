@@ -72,10 +72,10 @@ async fn main() -> Result<(), anyhow::Error> {
         let eval_result = evaluator_agent
             .extract(&format!("{TASK}\n\n{response}"))
             .await?;
-        if eval_result.evaluation_status == EvalStatus::Pass {
+        if eval_result.data.evaluation_status == EvalStatus::Pass {
             break;
         } else {
-            let context = format!("{TASK}\n\n{}", eval_result.feedback);
+            let context = format!("{TASK}\n\n{}", eval_result.data.feedback);
             response = generator_agent.prompt(context).await?;
             memories.push(response.clone());
         }

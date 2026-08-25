@@ -934,7 +934,10 @@ mod azure_tests {
         let Err(error) = model
             .completion(CompletionRequest {
                 model: None,
-                chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), "Hello!".into()],
+                chat_history: vec![
+                    crate::message::Message::system("You are a helpful assistant.".to_string()),
+                    "Hello!".into(),
+                ],
                 documents: vec![],
                 max_tokens: Some(100),
                 temperature: Some(0.0),

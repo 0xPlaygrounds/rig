@@ -24,7 +24,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE).build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
-        .await?;
+        .await?
+        .data;
 
     info!("AWS Bedrock: {}", serde_json::to_string_pretty(&person)?);
     Ok(())

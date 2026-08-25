@@ -2170,9 +2170,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2234,9 +2237,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2298,9 +2304,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2362,9 +2371,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2426,9 +2438,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2459,9 +2474,12 @@ mod tests {
         // Create a CompletionRequest WITHOUT "think" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            }],
+            chat_history: vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),

@@ -166,20 +166,14 @@ where
     }
 
     forward_default_run! {
-        /// Attempts to extract data from the given text with a number of retries.
-        extract() -> T;
-
-        /// Attempts to extract data from the given text with a number of retries.
-        extract_with_chat_history(chat_history: Vec<Message>) -> T;
+        /// Attempts to extract data from the given text with a number of retries,
+        /// returning the extracted data and accumulated token usage.
+        extract() -> ExtractionResponse<T> => usage;
 
         /// Attempts to extract data from the given text with a number of retries,
-        /// returning both the extracted data and accumulated token usage.
-        extract_with_usage() -> ExtractionResponse<T> => usage;
-
-        /// Attempts to extract data from the given text with a number of retries,
-        /// providing chat history context, and returning both the extracted data
-        /// and accumulated token usage.
-        extract_with_chat_history_with_usage(chat_history: Vec<Message>) -> ExtractionResponse<T>
+        /// providing chat history context, and returning the extracted data and
+        /// accumulated token usage.
+        extract_with_chat_history(chat_history: Vec<Message>) -> ExtractionResponse<T>
             => usage;
     }
 
@@ -248,7 +242,6 @@ where
                 "Submit the structured data you extracted from the provided text.",
                 false,
             )
-            .ignore_unhandled_invalid_tool_calls()
             .run_with_error_usage()
             .await;
         let response = match result {
@@ -284,37 +277,17 @@ impl<T> ExtractorRun<'_, T>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
-    /// Extract structured data with the run-local model.
+    /// Extract structured data and accumulated usage with the run-local model.
     pub async fn extract(
         &self,
         text: impl Into<Message> + WasmCompatSend,
-    ) -> Result<T, ExtractionError> {
-        Ok(self.extract_with_usage(text).await?.data)
-    }
-
-    /// Extract structured data with chat history and the run-local model.
-    pub async fn extract_with_chat_history(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> Result<T, ExtractionError> {
-        Ok(self
-            .extract_with_chat_history_with_usage(text, chat_history)
-            .await?
-            .data)
-    }
-
-    /// Extract structured data and usage with the run-local model.
-    pub async fn extract_with_usage(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        self.extract_with_chat_history_with_usage(text, vec![])
-            .await
+        self.extract_with_chat_history(text, vec![]).await
     }
 
-    /// Extract structured data with chat history and usage using the run-local model.
-    pub async fn extract_with_chat_history_with_usage(
+    /// Extract structured data, with chat history context, and accumulated
+    /// usage using the run-local model.
+    pub async fn extract_with_chat_history(
         &self,
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
@@ -680,7 +653,7 @@ mod tests {
             .await
             .expect("extraction should succeed");
 
-        assert_eq!(response.name, "John");
+        assert_eq!(response.data.name, "John");
         assert_eq!(model.request_count(), 1);
         assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
         assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
@@ -700,7 +673,7 @@ mod tests {
             .extract("John")
             .await
             .expect("extraction should succeed");
-        assert_eq!(response.name, "John");
+        assert_eq!(response.data.name, "John");
 
         let (prompt, content, observed_usage, message_id) = capture
             .snapshot
@@ -736,7 +709,7 @@ mod tests {
             .await
             .expect("extraction should succeed");
 
-        assert_eq!(response.name, "John");
+        assert_eq!(response.data.name, "John");
         assert_eq!(
             *queries.lock().expect("extractor queries"),
             vec![("John".to_string(), 2)]
@@ -778,7 +751,7 @@ mod tests {
         ]);
 
         let response = extractor(model, 1)
-            .extract_with_usage("John")
+            .extract("John")
             .await
             .expect("second attempt should succeed");
 
@@ -803,7 +776,7 @@ mod tests {
                 calls: Arc::new(AtomicUsize::new(0)),
             })
             .build()
-            .extract_with_usage("John")
+            .extract("John")
             .await
             .expect("second attempt should succeed");
 
@@ -829,7 +802,7 @@ mod tests {
         ]);
 
         let response = extractor(model, 1)
-            .extract_with_usage("John")
+            .extract("John")
             .await
             .expect("second attempt should succeed");
 
@@ -838,7 +811,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
+    async fn unexpected_tool_call_runs_hooks_then_fails_and_retries() {
         let model = MockCompletionModel::new([
             MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
             submit_turn("John").with_usage(usage(5)),
@@ -849,15 +822,17 @@ mod tests {
             .retries(1)
             .add_hook(counts.clone())
             .build()
-            .extract_with_usage("John")
+            .extract("John")
             .await
-            .expect("deferred invalid call should use extractor fallback");
+            .expect("the retry should recover from the failed attempt");
 
         assert_eq!(response.data.name, "John");
         assert_eq!(response.usage.total_tokens, 15);
         assert_eq!(counts.invalid_tool_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 2);
-        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 2);
+        // The failed attempt terminates at the invalid call, so only the
+        // successful retry produces response-finish and model-turn events.
+        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
+        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
@@ -894,7 +869,7 @@ mod tests {
             .await
             .expect("repaired output-tool call should finalize extraction");
 
-        assert_eq!(response.name, "John");
+        assert_eq!(response.data.name, "John");
     }
 
     #[tokio::test]
@@ -912,56 +887,45 @@ mod tests {
             .await
             .expect("skipping an invalid sibling should preserve submit");
 
-        assert_eq!(response.name, "John");
+        assert_eq!(response.data.name, "John");
     }
 
     #[tokio::test]
-    async fn submit_call_wins_over_unexpected_sibling_call() {
+    async fn unresolved_sibling_call_fails_the_attempt() {
+        // An invalid sibling no hook resolves fails the attempt even when a
+        // valid submit is present — extractors follow the same fail-closed
+        // invalid-tool-call semantics as every other agent run. A hook that
+        // wants the old discard behavior skips the call
+        // (`skip_hook_preserves_valid_submit_sibling` pins that path).
         let turn = MockTurn::from_contents([
             tool_call("unknown", "unexpected", json!({})),
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
         ])
         .with_usage(usage(7));
-        let model = MockCompletionModel::new([turn]);
 
-        let response = extractor(model, 0)
-            .extract_with_usage("John")
+        let error = extractor(MockCompletionModel::new([turn]), 0)
+            .extract("John")
             .await
-            .expect("submit should remain authoritative");
+            .expect_err("an unresolved invalid sibling must fail the attempt");
 
-        assert_eq!(response.data.name, "John");
-        assert_eq!(response.usage.total_tokens, 7);
+        assert!(matches!(
+            error,
+            ExtractionError::PromptError(PromptError::UnknownToolCall { ref tool_name, .. })
+                if tool_name == "unexpected"
+        ));
     }
 
     #[tokio::test]
-    async fn submit_call_wins_before_unexpected_sibling_call() {
+    async fn unresolved_sibling_call_fails_the_attempt_even_after_submit() {
         let turn = MockTurn::from_contents([
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
             tool_call("unknown", "unexpected", json!({})),
         ]);
 
-        let response = extractor(MockCompletionModel::new([turn]), 0)
+        extractor(MockCompletionModel::new([turn]), 0)
             .extract("John")
             .await
-            .expect("an earlier submit should remain authoritative");
-
-        assert_eq!(response.name, "John");
-    }
-
-    #[tokio::test]
-    async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
-        let turn = MockTurn::from_contents([
-            tool_call("unknown-before", "unexpected_before", json!({})),
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-            tool_call("unknown-after", "unexpected_after", json!({})),
-        ]);
-
-        let response = extractor(MockCompletionModel::new([turn]), 0)
-            .extract("John")
-            .await
-            .expect("unexpected siblings should not displace submit");
-
-        assert_eq!(response.name, "John");
+            .expect_err("an unresolved invalid sibling must fail the attempt");
     }
 
     #[tokio::test]
@@ -972,7 +936,7 @@ mod tests {
         ]);
 
         let response = extractor(model, 1)
-            .extract_with_usage("John")
+            .extract("John")
             .await
             .expect("second attempt should succeed");
 
@@ -984,7 +948,7 @@ mod tests {
         let model = MockCompletionModel::new([submit_turn("John").with_usage(usage(7))]);
 
         let response = extractor(model, 0)
-            .extract_with_usage("John")
+            .extract("John")
             .await
             .expect("extraction should succeed");
 

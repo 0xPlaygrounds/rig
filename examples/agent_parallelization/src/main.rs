@@ -61,7 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     Depression sentiment score: {}
                     Intelligence sentiment score: {}
                     ",
-            manip_score.score, dep_score.score, int_score.score
+            manip_score.data.score, dep_score.data.score, int_score.data.score
         ),
         (manip_score, dep_score, int_score) => format!(
             "

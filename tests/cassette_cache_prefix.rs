@@ -591,8 +591,9 @@ fn determinism_probe_request() -> CompletionRequest {
         chat_history: vec![
             Message::system("You are a deterministic serialization probe."),
             Message::User {
-            content: vec![UserContent::text("probe")],
-        }],
+                content: vec![UserContent::text("probe")],
+            },
+        ],
         documents: vec![document],
         tools: vec![
             tool("alpha_probe", "alpha_first", "alpha_second"),

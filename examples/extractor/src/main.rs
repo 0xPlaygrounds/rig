@@ -26,10 +26,10 @@ async fn main() -> Result<()> {
     let client = openai::Client::from_env()?;
     let extractor = client.extractor::<Person>(openai::GPT_4).build();
 
-    let person = extractor.extract(FIRST_INPUT).await?;
+    let person = extractor.extract(FIRST_INPUT).await?.data;
     println!("{}", serde_json::to_string_pretty(&person)?);
 
-    let response = extractor.extract_with_usage(SECOND_INPUT).await?;
+    let response = extractor.extract(SECOND_INPUT).await?;
     println!("{}", serde_json::to_string_pretty(&response.data)?);
     println!("total tokens: {}", response.usage.total_tokens);
 

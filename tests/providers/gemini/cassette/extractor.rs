@@ -33,7 +33,7 @@ async fn extractor_smoke() {
             .build();
 
         let response = extractor
-            .extract_with_usage(EXTRACTOR_TEXT)
+            .extract(EXTRACTOR_TEXT)
             .await
             .expect("extractor request should succeed");
 
@@ -81,9 +81,9 @@ async fn extractor_with_additional_params() {
                 .await
                 .expect("extract should succeed");
 
-            assert_eq!(person.first_name.as_deref(), Some("John"));
-            assert_eq!(person.last_name.as_deref(), Some("Doe"));
-            assert_nonempty_response(person.job.as_deref().unwrap_or_default());
+            assert_eq!(person.data.first_name.as_deref(), Some("John"));
+            assert_eq!(person.data.last_name.as_deref(), Some("Doe"));
+            assert_nonempty_response(person.data.job.as_deref().unwrap_or_default());
         },
     )
     .await;

@@ -110,10 +110,10 @@ async fn batch_multi_extract_chain() -> Result<()> {
                     sentiment_extractor.extract(text),
                 )?;
                 anyhow::Ok(CombinedExtract {
-                    names: names.names,
-                    topics: topics.topics,
-                    sentiment: sentiment.sentiment,
-                    confidence: sentiment.confidence,
+                    names: names.data.names,
+                    topics: topics.data.topics,
+                    sentiment: sentiment.data.sentiment,
+                    confidence: sentiment.data.confidence,
                 })
             }
         })

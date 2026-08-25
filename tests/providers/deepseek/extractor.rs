@@ -19,14 +19,16 @@ async fn extractor_smoke() {
             .expect("extractor request should succeed");
 
         let first_name = person
+            .data
             .first_name
             .as_deref()
             .expect("first_name should be present");
         let last_name = person
+            .data
             .last_name
             .as_deref()
             .expect("last_name should be present");
-        let job = person.job.as_deref().expect("job should be present");
+        let job = person.data.job.as_deref().expect("job should be present");
 
         assert_nonempty_response(first_name);
         assert_nonempty_response(last_name);

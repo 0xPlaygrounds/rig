@@ -9,7 +9,7 @@ use rig_core::message::{
 use serde::Deserialize;
 
 use crate::{
-    BEGIN_OF_TEXT, CandleError, END_HEADER, END_OF_TURN, IM_END, IM_START, ConversationProtocol,
+    BEGIN_OF_TEXT, CandleError, ConversationProtocol, END_HEADER, END_OF_TURN, IM_END, IM_START,
     SMOLLM2_DEFAULT_SYSTEM_PROMPT, START_HEADER,
 };
 
@@ -916,7 +916,8 @@ mod tests {
             text: "document-marker".to_string(),
             additional_props: HashMap::new(),
         });
-        let prompt = render_prompt(&request, ConversationProtocol::Qwen3).expect("render documents");
+        let prompt =
+            render_prompt(&request, ConversationProtocol::Qwen3).expect("render documents");
         let system = prompt.find("system-marker").expect("system marker");
         let tools = prompt.find("# Tools").expect("tools marker");
         let document = prompt.find("document-marker").expect("document marker");

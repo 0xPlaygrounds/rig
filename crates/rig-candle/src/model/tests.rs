@@ -652,7 +652,10 @@ fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + S
         loaded.profile.definition.artifact_format,
         ArtifactFormat::Safetensors
     );
-    assert_eq!(model.conversation_protocol(), Some(ConversationProtocol::Llama3));
+    assert_eq!(
+        model.conversation_protocol(),
+        Some(ConversationProtocol::Llama3)
+    );
     assert_eq!(model.quantization(), None);
     Ok(())
 }
@@ -694,7 +697,10 @@ fn borrowed_gguf_builder_keeps_borrowed_artifacts_and_all_settings() {
 async fn async_loading_succeeds_and_preserves_builder_settings()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let direct = CandleModel::from_safetensors_async(model_data()?).await?;
-    assert_eq!(direct.conversation_protocol(), Some(ConversationProtocol::Llama3));
+    assert_eq!(
+        direct.conversation_protocol(),
+        Some(ConversationProtocol::Llama3)
+    );
 
     let configured = CandleModel::builder(model_data()?)
         .max_tokens(17)

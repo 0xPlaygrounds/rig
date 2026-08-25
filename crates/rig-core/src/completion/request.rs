@@ -1849,7 +1849,6 @@ mod tests {
                 .message(Message::user("History"))
                 .build();
 
-
         let history = request.chat_history.into_iter().collect::<Vec<_>>();
         assert_eq!(history.len(), 3);
         assert!(matches!(

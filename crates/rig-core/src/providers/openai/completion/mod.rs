@@ -159,7 +159,7 @@ pub enum Message {
     Assistant {
         #[serde(
             default,
-            deserialize_with = "json_utils::string_or_vec",
+            deserialize_with = "json_utils::string_null_or_vec",
             skip_serializing_if = "Vec::is_empty",
             serialize_with = "serialize_assistant_content_vec"
         )]

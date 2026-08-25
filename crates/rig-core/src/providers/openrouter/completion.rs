@@ -4429,7 +4429,10 @@ mod tests {
     fn prompt_caching_completion_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are a helpful assistant.".to_string()), crate::message::Message::user("Hello")],
+            chat_history: vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                crate::message::Message::user("Hello"),
+            ],
             documents: vec![],
             tools: vec![],
             temperature: None,

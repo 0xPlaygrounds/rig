@@ -806,6 +806,76 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Backwards-compat shims removed
+
+A sweep removed every remaining backwards-compatibility shim. Each item below
+is a hard break with no deprecation window.
+
+**Rename aliases deleted** — use the canonical name:
+
+| Removed | Use instead |
+| --- | --- |
+| `rig_candle::ModelFamily` | `rig_candle::ConversationProtocol` |
+| `rig_candle::LlamaModel` | `rig_candle::CandleModel` |
+| `rig::tool_macro` / `rig_agent::tool_macro` | `rig_tool` |
+| `rig_agent::tool::server::ToolRegistrySnapshot` | `rig_agent::tool::ToolCatalog` |
+| `rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V1` (and `_IMAGE_V1`, `_TEXT_V2_0`, `COHERE_EMBED_ENGLISH_V3`, `COHERE_EMBED_MULTILINGUAL_V3`) | the canonical constants in `rig_bedrock::completion` (`AMAZON_TITAN_EMBEDDINGS_G1_TEXT`, `AMAZON_TITAN_MULTIMODAL_EMBEDDINGS_G1`, `AMAZON_TITAN_TEXT_EMBEDDINGS_V2`, `COHERE_EMBED_ENGLISH`, `COHERE_EMBED_MULTILINGUAL`) |
+
+The hook event struct `rig_agent::agent::hook::CompletionCall` is renamed to
+`CompletionCallEvent` — the name the `rig_agent::agent::CompletionCallEvent`
+re-export always used, and no longer colliding with the run-record
+`rig_agent::agent::CompletionCall`. Code importing the event from the `hook`
+module must rename; code using `agent::CompletionCallEvent` compiles unchanged.
+
+**`CompletionRequest::preamble` is gone.** System instructions are carried
+solely by leading `Message::System` entries in `chat_history` — the shape the
+builder has emitted since 0.33. `CompletionRequestBuilder::preamble(..)` is
+unchanged (it funnels into a leading system message at build time). Only code
+that constructed `CompletionRequest` literals or read `.preamble` breaks:
+put the system prompt in `chat_history` instead. Serialized requests no
+longer carry the field; a persisted request with `"preamble"` set loses it on
+load (unknown fields are ignored) — re-nest it as a leading system message.
+Telemetry `system_instructions`, which only the dead field fed, is no longer
+reported by provider spans.
+
+**Extractor API collapsed.** `extract_with_usage` and
+`extract_with_chat_history_with_usage` are gone; `extract` and
+`extract_with_chat_history` now return
+`ExtractionResponse<T>` (`{ data, usage }`) instead of bare `T`.
+Migrate `let x = extractor.extract(text).await?` to
+`let x = extractor.extract(text).await?.data`, and calls to the `_with_usage`
+variants to the short names.
+
+**Extractors no longer silently ignore invalid tool calls.** The internal
+policy that discarded unhandled non-`submit` tool calls in extractor runs (the
+legacy extractor transport's semantics) is removed. An invalid call that no
+hook resolves now fails the attempt like any other agent run, and the
+extractor's retry loop retries it. `AgentRun::ignore_invalid_tool_call`, the
+driver primitive that existed for that policy, is removed —
+`InvalidToolCallAction` covers deliberate recovery.
+
+**Retired provider model-id constants deleted** (the providers no longer serve
+them): Cohere `COMMAND_R_PLUS`, `COMMAND_R`, `COMMAND`, `COMMAND_NIGHTLY`,
+`COMMAND_LIGHT`, `COMMAND_LIGHT_NIGHTLY`; Mistral `PIXTRAL_LARGE`,
+`MISTRAL_SABA`, `PIXTRAL_SMALL`, `MISTRAL_NEMO`, `CODESTRAL_MAMBA`; DeepSeek
+`DEEPSEEK_CHAT`, `DEEPSEEK_REASONER`; Moonshot `MOONSHOT_CHAT`
+(`moonshot-v1-128k`). Pass the model-id string directly if you must keep
+calling a retired model.
+
+**Persisted-format tolerances removed (silent behavior changes):**
+
+- `CompletionCall.usage` is a required object. The pre-monoid `Option`
+  encoding — `"usage": null` in run records, stream items, or suspended
+  `AgentRun` state — no longer deserializes. Re-persist old records with a
+  zero-valued usage object in place of `null`.
+- `json_utils::string_or_vec` no longer accepts `null` (it decodes a string,
+  a sequence, or a single bare object). Fields where `null` is a real wire
+  shape — OpenAI's `"content": null` on tool-calls-only assistant messages —
+  use the new `string_null_or_vec`, so provider decoding is unchanged;
+  hand-written payloads that passed `null` for Anthropic message content or
+  OpenAI system/user content now get a loud decode error.
+
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in

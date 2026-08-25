@@ -9,7 +9,9 @@ use rig_core::{
 };
 
 use crate::{
-    agent::hook::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+    agent::hook::{
+        AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
+    },
     completion::{CompletionModel, Document},
     tool::{
         DynamicTool, PortableDynamicTool, Tool, ToolSet,

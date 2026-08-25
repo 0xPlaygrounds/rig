@@ -3708,7 +3708,10 @@ mod tests {
     fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
         completion::CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system(preamble.to_string()), message::Message::user("Hello")],
+            chat_history: vec![
+                crate::message::Message::system(preamble.to_string()),
+                message::Message::user("Hello"),
+            ],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -5097,7 +5100,8 @@ mod tests {
     fn mocked_second_turn_request_omits_unreplayable_reasoning() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are concise.".to_string()),
+            chat_history: vec![
+                crate::message::Message::system("You are concise.".to_string()),
                 completion::Message::User {
                     content: vec![message::UserContent::Text(Text::new(
                         "Think briefly, then answer.",

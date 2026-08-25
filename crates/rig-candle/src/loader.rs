@@ -20,7 +20,7 @@ use crate::generation::GenerationConfig;
 #[cfg(target_family = "wasm")]
 use crate::profile::ModelArchitecture;
 use crate::profile::{
-    ArtifactFormat, LoaderBackend, ConversationProtocol, ValidatedProfile, definition_for,
+    ArtifactFormat, ConversationProtocol, LoaderBackend, ValidatedProfile, definition_for,
     validate_identity, validate_tokenizer_requirements,
 };
 use crate::runtime::RuntimeDevice;

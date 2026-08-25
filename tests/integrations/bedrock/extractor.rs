@@ -32,7 +32,7 @@ async fn extractor_smoke() {
         .build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("extractor request should succeed");
 
@@ -48,7 +48,7 @@ async fn extractor_with_chat_history_smoke() {
         .build();
 
     let response = extractor
-        .extract_with_chat_history_with_usage(
+        .extract_with_chat_history(
             "The text is about Ada Lovelace, a mathematician.",
             vec![Message::user(
                 "Extract the person's name and job from the next message.",

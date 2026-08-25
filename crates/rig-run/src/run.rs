@@ -1449,36 +1449,6 @@ impl AgentRun {
         }
     }
 
-    /// Discard the pending invalid tool call without marking the turn as
-    /// recovered.
-    ///
-    /// This is the extractor driver's fallback after every invalid-tool hook
-    /// has declined to act. Keeping it distinct from [`InvalidToolCallAction::Skip`]
-    /// preserves the extractor's legacy response semantics: unrelated calls
-    /// disappear, a sibling output call can still finalize the turn, and
-    /// response observers still receive the canonical response fields.
-    pub fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
-        let mut resolving = self.take_resolving(
-            "ignore_invalid_tool_call called without a pending invalid tool call",
-        )?;
-
-        if pending_invalid_call(&resolving).is_none() {
-            self.state = RunState::ResolvingToolCalls(resolving);
-            return Err(self.protocol_violation(
-                "ignore_invalid_tool_call called without a pending invalid tool call",
-            ));
-        }
-
-        resolving.items.remove(resolving.next_index);
-        resolving.has_tool_calls = has_tool_calls(&resolving.items);
-        // Dropping the last item leaves the turn empty, which is now
-        // representable. This used to push a fabricated empty-text part so the
-        // content type stayed satisfied; `is_empty_assistant_turn` keeps such a
-        // turn out of history further along.
-        self.state = RunState::ResolvingToolCalls(resolving);
-        self.advance_resolution()
-    }
-
     /// Feed the tool results for the pending [`AgentRunStep::CallTools`].
     ///
     /// Results may be in any order; they are appended as a single user
@@ -2876,25 +2846,13 @@ mod tests {
     }
 
     #[test]
-    fn agent_run_deserializes_pre_monoid_suspended_state() {
-        // Pins `CompletionCall.usage`'s null tolerance on a suspended run:
-        // `"usage": null` (the pre-monoid Option encoding) must map to
-        // zero-valued usage and the run must resume. The tool calls use the
-        // current schema — the pre-provider-split `call_id` lift is gone
-        // (its ignore-the-key behavior is pinned in rig-core's message
-        // tests).
+    fn agent_run_rejects_pre_monoid_suspended_state() {
+        // `CompletionCall.usage` is a required object: a suspended run
+        // serialized with the pre-monoid Option encoding (`"usage": null`)
+        // no longer loads.
         let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
 
-        let mut restored: AgentRun =
-            serde_json::from_str(fixture).expect("old-format suspended run should deserialize");
-        assert_eq!(restored.completion_calls()[0].usage, Usage::new());
-
-        let calls = expect_call_tools(&mut restored);
-        assert_eq!(calls.len(), 1);
-        restored
-            .tool_results(vec![tool_result("call_1", "2")])
-            .expect("tool_results should succeed");
-        expect_call_model(&mut restored);
+        serde_json::from_str::<AgentRun>(fixture).expect_err("null usage must not deserialize");
     }
 
     #[test]

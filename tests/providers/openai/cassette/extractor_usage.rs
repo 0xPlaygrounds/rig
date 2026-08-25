@@ -1,8 +1,7 @@
 //! Integration tests for extractor usage tracking.
 //!
 //! These tests verify that:
-//! - The original `extract()` API still works (backward compatibility)
-//! - The new `extract_with_usage()` API correctly returns usage data
+//! - `extract()` returns the extracted data alongside usage data
 //! - Usage accumulates across retry attempts
 //! - Both `extract` and `extract_with_chat_history` variants work
 
@@ -47,8 +46,8 @@ fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) -> Res
     Ok(())
 }
 
-/// Test backward compatibility: the original `extract()` method should still work
-/// and return just the extracted data (not wrapped in a response type).
+/// Test that `extract()` returns the extracted data (via the `data` field of the
+/// response).
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
     with_openai_cassette_result(
@@ -62,9 +61,9 @@ async fn extract_backward_compatibility() -> Result<()> {
                 .extract("John Doe is a 30 year old software engineer.")
                 .await?;
 
-            anyhow::ensure!(person.name.as_deref() == Some("John Doe"));
-            anyhow::ensure!(person.age == Some(30));
-            anyhow::ensure!(person.profession.as_deref() == Some("software engineer"));
+            anyhow::ensure!(person.data.name.as_deref() == Some("John Doe"));
+            anyhow::ensure!(person.data.age == Some(30));
+            anyhow::ensure!(person.data.profession.as_deref() == Some("software engineer"));
 
             Ok(())
         },
@@ -72,7 +71,7 @@ async fn extract_backward_compatibility() -> Result<()> {
     .await
 }
 
-/// Test `extract_with_usage()` returns the extracted data with usage information.
+/// Test `extract()` returns the extracted data with usage information.
 #[tokio::test]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_openai_cassette_result(
@@ -83,7 +82,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
                 .build();
 
             let response: ExtractionResponse<Person> = extractor
-                .extract_with_usage("Jane Smith is a 45 year old data scientist.")
+                .extract("Jane Smith is a 45 year old data scientist.")
                 .await?;
 
             anyhow::ensure!(response.data.name.as_deref() == Some("Jane Smith"));
@@ -100,7 +99,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     .await
 }
 
-/// Test `extract_with_chat_history_with_usage()` returns the extracted data with usage information.
+/// Test `extract_with_chat_history()` returns the extracted data with usage information.
 #[tokio::test]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     use rig::message::Message;
@@ -117,7 +116,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
             )];
 
             let response: ExtractionResponse<Address> = extractor
-                .extract_with_chat_history_with_usage(
+                .extract_with_chat_history(
                     "The address is 123 Main St in Springfield, IL 62701.",
                     chat_history,
                 )
@@ -137,7 +136,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     .await
 }
 
-/// Test that `extract_with_usage()` and `extract()` agree on the stable extracted fields.
+/// Test that two `extract()` calls agree on the stable extracted fields.
 /// These are separate model calls, so exact wording can vary across runs.
 #[tokio::test]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
@@ -152,14 +151,14 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 
             let person = extractor.extract(text).await?;
 
-            let response = extractor.extract_with_usage(text).await?;
+            let response = extractor.extract(text).await?;
 
-            anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
+            anyhow::ensure!(person.data.name.as_deref() == Some("Bob Johnson"));
             anyhow::ensure!(response.data.name.as_deref() == Some("Bob Johnson"));
-            anyhow::ensure!(person.age == Some(55));
+            anyhow::ensure!(person.data.age == Some(55));
             anyhow::ensure!(response.data.age == Some(55));
             assert_compatible_professions(
-                person.profession.as_deref(),
+                person.data.profession.as_deref(),
                 response.data.profession.as_deref(),
             )?;
             anyhow::ensure!(response.usage.total_tokens > 0, "usage should be populated");
@@ -181,7 +180,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 .build();
 
             let person_response = person_extractor
-                .extract_with_usage("Alice is a 25 year old developer.")
+                .extract("Alice is a 25 year old developer.")
                 .await?;
 
             anyhow::ensure!(person_response.usage.total_tokens > 0);
@@ -191,7 +190,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 .build();
 
             let address_response = address_extractor
-                .extract_with_usage("456 Oak Avenue, Cambridge, MA 02139")
+                .extract("456 Oak Avenue, Cambridge, MA 02139")
                 .await?;
 
             anyhow::ensure!(address_response.usage.total_tokens > 0);

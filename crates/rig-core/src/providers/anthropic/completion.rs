@@ -3549,7 +3549,10 @@ mod tests {
     ) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("System prompt".to_string()), message::Message::from("Hello")],
+            chat_history: vec![
+                crate::message::Message::system("System prompt".to_string()),
+                message::Message::from("Hello"),
+            ],
             documents: Vec::new(),
             tools,
             temperature: None,

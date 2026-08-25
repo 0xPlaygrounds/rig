@@ -1013,7 +1013,10 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            chat_history: vec![crate::message::Message::system("You are helpful".to_string()), RigMessage::user("What's the weather?")],
+            chat_history: vec![
+                crate::message::Message::system("You are helpful".to_string()),
+                RigMessage::user("What's the weather?"),
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),

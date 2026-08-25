@@ -12,7 +12,7 @@ async fn extractor_smoke() {
         let response = client
             .extractor::<SmokePerson>(DEFAULT_MODEL)
             .build()
-            .extract_with_usage(EXTRACTOR_TEXT)
+            .extract(EXTRACTOR_TEXT)
             .await
             .expect("extractor request should succeed");
 

@@ -72,7 +72,7 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         .expect("nullable strict should not prevent extraction");
 
     assert_eq!(
-        extracted,
+        extracted.data,
         KeywordPayload {
             keywords: vec!["fruit".to_string(), "produce".to_string()]
         }
