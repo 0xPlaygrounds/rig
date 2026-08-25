@@ -101,9 +101,6 @@ const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
 // Moonshot Completion API
 // ================================================================
 
-/// Moonshot v1 128K context model (legacy)
-pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
-
 /// Kimi K2 — Mixture-of-Experts model (1T total params, 32B active)
 pub const KIMI_K2: &str = "kimi-k2";
 
