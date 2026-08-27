@@ -49,7 +49,7 @@ impl SearchIndex {
             .await
             .transpose()
             .map_err(VectorStoreError::datastore)?
-            .ok_or(VectorStoreError::DatastoreError("Index not found".into()))
+            .ok_or_else(|| VectorStoreError::DatastoreError("Index not found".into()))
     }
 }
 

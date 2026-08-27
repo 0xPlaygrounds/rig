@@ -50,7 +50,7 @@ impl EmbeddingModel {
                 model: format!("models/{}", self.model),
                 content: Some(proto::Content {
                     parts: vec![proto::Part {
-                        data: Some(proto::part::Data::Text(doc.clone())),
+                        data: Some(proto::part::Data::Text(doc)),
                         thought: false,
                         thought_signature: Vec::new(),
                         part_metadata: None,

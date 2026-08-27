@@ -9,6 +9,7 @@ mod identity;
 mod parts;
 
 use crate::completion::{CompletionError, CompletionResponse, Usage};
+use crate::id::InternalCallId;
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
 };
@@ -714,7 +715,7 @@ pub struct RawStreamingToolCall {
     /// take its place.
     pub tool_id: Option<WireId>,
     /// Rig-generated unique identifier for this tool call.
-    pub internal_call_id: String,
+    pub internal_call_id: InternalCallId,
     /// Provider-specific call ID used by some APIs for tool result correlation.
     pub call_id: Option<String>,
     /// Tool/function name.
@@ -736,7 +737,7 @@ impl RawStreamingToolCall {
             // unset key must never read as wire-derived.
             id: StreamPartId::minted(MintKind::Tool, u64::MAX),
             tool_id: None,
-            internal_call_id: crate::id::generate(),
+            internal_call_id: InternalCallId::new(),
             call_id: None,
             name: String::new(),
             arguments: serde_json::Value::Null,
@@ -754,7 +755,7 @@ impl RawStreamingToolCall {
         Self {
             id,
             tool_id,
-            internal_call_id: crate::id::generate(),
+            internal_call_id: InternalCallId::new(),
             call_id: None,
             name,
             arguments,
@@ -1310,7 +1311,7 @@ impl Stream for StreamingCompletionResponse {
                         })))
                     }
                     RawStreamingChoice::ToolCall(raw_tool_call) => {
-                        let minted_internal_call_id = raw_tool_call.internal_call_id.clone();
+                        let minted_internal_call_id = raw_tool_call.internal_call_id;
                         let part_id = raw_tool_call.id.clone();
                         let tool_call: ToolCall = raw_tool_call.into();
                         // A wire that fragmented this call's input already
@@ -1731,7 +1732,7 @@ mod tests {
                 tool_id: WireId::new("call_1"),
                 id: StreamPartId::wire("call_1"),
                 call_id: None,
-                internal_call_id: "internal_1".to_string(),
+                internal_call_id: InternalCallId::new(),
                 name: "lookup".to_string(),
                 arguments: serde_json::json!({}),
                 signature: None,
@@ -1901,7 +1902,7 @@ mod tests {
                 tool_id: WireId::new("call_1"),
                 id: StreamPartId::wire("call_1"),
                 call_id: None,
-                internal_call_id: "internal_1".to_string(),
+                internal_call_id: InternalCallId::new(),
                 name: "lookup".to_string(),
                 arguments: serde_json::json!({}),
                 signature: None,
@@ -2263,7 +2264,7 @@ mod tests {
         assert_eq!(delta_ids[0], delta_ids[1], "one call, one internal id");
         assert_eq!(
             completed_ids,
-            vec![delta_ids[0].clone()],
+            vec![delta_ids[0]],
             "the completed call must carry the id its deltas published"
         );
 
@@ -3014,7 +3015,7 @@ pub enum StreamedAssistantContent {
         tool_call: ToolCall,
         /// Rig-generated unique identifier for this tool call.
         /// Use this to correlate with ToolCallDelta events.
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
     },
     /// Partial tool call data emitted by the assistant.
     ToolCallDelta {
@@ -3023,7 +3024,7 @@ pub enum StreamedAssistantContent {
         /// [`StreamedAssistantContent::ToolCall`], and unique per run.
         /// Provider-issued ids arrive on the completed [`ToolCall`]; no
         /// stream-internal key is ever rendered here.
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
         content: ToolCallDeltaContent,
     },
     /// Complete reasoning block emitted by the assistant.
@@ -3092,13 +3093,13 @@ pub enum StreamedUserContent {
         /// Rig-generated unique identifier for the tool call this result
         /// belongs to. Use this to correlate with the originating
         /// [`StreamedAssistantContent::ToolCall::internal_call_id`].
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
     },
 }
 
 impl StreamedUserContent {
     /// Create a streamed tool result correlated to an internal tool call ID.
-    pub fn tool_result(tool_result: ToolResult, internal_call_id: String) -> Self {
+    pub fn tool_result(tool_result: ToolResult, internal_call_id: InternalCallId) -> Self {
         Self::ToolResult {
             tool_result,
             internal_call_id,

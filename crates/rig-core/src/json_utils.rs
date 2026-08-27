@@ -6,6 +6,13 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
+/// `skip_serializing_if` helper: serde requires a `fn(&bool) -> bool`, so the
+/// trivially-copy lint does not apply here.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+pub(crate) fn is_false(value: &bool) -> bool {
+    !value
+}
+
 /// Serialize a `HashMap` in sorted key order.
 ///
 /// `HashMap` seeds its iteration order per instance, so a map serialized into a

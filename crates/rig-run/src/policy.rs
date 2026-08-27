@@ -3,10 +3,12 @@
 //! [`RequestPatch`] — the shape of one turn's request.
 
 use rig_core::completion::Document;
+use rig_core::id::InternalCallId;
 use rig_core::message::{Message, ToolChoice};
+use serde::{Deserialize, Serialize};
 
 /// Diagnostics for an invalid model-emitted tool call.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidToolCallContext {
     /// Name emitted by the model.
     pub tool_name: String,
@@ -14,7 +16,7 @@ pub struct InvalidToolCallContext {
     /// minted handle. Absent only when no call object exists at all.
     pub tool_call_id: Option<String>,
     /// Rig correlation id, when present.
-    pub internal_call_id: Option<String>,
+    pub internal_call_id: Option<InternalCallId>,
     /// Emitted JSON arguments, when present.
     pub args: Option<String>,
     /// Executable tools advertised for the turn.
@@ -30,7 +32,7 @@ pub struct InvalidToolCallContext {
 }
 
 /// How an accepted, tool-free model turn should be retried.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RetryRequest {
     /// Discard the rejected response and reuse the same prompt and preceding
     /// history with fresh request preparation.
@@ -43,7 +45,7 @@ pub enum RetryRequest {
 }
 
 /// Action for invalid-tool-call hooks and manual invalid-call resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InvalidToolCallAction {
     /// Preserve fail-fast behavior.
     Fail,
@@ -118,7 +120,7 @@ impl InvalidToolCallAction {
 ///
 /// The merged patch does not mutate the agent's configured baseline and is not
 /// carried into subsequent turns.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RequestPatch {
     /// Preamble to use instead of the agent's configured preamble for this turn.
     pub preamble: Option<String>,
@@ -266,5 +268,51 @@ impl RequestPatch {
             (earlier, later) => earlier.or(later),
         };
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every policy type a host may cache in serializable state round-trips.
+    #[test]
+    fn policy_types_round_trip_through_serde() {
+        let patch = RequestPatch {
+            preamble: Some("p".to_string()),
+            temperature: Some(0.5),
+            max_tokens: Some(64),
+            tool_choice: Some(ToolChoice::Auto),
+            active_tools: Some(vec!["add".to_string()]),
+            additional_params: Some(serde_json::json!({"k": 1})),
+            extra_context: Vec::new(),
+            history: Some(vec![Message::user("hi")]),
+        };
+        let json = serde_json::to_string(&patch).expect("serialize patch");
+        assert_eq!(
+            serde_json::from_str::<RequestPatch>(&json).expect("deserialize patch"),
+            patch
+        );
+
+        for action in [
+            InvalidToolCallAction::fail(),
+            InvalidToolCallAction::retry("try add"),
+            InvalidToolCallAction::repair("add"),
+            InvalidToolCallAction::skip("nope"),
+            InvalidToolCallAction::stop("done"),
+        ] {
+            let json = serde_json::to_string(&action).expect("serialize action");
+            assert_eq!(
+                serde_json::from_str::<InvalidToolCallAction>(&json).expect("deserialize action"),
+                action
+            );
+        }
+
+        let retry = RetryRequest::Feedback("again".to_string());
+        let json = serde_json::to_string(&retry).expect("serialize retry");
+        assert_eq!(
+            serde_json::from_str::<RetryRequest>(&json).expect("deserialize retry"),
+            retry
+        );
     }
 }

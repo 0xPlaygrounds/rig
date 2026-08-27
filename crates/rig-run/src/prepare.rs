@@ -48,7 +48,7 @@ impl From<PrepareError> for CompletionError {
 /// bookkeeping fields (`executable_tool_names`, `allowed_tool_names`,
 /// `output_tool_name`, `output_mode`) are what the driver feeds back into the
 /// run when the response arrives.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PreparedRequest {
     /// Prior messages to send: the effective (possibly augmented) preamble as a
     /// leading system message, then the history (the patch's `history` when
@@ -578,6 +578,34 @@ pub fn allowed_tool_names_for_choice(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A prepared request produced by `prepare_request` survives a JSON round
+    /// trip — a host caching one in serializable state (a saved world) can
+    /// restore it losslessly.
+    #[test]
+    fn prepared_request_round_trips_through_serde() {
+        let spec = RunSpec {
+            preamble: Some("be brief".to_string()),
+            temperature: Some(0.2),
+            ..RunSpec::default()
+        };
+        let prepared = prepare_request(
+            &spec,
+            &ProviderCapabilities::default(),
+            &[Message::user("hi")],
+            vec![ToolDefinition {
+                name: "add".to_string(),
+                description: "adds".to_string(),
+                parameters: serde_json::json!({"type": "object"}),
+            }],
+            None,
+            None,
+        )
+        .expect("prepare");
+        let json = serde_json::to_string(&prepared).expect("serialize");
+        let restored: PreparedRequest = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored, prepared);
+    }
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_string()).collect()

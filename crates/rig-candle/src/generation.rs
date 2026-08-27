@@ -88,7 +88,7 @@ pub(crate) fn effective_generation(
     vocab_size: usize,
 ) -> Result<GenerationConfig, CandleError> {
     let overrides = match &request.additional_params {
-        Some(value) => serde_json::from_value::<RequestGenerationOverrides>(value.clone())
+        Some(value) => RequestGenerationOverrides::deserialize(value)
             .map_err(|error| CandleError::InvalidGeneration(error.to_string()))?,
         None => RequestGenerationOverrides::default(),
     };

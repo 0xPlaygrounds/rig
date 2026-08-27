@@ -351,7 +351,7 @@ impl ToolResultContent {
         T: serde::de::DeserializeOwned,
     {
         match self {
-            Self::Json { value } => serde_json::from_value(value.clone()),
+            Self::Json { value } => T::deserialize(value),
             Self::Text(text) => serde_json::from_str(&text.text),
             Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
                 "cannot decode image tool-result content as JSON",

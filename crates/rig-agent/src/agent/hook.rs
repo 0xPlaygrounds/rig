@@ -193,6 +193,7 @@
 //! against a credential-free scripted model whose output genuinely depends on
 //! the cap, on both surfaces.
 
+use rig_core::id::InternalCallId;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{future::Future, sync::Arc};
@@ -299,7 +300,7 @@ impl std::fmt::Debug for Scratchpad {
     }
 }
 
-type ToolCallRewriteFrameMap = HashMap<String, Vec<Option<serde_json::Value>>>;
+type ToolCallRewriteFrameMap = HashMap<InternalCallId, Vec<Option<serde_json::Value>>>;
 
 // A nested `HookStack` can terminate after rewriting arguments, but the public
 // action only carries the terminal reason. Resolution frames transfer that
@@ -317,39 +318,36 @@ impl ToolCallRewriteFrames {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn begin(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
-        self.lock()
-            .entry(internal_call_id.to_owned())
-            .or_default()
-            .push(None);
+    fn begin(&self, internal_call_id: InternalCallId) -> ToolCallResolutionFrame<'_> {
+        self.lock().entry(internal_call_id).or_default().push(None);
         ToolCallResolutionFrame {
             frames: self,
-            internal_call_id: internal_call_id.to_owned(),
+            internal_call_id,
             active: true,
         }
     }
 
-    fn record(&self, internal_call_id: &str, rewrite: serde_json::Value) {
+    fn record(&self, internal_call_id: InternalCallId, rewrite: serde_json::Value) {
         if let Some(frame) = self
             .lock()
-            .get_mut(internal_call_id)
+            .get_mut(&internal_call_id)
             .and_then(|frames| frames.last_mut())
         {
             *frame = Some(rewrite);
         }
     }
 
-    fn finish(&self, internal_call_id: &str) -> Option<serde_json::Value> {
+    fn finish(&self, internal_call_id: InternalCallId) -> Option<serde_json::Value> {
         let mut frames = self.lock();
         let (rewrite, remove_entry) =
             frames
-                .get_mut(internal_call_id)
+                .get_mut(&internal_call_id)
                 .map_or((None, false), |frames| {
                     let rewrite = frames.pop().flatten();
                     (rewrite, frames.is_empty())
                 });
         if remove_entry {
-            frames.remove(internal_call_id);
+            frames.remove(&internal_call_id);
         }
         rewrite
     }
@@ -364,21 +362,21 @@ impl std::fmt::Debug for ToolCallRewriteFrames {
 
 struct ToolCallResolutionFrame<'a> {
     frames: &'a ToolCallRewriteFrames,
-    internal_call_id: String,
+    internal_call_id: InternalCallId,
     active: bool,
 }
 
 impl ToolCallResolutionFrame<'_> {
     fn finish(mut self) -> Option<serde_json::Value> {
         self.active = false;
-        self.frames.finish(&self.internal_call_id)
+        self.frames.finish(self.internal_call_id)
     }
 }
 
 impl Drop for ToolCallResolutionFrame<'_> {
     fn drop(&mut self) {
         if self.active {
-            self.frames.finish(&self.internal_call_id);
+            self.frames.finish(self.internal_call_id);
         }
     }
 }
@@ -531,11 +529,18 @@ impl HookContext {
             .cloned()
     }
 
-    fn begin_tool_call_resolution(&self, internal_call_id: &str) -> ToolCallResolutionFrame<'_> {
+    fn begin_tool_call_resolution(
+        &self,
+        internal_call_id: InternalCallId,
+    ) -> ToolCallResolutionFrame<'_> {
         self.tool_call_rewrite_frames.begin(internal_call_id)
     }
 
-    fn record_tool_call_rewrite(&self, internal_call_id: &str, rewrite: serde_json::Value) {
+    fn record_tool_call_rewrite(
+        &self,
+        internal_call_id: InternalCallId,
+        rewrite: serde_json::Value,
+    ) {
         self.tool_call_rewrite_frames
             .record(internal_call_id, rewrite);
     }
@@ -778,7 +783,7 @@ pub struct ToolCall<'a> {
     /// minted handle.
     pub tool_call_id: Option<&'a str>,
     /// Rig correlation id.
-    pub internal_call_id: &'a str,
+    pub internal_call_id: InternalCallId,
     /// Effective JSON arguments, including earlier rewrites.
     pub args: &'a str,
 }
@@ -795,7 +800,7 @@ pub struct ToolResultEvent<'a> {
     /// minted handle.
     pub tool_call_id: Option<&'a str>,
     /// Rig correlation id.
-    pub internal_call_id: &'a str,
+    pub internal_call_id: InternalCallId,
     /// Effective arguments used for execution.
     pub args: &'a str,
     /// Current model-visible presentation, including earlier rewrites.
@@ -837,7 +842,7 @@ pub struct ToolCallDelta<'a> {
     /// completed [`ToolCall`], unique per run. Provider-issued ids arrive on
     /// the completed call; no provider id (and no stream-internal key) is
     /// available or rendered at delta time.
-    pub internal_call_id: &'a str,
+    pub internal_call_id: InternalCallId,
     /// Tool name on the first delta.
     pub tool_name: Option<&'a str>,
     /// Newly received argument fragment.
@@ -1644,7 +1649,10 @@ impl AgentHook for HookStack {
             match hook.completion_call(ctx, event).await {
                 CompletionCallAction::Continue => {}
                 CompletionCallAction::Patch(patch) => {
-                    merged = Some(merged.map_or(patch.clone(), |value| value.merge(patch)));
+                    merged = Some(match merged {
+                        None => patch,
+                        Some(value) => value.merge(patch),
+                    });
                 }
                 stop @ CompletionCallAction::Stop(_) => return stop,
             }
@@ -1893,7 +1901,7 @@ mod tests {
                 ToolCall {
                     tool_name: "tool",
                     tool_call_id: Some("provider-id"),
-                    internal_call_id: "internal-id",
+                    internal_call_id: InternalCallId::new(),
                     args: r#"{"step":0}"#,
                 },
             )
@@ -1951,7 +1959,7 @@ mod tests {
                 ToolResultEvent {
                     tool_name: "tool",
                     tool_call_id: None,
-                    internal_call_id: "internal-id",
+                    internal_call_id: InternalCallId::new(),
                     args: "{}",
                     presentation: raw.output(),
                     raw_result: &raw,
@@ -2022,7 +2030,7 @@ mod tests {
                 ToolResultEvent {
                     tool_name: "tool",
                     tool_call_id: None,
-                    internal_call_id: "internal-id",
+                    internal_call_id: InternalCallId::new(),
                     args: "{}",
                     presentation: raw.output(),
                     raw_result: &raw,
@@ -2372,7 +2380,7 @@ mod migrated_tests {
         ToolCall {
             tool_name: "add",
             tool_call_id: Some("tc1"),
-            internal_call_id: "ic1",
+            internal_call_id: InternalCallId::new(),
             args: "{}",
         }
     }
@@ -2389,7 +2397,7 @@ mod migrated_tests {
         InvalidToolCallContext {
             tool_name: "unknown".into(),
             tool_call_id: Some("tc1".into()),
-            internal_call_id: Some("ic1".into()),
+            internal_call_id: Some(InternalCallId::new()),
             args: Some("{}".into()),
             available_tools: vec!["add".into()],
             allowed_tools: vec!["add".into()],
@@ -2921,17 +2929,19 @@ mod migrated_tests {
         let outer = HookStack::with(inner);
         let context = ctx();
 
+        let first_id = InternalCallId::new();
+        let second_id = InternalCallId::new();
         let first = outer.resolve_tool_call(
             &context,
             ToolCall {
-                internal_call_id: "first",
+                internal_call_id: first_id,
                 ..tool_call_event()
             },
         );
         let second = outer.resolve_tool_call(
             &context,
             ToolCall {
-                internal_call_id: "second",
+                internal_call_id: second_id,
                 ..tool_call_event()
             },
         );
@@ -2939,9 +2949,9 @@ mod migrated_tests {
             tokio::join!(first, second);
 
         assert_eq!(first_action, ToolCallAction::skip("denied"));
-        assert_eq!(first_rewrite, Some(json!({"call_id": "first"})));
+        assert_eq!(first_rewrite, Some(json!({"call_id": first_id})));
         assert_eq!(second_action, ToolCallAction::skip("denied"));
-        assert_eq!(second_rewrite, Some(json!({"call_id": "second"})));
+        assert_eq!(second_rewrite, Some(json!({"call_id": second_id})));
     }
 
     #[tokio::test]

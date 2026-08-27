@@ -150,7 +150,7 @@ macro_rules! forward_prompt_setters {
         ///
         /// Overrides any default conversation id set on the agent. If memory is not
         /// configured on the agent, this has no effect.
-        pub fn conversation(mut self, id: impl Into<String>) -> Self {
+        pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
             self.$recv = self.$recv.conversation(id);
             self
         }
@@ -2492,7 +2492,7 @@ mod tests {
         let memory = InMemoryConversationMemory::new();
         memory
             .append(
-                "thread-1",
+                &"thread-1".into(),
                 vec![Message::user("hello"), Message::assistant("hi there")],
             )
             .await
@@ -2528,7 +2528,7 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let stored = memory.load("t1").await.unwrap();
+        let stored = memory.load(&"t1".into()).await.unwrap();
         assert_eq!(stored.len(), 2, "user prompt + assistant response saved");
     }
 
@@ -2537,7 +2537,7 @@ mod tests {
         let memory = CountingMemory::default();
         memory
             .inner()
-            .append("t1", vec![Message::user("from-memory")])
+            .append(&"t1".into(), vec![Message::user("from-memory")])
             .await
             .unwrap();
 
@@ -2574,7 +2574,7 @@ mod tests {
         let result = agent.prompt("hello").conversation("t1").await;
         assert!(result.is_err());
 
-        let stored = memory.load("t1").await.unwrap();
+        let stored = memory.load(&"t1".into()).await.unwrap();
         assert!(stored.is_empty(), "no append on error");
     }
 
@@ -2607,7 +2607,7 @@ mod tests {
             "one append for the whole run, not one per model call"
         );
 
-        let stored = memory.load("t1").await.unwrap();
+        let stored = memory.load(&"t1".into()).await.unwrap();
         // user prompt + assistant tool call + tool result + final assistant text.
         assert_eq!(
             stored.len(),
@@ -2636,7 +2636,7 @@ mod tests {
         memory
             .inner()
             .append(
-                "t1",
+                &"t1".into(),
                 vec![Message::user("old-q"), Message::assistant("old-a")],
             )
             .await
@@ -2653,7 +2653,7 @@ mod tests {
 
         assert_eq!(memory.append_count(), 1, "one append for the run");
 
-        let stored = memory.load("t1").await.unwrap();
+        let stored = memory.load(&"t1".into()).await.unwrap();
         // preloaded [old-q, old-a] + new [new-q, new-a]; re-appending the loaded
         // history would instead make this 6.
         assert_eq!(
@@ -2696,7 +2696,7 @@ mod tests {
         assert!(result.is_err(), "a stop hook terminates the run");
 
         assert_eq!(memory.append_count(), 0, "stopped runs do not append");
-        let stored = memory.load("t1").await.unwrap();
+        let stored = memory.load(&"t1".into()).await.unwrap();
         assert!(stored.is_empty(), "nothing persisted on stop: {stored:?}");
     }
 
@@ -2724,7 +2724,7 @@ mod tests {
             .await
             .expect("run should succeed");
 
-        let stored = memory.load("t1").await.unwrap();
+        let stored = memory.load(&"t1".into()).await.unwrap();
 
         assert!(
             matches!(stored.first(), Some(Message::User { .. })),
@@ -2778,7 +2778,7 @@ mod tests {
             .build();
 
         let _ = agent.prompt("hello").await.expect("prompt should succeed");
-        let stored = memory.load("default-thread").await.unwrap();
+        let stored = memory.load(&"default-thread".into()).await.unwrap();
         assert_eq!(stored.len(), 2);
     }
 
@@ -2788,7 +2788,7 @@ mod tests {
             .with_filter(|msgs: Vec<Message>| msgs.into_iter().rev().take(2).rev().collect());
         memory
             .append(
-                "t1",
+                &"t1".into(),
                 vec![
                     Message::user("1"),
                     Message::assistant("2"),

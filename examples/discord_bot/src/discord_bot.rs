@@ -1,22 +1,24 @@
 //! Integration for deploying your Rig agents (and more) as Discord bots.
-//! This feature is not WASM-compatible (and as such, is incompatible with the `worker` feature).
-use crate::agent::Agent;
-use crate::completion::Chat;
-use rig_core::message::Message as RigMessage;
+//!
+//! This lived behind `rig`'s `discord-bot` feature until it was moved here: the
+//! only published `serenity` release pins a `rustls` major with four
+//! unpatched `rustls-webpki` advisories, and a demo-grade integration is not
+//! worth forcing that on every consumer of the facade. It is a plain module of
+//! this example now, so `serenity` stays out of the workspace lockfile.
+use rig::agent::Agent;
+use rig::completion::Chat;
+use rig::message::Message as RigMessage;
 use serenity::all::{
     Command, CommandInteraction, Context, CreateCommand, CreateThread, EventHandler,
     GatewayIntents, Interaction, Message, Ready, async_trait,
 };
 use std::collections::HashMap;
-use std::env;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
 #[derive(Debug, Error)]
 pub enum DiscordBotError {
-    #[error("Discord bot token missing from environment: {0}")]
-    MissingToken(#[from] env::VarError),
     #[error("Failed to build Discord client: {0}")]
     ClientBuild(#[from] serenity::Error),
 }
@@ -213,15 +215,6 @@ where
         self,
         token: &str,
     ) -> impl std::future::Future<Output = Result<serenity::Client, DiscordBotError>> + Send;
-
-    fn into_discord_bot_from_env(
-        self,
-    ) -> impl std::future::Future<Output = Result<serenity::Client, DiscordBotError>> + Send {
-        async move {
-            let token = std::env::var("DISCORD_BOT_TOKEN")?;
-            DiscordExt::into_discord_bot(self, &token).await
-        }
-    }
 }
 
 impl DiscordExt for Agent {

@@ -29,13 +29,6 @@ use tracing::{debug, info};
 /// exact result, no `k` cap).
 const SQLITE_VEC_MAX_K: u64 = 4096;
 
-#[derive(Debug)]
-pub enum SqliteError {
-    DatabaseError(Box<dyn std::error::Error + Send + Sync>),
-    SerializationError(Box<dyn std::error::Error + Send + Sync>),
-    InvalidColumnType(String),
-}
-
 /// Value that can be stored in a SQLite vector store document column.
 ///
 /// Use [`serde_json::Value`] for columns declared as `JSON`.

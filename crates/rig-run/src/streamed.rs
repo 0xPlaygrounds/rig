@@ -38,6 +38,7 @@ use std::collections::{BTreeSet, HashMap};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::FinishReason;
+use rig_core::id::InternalCallId;
 use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
@@ -137,7 +138,7 @@ pub struct StreamedInvalidToolCall {
     /// assembled from the streamed name and any buffered argument deltas.
     pub tool_call: ToolCall,
     /// Rig-generated identifier correlating this call's stream items.
-    pub internal_call_id: String,
+    pub internal_call_id: InternalCallId,
     /// Raw argument payload for diagnostics, when available.
     pub args: Option<String>,
     /// Executable Rig tools advertised to the provider for this turn.
@@ -254,7 +255,7 @@ pub struct StreamedTurn {
     /// in emission order. Carried into the run state so a resumed process
     /// keeps the IDs consumers already saw in tool-call deltas.
     #[serde(default)]
-    pub internal_call_ids: Vec<(String, String)>,
+    pub internal_call_ids: Vec<(String, InternalCallId)>,
     /// Why the provider stopped generating this turn, when it reported a
     /// reason — the streamed analogue of [`ModelTurn::finish_reason`], so a
     /// driver that feeds turns through `streamed_turn` records the same
@@ -293,7 +294,7 @@ pub enum StreamedResolution {
 ///
 /// Deliberately exhaustive: a driver must handle every event, so adding a
 /// variant is a breaking change by design.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StreamedTurnEvent {
     /// Forward the ingested item to the consumer as-is (text, reasoning, or
     /// reasoning deltas, after accumulation).
@@ -302,7 +303,7 @@ pub enum StreamedTurnEvent {
     /// name awaited validation are replayed through this event.
     EmitToolCallDelta {
         /// Rig-generated identifier correlating this call's stream items.
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
         /// The (possibly repaired) name or argument delta.
         content: ToolCallDeltaContent,
     },
@@ -333,7 +334,7 @@ pub enum StreamedTurnEvent {
     },
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 struct ToolCallDeltaState {
     name_validated: bool,
     buffered_arguments: Vec<String>,
@@ -343,13 +344,14 @@ struct ToolCallDeltaState {
 /// delta text keyed by the stream's rig-generated correlator and is
 /// superseded in place when a completed block restating the same part
 /// arrives; a completed block matching no open part occupies its own slot.
+#[derive(Clone, Serialize, Deserialize)]
 struct ReasoningPart {
     correlator: Option<String>,
     provider_id: Option<String>,
     state: ReasoningPartState,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 enum ReasoningPartState {
     /// Delta text accumulated so far for a part with no completed block.
     Pending(String),
@@ -377,26 +379,34 @@ fn reasoning_from_part(
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 enum PendingInvalid {
     /// A complete tool call with a disallowed name.
     FullCall {
         tool_call: Box<ToolCall>,
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
     },
     /// A streamed tool-name delta with a disallowed name.
-    NameDelta { internal_call_id: String },
+    NameDelta { internal_call_id: InternalCallId },
 }
 
 /// Sans-IO accumulator that assembles one streamed model turn. See the
 /// [module docs](self) for the driving protocol.
+///
+/// `Clone + Serialize + Deserialize`, like [`AgentRun`](crate::AgentRun): a
+/// mid-stream assembler can be persisted and resumed (same caveats — no
+/// cross-version format stability). Dropping one mid-turn is a normal
+/// cancellation path and is silent unless replayed assistant content was
+/// excluded from assembly, which warns once on drop.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StreamedTurnAssembler {
     executable_tool_names: BTreeSet<String>,
     allowed_tool_names: BTreeSet<String>,
     text: String,
     saw_text: bool,
     reasoning_parts: Vec<ReasoningPart>,
-    pending_tool_calls: Vec<(ToolCall, String)>,
-    delta_states: HashMap<String, ToolCallDeltaState>,
+    pending_tool_calls: Vec<(ToolCall, InternalCallId)>,
+    delta_states: HashMap<InternalCallId, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
     /// Terminal reason from this turn's provider final record, retained so
     /// [`Self::finish`] can carry it onto the [`StreamedTurn`] (rig#2322).
@@ -414,7 +424,11 @@ pub struct StreamedTurnAssembler {
 /// abandonment, truncation — exactly once, and zero exclusions stay silent.
 /// A dedicated one-field guard (not a `Drop` impl on the assembler itself)
 /// keeps the assembler's fields freely movable.
-#[derive(Default)]
+/// `Clone` copies the count: each lineage owns its exclusions and warns on
+/// its own drop. Serde carries the count so a persisted mid-stream assembler
+/// resumes with its loudness contract intact.
+#[derive(Default, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
 struct ExclusionCount(usize);
 
 impl Drop for ExclusionCount {
@@ -490,7 +504,7 @@ impl StreamedTurnAssembler {
     /// ([`Self::assembled_reasoning`]) — agreement between the two is pinned
     /// by `canonical_choice_and_partial_turn_agree_on_multi_part_reasoning`.
     fn canonical_choice_with(
-        pending_tool_calls: Vec<(ToolCall, String)>,
+        pending_tool_calls: Vec<(ToolCall, InternalCallId)>,
         reasoning: Vec<Reasoning>,
         provider_choice: &[AssistantContent],
     ) -> Vec<AssistantContent> {
@@ -667,26 +681,26 @@ impl StreamedTurnAssembler {
                 if !self.allowed_tool_names.contains(&tool_call.function.name) {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
-                        internal_call_id.clone(),
+                        *internal_call_id,
                         Some(json_utils::serialize_json_value(
                             &tool_call.function.arguments,
                         )),
                         PendingInvalid::FullCall {
                             tool_call: Box::new(tool_call.clone()),
-                            internal_call_id: internal_call_id.clone(),
+                            internal_call_id: *internal_call_id,
                         },
                     ));
                 }
 
                 self.pending_tool_calls
-                    .push((tool_call.clone(), internal_call_id.clone()));
+                    .push((tool_call.clone(), *internal_call_id));
                 Ok(Vec::new())
             }
             StreamedAssistantContent::ToolCallDelta {
                 internal_call_id,
                 content,
             } => {
-                let key = internal_call_id.clone();
+                let key = *internal_call_id;
                 match content {
                     ToolCallDeltaContent::Name(name) => {
                         if !self.allowed_tool_names.contains(name) {
@@ -699,21 +713,21 @@ impl StreamedTurnAssembler {
                                 self.name_delta_diagnostic_tool_call(name, &buffered_args);
                             return Ok(self.surface_invalid_call(
                                 tool_call,
-                                internal_call_id.clone(),
+                                *internal_call_id,
                                 Some(buffered_args),
                                 PendingInvalid::NameDelta {
-                                    internal_call_id: internal_call_id.clone(),
+                                    internal_call_id: *internal_call_id,
                                 },
                             ));
                         }
 
-                        Ok(self.validate_delta_name(&key, name.clone()))
+                        Ok(self.validate_delta_name(key, name.clone()))
                     }
                     ToolCallDeltaContent::Delta(arguments) => {
-                        let state = self.delta_states.entry(key.clone()).or_default();
+                        let state = self.delta_states.entry(key).or_default();
                         if state.name_validated {
                             Ok(vec![StreamedTurnEvent::EmitToolCallDelta {
-                                internal_call_id: internal_call_id.clone(),
+                                internal_call_id: *internal_call_id,
                                 content: ToolCallDeltaContent::Delta(arguments.clone()),
                             }])
                         } else {
@@ -794,7 +808,7 @@ impl StreamedTurnAssembler {
             (
                 StreamedResolution::Repaired { tool_name },
                 PendingInvalid::NameDelta { internal_call_id },
-            ) => self.validate_delta_name(&internal_call_id, tool_name.clone()),
+            ) => self.validate_delta_name(internal_call_id, tool_name.clone()),
             (
                 StreamedResolution::TurnAbandoned { .. },
                 PendingInvalid::NameDelta { internal_call_id },
@@ -850,10 +864,10 @@ impl StreamedTurnAssembler {
     ) -> StreamedTurn {
         let reasoning = self.drain_reasoning();
         let pending_tool_calls = std::mem::take(&mut self.pending_tool_calls);
-        let internal_call_ids: Vec<(String, String)> = pending_tool_calls
+        let internal_call_ids: Vec<(String, InternalCallId)> = pending_tool_calls
             .iter()
             .map(|(tool_call, internal_call_id)| {
-                (tool_call.id.as_str().to_owned(), internal_call_id.clone())
+                (tool_call.id.as_str().to_owned(), *internal_call_id)
             })
             .collect();
         let choice = Self::canonical_choice_with(pending_tool_calls, reasoning, final_choice);
@@ -873,7 +887,7 @@ impl StreamedTurnAssembler {
     fn surface_invalid_call(
         &mut self,
         tool_call: ToolCall,
-        internal_call_id: String,
+        internal_call_id: InternalCallId,
         args: Option<String>,
         pending: PendingInvalid,
     ) -> Vec<StreamedTurnEvent> {
@@ -905,18 +919,18 @@ impl StreamedTurnAssembler {
         )
     }
 
-    fn validate_delta_name(&mut self, key: &str, name: String) -> Vec<StreamedTurnEvent> {
-        let state = self.delta_states.entry(key.to_owned()).or_default();
+    fn validate_delta_name(&mut self, key: InternalCallId, name: String) -> Vec<StreamedTurnEvent> {
+        let state = self.delta_states.entry(key).or_default();
         state.name_validated = true;
         let buffered_arguments = std::mem::take(&mut state.buffered_arguments);
 
         let mut events = vec![StreamedTurnEvent::EmitToolCallDelta {
-            internal_call_id: key.to_owned(),
+            internal_call_id: key,
             content: ToolCallDeltaContent::Name(name),
         }];
         events.extend(buffered_arguments.into_iter().map(|arguments| {
             StreamedTurnEvent::EmitToolCallDelta {
-                internal_call_id: key.to_owned(),
+                internal_call_id: key,
                 content: ToolCallDeltaContent::Delta(arguments),
             }
         }));
@@ -938,12 +952,61 @@ mod tests {
         names.iter().map(|name| (*name).to_string()).collect()
     }
 
+    /// A mid-stream assembler survives a serde round trip: feeding the rest
+    /// of the stream to the restored assembler produces the same turn as an
+    /// uninterrupted run — a saved world can resume a streamed turn.
+    #[test]
+    fn assembler_round_trips_mid_stream() {
+        let items = [
+            text_item("thinking "),
+            name_delta("tc1", "add"),
+            args_delta("tc1", "{\"x\":"),
+            args_delta("tc1", "1}"),
+            tool_call_item("tc1", "add"),
+        ];
+
+        let mut uninterrupted = assembler();
+        for item in &items {
+            uninterrupted.ingest(item).expect("ingest");
+        }
+
+        let mut first_half = assembler();
+        for item in &items[..2] {
+            first_half.ingest(item).expect("ingest");
+        }
+        let json = serde_json::to_string(&first_half).expect("serialize");
+        drop(first_half);
+        let mut restored: StreamedTurnAssembler = serde_json::from_str(&json).expect("deserialize");
+        for item in &items[2..] {
+            restored.ingest(item).expect("ingest");
+        }
+
+        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc1", "add"))];
+        let direct = uninterrupted.finish(Some("msg".to_string()), &final_choice);
+        let resumed = restored.finish(Some("msg".to_string()), &final_choice);
+        assert_eq!(resumed.choice, direct.choice);
+        assert_eq!(resumed.internal_call_ids, direct.internal_call_ids);
+        assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
+        assert_eq!(resumed.allowed_tool_names, direct.allowed_tool_names);
+    }
+
     fn assembler() -> StreamedTurnAssembler {
         StreamedTurnAssembler::new(tool_names(&["add"]), tool_names(&["add"]))
     }
 
     fn text_item(text: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::Text(Text::new(text.to_string()))
+    }
+
+    /// Deterministic test-only internal id derived from a wire id, so a
+    /// delta and its completed call correlate without threading state.
+    fn iid_for(id: &str) -> InternalCallId {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for byte in id.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100_0000_01b3);
+        }
+        InternalCallId::from_raw(hash | 1).expect("non-zero")
     }
 
     fn tool_call(id: &str, name: &str) -> ToolCall {
@@ -955,7 +1018,7 @@ mod tests {
     fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCall {
             tool_call: tool_call(id, name),
-            internal_call_id: format!("internal_{id}"),
+            internal_call_id: iid_for(id),
         }
     }
 
@@ -965,14 +1028,14 @@ mod tests {
 
     fn name_delta(id: &str, name: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
-            internal_call_id: format!("internal_{id}"),
+            internal_call_id: iid_for(id),
             content: ToolCallDeltaContent::Name(name.to_string()),
         }
     }
 
     fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
-            internal_call_id: format!("internal_{id}"),
+            internal_call_id: iid_for(id),
             content: ToolCallDeltaContent::Delta(arguments.to_string()),
         }
     }
@@ -1649,7 +1712,7 @@ mod tests {
             panic!("expected CallTools");
         };
         assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_tc_1"));
+        assert_eq!(calls[0].internal_call_id, Some(iid_for("tc_1")));
         run.tool_results(vec![UserContent::tool_result(
             "tc_1",
             "add",
@@ -1710,7 +1773,7 @@ mod tests {
         let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
         assert!(context.is_streaming);
         assert_eq!(context.tool_name, "default_api");
-        assert_eq!(context.internal_call_id.as_deref(), Some("internal_tc_1"));
+        assert_eq!(context.internal_call_id, Some(iid_for("tc_1")));
 
         let resolution = run
             .resolve_streamed_invalid_tool_call(
@@ -1951,12 +2014,12 @@ mod tests {
         let mut asm = assembler();
         asm.ingest(&StreamedAssistantContent::ToolCall {
             tool_call: tool_call("tc_1", "add"),
-            internal_call_id: "internal_a".to_string(),
+            internal_call_id: iid_for("a"),
         })
         .expect("ingest should succeed");
         asm.ingest(&StreamedAssistantContent::ToolCall {
             tool_call: tool_call("tc_1", "add"),
-            internal_call_id: "internal_b".to_string(),
+            internal_call_id: iid_for("b"),
         })
         .expect("ingest should succeed");
         run.record_streamed_completion_call(
@@ -1982,8 +2045,8 @@ mod tests {
             panic!("expected CallTools");
         };
         assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_a"));
-        assert_eq!(calls[1].internal_call_id.as_deref(), Some("internal_b"));
+        assert_eq!(calls[0].internal_call_id, Some(iid_for("a")));
+        assert_eq!(calls[1].internal_call_id, Some(iid_for("b")));
     }
 
     #[test]

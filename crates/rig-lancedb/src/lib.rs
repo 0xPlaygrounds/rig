@@ -425,7 +425,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
-                    match value.get(self.id_field.clone()) {
+                    match value.get(self.id_field.as_str()) {
                         Some(Value::String(id)) => id.clone(),
                         _ => format!("unknown{i}"),
                     },
@@ -482,7 +482,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
-                    match value.get(self.id_field.clone()) {
+                    match value.get(self.id_field.as_str()) {
                         Some(Value::String(id)) => id.clone(),
                         _ => "".to_string(),
                     },

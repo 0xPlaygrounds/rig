@@ -53,6 +53,7 @@ pub use rig_core::memory::{
 };
 
 use rig_core::completion::Message;
+use rig_core::id::ConversationId;
 use rig_core::message::UserContent;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
@@ -532,7 +533,7 @@ where
 {
     fn load<'a>(
         &'a self,
-        conversation_id: &'a str,
+        conversation_id: &'a ConversationId,
     ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = self.inner.load(conversation_id).await?;
@@ -542,7 +543,7 @@ where
 
     fn append<'a>(
         &'a self,
-        conversation_id: &'a str,
+        conversation_id: &'a ConversationId,
         messages: Vec<Message>,
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
         self.inner.append(conversation_id, messages)
@@ -550,7 +551,7 @@ where
 
     fn clear<'a>(
         &'a self,
-        conversation_id: &'a str,
+        conversation_id: &'a ConversationId,
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
         self.inner.clear(conversation_id)
     }
@@ -611,7 +612,7 @@ pub struct DemotingPolicyMemory<M, P, H> {
     inner: M,
     policy: P,
     hook: H,
-    state: StdMutex<HashMap<String, ConversationDemotionState>>,
+    state: StdMutex<HashMap<ConversationId, ConversationDemotionState>>,
 }
 
 type InFlightReservation = Arc<()>;
@@ -651,7 +652,7 @@ macro_rules! stateful_wrapper_common {
             /// poisoned by a panic in another thread, this is a no-op (the
             /// state will be dropped naturally when the wrapper itself is
             /// dropped).
-            pub fn forget(&self, conversation_id: &str) {
+            pub fn forget(&self, conversation_id: &ConversationId) {
                 if let Ok(mut guard) = self.state.lock() {
                     guard.remove(conversation_id);
                 }
@@ -690,7 +691,7 @@ macro_rules! stateful_wrapper_append_clear {
     () => {
         fn append<'a>(
             &'a self,
-            conversation_id: &'a str,
+            conversation_id: &'a ConversationId,
             messages: Vec<Message>,
         ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
             self.inner.append(conversation_id, messages)
@@ -698,7 +699,7 @@ macro_rules! stateful_wrapper_append_clear {
 
         fn clear<'a>(
             &'a self,
-            conversation_id: &'a str,
+            conversation_id: &'a ConversationId,
         ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
             Box::pin(async move {
                 self.inner.clear(conversation_id).await?;
@@ -743,7 +744,7 @@ where
 {
     fn load<'a>(
         &'a self,
-        conversation_id: &'a str,
+        conversation_id: &'a ConversationId,
     ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = self.inner.load(conversation_id).await?;
@@ -783,7 +784,7 @@ where
                 } else {
                     let reservation = Arc::new(());
                     guard.insert(
-                        conversation_id.to_string(),
+                        conversation_id.clone(),
                         ConversationDemotionState {
                             delivered: 0,
                             in_flight: Some(reservation.clone()),
@@ -840,8 +841,8 @@ fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
 /// missing entry (concurrent `clear`) or a newer reservation is a no-op, so
 /// stale releases can never resurrect or clobber newer state.
 fn release_in_flight<S: InFlightSlot, T>(
-    state: &StdMutex<HashMap<String, S>>,
-    key: &str,
+    state: &StdMutex<HashMap<ConversationId, S>>,
+    key: &ConversationId,
     reservation: &InFlightReservation,
     on_match: impl FnOnce(&mut S) -> T,
 ) -> Result<Option<T>, MemoryError> {
@@ -890,16 +891,16 @@ impl<A> InFlightSlot for ConversationCompactionState<A> {
 /// no-op, covering the case where a concurrent `clear` removed the
 /// conversation while delivery was awaiting.
 struct InFlightGuard<'a, S: InFlightSlot> {
-    state: &'a StdMutex<HashMap<String, S>>,
-    key: &'a str,
+    state: &'a StdMutex<HashMap<ConversationId, S>>,
+    key: &'a ConversationId,
     reservation: InFlightReservation,
     armed: bool,
 }
 
 impl<'a, S: InFlightSlot> InFlightGuard<'a, S> {
     fn new(
-        state: &'a StdMutex<HashMap<String, S>>,
-        key: &'a str,
+        state: &'a StdMutex<HashMap<ConversationId, S>>,
+        key: &'a ConversationId,
         reservation: InFlightReservation,
     ) -> Self {
         Self {
@@ -1000,7 +1001,7 @@ pub struct CompactingMemory<M, P, C: Compactor> {
     inner: M,
     policy: P,
     compactor: C,
-    state: StdMutex<HashMap<String, ConversationCompactionState<C::Artifact>>>,
+    state: StdMutex<HashMap<ConversationId, ConversationCompactionState<C::Artifact>>>,
 }
 
 struct ConversationCompactionState<A> {
@@ -1039,7 +1040,7 @@ where
 {
     fn load<'a>(
         &'a self,
-        conversation_id: &'a str,
+        conversation_id: &'a ConversationId,
     ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
         Box::pin(async move {
             let messages = self.inner.load(conversation_id).await?;
@@ -1082,7 +1083,7 @@ where
                 } else {
                     let reservation = Arc::new(());
                     guard.insert(
-                        conversation_id.to_string(),
+                        conversation_id.clone(),
                         ConversationCompactionState {
                             summary: None,
                             absorbed: 0,
@@ -1296,7 +1297,7 @@ impl Compactor for TemplateCompactor {
 
     fn compact<'a>(
         &'a self,
-        _conversation_id: &'a str,
+        _conversation_id: &'a ConversationId,
         evicted: &'a [Message],
         carry_over: Option<&'a Self::Artifact>,
     ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
@@ -1480,13 +1481,13 @@ mod tests {
             .with_filter(SlidingWindowMemory::last_messages(2).into_filter());
 
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("1"), assistant("2"), user("3"), assistant("4")],
         )
         .await
         .unwrap();
 
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         assert_eq!(loaded.len(), 2);
     }
 
@@ -1642,13 +1643,13 @@ mod tests {
         );
 
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("1"), assistant("2"), user("3"), assistant("4")],
         )
         .await
         .unwrap();
 
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         assert_eq!(loaded.len(), 2);
     }
 
@@ -1662,24 +1663,24 @@ mod tests {
         }
 
         let mem = PolicyMemory::new(InMemoryConversationMemory::new(), FailingPolicy);
-        mem.append("c", vec![user("1"), assistant("2")])
+        mem.append(&"c".into(), vec![user("1"), assistant("2")])
             .await
             .unwrap();
 
-        let result = mem.load("c").await;
+        let result = mem.load(&"c".into()).await;
         assert!(matches!(result, Err(MemoryError::Policy(_))));
     }
 
     #[tokio::test]
     async fn policy_memory_append_and_clear_delegate_to_inner() {
         let mem = PolicyMemory::new(InMemoryConversationMemory::new(), NoopMemoryPolicy);
-        mem.append("c", vec![user("hi"), assistant("ok")])
+        mem.append(&"c".into(), vec![user("hi"), assistant("ok")])
             .await
             .unwrap();
-        assert_eq!(mem.load("c").await.unwrap().len(), 2);
+        assert_eq!(mem.load(&"c".into()).await.unwrap().len(), 2);
 
-        mem.clear("c").await.unwrap();
-        assert!(mem.load("c").await.unwrap().is_empty());
+        mem.clear(&"c".into()).await.unwrap();
+        assert!(mem.load(&"c".into()).await.unwrap().is_empty());
     }
 
     #[test]
@@ -1775,7 +1776,7 @@ mod tests {
     impl DemotionHook for CountingHook {
         fn on_demote<'a>(
             &'a self,
-            conversation_id: &'a str,
+            conversation_id: &'a ConversationId,
             messages: Vec<Message>,
         ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
             Box::pin(async move {
@@ -1798,13 +1799,13 @@ mod tests {
         );
 
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("1"), assistant("2"), user("3"), assistant("4")],
         )
         .await
         .unwrap();
 
-        let kept = mem.load("c").await.unwrap();
+        let kept = mem.load(&"c".into()).await.unwrap();
         assert_eq!(kept.len(), 2);
         assert_eq!(hook.calls(), 1);
         assert_eq!(hook.last_demoted_count(), 2);
@@ -1820,14 +1821,14 @@ mod tests {
         );
 
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("1"), assistant("2"), user("3"), assistant("4")],
         )
         .await
         .unwrap();
 
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(hook.calls(), 1);
         assert_eq!(hook.last_demoted_count(), 2);
     }
@@ -1842,15 +1843,15 @@ mod tests {
         );
 
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("1"), assistant("2"), user("3"), assistant("4")],
         )
         .await
         .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
 
-        mem.append("c", vec![user("5")]).await.unwrap();
-        mem.load("c").await.unwrap();
+        mem.append(&"c".into(), vec![user("5")]).await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
 
         assert_eq!(hook.calls(), 2);
         assert_eq!(hook.last_demoted_count(), 1);
@@ -1864,7 +1865,7 @@ mod tests {
     impl DemotionHook for FailingHook {
         fn on_demote<'a>(
             &'a self,
-            _conversation_id: &'a str,
+            _conversation_id: &'a ConversationId,
             _messages: Vec<Message>,
         ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
             Box::pin(async move {
@@ -1882,12 +1883,12 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             hook.clone(),
         );
-        mem.append("c", vec![user("1"), assistant("2")])
+        mem.append(&"c".into(), vec![user("1"), assistant("2")])
             .await
             .unwrap();
 
-        assert!(mem.load("c").await.is_err());
-        assert!(mem.load("c").await.is_err());
+        assert!(mem.load(&"c".into()).await.is_err());
+        assert!(mem.load(&"c".into()).await.is_err());
         assert_eq!(*hook.calls.lock().unwrap(), 2);
     }
 
@@ -1900,15 +1901,15 @@ mod tests {
             hook.clone(),
         );
 
-        mem.append("c", vec![user("1"), assistant("2")])
+        mem.append(&"c".into(), vec![user("1"), assistant("2")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
-        mem.clear("c").await.unwrap();
-        mem.append("c", vec![user("3"), assistant("4")])
+        mem.load(&"c".into()).await.unwrap();
+        mem.clear(&"c".into()).await.unwrap();
+        mem.append(&"c".into(), vec![user("3"), assistant("4")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
 
         assert_eq!(hook.calls(), 2);
         assert_eq!(hook.last_demoted_count(), 1);
@@ -1923,10 +1924,10 @@ mod tests {
             hook.clone(),
         );
 
-        mem.append("c", vec![user("1"), assistant("2")])
+        mem.append(&"c".into(), vec![user("1"), assistant("2")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(hook.calls(), 0);
     }
 
@@ -1937,10 +1938,10 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             NoopDemotionHook,
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
-        assert_eq!(mem.load("c").await.unwrap().len(), 1);
+        assert_eq!(mem.load(&"c".into()).await.unwrap().len(), 1);
     }
 
     /// Hook that blocks until the test releases it. Used to provoke the
@@ -1954,7 +1955,7 @@ mod tests {
     impl DemotionHook for GatedHook {
         fn on_demote<'a>(
             &'a self,
-            _conversation_id: &'a str,
+            _conversation_id: &'a ConversationId,
             _messages: Vec<Message>,
         ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
             let calls = self.calls.clone();
@@ -1988,12 +1989,12 @@ mod tests {
             hook,
         ));
 
-        mem.append("c", vec![user("1"), assistant("2"), user("3")])
+        mem.append(&"c".into(), vec![user("1"), assistant("2"), user("3")])
             .await
             .unwrap();
 
         let m1 = mem.clone();
-        let first = tokio::spawn(async move { m1.load("c").await });
+        let first = tokio::spawn(async move { m1.load(&"c".into()).await });
 
         // Wait until the first load has entered the hook.
         rendezvous.notified().await;
@@ -2001,7 +2002,7 @@ mod tests {
 
         // Second concurrent load on the same conversation must skip the
         // hook entirely (in-flight gate) and return the truncated view.
-        let kept = mem.load("c").await.unwrap();
+        let kept = mem.load(&"c".into()).await.unwrap();
         assert_eq!(kept.len(), 1);
         assert_eq!(calls.load(Ordering::SeqCst), 1, "hook must not double-fire");
 
@@ -2012,7 +2013,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 
         // Subsequent loads observe the watermark and don't re-fire.
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
@@ -2038,7 +2039,7 @@ mod tests {
             hook,
         ));
 
-        mem.append("c", vec![user("1"), assistant("2"), user("3")])
+        mem.append(&"c".into(), vec![user("1"), assistant("2"), user("3")])
             .await
             .unwrap();
 
@@ -2046,7 +2047,7 @@ mod tests {
         // while awaiting — simulating a caller-side timeout or
         // `tokio::select!` cancellation.
         let mem_load = mem.clone();
-        let handle = tokio::spawn(async move { mem_load.load("c").await });
+        let handle = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         while calls.load(Ordering::SeqCst) == 0 {
             tokio::task::yield_now().await;
         }
@@ -2058,7 +2059,7 @@ mod tests {
         // released it. A new load must therefore be able to drive a fresh
         // demotion rather than short-circuiting forever.
         let mem_load = mem.clone();
-        let retry = tokio::spawn(async move { mem_load.load("c").await });
+        let retry = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         for _ in 0..1_000 {
             if calls.load(Ordering::SeqCst) >= 2 {
                 break;
@@ -2077,7 +2078,7 @@ mod tests {
 
         // The successful retry advances the watermark, so future loads
         // should not fire the hook again.
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
@@ -2100,25 +2101,28 @@ mod tests {
             hook,
         ));
 
-        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
-            .await
-            .unwrap();
+        mem.append(
+            &"c".into(),
+            vec![user("old 1"), assistant("old 2"), user("old 3")],
+        )
+        .await
+        .unwrap();
 
         let mem_load = mem.clone();
-        let stale = tokio::spawn(async move { mem_load.load("c").await });
+        let stale = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         rendezvous.notified().await;
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 
-        mem.clear("c").await.unwrap();
+        mem.clear(&"c".into()).await.unwrap();
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
         )
         .await
         .unwrap();
 
         let mem_load = mem.clone();
-        let fresh = tokio::spawn(async move { mem_load.load("c").await });
+        let fresh = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         rendezvous.notified().await;
         assert_eq!(calls.load(Ordering::SeqCst), 2);
 
@@ -2126,7 +2130,7 @@ mod tests {
         let _ = stale.await;
 
         let mem_load = mem.clone();
-        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
+        let mut concurrent = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         let concurrent_kept = tokio::select! {
             result = &mut concurrent => result.unwrap().unwrap(),
             _ = rendezvous.notified() => {
@@ -2172,7 +2176,7 @@ mod tests {
         impl DemotionHook for IndividuallyGatedHook {
             fn on_demote<'a>(
                 &'a self,
-                _conversation_id: &'a str,
+                _conversation_id: &'a ConversationId,
                 _messages: Vec<Message>,
             ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
                 let release = Arc::new(tokio::sync::Notify::new());
@@ -2191,24 +2195,27 @@ mod tests {
             hook.clone(),
         ));
 
-        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
-            .await
-            .unwrap();
+        mem.append(
+            &"c".into(),
+            vec![user("old 1"), assistant("old 2"), user("old 3")],
+        )
+        .await
+        .unwrap();
 
         let mem_load = mem.clone();
-        let stale = tokio::spawn(async move { mem_load.load("c").await });
+        let stale = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         hook.wait_for_call_count(1).await;
 
-        mem.clear("c").await.unwrap();
+        mem.clear(&"c".into()).await.unwrap();
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
         )
         .await
         .unwrap();
 
         let mem_load = mem.clone();
-        let fresh = tokio::spawn(async move { mem_load.load("c").await });
+        let fresh = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         hook.wait_for_call_count(2).await;
 
         // Let the stale load finish successfully after the conversation id has
@@ -2219,7 +2226,7 @@ mod tests {
         assert_eq!(hook.call_count(), 2);
 
         let mem_load = mem.clone();
-        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
+        let mut concurrent = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         let hook_wait = hook.clone();
         let concurrent_kept = tokio::select! {
             result = &mut concurrent => result.unwrap().unwrap(),
@@ -2237,7 +2244,7 @@ mod tests {
         assert_eq!(fresh.await.unwrap().unwrap().len(), 1);
         assert_eq!(concurrent_kept.len(), 1);
 
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(hook.call_count(), 2);
     }
 
@@ -2250,10 +2257,10 @@ mod tests {
             hook.clone(),
         );
 
-        mem.append("c", vec![user("1"), assistant("2")])
+        mem.append(&"c".into(), vec![user("1"), assistant("2")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(mem.tracked_conversations(), 1);
         assert_eq!(hook.calls(), 1);
 
@@ -2261,9 +2268,9 @@ mod tests {
         // backend re-delivers the demotion. This is the documented
         // contract: forget()/restart re-fire the hook, hooks must be
         // idempotent.
-        mem.forget("c");
+        mem.forget(&"c".into());
         assert_eq!(mem.tracked_conversations(), 0);
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(hook.calls(), 2);
     }
 
@@ -2279,10 +2286,10 @@ mod tests {
             TemplateCompactor::new(),
         );
 
-        mem.append("c", vec![user("hi"), assistant("hello")])
+        mem.append(&"c".into(), vec![user("hi"), assistant("hello")])
             .await
             .unwrap();
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         assert_eq!(loaded.len(), 2);
         // No tracking entry needed when nothing was demoted on the first load.
         // (We may have inserted a default entry; what matters is that no
@@ -2299,7 +2306,7 @@ mod tests {
         );
 
         mem.append(
-            "c",
+            &"c".into(),
             vec![
                 user("first"),
                 assistant("second"),
@@ -2310,7 +2317,7 @@ mod tests {
         .await
         .unwrap();
 
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         // Expected shape: [summary, third, fourth]
         assert_eq!(loaded.len(), 3);
         let Message::System { content } = &loaded[0] else {
@@ -2338,13 +2345,13 @@ mod tests {
         );
 
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("a"), assistant("b"), user("c"), assistant("d")],
         )
         .await
         .unwrap();
 
-        let first = mem.load("c").await.unwrap();
+        let first = mem.load(&"c".into()).await.unwrap();
         let Message::System { content } = &first[0] else {
             panic!("summary missing");
         };
@@ -2354,10 +2361,10 @@ mod tests {
 
         // Append more turns; the next load should fold the previous summary
         // into a new one that also covers the newly-evicted prefix.
-        mem.append("c", vec![user("e"), assistant("f")])
+        mem.append(&"c".into(), vec![user("e"), assistant("f")])
             .await
             .unwrap();
-        let second = mem.load("c").await.unwrap();
+        let second = mem.load(&"c".into()).await.unwrap();
         let Message::System { content } = &second[0] else {
             panic!("summary missing");
         };
@@ -2379,12 +2386,12 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             TemplateCompactor::new(),
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
 
-        let first = mem.load("c").await.unwrap();
-        let second = mem.load("c").await.unwrap();
+        let first = mem.load(&"c".into()).await.unwrap();
+        let second = mem.load(&"c".into()).await.unwrap();
         assert_eq!(first.len(), second.len());
         let Message::System { content: c1 } = &first[0] else {
             panic!()
@@ -2402,15 +2409,15 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             TemplateCompactor::new(),
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(mem.tracked_conversations(), 1);
 
-        mem.clear("c").await.unwrap();
+        mem.clear(&"c".into()).await.unwrap();
         assert_eq!(mem.tracked_conversations(), 0);
-        assert!(mem.load("c").await.unwrap().is_empty());
+        assert!(mem.load(&"c".into()).await.unwrap().is_empty());
     }
 
     // A compactor that fails the first call and succeeds afterwards, so we
@@ -2425,7 +2432,7 @@ mod tests {
 
         fn compact<'a>(
             &'a self,
-            _conversation_id: &'a str,
+            _conversation_id: &'a ConversationId,
             evicted: &'a [Message],
             _carry_over: Option<&'a Self::Artifact>,
         ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
@@ -2447,15 +2454,15 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             FlakyCompactor::default(),
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
 
-        let err = mem.load("c").await.unwrap_err();
+        let err = mem.load(&"c".into()).await.unwrap_err();
         assert!(matches!(err, MemoryError::Policy(_)));
 
         // Retry should succeed and produce a summary.
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         assert_eq!(loaded.len(), 2);
         let Message::System { content } = &loaded[0] else {
             panic!("expected summary")
@@ -2481,7 +2488,7 @@ mod tests {
 
         fn compact<'a>(
             &'a self,
-            _conversation_id: &'a str,
+            _conversation_id: &'a ConversationId,
             evicted: &'a [Message],
             carry_over: Option<&'a Self::Artifact>,
         ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
@@ -2505,12 +2512,12 @@ mod tests {
             compactor.clone(),
         );
 
-        mem.append("c", vec![user("a"), assistant("b")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert!(compactor.calls().is_empty());
         // Fast path means we never installed a tracking entry either.
         assert_eq!(mem.tracked_conversations(), 0);
@@ -2527,15 +2534,15 @@ mod tests {
 
         // First eviction: 2 messages demoted.
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("a"), assistant("b"), user("c"), assistant("d")],
         )
         .await
         .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         // Re-load: nothing new evicted; compactor must NOT run again.
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         let calls = compactor.calls();
         assert_eq!(
             calls.len(),
@@ -2546,11 +2553,11 @@ mod tests {
 
         // Append two more turns → another 2 demoted; compactor runs once
         // more, and this time `carry_over` must be present.
-        mem.append("c", vec![user("e"), assistant("f")])
+        mem.append(&"c".into(), vec![user("e"), assistant("f")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         let calls = compactor.calls();
         assert_eq!(calls.len(), 2, "expected exactly one new call: {calls:?}");
         // Second call only compacts the *newly* evicted prefix (2 msgs)
@@ -2569,7 +2576,7 @@ mod tests {
             compactor.clone(),
         ));
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("a"), assistant("b"), user("c"), assistant("d")],
         )
         .await
@@ -2579,7 +2586,7 @@ mod tests {
         for _ in 0..32 {
             let mem = mem.clone();
             handles.push(tokio::spawn(async move {
-                mem.load("c").await.unwrap();
+                mem.load(&"c".into()).await.unwrap();
             }));
         }
         for h in handles {
@@ -2603,19 +2610,19 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             compactor.clone(),
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(compactor.calls()[0], (2, false));
 
-        mem.clear("c").await.unwrap();
+        mem.clear(&"c".into()).await.unwrap();
         assert_eq!(mem.tracked_conversations(), 0);
 
-        mem.append("c", vec![user("x"), assistant("y"), user("z")])
+        mem.append(&"c".into(), vec![user("x"), assistant("y"), user("z")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         let calls = compactor.calls();
         assert_eq!(calls.len(), 2);
         // Crucial: no carry_over after clear.
@@ -2630,17 +2637,17 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             compactor.clone(),
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         assert_eq!(mem.tracked_conversations(), 1);
-        mem.forget("c");
+        mem.forget(&"c".into());
         assert_eq!(mem.tracked_conversations(), 0);
 
         // Next load on the still-populated backend re-compacts from
         // scratch — same documented contract as DemotionHook.
-        mem.load("c").await.unwrap();
+        mem.load(&"c".into()).await.unwrap();
         let calls = compactor.calls();
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[1], (2, false));
@@ -2657,10 +2664,10 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             compactor,
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         assert_eq!(loaded.len(), 2);
         assert!(matches!(&loaded[0], Message::System { .. }));
     }
@@ -2683,15 +2690,15 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             compactor.clone(),
         );
-        mem.append("a", vec![user("a1"), assistant("a2"), user("a3")])
+        mem.append(&"a".into(), vec![user("a1"), assistant("a2"), user("a3")])
             .await
             .unwrap();
-        mem.append("b", vec![user("b1"), assistant("b2"), user("b3")])
+        mem.append(&"b".into(), vec![user("b1"), assistant("b2"), user("b3")])
             .await
             .unwrap();
 
-        let a = mem.load("a").await.unwrap();
-        let b = mem.load("b").await.unwrap();
+        let a = mem.load(&"a".into()).await.unwrap();
+        let b = mem.load(&"b".into()).await.unwrap();
         // Each conversation gets its own summary.
         assert_eq!(a.len(), 2);
         assert_eq!(b.len(), 2);
@@ -2709,7 +2716,7 @@ mod tests {
             TemplateCompactor::new(),
         );
         mem.append(
-            "c",
+            &"c".into(),
             vec![
                 user("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
                 assistant("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
@@ -2719,7 +2726,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         // Some prefix should have been evicted; expect a summary in front.
         assert!(loaded.len() >= 2);
         assert!(matches!(&loaded[0], Message::System { .. }));
@@ -2735,7 +2742,10 @@ mod tests {
             user("hi"),
             assistant("hello"),
         ];
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let summary = compactor
+            .compact(&"c".into(), &evicted, None)
+            .await
+            .unwrap();
         let s = summary.as_str();
         assert!(s.contains("system: you are helpful"), "got: {s}");
         assert!(s.contains("user: hi"));
@@ -2746,7 +2756,10 @@ mod tests {
     async fn template_compactor_renders_tool_call_marker() {
         let compactor = TemplateCompactor::new();
         let evicted = vec![tool_call_msg(), tool_result_msg()];
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let summary = compactor
+            .compact(&"c".into(), &evicted, None)
+            .await
+            .unwrap();
         let s = summary.as_str();
         assert!(s.contains("[tool call: t]"), "got: {s}");
         assert!(s.contains("[tool result]"), "got: {s}");
@@ -2767,7 +2780,10 @@ mod tests {
                 UserContent::text("b"),
             ],
         }];
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let summary = compactor
+            .compact(&"c".into(), &evicted, None)
+            .await
+            .unwrap();
         let rendered = summary.as_str();
         assert!(
             rendered.contains("user: a  b"),
@@ -2779,13 +2795,13 @@ mod tests {
     async fn template_compactor_carry_over_threaded() {
         let compactor = TemplateCompactor::new();
         let first = compactor
-            .compact("c", &[user("hello")], None)
+            .compact(&"c".into(), &[user("hello")], None)
             .await
             .unwrap();
         assert!(!first.as_str().is_empty());
 
         let second = compactor
-            .compact("c", &[assistant("world")], Some(&first))
+            .compact(&"c".into(), &[assistant("world")], Some(&first))
             .await
             .unwrap();
         // Carry-over text appears in the new summary.
@@ -2812,7 +2828,10 @@ mod tests {
         for i in 0..50 {
             evicted.push(user(&format!("message number {i} with some filler")));
         }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let summary = compactor
+            .compact(&"c".into(), &evicted, None)
+            .await
+            .unwrap();
         assert!(
             summary.as_str().len()
                 <= cap + "[Conversation summary so far]\n[\u{2026}truncated\u{2026}]\n".len(),
@@ -2839,7 +2858,10 @@ mod tests {
         for i in 0..200 {
             evicted.push(user(&format!("msg {i}")));
         }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let summary = compactor
+            .compact(&"c".into(), &evicted, None)
+            .await
+            .unwrap();
         // Without a cap, no truncation marker should appear.
         assert!(!summary.as_str().contains("[\u{2026}truncated\u{2026}]"));
         // Both ends are present.
@@ -2854,7 +2876,10 @@ mod tests {
         for i in 0..200 {
             evicted.push(user(&format!("msg {i}")));
         }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let summary = compactor
+            .compact(&"c".into(), &evicted, None)
+            .await
+            .unwrap();
         assert!(!summary.as_str().contains("[\u{2026}truncated\u{2026}]"));
     }
 
@@ -2868,12 +2893,12 @@ mod tests {
             SlidingWindowMemory::last_messages(2),
             TemplateCompactor::new().with_max_bytes(cap),
         );
-        mem.append("c", vec![user("seed-a"), assistant("seed-b")])
+        mem.append(&"c".into(), vec![user("seed-a"), assistant("seed-b")])
             .await
             .unwrap();
         for i in 0..30 {
             mem.append(
-                "c",
+                &"c".into(),
                 vec![
                     user(&format!("user line {i} ----- padding padding padding")),
                     assistant(&format!("assistant line {i} ----- padding padding")),
@@ -2881,9 +2906,9 @@ mod tests {
             )
             .await
             .unwrap();
-            mem.load("c").await.unwrap();
+            mem.load(&"c".into()).await.unwrap();
         }
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load(&"c".into()).await.unwrap();
         let Message::System { content } = &loaded[0] else {
             panic!("expected summary");
         };
@@ -2914,7 +2939,7 @@ mod tests {
 
             fn compact<'a>(
                 &'a self,
-                _conversation_id: &'a str,
+                _conversation_id: &'a ConversationId,
                 _evicted: &'a [Message],
                 _carry_over: Option<&'a Self::Artifact>,
             ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
@@ -2935,13 +2960,13 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             compactor.clone(),
         ));
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
 
         // Kick off a load that will block inside the compactor.
         let mem_load = mem.clone();
-        let load_handle = tokio::spawn(async move { mem_load.load("c").await });
+        let load_handle = tokio::spawn(async move { mem_load.load(&"c".into()).await });
 
         // Wait for the compactor to have entered.
         while !compactor.entered.load(Ordering::SeqCst) {
@@ -2949,7 +2974,7 @@ mod tests {
         }
 
         // Clear while the compaction is in flight.
-        mem.clear("c").await.unwrap();
+        mem.clear(&"c".into()).await.unwrap();
 
         // Release the compactor; it should complete and *not* resurrect
         // the cleared state.
@@ -2958,7 +2983,7 @@ mod tests {
 
         assert_eq!(mem.tracked_conversations(), 0);
         // A subsequent load on the empty backend returns nothing.
-        assert!(mem.load("c").await.unwrap().is_empty());
+        assert!(mem.load(&"c".into()).await.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -2978,7 +3003,7 @@ mod tests {
 
             fn compact<'a>(
                 &'a self,
-                _conversation_id: &'a str,
+                _conversation_id: &'a ConversationId,
                 _evicted: &'a [Message],
                 _carry_over: Option<&'a Self::Artifact>,
             ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
@@ -2999,7 +3024,7 @@ mod tests {
             SlidingWindowMemory::last_messages(1),
             compactor.clone(),
         ));
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
+        mem.append(&"c".into(), vec![user("a"), assistant("b"), user("c")])
             .await
             .unwrap();
 
@@ -3007,7 +3032,7 @@ mod tests {
         // abort it while awaiting — simulating a caller-side timeout
         // or `tokio::select!` cancellation.
         let mem_load = mem.clone();
-        let handle = tokio::spawn(async move { mem_load.load("c").await });
+        let handle = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         while compactor.entered.load(Ordering::SeqCst) == 0 {
             tokio::task::yield_now().await;
         }
@@ -3019,7 +3044,7 @@ mod tests {
         // have released it. A new load must therefore be able to drive
         // a fresh compaction rather than short-circuiting forever.
         let mem_load = mem.clone();
-        let retry = tokio::spawn(async move { mem_load.load("c").await });
+        let retry = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         // Wait for the compactor to be entered a second time. If the
         // gate had leaked, this would never happen — the load would
         // short-circuit on `in_flight = true` and return immediately.
@@ -3050,7 +3075,7 @@ mod tests {
 
             fn compact<'a>(
                 &'a self,
-                _conversation_id: &'a str,
+                _conversation_id: &'a ConversationId,
                 _evicted: &'a [Message],
                 _carry_over: Option<&'a Self::Artifact>,
             ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
@@ -3074,25 +3099,28 @@ mod tests {
             compactor.clone(),
         ));
 
-        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
-            .await
-            .unwrap();
+        mem.append(
+            &"c".into(),
+            vec![user("old 1"), assistant("old 2"), user("old 3")],
+        )
+        .await
+        .unwrap();
 
         let mem_load = mem.clone();
-        let stale = tokio::spawn(async move { mem_load.load("c").await });
+        let stale = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         compactor.rendezvous.notified().await;
         assert_eq!(compactor.entered.load(Ordering::SeqCst), 1);
 
-        mem.clear("c").await.unwrap();
+        mem.clear(&"c".into()).await.unwrap();
         mem.append(
-            "c",
+            &"c".into(),
             vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
         )
         .await
         .unwrap();
 
         let mem_load = mem.clone();
-        let fresh = tokio::spawn(async move { mem_load.load("c").await });
+        let fresh = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         compactor.rendezvous.notified().await;
         assert_eq!(compactor.entered.load(Ordering::SeqCst), 2);
 
@@ -3100,7 +3128,7 @@ mod tests {
         let _ = stale.await;
 
         let mem_load = mem.clone();
-        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
+        let mut concurrent = tokio::spawn(async move { mem_load.load(&"c".into()).await });
         let concurrent_kept = tokio::select! {
             result = &mut concurrent => result.unwrap().unwrap(),
             _ = compactor.rendezvous.notified() => {
@@ -3131,7 +3159,10 @@ mod tests {
         for i in 0..50 {
             evicted.push(user(&format!("message number {i} with some filler")));
         }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let summary = compactor
+            .compact(&"c".into(), &evicted, None)
+            .await
+            .unwrap();
         let text = summary.as_str();
 
         // The first line of the header is preserved as the header line.

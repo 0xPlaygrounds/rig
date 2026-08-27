@@ -70,7 +70,24 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{CompletionError, FinishReason, ToolDefinition};
+use rig_core::completion::{CompletionError, CompletionResponse, FinishReason, ToolDefinition};
+use rig_core::id::InternalCallId;
+
+/// Deserialize a persisted internal call id, advancing this process's mint
+/// counter past it so ids minted after a resume cannot collide with ids the
+/// run's consumers already saw in tool-call deltas.
+fn de_persisted_internal_call_id<'de, D>(
+    deserializer: D,
+) -> Result<Option<InternalCallId>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let id = <Option<InternalCallId> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(id) = id {
+        InternalCallId::advance_past(id.to_raw());
+    }
+    Ok(id)
+}
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
@@ -154,7 +171,7 @@ pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
 ///
 /// Deliberately exhaustive: a driver must handle every step, so adding a
 /// variant is a breaking change by design.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentRunStep {
     /// Send a completion request to the model and feed the result back via
     /// [`AgentRun::model_response`].
@@ -190,8 +207,8 @@ pub struct PendingToolCall {
     /// the call arrived via a streamed turn. Persisted with the run state so
     /// a resumed process keeps emitting the IDs consumers already saw in
     /// tool-call deltas. Drivers generate a fresh ID when absent.
-    #[serde(default)]
-    pub internal_call_id: Option<String>,
+    #[serde(default, deserialize_with = "de_persisted_internal_call_id")]
+    pub internal_call_id: Option<InternalCallId>,
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -228,6 +245,51 @@ pub struct ModelTurn {
 }
 
 impl ModelTurn {
+    /// The one blessed conversion from a provider response to a protocol
+    /// turn, given the [`PreparedRequest`](crate::prepare::PreparedRequest)
+    /// the call was prepared from.
+    ///
+    /// Every driver — rig-agent's futures runner and any external systems
+    /// driver — must build its turns through this (or
+    /// [`from_response_parts`](Self::from_response_parts) when it holds the
+    /// tool-name sets rather than the prepared request); hand-assembly is how
+    /// drivers drift. The subtle inputs it settles: the tool-name sets come
+    /// from the *prepared request*, never re-derived from the spec, and the
+    /// finish reason is the response's normalized
+    /// [`finish_reason()`](CompletionResponse::finish_reason) accessor, never
+    /// a raw provider field.
+    pub fn from_response(
+        resp: &CompletionResponse,
+        prepared: &crate::prepare::PreparedRequest,
+    ) -> Self {
+        Self::from_response_parts(
+            resp,
+            prepared.executable_tool_names.clone(),
+            prepared.allowed_tool_names.clone(),
+        )
+    }
+
+    /// [`from_response`](Self::from_response) for a driver that carries the
+    /// per-turn tool-name sets by value instead of the whole prepared
+    /// request. The sets must originate from the prepared request of the same
+    /// attempt.
+    pub fn from_response_parts(
+        resp: &CompletionResponse,
+        executable_tool_names: BTreeSet<String>,
+        allowed_tool_names: BTreeSet<String>,
+    ) -> Self {
+        Self::new(
+            resp.message_id.clone(),
+            resp.choice.clone(),
+            resp.usage,
+            executable_tool_names,
+            allowed_tool_names,
+        )
+        .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
+        .with_finish_reason(resp.finish_reason())
+        .with_raw(resp.raw.clone())
+    }
+
     /// Create a model turn from response parts and the tool names advertised
     /// for the turn.
     pub fn new(
@@ -279,7 +341,7 @@ impl ModelTurn {
 ///
 /// Deliberately exhaustive: a driver must handle every outcome, so adding a
 /// variant is a breaking change by design.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ModelTurnOutcome {
     /// The turn was accepted. Unless `response_hook_suppressed` is set, the
     /// driver should run its completion-response hook now, then call
@@ -357,7 +419,7 @@ struct TurnState {
     /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
     #[serde(default)]
-    internal_call_ids: Vec<(String, String)>,
+    internal_call_ids: Vec<(String, InternalCallId)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1244,7 +1306,7 @@ impl AgentRun {
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        internal_call_ids: Vec<(String, String)>,
+        internal_call_ids: Vec<(String, InternalCallId)>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
             message_id,
@@ -1598,7 +1660,7 @@ impl AgentRun {
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.clone(),
             tool_call_id: Some(invalid.tool_call.id.as_str().to_owned()),
-            internal_call_id: Some(invalid.internal_call_id.clone()),
+            internal_call_id: Some(invalid.internal_call_id),
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),
             allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
@@ -1920,6 +1982,95 @@ mod tests {
         assert_eq!(plain_prompt, logged_prompt);
         assert_eq!(plain_history, logged_history);
         assert_eq!(plain_turn, logged_turn);
+    }
+
+    #[test]
+    fn deserializing_a_persisted_internal_call_id_advances_the_mint_counter() {
+        // A run persisted by an earlier process may carry ids far ahead of
+        // this process's counter; loading it must advance the counter so
+        // fresh mints cannot collide with ids consumers already saw.
+        let seen = InternalCallId::new().to_raw() + 50_000;
+        let json = format!(
+            r#"{{"tool_call":{},"preresolved_result":null,"internal_call_id":{seen}}}"#,
+            serde_json::to_string(&ToolCall::from_wire(
+                "call_1",
+                ToolFunction::new("add".to_string(), json!({"x": 1})),
+            ))
+            .expect("serialize call")
+        );
+        let restored: PendingToolCall = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(
+            restored.internal_call_id.map(InternalCallId::to_raw),
+            Some(seen)
+        );
+        assert!(InternalCallId::new().to_raw() > seen);
+    }
+
+    /// The step and outcome types round-trip: a host caching an in-flight
+    /// step in serializable state (a saved world) can restore it.
+    #[test]
+    fn run_step_and_outcome_round_trip_through_serde() {
+        let step = AgentRunStep::CallModel {
+            prompt: Message::user("hi"),
+            history: vec![Message::assistant("prior")],
+            turn: 1,
+        };
+        let json = serde_json::to_string(&step).expect("serialize step");
+        let restored: AgentRunStep = serde_json::from_str(&json).expect("deserialize step");
+        let AgentRunStep::CallModel { turn, .. } = restored else {
+            panic!("wrong variant");
+        };
+        assert_eq!(turn, 1);
+
+        let outcome = ModelTurnOutcome::Continue {
+            response_hook_suppressed: true,
+        };
+        let json = serde_json::to_string(&outcome).expect("serialize outcome");
+        assert!(matches!(
+            serde_json::from_str::<ModelTurnOutcome>(&json).expect("deserialize outcome"),
+            ModelTurnOutcome::Continue {
+                response_hook_suppressed: true
+            }
+        ));
+    }
+
+    #[test]
+    fn from_response_matches_hand_assembly_field_for_field() {
+        let resp = CompletionResponse::new(
+            vec![AssistantContent::text("hi"), tool_call("call_1", "add")],
+            usage(11, 7),
+            "openai",
+        )
+        .with_message_id("msg_1".to_string())
+        .with_response_id("chatcmpl_1".to_string())
+        .with_provider_request_id("req_1".to_string())
+        .with_finish_reason(FinishReason::ToolCalls)
+        .with_raw(json!({"provider": "payload"}));
+
+        let executable = tool_names(&["add"]);
+        let allowed = tool_names(&["add", "final_output"]);
+        let turn = ModelTurn::from_response_parts(&resp, executable.clone(), allowed.clone());
+
+        let expected = ModelTurn::new(
+            resp.message_id.clone(),
+            resp.choice.clone(),
+            resp.usage,
+            executable,
+            allowed,
+        )
+        .with_identity(resp.response_id.clone(), resp.provider_request_id.clone())
+        .with_finish_reason(resp.finish_reason())
+        .with_raw(resp.raw.clone());
+
+        assert_eq!(turn.message_id, expected.message_id);
+        assert_eq!(turn.response_id, expected.response_id);
+        assert_eq!(turn.provider_request_id, expected.provider_request_id);
+        assert_eq!(turn.choice, expected.choice);
+        assert_eq!(turn.usage, expected.usage);
+        assert_eq!(turn.executable_tool_names, expected.executable_tool_names);
+        assert_eq!(turn.allowed_tool_names, expected.allowed_tool_names);
+        assert_eq!(turn.finish_reason, expected.finish_reason);
+        assert_eq!(turn.raw, expected.raw);
     }
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {

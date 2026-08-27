@@ -43,7 +43,6 @@ all_root = [
     "rig/audio",
     "rig/image",
     "rig/derive",
-    "rig/discord-bot",
     "rig/pdf",
     "rig/epub",
     "rig/rayon",

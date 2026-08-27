@@ -8,7 +8,7 @@ use crate::reasoning::collect_stream_stats;
 
 #[tokio::test]
 async fn collect_stream_stats_tracks_only_final_turn_text() {
-    let internal_call_id = "call_internal_1".to_string();
+    let internal_call_id = rig::id::InternalCallId::new();
     let tool_call = ToolCall::from_wire(
         "tool_1",
         ToolFunction::new(
@@ -30,7 +30,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
         Ok(MultiTurnStreamItem::StreamAssistantItem(
             StreamedAssistantContent::ToolCall {
                 tool_call,
-                internal_call_id: internal_call_id.clone(),
+                internal_call_id,
             },
         )),
         Ok(MultiTurnStreamItem::StreamUserItem(
