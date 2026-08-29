@@ -139,6 +139,15 @@ jobs:
           cargo check --locked -p rig-core --no-default-features
           --features "${{ matrix.provider }},image,audio" --all-targets
 
+      # The facade's own test targets, which neither check above builds: the
+      # first is library-only and the second targets rig-core. `tests/core`
+      # gates whole modules on provider features, and a gate that does not
+      # match the modules' imports only breaks under a partial provider set.
+      - name: Check facade test targets
+        run: >-
+          cargo check --locked -p rig --no-default-features
+          --features "reqwest,rustls,agent,derive,${{ matrix.provider }}" --tests
+
   provider_feature_baselines:
     name: provider feature / baselines
     runs-on: ubuntu-latest
@@ -163,6 +172,17 @@ jobs:
         run: >-
           cargo check --locked -p rig --no-default-features
           --features "providers-all,reqwest,rustls"
+
+      # The streaming-conformance corpus is gated on the union of the eight
+      # providers its client drivers and fixture imports name. Each set below
+      # is a strict subset of that union, so a gate narrower than the imports
+      # fails here while both single-provider and `providers-all` stay green.
+      - name: Check conformance-corpus gates under partial provider sets
+        run: |
+          cargo check --locked -p rig --no-default-features \
+            --features "reqwest,rustls,agent,derive,xai,copilot,chatgpt" --tests
+          cargo check --locked -p rig --no-default-features \
+            --features "reqwest,rustls,agent,derive,openai,gemini,anthropic,cohere,ollama" --tests
 
   provider_features_status:
     name: stable / provider features

@@ -123,11 +123,9 @@
 #[doc(hidden)]
 #[path = "anthropic/mod.rs"]
 // This physical module is shared by several feature-gated provider facades.
-// Individual builds intentionally use only the subset needed by that provider.
-#[cfg_attr(
-    not(feature = "providers-all"),
-    allow(dead_code, unused_imports, unused_macros)
-)]
+// Individual builds intentionally use only the subset needed by that provider;
+// the items that go unused carry their own narrow `allow`, so the rest of the
+// tree keeps its lint coverage in sparse builds.
 pub mod anthropic_compatible;
 #[cfg(feature = "anthropic")]
 #[cfg_attr(docsrs, doc(cfg(feature = "anthropic")))]
@@ -212,11 +210,9 @@ pub mod ollama;
 #[doc(hidden)]
 #[path = "openai/mod.rs"]
 // This physical module is shared by the OpenAI-compatible provider family.
-// Sparse feature builds intentionally leave capability-specific helpers unused.
-#[cfg_attr(
-    not(feature = "providers-all"),
-    allow(dead_code, unused_imports, unused_macros)
-)]
+// Sparse feature builds intentionally leave capability-specific helpers unused;
+// those items carry their own narrow `allow`, so the rest of the tree keeps its
+// lint coverage in sparse builds.
 pub mod openai_compatible;
 #[cfg(feature = "openai")]
 #[cfg_attr(docsrs, doc(cfg(feature = "openai")))]

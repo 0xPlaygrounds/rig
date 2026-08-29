@@ -309,6 +309,7 @@ impl ResponsesStreamOptions {
 /// Blank lines, non-`data:` fields (SSE comments, `event:`), and the `[DONE]`
 /// sentinel are skipped, so both buffered readers below see exactly the frame
 /// payloads a live transport would deliver.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn sse_data_frames(body: &str) -> impl Iterator<Item = &str> {
     body.lines()
         .map(|line| {
@@ -319,6 +320,7 @@ fn sse_data_frames(body: &str) -> impl Iterator<Item = &str> {
         .filter(|data| !data.is_empty() && *data != "[DONE]")
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn parse_sse_completion_body(
     body: &str,
     provider_name: &str,
@@ -892,6 +894,7 @@ fn repair_envelope_less_frame(data: &str) -> Option<String> {
     serde_json::to_string(&value).ok()
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn raw_choices_from_sse_body(
     body: &str,
     initial_usage: ResponsesUsage,
@@ -919,6 +922,7 @@ pub(crate) fn raw_choices_from_sse_body(
     run_wire_buffered(frames, ResponsesAdapter::buffered(initial_usage))
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) async fn completion_response_from_sse_body(
     provider: &str,
     body: &str,
@@ -1046,6 +1050,7 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
 ///
 /// Pass the result through [`normalize_responses_stream`] to obtain the
 /// normalized stream that [`completion::CompletionModel::stream`] returns.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn raw_stream_from_event_source<HttpClient, RequestBody>(
     event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
@@ -1130,6 +1135,7 @@ impl ResponsesAdapter {
         }
     }
 
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     fn buffered(initial_usage: ResponsesUsage) -> Self {
         Self {
             accumulator: RawChoiceAccumulator::new(initial_usage),

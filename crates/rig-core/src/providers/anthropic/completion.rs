@@ -1894,6 +1894,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// Strict tools support optional parameters, so declared `required` lists are
 /// preserved. Unsupported validation keywords are moved into descriptions as
 /// model guidance instead of reaching the constrained-decoding compiler.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
@@ -1917,6 +1918,7 @@ fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
 /// Anthropic rejects `allOf` at the top level of a tool input even when every
 /// branch describes an object. Merge those object branches into the root while
 /// preserving per-property collisions as nested `allOf` constraints.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn flatten_root_all_of(schema: &mut serde_json::Value) {
     use serde_json::{Map, Value};
 
@@ -1940,6 +1942,7 @@ fn flatten_root_all_of(schema: &mut serde_json::Value) {
 /// `type` beside `$ref`. Resolve local root references before transformation so
 /// both requirements can be met while retaining definitions needed by nested
 /// references.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn inline_local_root_reference(schema: &mut serde_json::Value) {
     use serde_json::Value;
 
@@ -1981,6 +1984,7 @@ fn inline_local_root_reference(schema: &mut serde_json::Value) {
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_document_definitions(
     root_definitions: serde_json::Value,
     local_definitions: Option<serde_json::Value>,
@@ -2002,6 +2006,7 @@ fn merge_document_definitions(
 /// Merge keywords adjacent to a root `$ref` into its resolved object. JSON
 /// Schema applies those siblings conjunctively; simply replacing the root with
 /// the referenced object would silently discard valid constraints.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_root_reference_siblings(
     referenced: &mut serde_json::Map<String, serde_json::Value>,
     siblings: serde_json::Map<String, serde_json::Value>,
@@ -2050,6 +2055,7 @@ fn merge_root_reference_siblings(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_root_all_of(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2092,6 +2098,7 @@ fn merge_root_all_of(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_schema_properties(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2130,6 +2137,7 @@ fn merge_schema_properties(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_required_properties(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2153,6 +2161,7 @@ fn merge_required_properties(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value {
     use serde_json::{Map, Value};
 
@@ -2309,6 +2318,7 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
     Value::Object(strict)
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn schema_has_type(schema_type: Option<&serde_json::Value>, expected: &str) -> bool {
     match schema_type {
         Some(serde_json::Value::String(schema_type)) => schema_type == expected,

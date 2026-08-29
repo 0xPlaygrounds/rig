@@ -1,6 +1,7 @@
 use super::completion::Usage;
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
+#[cfg_attr(not(feature = "providers-all"), allow(unused_imports))]
 #[cfg(test)]
 use crate::http_client;
 use crate::http_client::HttpClientExt;

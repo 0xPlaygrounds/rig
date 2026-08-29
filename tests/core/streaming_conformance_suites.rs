@@ -22,6 +22,11 @@ use rig_core::test_utils::streaming_conformance::fixtures::{
 /// reads the families that actually *compiled* rather than text it scraped
 /// off disk. Commenting a suite out, or `#[cfg]`-disabling it, is therefore a
 /// COMPILE error here instead of a silently shrinking test count (#2258 F3).
+// The registry that reads this needs three more provider features than the
+// suites below, so a feature set that compiles the suites can leave it
+// `#[cfg]`-disabled; the compile-linked guarantee is the registry's reference,
+// not this lint.
+#[allow(dead_code)]
 pub const SUITE_FAMILIES: &[&str] = &[
     openai_chat_suite::WIRE_FAMILY,
     openai_responses_suite::WIRE_FAMILY,

@@ -1879,6 +1879,7 @@ impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
 /// today's behavior — the legacy field, and the provider's own explicit
 /// `Unsupported parameter` error — rather than silently sending a field some
 /// other backend does not know.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
     /// `gpt-5` … `gpt-9`, in any spelling the family uses (`gpt-5`,
     /// `gpt-5.1`, `gpt-5-nano`, `gpt-5-2025-08-07`).
@@ -2007,6 +2008,7 @@ pub struct CompletionRequest {
 /// concatenation of its text parts. When `only_if_all_text` is set, arrays
 /// containing non-text parts are left untouched (for APIs with their own
 /// multimodal handling); otherwise non-text parts are dropped.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn flatten_text_content_parts(
     content: &mut serde_json::Value,
     separator: &str,
@@ -2060,6 +2062,7 @@ pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
 /// user/user as well as assistant/assistant adjacency, and alternation-strict
 /// APIs (Perplexity) reject both; providers without that constraint keep
 /// their turns separate.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn sanitize_plain_text_history(
     messages: &mut Vec<serde_json::Value>,
     flatten: Option<(&str, bool)>,

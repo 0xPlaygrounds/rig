@@ -4,10 +4,12 @@ use http::{HeaderName, HeaderValue};
 use super::completion::ANTHROPIC_VERSION_LATEST;
 #[cfg(feature = "anthropic")]
 use super::completion::CompletionModel;
-use crate::{
-    client::{self, ApiKey},
-    http_client::{self, HttpClientExt},
-};
+use crate::client::{self, ApiKey};
+use crate::http_client;
+// `HttpClientExt` is only reached through the `anthropic`-gated model-listing
+// and completion paths, so compatible-only builds leave it unused.
+#[cfg_attr(not(feature = "providers-all"), allow(unused_imports))]
+use crate::http_client::HttpClientExt;
 #[cfg(feature = "anthropic")]
 use crate::{
     client::{DebugExt, Provider, ProviderBuilder},
@@ -202,6 +204,7 @@ where
 // a ProviderBuilder implementation, neither of which ordinary functions can
 // generate. Keep the actual header behavior in `finish_anthropic_builder` and
 // generate only this type-level plumbing.
+#[cfg_attr(not(feature = "providers-all"), allow(unused_macros))]
 macro_rules! impl_anthropic_compatible_builder {
     ($builder:ty => $extension:ty, base_url = $base_url:expr $(,)?) => {
         $crate::client::impl_default_provider_builder!(
@@ -244,6 +247,7 @@ macro_rules! impl_anthropic_compatible_builder {
         }
     };
 }
+#[cfg_attr(not(feature = "providers-all"), allow(unused_imports))]
 pub(crate) use impl_anthropic_compatible_builder;
 
 #[cfg(all(test, feature = "anthropic"))]

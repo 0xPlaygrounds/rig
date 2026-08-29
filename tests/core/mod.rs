@@ -11,8 +11,18 @@ mod reasoning_stream_stats;
 // The corpus needs exactly the providers its fixtures name; gating it on the
 // `providers-all` aggregate made an otherwise-complete feature set compile
 // zero conformance tests, which is the silent-skip failure this suite exists
-// to prevent.
-#[cfg(all(feature = "xai", feature = "copilot", feature = "chatgpt"))]
+// to prevent. The file drives xai/copilot/chatgpt clients *and* imports the
+// in-crate fixture modules for the other five, so it needs all eight.
+#[cfg(all(
+    feature = "openai",
+    feature = "gemini",
+    feature = "anthropic",
+    feature = "cohere",
+    feature = "ollama",
+    feature = "xai",
+    feature = "copilot",
+    feature = "chatgpt"
+))]
 mod streaming_conformance;
 #[cfg(all(
     feature = "openai",
