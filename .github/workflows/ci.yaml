@@ -261,6 +261,13 @@ jobs:
         if: matrix.package == 'rig-core'
         run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
 
+      # Providers are opt-in, so the default-features check above compiles none
+      # of them: without this leg a wasm-incompatible provider alias or facade
+      # re-export would pass CI.
+      - name: Run providers-all wasm check
+        if: matrix.package == 'rig-reqwest' || matrix.package == 'rig'
+        run: cargo check --package ${{ matrix.package }} --features providers-all --target wasm32-unknown-unknown
+
   # `rig-rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
   # unconditionally, which rig's wasm tool registry cannot satisfy. Building it
   # for wasm must fail with exactly one actionable sentence (the crate-root

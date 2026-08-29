@@ -131,6 +131,9 @@
 pub mod anthropic_compatible;
 #[cfg(feature = "anthropic")]
 #[cfg_attr(docsrs, doc(cfg(feature = "anthropic")))]
+// The shared physical module is `#[doc(hidden)]`; without `doc(inline)`
+// rustdoc suppresses this re-export and the provider vanishes from the docs.
+#[doc(inline)]
 pub use anthropic_compatible as anthropic;
 #[cfg(feature = "azure")]
 #[cfg_attr(docsrs, doc(cfg(feature = "azure")))]
@@ -217,6 +220,9 @@ pub mod ollama;
 pub mod openai_compatible;
 #[cfg(feature = "openai")]
 #[cfg_attr(docsrs, doc(cfg(feature = "openai")))]
+// The shared physical module is `#[doc(hidden)]`; without `doc(inline)`
+// rustdoc suppresses this re-export and the provider vanishes from the docs.
+#[doc(inline)]
 pub use openai_compatible as openai;
 #[cfg(feature = "openrouter")]
 #[cfg_attr(docsrs, doc(cfg(feature = "openrouter")))]

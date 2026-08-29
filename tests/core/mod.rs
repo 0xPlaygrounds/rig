@@ -8,11 +8,30 @@ mod nightly_paths_registry;
 mod prompt_response_messages;
 mod provider_layout;
 mod reasoning_stream_stats;
-#[cfg(feature = "providers-all")]
+// The corpus needs exactly the providers its fixtures name; gating it on the
+// `providers-all` aggregate made an otherwise-complete feature set compile
+// zero conformance tests, which is the silent-skip failure this suite exists
+// to prevent.
+#[cfg(all(feature = "xai", feature = "copilot", feature = "chatgpt"))]
 mod streaming_conformance;
-#[cfg(feature = "providers-all")]
+#[cfg(all(
+    feature = "openai",
+    feature = "gemini",
+    feature = "anthropic",
+    feature = "cohere",
+    feature = "ollama",
+    feature = "xai",
+    feature = "copilot",
+    feature = "chatgpt"
+))]
 mod streaming_conformance_registry;
-#[cfg(feature = "providers-all")]
+#[cfg(all(
+    feature = "openai",
+    feature = "gemini",
+    feature = "anthropic",
+    feature = "cohere",
+    feature = "ollama"
+))]
 mod streaming_conformance_suites;
 #[cfg(feature = "derive")]
 mod tool_macro;

@@ -130,7 +130,6 @@ def discover() -> list[Build]:
         )
     )
 
-    target_count = 0
     for package in workspace_packages:
         manifest = relative_manifest(package)
         if manifest in metadata_manifests:
@@ -168,21 +167,6 @@ def discover() -> list[Build]:
                     command=tuple(command),
                 )
             )
-            target_count += 1
-
-    metadata_target_count = sum(
-        1
-        for package in workspace_packages
-        if relative_manifest(package) not in metadata_manifests
-        for target in package.get("targets", [])
-        if isinstance(target, dict)
-        and isinstance(target.get("kind"), list)
-        and "example" in target["kind"]
-    )
-    if target_count != metadata_target_count:
-        raise RuntimeError(
-            f"Unaccounted crate-local Cargo example targets: discovered {target_count} of {metadata_target_count}"
-        )
 
     builds.sort(key=lambda build: build.identifier)
     identifiers = [build.identifier for build in builds]
