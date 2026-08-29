@@ -18,7 +18,6 @@ from collections.abc import Sequence
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-DISCORD_MANIFEST = ROOT / "examples" / "discord_bot" / "Cargo.toml"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -77,9 +76,8 @@ def discover() -> list[Build]:
             workspace_example_packages.append(package)
             metadata_manifests.add(manifest)
 
-    expected_manifests = metadata_manifests | {DISCORD_MANIFEST.relative_to(ROOT)}
-    missing = sorted(physical_manifests - expected_manifests)
-    stale = sorted(expected_manifests - physical_manifests)
+    missing = sorted(physical_manifests - metadata_manifests)
+    stale = sorted(metadata_manifests - physical_manifests)
     if missing or stale:
         details = []
         if missing:
@@ -108,28 +106,6 @@ def discover() -> list[Build]:
                 ),
             )
         )
-
-    discord = packages(cargo_metadata(DISCORD_MANIFEST))
-    discord_package = next(
-        (package for package in discord if relative_manifest(package) == DISCORD_MANIFEST.relative_to(ROOT)),
-        None,
-    )
-    if discord_package is None or not isinstance(discord_package.get("name"), str):
-        raise RuntimeError("examples/discord_bot was not discovered as its own workspace package")
-    builds.append(
-        Build(
-            identifier="standalone:discord_bot",
-            command=(
-                "cargo",
-                "build",
-                "--locked",
-                "--manifest-path",
-                str(DISCORD_MANIFEST.relative_to(ROOT)),
-                "--package",
-                str(discord_package["name"]),
-            ),
-        )
-    )
 
     for package in workspace_packages:
         manifest = relative_manifest(package)

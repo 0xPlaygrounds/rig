@@ -61,10 +61,6 @@ exclude = [
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
-    # Its own workspace: `serenity` is the only published Discord client and
-    # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
-    # Excluding it keeps that subtree out of the workspace lockfile.
-    "examples/discord_bot",
 ]
 
 [workspace.lints.clippy]

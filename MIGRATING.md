@@ -863,7 +863,7 @@ plugin), all additive or derive-only:
   provide `Send + 'static` futures for hosts that spawn tasks; the borrowed
   methods remain the implementation surface.
 
-### The `discord-bot` feature is gone; the integration is an example
+### The `discord-bot` feature is gone
 
 `rig`'s `discord-bot` feature, rig-agent's `discord-bot` feature, and
 `rig_agent::integrations::discord_bot` (`DiscordExt`, `DiscordBotError`) are
@@ -874,17 +874,12 @@ weaknesses — with no version to bump to. A demo-grade integration is not worth
 putting that in the dependency graph of everyone who builds the facade with
 `--all-features`.
 
-The code moved verbatim to `examples/discord_bot`, which is now excluded from
-the workspace and carries its own lockfile, so `serenity` is out of the
-workspace `Cargo.lock` entirely. If you were using `DiscordExt`, copy
-`examples/discord_bot/src/discord_bot.rs` into your own crate and depend on
-`serenity` directly — it is ~230 lines over the public `Agent` API and needs
-nothing internal. Two incidental trims came with the move: the unused
-`DiscordExt::into_discord_bot_from_env` default method and the
-`DiscordBotError::MissingToken` variant it fed.
-
-Run the example with `cargo run --manifest-path examples/discord_bot/Cargo.toml`
-(`-p discord_bot` no longer resolves).
+The code lived on briefly as `examples/discord_bot` and is now removed
+outright, so `serenity` is out of the repository entirely. If you were using
+`DiscordExt`, recover it from git history (`git show
+7fd476a15:examples/discord_bot/src/discord_bot.rs`) and depend on `serenity`
+directly — it is ~230 lines over the public `Agent` API and needs nothing
+internal.
 
 ### Run lifecycle hooks and transport middleware
 
