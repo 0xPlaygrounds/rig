@@ -164,7 +164,10 @@ python3 scripts/check-examples.py
 ```
 
 `scripts/check-examples.py` discovers every standalone package and crate-local
-Cargo example target, then runs a separate `cargo build --locked` for each.
+Cargo example target, then runs a separate build for each. Builds use the
+workspace lockfile except for `examples/discord_bot`, whose independent,
+gitignored lockfile is deliberately resolved outside the workspace dependency
+graph.
 Use `--list` to audit discovery or `--shard-index N --shard-count M` to
 reproduce a CI shard. Every example manifest or dev-dependency must declare the
 provider features it imports; a workspace-wide build is not a substitute.
