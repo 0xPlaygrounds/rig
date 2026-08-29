@@ -75,6 +75,13 @@ jobs:
   provider_features:
     name: provider feature / ${{ matrix.provider }}
     runs-on: ubuntu-latest
+    # The sparse-build lint coverage is the whole point of these legs: the
+    # `-D warnings` clippy job runs `--all-features`, where the shared provider
+    # trees' `cfg_attr(not(providers-all), allow(...))` guards are inactive, so
+    # an import left unused by one provider (as `azure,image` was) is only ever
+    # visible here.
+    env:
+      RUSTFLAGS: "-D warnings"
     strategy:
       fail-fast: false
       matrix:
@@ -151,6 +158,13 @@ jobs:
   provider_feature_baselines:
     name: provider feature / baselines
     runs-on: ubuntu-latest
+    # The sparse-build lint coverage is the whole point of these legs: the
+    # `-D warnings` clippy job runs `--all-features`, where the shared provider
+    # trees' `cfg_attr(not(providers-all), allow(...))` guards are inactive, so
+    # an import left unused by one provider (as `azure,image` was) is only ever
+    # visible here.
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - name: Checkout
         uses: actions/checkout@v5

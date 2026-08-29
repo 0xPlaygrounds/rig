@@ -439,6 +439,36 @@ struct OpenAICompatibleProfile<Ext, U = Usage> {
 #[derive(Clone, Copy, Default)]
 struct OpenAIWireExt;
 
+/// A local stub rather than a borrowed concrete provider builder: this marker
+/// only names the OpenAI wire dialect for the shared streaming driver, and it
+/// has to compile for every OpenAI-compatible provider, not only `openai`.
+#[derive(Debug, Default, Clone, Copy)]
+struct OpenAIWireExtBuilder;
+
+impl crate::client::ProviderBuilder for OpenAIWireExtBuilder {
+    type Extension<H>
+        = OpenAIWireExt
+    where
+        H: crate::http_client::HttpClientExt;
+    type ApiKey = crate::client::BearerAuth;
+
+    const BASE_URL: &'static str = "https://openai-wire.invalid";
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> crate::http_client::Result<Self::Extension<H>>
+    where
+        H: crate::http_client::HttpClientExt,
+    {
+        Ok(OpenAIWireExt)
+    }
+}
+
+impl crate::client::Provider for OpenAIWireExt {
+    type Builder = OpenAIWireExtBuilder;
+    const VERIFY_PATH: &'static str = "/models";
+}
+
 impl OpenAICompatibleProvider for OpenAIWireExt {
     const PROVIDER_NAME: &'static str = "openai-compatible";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");

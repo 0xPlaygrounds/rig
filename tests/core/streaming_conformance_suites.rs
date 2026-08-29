@@ -24,9 +24,13 @@ use rig_core::test_utils::streaming_conformance::fixtures::{
 /// COMPILE error here instead of a silently shrinking test count (#2258 F3).
 // The registry that reads this needs three more provider features than the
 // suites below, so a feature set that compiles the suites can leave it
-// `#[cfg]`-disabled; the compile-linked guarantee is the registry's reference,
-// not this lint.
-#[allow(dead_code)]
+// `#[cfg]`-disabled. Allow it only there: where the registry does compile,
+// dropping its reference must still be a `dead_code` diagnostic, since that
+// reference is the other half of the compile link this const exists for.
+#[cfg_attr(
+    not(all(feature = "xai", feature = "copilot", feature = "chatgpt")),
+    allow(dead_code)
+)]
 pub const SUITE_FAMILIES: &[&str] = &[
     openai_chat_suite::WIRE_FAMILY,
     openai_responses_suite::WIRE_FAMILY,

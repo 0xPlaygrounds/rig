@@ -1628,7 +1628,7 @@ pub struct CompletionModelOptions {
 /// [`finalize_request_body_with_options`](Self::finalize_request_body_with_options)
 /// on the serialized body — so the finalize hook always sees the streaming
 /// parameters and model-level options.
-pub trait OpenAICompatibleProvider {
+pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
     const PROVIDER_NAME: &'static str;
 

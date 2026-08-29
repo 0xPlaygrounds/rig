@@ -4,14 +4,20 @@
 #[cfg(feature = "openai")]
 use super::{OpenAICompletionsExt, OpenAIResponsesExt};
 use crate::image_generation;
-use crate::image_generation::{
-    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
-};
-use crate::json_utils::merge_inplace;
-use crate::providers::internal::image_generation::{
-    GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
-};
+use crate::image_generation::{ImageGenerationError, NormalizeImageGenerationResponse};
+use crate::providers::internal::image_generation::decode_base64_image;
 use serde::{Deserialize, Serialize};
+// The request builder and the model impls below are `openai`-only; Azure
+// reaches this module for the wire types alone.
+#[cfg(feature = "openai")]
+use crate::image_generation::ImageGenerationRequest;
+#[cfg(feature = "openai")]
+use crate::json_utils::merge_inplace;
+#[cfg(feature = "openai")]
+use crate::providers::internal::image_generation::{
+    GenericImageGenerationModel, JsonImageGenerationProvider,
+};
+#[cfg(feature = "openai")]
 use serde_json::json;
 
 // ================================================================

@@ -8,8 +8,9 @@ publish = false
 # 0.12.5 is the newest published release and pins `rustls` 0.22, which carries
 # four unpatched `rustls-webpki` 0.102.8 advisories with no version to bump to.
 # Keeping this example out of the workspace keeps those out of the workspace
-# lockfile and off every consumer of the `rig` facade. Its gitignored lockfile is
-# resolved independently when the example is built locally or in example CI.
+# lockfile and off every consumer of the `rig` facade. Its own lockfile is
+# committed so the example CI build is `--locked` and hermetic: an upstream
+# release must not be able to redden a PR that changed nothing here.
 [workspace]
 
 [lints.clippy]

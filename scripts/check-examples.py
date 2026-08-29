@@ -122,6 +122,7 @@ def discover() -> list[Build]:
             command=(
                 "cargo",
                 "build",
+                "--locked",
                 "--manifest-path",
                 str(DISCORD_MANIFEST.relative_to(ROOT)),
                 "--package",
