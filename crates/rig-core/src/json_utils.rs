@@ -9,6 +9,7 @@ use std::str::FromStr;
 /// `skip_serializing_if` helper: serde requires a `fn(&bool) -> bool`, so the
 /// trivially-copy lint does not apply here.
 #[allow(clippy::trivially_copy_pass_by_ref)]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }

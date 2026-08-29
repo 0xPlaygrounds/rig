@@ -338,8 +338,10 @@ pub enum ModelListingError {
     },
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn format_response_body_preview(body: &[u8]) -> String {
     let preview_len = body.len().min(RESPONSE_BODY_PREVIEW_LIMIT);
     let preview_bytes = body.get(..preview_len).unwrap_or(body);
@@ -355,6 +357,7 @@ fn format_response_body_preview(body: &[u8]) -> String {
     preview
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn format_response_context(
     provider: &str,
     path: &str,
@@ -391,6 +394,7 @@ impl ModelListingError {
         }
     }
 
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn api_error_with_context(
         provider: &str,
         path: &str,
@@ -402,6 +406,7 @@ impl ModelListingError {
         Self::api_error(status_code, message)
     }
 
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn parse_error_with_context(
         provider: &str,
         path: &str,
@@ -413,6 +418,7 @@ impl ModelListingError {
         Self::parse_error(message)
     }
 
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn parse_error_with_details(
         provider: &str,
         path: &str,

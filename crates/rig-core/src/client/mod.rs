@@ -376,6 +376,9 @@ pub trait ProviderBuilder: Sized + Default + Clone {
 // so ordinary helper functions cannot express the repeated structure. Keeping
 // the variation points in one invocation makes each provider's configuration
 // visible without duplicating the generic builder plumbing.
+// Provider-facing macros are consumed according to the enabled provider set.
+// A provider-neutral build deliberately has no expansion sites.
+#[cfg_attr(not(feature = "providers-all"), allow(unused_macros))]
 macro_rules! impl_default_provider_builder {
     (
         $builder:ty => $extension:ty,
@@ -414,12 +417,14 @@ macro_rules! impl_default_provider_builder {
         }
     };
 }
+#[cfg_attr(not(feature = "providers-all"), allow(unused_imports))]
 pub(crate) use impl_default_provider_builder;
 
 // A provider's Capabilities impl is a pure associated-type table where every
 // slot a provider does not support is `Nothing`. The named optional slots
 // keep each provider's invocation down to what it actually supports, and the
 // macro owns the feature gating on the image/audio slots.
+#[cfg_attr(not(feature = "providers-all"), allow(unused_macros))]
 macro_rules! impl_capabilities {
     (
         $ext:ty
@@ -447,11 +452,13 @@ macro_rules! impl_capabilities {
     (@slot $model:ty) => { $crate::client::Capable<$model> };
     (@slot) => { $crate::client::Nothing };
 }
+#[cfg_attr(not(feature = "providers-all"), allow(unused_imports))]
 pub(crate) use impl_capabilities;
 
 // `ProviderFromEnv` is implemented per provider *extension* type, generic over
 // the transport. The optional base-URL forms capture the only common
 // construction variation without hiding provider-specific auth.
+#[cfg_attr(not(feature = "providers-all"), allow(unused_macros))]
 macro_rules! impl_provider_from_env {
     (
         $ext:ty,
@@ -574,6 +581,7 @@ macro_rules! impl_provider_from_env {
         }
     };
 }
+#[cfg_attr(not(feature = "providers-all"), allow(unused_imports))]
 pub(crate) use impl_provider_from_env;
 
 /// Construction with an explicit transport. rig-core never chooses a transport
@@ -938,6 +946,7 @@ where
     Ext: Clone,
 {
     /// Owned map over the ext field
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn over_ext<F, NewExt>(self, f: F) -> ClientBuilder<NewExt, ApiKey, H>
     where
         F: FnOnce(Ext) -> NewExt,
@@ -991,16 +1000,19 @@ where
         Self { headers, ..self }
     }
 
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn headers_mut(&mut self) -> &mut HeaderMap {
         &mut self.headers
     }
 
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn ext_mut(&mut self) -> &mut Ext {
         &mut self.ext
     }
 }
 
 impl<Ext, ApiKey, H> ClientBuilder<Ext, ApiKey, H> {
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn get_api_key(&self) -> &ApiKey {
         &self.api_key
     }

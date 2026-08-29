@@ -1738,6 +1738,9 @@ fn assert_reasoning_tool_reasoning(
 }
 
 /// Per-provider wire fixtures for the shared scenario set.
+// `test-utils` consumers compile this module with their own provider feature
+// subset, so helpers for the other wire formats are intentionally unused.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub mod fixtures {
     use super::*;
     use crate::client::CompletionClient;

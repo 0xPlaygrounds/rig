@@ -96,6 +96,7 @@ pub(crate) fn json(body: Option<&str>) -> Result<Option<serde_json::Value>, serd
         .transpose()
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn completion_error_from_body(
     body: impl Into<String>,
 ) -> crate::completion::CompletionError {
