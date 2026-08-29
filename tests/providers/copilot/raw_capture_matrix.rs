@@ -47,7 +47,7 @@ use rig::completion::NormalizeCompletionResponse as _;
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
 use rig::prelude::*;
 use rig::providers::copilot::{self, CopilotCompletionResponse};
-use rig::providers::openai;
+use rig::providers::openai_compatible as openai;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -406,7 +406,7 @@ async fn responses_raw_exposes_envelope() {
     };
     assert_eq!(
         typed.status,
-        rig::providers::openai::responses_api::ResponseStatus::Completed
+        rig::providers::openai_compatible::responses_api::ResponseStatus::Completed
     );
 }
 
@@ -463,10 +463,11 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
         .expect("the test body must have captured the response");
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_responses_body(&body, scenario);
-    let from_wire = rig::providers::openai::responses_api::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be a Responses envelope")
-        .normalize(COPILOT_PROVIDER)
-        .expect("recorded body must normalize")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
+    let from_wire =
+        rig::providers::openai_compatible::responses_api::CompletionResponse::deserialize(&body)
+            .expect("recorded body must be a Responses envelope")
+            .normalize(COPILOT_PROVIDER)
+            .expect("recorded body must normalize")
+            .with_optional_provider_request_id(response.provider_request_id.clone());
     assert_normalizes_like_own_wire(response, from_wire);
 }

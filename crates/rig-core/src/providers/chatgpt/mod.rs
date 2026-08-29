@@ -21,7 +21,7 @@ mod auth;
 use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, Transport};
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::openai::responses_api::{
+use crate::providers::openai_compatible::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
 use crate::streaming::StreamingCompletionResponse;

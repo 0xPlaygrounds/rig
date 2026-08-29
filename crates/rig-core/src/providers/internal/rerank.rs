@@ -187,7 +187,7 @@ where
         let (parts, body) = response.into_parts();
         let status = parts.status;
         let provider_request_id =
-            super::transcription::request_id_from_headers(&parts.headers, Ext::REQUEST_ID_HEADER);
+            super::request_id_from_headers(&parts.headers, Ext::REQUEST_ID_HEADER);
         let response_body: Vec<u8> = body.await?;
         if !status.is_success() {
             return Err(RerankError::from_http_response(

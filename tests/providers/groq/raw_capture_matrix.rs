@@ -36,7 +36,7 @@ use rig::completion::{
 };
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::{groq, openai};
+use rig::providers::{groq, openai_compatible as openai};
 use serde::Deserialize;
 use serde_json::{Value, json};
 

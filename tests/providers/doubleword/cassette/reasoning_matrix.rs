@@ -16,7 +16,7 @@
 use rig::completion::{CompletionModel, NormalizeCompletionResponse};
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::{doubleword, openai};
+use rig::providers::{doubleword, openai_compatible as openai};
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_raw_stream_observation;

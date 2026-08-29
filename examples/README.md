@@ -13,6 +13,20 @@ its own lockfile, so run it with
 Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `COHERE_API_KEY`). See each example's source for specifics.
 
+Each manifest declares the exact provider features its source imports. Keep
+that list current when changing an example; examples must not rely on feature
+unification from another workspace package. To reproduce the PR gate locally,
+list or build every example independently with:
+
+```sh
+python3 scripts/check-examples.py --list
+python3 scripts/check-examples.py
+```
+
+CI shards the same stable list with `--shard-index` and `--shard-count`. The
+runner uses one `cargo build --locked` process per standalone package or
+crate-local target and never executes provider-backed binaries.
+
 | Example | Description |
 | --- | --- |
 | `agent_autonomous` | Demonstrates an autonomous extractor loop that keeps feeding its own output back in. |

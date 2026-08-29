@@ -14,6 +14,47 @@
 /// The bundled transport every alias here defaults to.
 pub type DefaultHttp = crate::ReqwestClient;
 
+// Protocol-family support is transport-neutral, but re-export it here so the
+// `rig` facade keeps the same hidden support path when its `reqwest` feature
+// replaces the core provider tree with these default-transport aliases.
+#[cfg(any(
+    feature = "anthropic",
+    feature = "minimax",
+    feature = "moonshot",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+#[doc(hidden)]
+pub use rig_core::providers::anthropic_compatible;
+
+#[cfg(any(
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+#[doc(hidden)]
+pub use rig_core::providers::openai_compatible;
+
+#[cfg(feature = "anthropic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "anthropic")))]
 pub mod anthropic {
     pub use rig_core::providers::anthropic::*;
     pub type AnthropicModelLister<H = super::DefaultHttp> =
@@ -23,6 +64,8 @@ pub mod anthropic {
         rig_core::providers::anthropic::completion::CompletionModel<H>;
 }
 
+#[cfg(feature = "azure")]
+#[cfg_attr(docsrs, doc(cfg(feature = "azure")))]
 pub mod azure {
     pub use rig_core::providers::azure::*;
     #[cfg(feature = "audio")]
@@ -39,6 +82,8 @@ pub mod azure {
         rig_core::providers::azure::TranscriptionModel<H>;
 }
 
+#[cfg(feature = "chatgpt")]
+#[cfg_attr(docsrs, doc(cfg(feature = "chatgpt")))]
 pub mod chatgpt {
     pub use rig_core::providers::chatgpt::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::chatgpt::Client<H>;
@@ -46,6 +91,8 @@ pub mod chatgpt {
         rig_core::providers::chatgpt::ResponsesCompletionModel<H>;
 }
 
+#[cfg(feature = "cohere")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cohere")))]
 pub mod cohere {
     pub use rig_core::providers::cohere::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::cohere::client::Client<H>;
@@ -57,6 +104,8 @@ pub mod cohere {
         rig_core::providers::cohere::embeddings::ImageEmbeddingModel<H>;
 }
 
+#[cfg(feature = "copilot")]
+#[cfg_attr(docsrs, doc(cfg(feature = "copilot")))]
 pub mod copilot {
     pub use rig_core::providers::copilot::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::copilot::Client<H>;
@@ -68,6 +117,8 @@ pub mod copilot {
         rig_core::providers::copilot::EmbeddingModel<H>;
 }
 
+#[cfg(feature = "deepseek")]
+#[cfg_attr(docsrs, doc(cfg(feature = "deepseek")))]
 pub mod deepseek {
     pub use rig_core::providers::deepseek::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::deepseek::Client<H>;
@@ -77,6 +128,8 @@ pub mod deepseek {
         rig_core::providers::deepseek::DeepSeekModelLister<H>;
 }
 
+#[cfg(feature = "doubleword")]
+#[cfg_attr(docsrs, doc(cfg(feature = "doubleword")))]
 pub mod doubleword {
     pub use rig_core::providers::doubleword::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::doubleword::client::Client<H>;
@@ -86,6 +139,8 @@ pub mod doubleword {
         rig_core::providers::doubleword::embedding::EmbeddingModel<H>;
 }
 
+#[cfg(feature = "gemini")]
+#[cfg_attr(docsrs, doc(cfg(feature = "gemini")))]
 pub mod gemini {
     pub use rig_core::providers::gemini::*;
     pub type CachedContentClient<H = super::DefaultHttp> =
@@ -110,6 +165,8 @@ pub mod gemini {
         rig_core::providers::gemini::transcription::TranscriptionModel<H>;
 }
 
+#[cfg(feature = "groq")]
+#[cfg_attr(docsrs, doc(cfg(feature = "groq")))]
 pub mod groq {
     pub use rig_core::providers::groq::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::groq::Client<H>;
@@ -121,6 +178,8 @@ pub mod groq {
         rig_core::providers::groq::TranscriptionModel<H>;
 }
 
+#[cfg(feature = "huggingface")]
+#[cfg_attr(docsrs, doc(cfg(feature = "huggingface")))]
 pub mod huggingface {
     pub use rig_core::providers::huggingface::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::huggingface::client::Client<H>;
@@ -133,6 +192,8 @@ pub mod huggingface {
         rig_core::providers::huggingface::transcription::TranscriptionModel<H>;
 }
 
+#[cfg(feature = "hyperbolic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "hyperbolic")))]
 pub mod hyperbolic {
     pub use rig_core::providers::hyperbolic::*;
     #[cfg(feature = "audio")]
@@ -146,6 +207,8 @@ pub mod hyperbolic {
         rig_core::providers::hyperbolic::ImageGenerationModel<H>;
 }
 
+#[cfg(feature = "llamacpp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "llamacpp")))]
 pub mod llamacpp {
     pub use rig_core::providers::llamacpp::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::llamacpp::client::Client<H>;
@@ -159,6 +222,8 @@ pub mod llamacpp {
         rig_core::providers::llamacpp::rerank::RerankModel<H>;
 }
 
+#[cfg(feature = "minimax")]
+#[cfg_attr(docsrs, doc(cfg(feature = "minimax")))]
 pub mod minimax {
     pub use rig_core::providers::minimax::*;
     pub type AnthropicClient<H = super::DefaultHttp> =
@@ -168,6 +233,8 @@ pub mod minimax {
         rig_core::providers::minimax::MiniMaxModelLister<H>;
 }
 
+#[cfg(feature = "mira")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mira")))]
 pub mod mira {
     pub use rig_core::providers::mira::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::mira::Client<H>;
@@ -177,6 +244,8 @@ pub mod mira {
         rig_core::providers::mira::MiraModelLister<H>;
 }
 
+#[cfg(feature = "mistral")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mistral")))]
 pub mod mistral {
     pub use rig_core::providers::mistral::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::mistral::client::Client<H>;
@@ -190,6 +259,8 @@ pub mod mistral {
         rig_core::providers::mistral::transcription::TranscriptionModel<H>;
 }
 
+#[cfg(feature = "moonshot")]
+#[cfg_attr(docsrs, doc(cfg(feature = "moonshot")))]
 pub mod moonshot {
     pub use rig_core::providers::moonshot::*;
     pub type AnthropicClient<H = super::DefaultHttp> =
@@ -201,6 +272,8 @@ pub mod moonshot {
         rig_core::providers::moonshot::MoonshotModelLister<H>;
 }
 
+#[cfg(feature = "ollama")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ollama")))]
 pub mod ollama {
     pub use rig_core::providers::ollama::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::ollama::Client<H>;
@@ -212,6 +285,8 @@ pub mod ollama {
         rig_core::providers::ollama::OllamaModelLister<H>;
 }
 
+#[cfg(feature = "openai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "openai")))]
 pub mod openai {
     pub use rig_core::providers::openai::*;
     #[cfg(feature = "audio")]
@@ -245,6 +320,8 @@ pub mod openai {
         rig_core::providers::openai::transcription::TranscriptionModel<H>;
 }
 
+#[cfg(feature = "openrouter")]
+#[cfg_attr(docsrs, doc(cfg(feature = "openrouter")))]
 pub mod openrouter {
     pub use rig_core::providers::openrouter::*;
     #[cfg(feature = "audio")]
@@ -261,6 +338,8 @@ pub mod openrouter {
         rig_core::providers::openrouter::transcription::TranscriptionModel<H>;
 }
 
+#[cfg(feature = "perplexity")]
+#[cfg_attr(docsrs, doc(cfg(feature = "perplexity")))]
 pub mod perplexity {
     pub use rig_core::providers::perplexity::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::perplexity::Client<H>;
@@ -268,6 +347,8 @@ pub mod perplexity {
         rig_core::providers::perplexity::CompletionModel<H>;
 }
 
+#[cfg(feature = "together")]
+#[cfg_attr(docsrs, doc(cfg(feature = "together")))]
 pub mod together {
     pub use rig_core::providers::together::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::together::client::Client<H>;
@@ -277,6 +358,8 @@ pub mod together {
         rig_core::providers::together::embedding::EmbeddingModel<H>;
 }
 
+#[cfg(feature = "venice")]
+#[cfg_attr(docsrs, doc(cfg(feature = "venice")))]
 pub mod venice {
     pub use rig_core::providers::venice::*;
     #[cfg(feature = "audio")]
@@ -296,6 +379,8 @@ pub mod venice {
         rig_core::providers::venice::client::VeniceModelLister<H>;
 }
 
+#[cfg(feature = "voyageai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "voyageai")))]
 pub mod voyageai {
     pub use rig_core::providers::voyageai::*;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::voyageai::Client<H>;
@@ -304,6 +389,8 @@ pub mod voyageai {
     pub type RerankModel<H = super::DefaultHttp> = rig_core::providers::voyageai::RerankModel<H>;
 }
 
+#[cfg(feature = "xai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "xai")))]
 pub mod xai {
     pub use rig_core::providers::xai::*;
     #[cfg(feature = "audio")]
@@ -317,6 +404,8 @@ pub mod xai {
         rig_core::providers::xai::image_generation::ImageGenerationModel<H>;
 }
 
+#[cfg(feature = "xiaomimimo")]
+#[cfg_attr(docsrs, doc(cfg(feature = "xiaomimimo")))]
 pub mod xiaomimimo {
     pub use rig_core::providers::xiaomimimo::*;
     pub type AnthropicClient<H = super::DefaultHttp> =
@@ -326,6 +415,8 @@ pub mod xiaomimimo {
         rig_core::providers::xiaomimimo::XiaomiMimoModelLister<H>;
 }
 
+#[cfg(feature = "zai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "zai")))]
 pub mod zai {
     pub use rig_core::providers::zai::*;
     pub type AnthropicClient<H = super::DefaultHttp> = rig_core::providers::zai::AnthropicClient<H>;

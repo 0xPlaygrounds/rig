@@ -9,7 +9,7 @@
 use super::super::support::with_openrouter_cassette;
 use rig::client::EmbeddingsClient;
 use rig::embeddings::{EmbeddingModel as _, NormalizeEmbeddingResponse as _};
-use rig::providers::openai;
+use rig::providers::openai_compatible as openai;
 
 use crate::support::{
     EMBEDDING_INPUTS, EmbeddingMatrixExpectations, assert_normalized_embedding_response,

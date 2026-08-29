@@ -92,9 +92,71 @@ opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 opentelemetry-otlp = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 
+[[test]]
+name = "gemini_cached_content_listing_warnings"
+required-features = ["gemini"]
+
+[[test]]
+name = "model_listing_warnings"
+required-features = ["anthropic"]
+
 
 [features]
 default = ["derive"]
+providers-all = [
+    "anthropic",
+    "azure",
+    "chatgpt",
+    "cohere",
+    "copilot",
+    "deepseek",
+    "doubleword",
+    "gemini",
+    "groq",
+    "huggingface",
+    "hyperbolic",
+    "llamacpp",
+    "minimax",
+    "mira",
+    "mistral",
+    "moonshot",
+    "ollama",
+    "openai",
+    "openrouter",
+    "perplexity",
+    "together",
+    "venice",
+    "voyageai",
+    "xai",
+    "xiaomimimo",
+    "zai",
+]
+anthropic = []
+azure = []
+chatgpt = []
+cohere = []
+copilot = []
+deepseek = []
+doubleword = []
+gemini = []
+groq = []
+huggingface = []
+hyperbolic = []
+llamacpp = []
+minimax = []
+mira = []
+mistral = []
+moonshot = []
+ollama = []
+openai = []
+openrouter = []
+perplexity = []
+together = []
+venice = []
+voyageai = []
+xai = []
+xiaomimimo = []
+zai = []
 audio = []
 image = []
 derive = ["dep:rig-derive"]

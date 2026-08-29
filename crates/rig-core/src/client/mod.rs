@@ -1165,7 +1165,11 @@ where
     }
 }
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(all(
+    target_arch = "wasm32",
+    target_os = "unknown",
+    feature = "providers-all"
+))]
 mod wasm_model_listing_compile_checks {
     use super::{ModelListingClient, Nothing};
     use crate::{
@@ -1271,7 +1275,7 @@ mod wasm_model_listing_compile_checks {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "anthropic"))]
 mod tests {
     use crate::providers::anthropic;
 

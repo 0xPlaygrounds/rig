@@ -19,7 +19,7 @@ unimplemented = "forbid"
 unwrap_used = "deny"
 
 [dependencies]
-rig = { path = "../.." }
+rig = { path = "../..", features = ["openai"] }
 anyhow = "1"
 serenity = "0.12"
 thiserror = "2"

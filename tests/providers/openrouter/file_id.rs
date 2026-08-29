@@ -1,5 +1,7 @@
 use rig::message::{Document, DocumentSourceKind, Message, UserContent as RigUserContent};
-use rig::providers::openai::{FileData as OpenAiFileData, UserContent as OpenAiUserContent};
+use rig::providers::openai_compatible::{
+    FileData as OpenAiFileData, UserContent as OpenAiUserContent,
+};
 use rig::providers::openrouter::{Message as OpenRouterMessage, messages_from_rig_message};
 
 #[test]

@@ -26,6 +26,13 @@
 //! - The OpenAI Responses websocket mode ([`openai_websocket`], feature
 //!   `websocket`).
 //!
+//! Provider alias modules are opt-in and use the same feature names as
+//! `rig-core`. Enabling `gemini`, for example, exposes only
+//! `providers::gemini` and forwards `rig-core/gemini`; `providers-all`
+//! explicitly enables every alias. No provider is in this crate's default
+//! feature set. The WebSocket features imply `openai` because that transport
+//! implements OpenAI's Responses protocol.
+//!
 //! # Running without a tokio runtime
 //!
 //! Async reqwest needs a tokio reactor on native targets. Inside a tokio

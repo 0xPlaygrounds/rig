@@ -59,16 +59,16 @@ impl_dual_dialect_provider!(
 
 client::impl_capabilities!(
     XiaomiMimoExt,
-    completion = super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>,
+    completion = super::openai_compatible::completion::GenericCompletionModel<XiaomiMimoExt, H>,
     model_listing = XiaomiMimoModelLister<H>,
 );
 
-impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimoExt {
+impl super::openai_compatible::completion::OpenAICompatibleProvider for XiaomiMimoExt {
     const PROVIDER_NAME: &'static str = "xiaomimimo";
 
-    type StreamingUsage = super::openai::Usage;
+    type StreamingUsage = super::openai_compatible::Usage;
 
-    type Response = super::openai::CompletionResponse;
+    type Response = super::openai_compatible::CompletionResponse;
 }
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(

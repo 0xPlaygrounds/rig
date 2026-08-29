@@ -35,10 +35,10 @@ impl Provider for VeniceExt {
 
 impl DebugExt for VeniceExt {}
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for VeniceExt {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for VeniceExt {
     const PROVIDER_NAME: &'static str = "venice";
 
-    type StreamingUsage = crate::providers::openai::Usage;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
 
     // Venice echoes its resolved `venice_parameters` block (including web
     // search citations) and a per-request `cost` alongside the OpenAI-shaped

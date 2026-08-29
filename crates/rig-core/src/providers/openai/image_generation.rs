@@ -101,6 +101,7 @@ impl JsonImageGenerationProvider for OpenAIResponsesExt {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
     type Response = ImageGenerationResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn image_generation_request_body(
         model: &str,
@@ -115,6 +116,7 @@ impl JsonImageGenerationProvider for OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
     type Response = ImageGenerationResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn image_generation_request_body(
         model: &str,
@@ -129,7 +131,7 @@ mod tests {
     use super::*;
     use crate::client::image_generation::ImageGenerationClient;
     use crate::image_generation::ImageGenerationModel as _;
-    use crate::providers::openai::Client;
+    use crate::providers::openai_compatible::Client;
     use crate::test_utils::RecordingHttpClient;
 
     fn request() -> ImageGenerationRequest {

@@ -3,7 +3,7 @@
 //! From [Together AI Reference](https://docs.together.ai/docs/chat-overview)
 // ================================================================
 
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 use super::client::TogetherExt;
 
@@ -128,7 +128,7 @@ mod tests {
     use crate::client::CompletionClient;
     use crate::completion::{CompletionError, CompletionModel};
     use crate::message;
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAIRequestParams,
     };
     use crate::test_utils::RecordingHttpClient;

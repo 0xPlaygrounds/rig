@@ -1,7 +1,7 @@
 use super::client::MistralExt;
 use crate::{
     embeddings::EmbeddingError,
-    providers::openai::embedding::{
+    providers::openai_compatible::embedding::{
         EmbeddingDimensions, GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
     },
 };
@@ -83,7 +83,7 @@ mod tests {
     use super::{CODESTRAL_EMBED, MISTRAL_EMBED};
     use crate::client::EmbeddingsClient;
     use crate::embeddings::{EmbeddingError, EmbeddingModel as _};
-    use crate::providers::{mistral, openai::embedding::EncodingFormat};
+    use crate::providers::{mistral, openai_compatible::embedding::EncodingFormat};
     use crate::test_utils::RecordingHttpClient;
 
     const RESPONSE_BODY: &str = r#"{

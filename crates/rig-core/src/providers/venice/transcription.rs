@@ -32,6 +32,8 @@ where
     const MODEL_IN_FORM: bool = true;
     const PROVIDER_NAME: &'static str = "venice";
     const REQUEST_ID_HEADER: Option<&'static str> = None;
+    type Response = crate::providers::internal::transcription::TranscriptionResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn transcription_request(
         &self,

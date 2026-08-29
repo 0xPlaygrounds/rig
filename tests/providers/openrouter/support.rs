@@ -1,5 +1,7 @@
 use rig::client::DefaultTransportBuilder as _;
-use rig::providers::{openai, openrouter};
+#[cfg(feature = "openai")]
+use rig::providers::openai;
+use rig::providers::openrouter;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -21,6 +23,7 @@ async fn openrouter_cassette(
     (cassette, client)
 }
 
+#[cfg(feature = "openai")]
 async fn openrouter_openai_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, openai::Client) {
@@ -57,6 +60,7 @@ where
     cassette.finish_after_test_result(result).await
 }
 
+#[cfg(feature = "openai")]
 pub(super) async fn with_openrouter_openai_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

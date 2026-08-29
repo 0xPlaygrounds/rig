@@ -1803,6 +1803,7 @@ pub mod fixtures {
     }
 
     /// OpenAI chat-completions wire (the shared OpenAI-compatible SSE path).
+    #[cfg(feature = "openai")]
     pub mod openai_chat {
         use super::*;
 
@@ -1911,6 +1912,7 @@ pub mod fixtures {
     }
 
     /// OpenAI Responses API wire.
+    #[cfg(feature = "openai")]
     pub mod openai_responses {
         use super::*;
 
@@ -2171,6 +2173,7 @@ pub mod fixtures {
         /// with the scripted SSE body — so the scenario exercises
         /// `normalized_completion` itself rather than a mirrored copy of its
         /// fallback logic (#2258 review, F8 drift risk).
+        #[cfg(feature = "chatgpt")]
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
@@ -2312,6 +2315,7 @@ pub mod fixtures {
     }
 
     /// Gemini REST (`streamGenerateContent`) SSE wire.
+    #[cfg(feature = "gemini")]
     pub mod gemini_rest {
         use super::*;
 
@@ -2451,6 +2455,7 @@ pub mod fixtures {
     }
 
     /// Gemini Interactions SSE wire (`event_type`-tagged events).
+    #[cfg(feature = "gemini")]
     pub mod interactions {
         use super::*;
 
@@ -2581,6 +2586,7 @@ pub mod fixtures {
     }
 
     /// Anthropic Messages SSE wire (`type`-tagged events, index-as-id blocks).
+    #[cfg(feature = "anthropic")]
     pub mod anthropic {
         use super::*;
 
@@ -2704,6 +2710,7 @@ pub mod fixtures {
     }
 
     /// Cohere v2 chat SSE wire.
+    #[cfg(feature = "cohere")]
     pub mod cohere {
         use super::*;
 
@@ -2822,6 +2829,7 @@ pub mod fixtures {
     }
 
     /// Ollama `/api/chat` NDJSON wire.
+    #[cfg(feature = "ollama")]
     pub mod ollama {
         use super::*;
 

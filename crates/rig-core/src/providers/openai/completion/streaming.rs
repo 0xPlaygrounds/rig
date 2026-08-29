@@ -11,7 +11,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     CompatibleTerminal, CompatibleToolCallChunk,
 };
 use crate::providers::internal::wire;
-use crate::providers::openai::completion::{
+use crate::providers::openai_compatible::completion::{
     CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
 };
 use crate::streaming::{self, RawStreamingResult, StreamFinal};
@@ -61,7 +61,7 @@ where
     Ok(value.and_then(|value| match value {
         serde_json::Value::String(text) => Some(text),
         serde_json::Value::Array(parts) => {
-            let text = crate::providers::openai::completion::joined_text_parts(&parts);
+            let text = crate::providers::openai_compatible::completion::joined_text_parts(&parts);
             (!text.is_empty()).then_some(text)
         }
         _ => None,
@@ -340,8 +340,10 @@ where
         let path = self.client.ext().completion_path(&self.model);
         let resolved_model = request.model.clone();
         let modern_output_cap = self.sends_modern_output_cap(&request.model);
-        let mut request_as_json =
-            crate::providers::openai::completion::request_body(&request, modern_output_cap)?;
+        let mut request_as_json = crate::providers::openai_compatible::completion::request_body(
+            &request,
+            modern_output_cap,
+        )?;
 
         // `merge` is shallow, so include_usage is inserted into any
         // caller-supplied stream_options rather than merged over it: the
@@ -428,10 +430,21 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletionsExt, U = Usage> {
+struct OpenAICompatibleProfile<Ext, U = Usage> {
     provider: Ext,
     emits_complete_single_chunk_tool_calls: bool,
     usage: std::marker::PhantomData<U>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct OpenAIWireExt;
+
+impl OpenAICompatibleProvider for OpenAIWireExt {
+    const PROVIDER_NAME: &'static str = "openai-compatible";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
+
+    type StreamingUsage = Usage;
+    type Response = super::CompletionResponse;
 }
 
 impl<Ext, U> CompatibleStreamProfile for OpenAICompatibleProfile<Ext, U>
@@ -555,8 +568,8 @@ where
     openai_chat_completions_compatible::send_compatible_raw_streaming_request(
         http_client,
         req,
-        <crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
-        OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletionsExt, Usage>::default(),
+        OpenAIWireExt::REQUEST_ID_HEADER,
+        OpenAICompatibleProfile::<OpenAIWireExt, Usage>::default(),
     )
     .await
 }

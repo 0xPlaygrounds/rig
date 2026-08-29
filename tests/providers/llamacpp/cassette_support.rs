@@ -44,7 +44,9 @@
 
 use futures::FutureExt;
 use rig::client::DefaultTransportBuilder as _;
-use rig::providers::{llamacpp, openai};
+use rig::providers::llamacpp;
+#[cfg(feature = "openai")]
+use rig::providers::openai;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -399,6 +401,7 @@ pub(super) async fn with_llamacpp_raw_http_cassette<F, Fut>(
 /// literal placeholder key because `openai::Client` has no optional-key form
 /// and llama.cpp accepts any bearer token when it was not started with
 /// `--api-key`; that difference is itself one of the things this path pins.
+#[cfg(feature = "openai")]
 pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

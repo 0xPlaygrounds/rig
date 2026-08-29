@@ -25,7 +25,20 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Installation
 ```bash
-cargo add rig-core
+cargo add rig-core --features openai
+```
+
+Every built-in provider is an opt-in Cargo feature, and the default feature
+set enables no concrete provider. Enable only the providers you use. The
+`providers-all` aggregate restores the complete provider surface for CI,
+documentation, or explicitly multi-provider applications.
+
+When using `rig-core` directly with the bundled HTTP transport, enable the same
+provider on `rig-reqwest` and import its construction prelude:
+
+```toml
+rig-core = { version = "0.42", features = ["openai"] }
+rig-reqwest = { version = "0.42", features = ["openai"] }
 ```
 
 ## WASM target support
@@ -42,6 +55,7 @@ use rig_core::{
     completion::{AssistantContent, CompletionModel},
     providers::openai,
 };
+use rig_reqwest::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -68,6 +82,9 @@ You can find more examples in the repository-level `examples/` directory. Many p
 
 ## Integrations
 Rig supports the following LLM providers out of the box:
+
+Each name below is also its Cargo feature name (lowercase, without spaces or
+punctuation). No provider is enabled by default.
 
 - Anthropic
 - Azure OpenAI
@@ -97,7 +114,7 @@ Rig supports the following LLM providers out of the box:
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.42", features = ["lancedb", "fastembed", "openai"] }
 ```
 
 - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)

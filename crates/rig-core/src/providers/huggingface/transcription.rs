@@ -14,7 +14,7 @@ pub const WHISPER_LARGE_V3_TURBO: &str = "openai/whisper-large-v3-turbo";
 
 pub const WHISPER_SMALL: &str = "openai/whisper-small";
 
-pub use crate::providers::openai::TranscriptionResponse;
+pub use crate::providers::internal::transcription::TranscriptionResponse;
 
 pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::GenericTranscriptionModel<

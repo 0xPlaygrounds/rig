@@ -43,7 +43,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use rig::providers::copilot::{self, CopilotStreamingResponse};
-use rig::providers::openai::responses_api;
+use rig::providers::openai_compatible::responses_api;
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 use serde::Deserialize;
 use serde_json::Value;

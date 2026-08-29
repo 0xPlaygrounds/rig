@@ -6,8 +6,9 @@ use crate::{
     http_client::HttpClientExt,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
-use serde::Deserialize;
 use std::fmt::Debug;
+
+pub use crate::providers::internal::envelope::ApiErrorResponse;
 
 // ================================================================
 // Main OpenAI Client
@@ -171,43 +172,12 @@ client::impl_provider_from_env!(
     base_url_env_first = "OPENAI_BASE_URL",
 );
 
-/// Error envelope returned by OpenAI-compatible providers alongside 2xx
-/// statuses. Providers spell the message field differently (`message`,
-/// `error`, nested objects), so anything that isn't a valid success payload
-/// is treated as an error envelope and the raw body is preserved for the
-/// caller; `message` is only used for logging.
-#[derive(Debug)]
-pub struct ApiErrorResponse {
-    pub(crate) message: String,
-}
-
-// Manual impl (not a field-level `alias = "error"`): the alias makes serde
-// treat `message` and `error` as one field, so a body carrying both keys
-// fails as a duplicate field instead of classifying as this envelope.
-impl<'de> Deserialize<'de> for ApiErrorResponse {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Ok(Self {
-            message: crate::providers::internal::envelope::error_message(deserializer)?,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
 #[cfg(test)]
 mod tests {
     use crate::client::{CompletionClient, EmbeddingsClient};
     use crate::message;
     use crate::message::ImageDetail;
-    use crate::providers::openai::{
+    use crate::providers::openai_compatible::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
     use serde_path_to_error::deserialize;
@@ -560,12 +530,12 @@ mod tests {
     }
     #[test]
     fn test_client_initialization() {
-        let _client = crate::providers::openai::Client::new_with(
+        let _client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
         .expect("Client::new() failed");
-        let _client_from_builder = crate::providers::openai::Client::builder()
+        let _client_from_builder = crate::providers::openai_compatible::Client::builder()
             .api_key("dummy-key")
             .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
@@ -574,29 +544,29 @@ mod tests {
 
     #[test]
     fn test_legacy_chat_completion_model_type_annotation_still_compiles() {
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
         .expect("Client::new() failed")
         .completions_api();
 
-        let _model: crate::providers::openai::completion::CompletionModel<
+        let _model: crate::providers::openai_compatible::completion::CompletionModel<
             crate::test_utils::RecordingHttpClient,
         > = client.completion_model("gpt-4o");
     }
 
     #[test]
     fn test_legacy_embedding_model_type_annotation_still_compiles() {
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
         .expect("Client::new() failed");
 
-        let _model: crate::providers::openai::EmbeddingModel<
+        let _model: crate::providers::openai_compatible::EmbeddingModel<
             crate::test_utils::RecordingHttpClient,
-        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
+        > = client.embedding_model(crate::providers::openai_compatible::TEXT_EMBEDDING_3_SMALL);
     }
 
     #[test]
@@ -604,19 +574,19 @@ mod tests {
         use crate::client::ModelListingClient;
         use crate::client::transcription::TranscriptionClient;
 
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
         .expect("Client::new() failed")
         .completions_api();
 
-        let _: crate::providers::openai::GenericEmbeddingModel<
-            crate::providers::openai::OpenAICompletionsExt,
+        let _: crate::providers::openai_compatible::GenericEmbeddingModel<
+            crate::providers::openai_compatible::OpenAICompletionsExt,
             crate::test_utils::RecordingHttpClient,
-        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
-        let _: crate::providers::openai::CompletionsTranscriptionModel<_> =
-            client.transcription_model(crate::providers::openai::WHISPER_1);
+        > = client.embedding_model(crate::providers::openai_compatible::TEXT_EMBEDDING_3_SMALL);
+        let _: crate::providers::openai_compatible::CompletionsTranscriptionModel<_> =
+            client.transcription_model(crate::providers::openai_compatible::WHISPER_1);
 
         fn assert_model_listing<T: ModelListingClient>(_: &T) {}
         assert_model_listing(&client);
@@ -624,15 +594,15 @@ mod tests {
         #[cfg(feature = "image")]
         {
             use crate::client::image_generation::ImageGenerationClient;
-            let _: crate::providers::openai::CompletionsImageGenerationModel<_> =
-                client.image_generation_model(crate::providers::openai::DALL_E_3);
+            let _: crate::providers::openai_compatible::CompletionsImageGenerationModel<_> =
+                client.image_generation_model(crate::providers::openai_compatible::DALL_E_3);
         }
 
         #[cfg(feature = "audio")]
         {
             use crate::client::audio_generation::AudioGenerationClient;
-            let _: crate::providers::openai::audio_generation::CompletionsAudioGenerationModel<_> =
-                client.audio_generation_model(crate::providers::openai::TTS_1);
+            let _: crate::providers::openai_compatible::audio_generation::CompletionsAudioGenerationModel<_> =
+                client.audio_generation_model(crate::providers::openai_compatible::TTS_1);
         }
     }
 }

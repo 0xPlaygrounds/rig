@@ -5,7 +5,7 @@
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
 //! [`LlamacppExt`](super::client::LlamacppExt) in `client.rs`.
 
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use serde::{Deserialize, Serialize};
 
 // ================================================================

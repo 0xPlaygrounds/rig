@@ -9,14 +9,114 @@
 
 use bytes::Bytes;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use super::envelope::ProviderEnvelope;
 use crate::client::Client;
+use crate::completion::Usage;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm};
 use crate::transcription::{
     self, NormalizeTranscriptionResponse, TranscriptionError, TranscriptionRequest,
 };
+
+/// Native response shared by OpenAI-style transcription endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TranscriptionResponse {
+    pub text: String,
+    /// What the transcription cost, as the endpoint reported it.
+    ///
+    /// Token-billed shapes normalize onto
+    /// [`transcription::TranscriptionResponse::usage`]; the duration-billed
+    /// `seconds` figure has no normalized slot and is read from here (via the
+    /// raw route). Optional because a compatible provider on this wire may
+    /// not report one.
+    #[serde(default)]
+    pub usage: Option<TranscriptionUsage>,
+}
+
+/// Accounting reported by an OpenAI-style transcription endpoint.
+///
+/// The modeled variants are pinned by their wire `type`; future shapes fall
+/// through to [`TranscriptionUsage::Other`] instead of making an otherwise
+/// valid transcription fail to decode.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum TranscriptionUsage {
+    Duration {
+        /// Always `"duration"`; pins this variant to its wire tag.
+        r#type: DurationTag,
+        /// Length of the audio, in seconds.
+        seconds: f64,
+    },
+    Tokens {
+        /// Always `"tokens"`; pins this variant to its wire tag.
+        r#type: TokensTag,
+        /// Tokens consumed by the audio and any prompt.
+        input_tokens: u64,
+        /// Input-token breakdown by modality, when reported.
+        #[serde(default)]
+        input_token_details: Option<TranscriptionInputTokenDetails>,
+        /// Tokens in the transcript.
+        output_tokens: u64,
+        /// Input plus output tokens, as reported by the provider.
+        total_tokens: u64,
+    },
+    /// A shape this version does not model, preserved as sent.
+    Other(serde_json::Value),
+}
+
+/// Wire tag for duration-billed transcription usage.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DurationTag {
+    /// `"duration"`.
+    Duration,
+}
+
+/// Wire tag for token-billed transcription usage.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TokensTag {
+    /// `"tokens"`.
+    Tokens,
+}
+
+/// Input-token breakdown for OpenAI-style transcription responses.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TranscriptionInputTokenDetails {
+    /// Input tokens attributable to the audio.
+    #[serde(default)]
+    pub audio_tokens: u64,
+    /// Input tokens attributable to text, such as a prompt.
+    #[serde(default)]
+    pub text_tokens: u64,
+}
+
+impl NormalizeTranscriptionResponse for TranscriptionResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        let usage = match &self.usage {
+            Some(TranscriptionUsage::Tokens {
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                ..
+            }) => Usage {
+                input_tokens: *input_tokens,
+                output_tokens: *output_tokens,
+                total_tokens: *total_tokens,
+                ..Usage::new()
+            },
+            Some(TranscriptionUsage::Duration { .. })
+            | Some(TranscriptionUsage::Other(_))
+            | None => Usage::new(),
+        };
+        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
+    }
+}
 
 /// Provider-specific request routing for the shared OpenAI-style model.
 #[doc(hidden)]
@@ -33,6 +133,12 @@ pub trait OpenAiTranscriptionClient: HttpClientExt + Clone {
     /// The provider's transport request-id response header, when it has one
     /// (OpenAI `x-request-id`). `None` means the provider reports none.
     const REQUEST_ID_HEADER: Option<&'static str>;
+
+    /// The provider-native successful response.
+    type Response: DeserializeOwned + Serialize + NormalizeTranscriptionResponse;
+
+    /// The provider's success-or-error response envelope.
+    type Envelope: DeserializeOwned + ProviderEnvelope<Payload = Self::Response>;
 
     fn transcription_request(&self, model: &str) -> http_client::Result<http_client::Builder>;
 }
@@ -68,7 +174,7 @@ where
     pub async fn raw_transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<crate::providers::openai::TranscriptionResponse, TranscriptionError> {
+    ) -> Result<C::Response, TranscriptionError> {
         self.raw_transcription_with_request_id(request)
             .await
             .map(|(response, _)| response)
@@ -79,13 +185,7 @@ where
     pub async fn raw_transcription_with_request_id(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<
-        (
-            crate::providers::openai::TranscriptionResponse,
-            Option<String>,
-        ),
-        TranscriptionError,
-    > {
+    ) -> Result<(C::Response, Option<String>), TranscriptionError> {
         let form = transcription_form(
             request,
             TranscriptionFields {
@@ -93,12 +193,7 @@ where
             },
         )?;
 
-        send_transcription::<
-            _,
-            crate::providers::openai::client::ApiResponse<
-                crate::providers::openai::TranscriptionResponse,
-            >,
-        >(
+        send_transcription::<_, C::Envelope>(
             &self.client,
             self.client.transcription_request(&self.model)?,
             form,
@@ -254,7 +349,7 @@ where
     // path (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id = request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let response_body = body.into_future().await?;
 
@@ -277,22 +372,6 @@ where
         )
         .with_response_headers(Some(headers)))
     }
-}
-
-/// Reads the provider's transport request id off a response's headers, when
-/// the provider names such a header and the response carries a non-empty
-/// value. `None` is the documented "not reported" outcome.
-pub(crate) fn request_id_from_headers(
-    headers: &http::HeaderMap,
-    request_id_header: Option<&str>,
-) -> Option<String> {
-    request_id_header.and_then(|header| {
-        headers
-            .get(header)
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    })
 }
 
 /// Sends a JSON-bodied transcription request and splits the response on
@@ -323,7 +402,7 @@ where
     let response = client.send::<_, Vec<u8>>(req).await?;
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id = request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let body = body.await?;
 
@@ -543,9 +622,7 @@ mod header_preservation_tests {
     async fn multipart_driver_non_success_response_preserves_headers() {
         let error = send_transcription::<
             _,
-            crate::providers::openai::client::ApiResponse<
-                crate::providers::openai::TranscriptionResponse,
-            >,
+            crate::providers::internal::envelope::OpenAiApiResponse<TranscriptionResponse>,
         >(
             &rate_limited(),
             http_client::Request::builder()

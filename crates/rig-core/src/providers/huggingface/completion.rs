@@ -1,5 +1,5 @@
 use super::client::HuggingFaceExt;
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use serde::Deserialize;
 use serde_json::Value;
 

@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::openai;
+use super::openai_compatible as openai;
 use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
@@ -157,7 +157,7 @@ pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
 client::impl_provider_from_env!(GroqExt, input = String, api_key_env = "GROQ_API_KEY");
 
 #[cfg(test)]
-use crate::providers::openai::client::ApiResponse;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 
 fn apply_native_tools_to_additional_params(
     extra: &mut Map<String, Value>,
@@ -282,6 +282,8 @@ where
     const MODEL_IN_FORM: bool = true;
     const PROVIDER_NAME: &'static str = "groq";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
+    type Response = crate::providers::internal::transcription::TranscriptionResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn transcription_request(
         &self,
@@ -293,7 +295,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::{completion::CompletionRequestBuilder, test_utils::MockCompletionModel};

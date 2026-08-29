@@ -32,7 +32,7 @@ use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
 use rig::prelude::*;
 use rig::providers::mistral;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
+use rig::providers::openai_compatible::completion::streaming::StreamingCompletionResponse;
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 use serde::Deserialize;
 use serde_json::{Value, json};

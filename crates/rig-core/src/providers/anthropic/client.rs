@@ -1,10 +1,16 @@
 //! Anthropic client api implementation
 use http::{HeaderName, HeaderValue};
 
-use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
+use super::completion::ANTHROPIC_VERSION_LATEST;
+#[cfg(feature = "anthropic")]
+use super::completion::CompletionModel;
 use crate::{
-    client::{self, ApiKey, DebugExt, Provider, ProviderBuilder},
+    client::{self, ApiKey},
     http_client::{self, HttpClientExt},
+};
+#[cfg(feature = "anthropic")]
+use crate::{
+    client::{DebugExt, Provider, ProviderBuilder},
     providers::anthropic::model_listing::AnthropicModelLister,
 };
 
@@ -12,13 +18,16 @@ use crate::{
 // Main Anthropic Client
 // ================================================================
 #[derive(Debug, Default, Clone)]
+#[cfg(feature = "anthropic")]
 pub struct AnthropicExt;
 
+#[cfg(feature = "anthropic")]
 impl Provider for AnthropicExt {
     type Builder = AnthropicBuilder;
     const VERIFY_PATH: &'static str = "/v1/models";
 }
 
+#[cfg(feature = "anthropic")]
 client::impl_capabilities!(
     AnthropicExt,
     completion = CompletionModel<H>,
@@ -53,7 +62,9 @@ impl ApiKey for AnthropicKey {
     }
 }
 
+#[cfg(feature = "anthropic")]
 pub type Client<H> = client::Client<AnthropicExt, H>;
+#[cfg(feature = "anthropic")]
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
 
@@ -66,6 +77,7 @@ impl Default for AnthropicBuilder {
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl ProviderBuilder for AnthropicBuilder {
     type Extension<H>
         = AnthropicExt
@@ -92,8 +104,10 @@ impl ProviderBuilder for AnthropicBuilder {
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl DebugExt for AnthropicExt {}
 
+#[cfg(feature = "anthropic")]
 client::impl_provider_from_env!(
     AnthropicExt,
     input = String,
@@ -118,6 +132,7 @@ client::impl_provider_from_env!(
 /// # Ok(())
 /// # }
 /// ```
+#[cfg(feature = "anthropic")]
 impl<H> ClientBuilder<H> {
     pub fn anthropic_version(self, anthropic_version: impl Into<String>) -> Self {
         self.over_ext(|ext| AnthropicBuilder {
@@ -191,16 +206,16 @@ macro_rules! impl_anthropic_compatible_builder {
     ($builder:ty => $extension:ty, base_url = $base_url:expr $(,)?) => {
         $crate::client::impl_default_provider_builder!(
             $builder => $extension,
-            api_key = $crate::providers::anthropic::client::AnthropicKey,
+            api_key = $crate::providers::anthropic_compatible::client::AnthropicKey,
             base_url = $base_url,
-            finish = $crate::providers::anthropic::client::finish_anthropic_builder,
+            finish = $crate::providers::anthropic_compatible::client::finish_anthropic_builder,
             state = anthropic,
         );
 
         impl<H>
             $crate::client::ClientBuilder<
                 $builder,
-                $crate::providers::anthropic::client::AnthropicKey,
+                $crate::providers::anthropic_compatible::client::AnthropicKey,
                 H,
             >
         {
@@ -231,7 +246,7 @@ macro_rules! impl_anthropic_compatible_builder {
 }
 pub(crate) use impl_anthropic_compatible_builder;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "anthropic"))]
 mod tests {
     use std::sync::Mutex;
 
@@ -277,12 +292,12 @@ mod tests {
 
     #[test]
     fn test_client_initialization() {
-        let _client = crate::providers::anthropic::Client::new_with(
+        let _client = crate::providers::anthropic_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
         .expect("Client::new() failed");
-        let _client_from_builder = crate::providers::anthropic::Client::builder()
+        let _client_from_builder = crate::providers::anthropic_compatible::Client::builder()
             .api_key("dummy-key")
             .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
@@ -298,7 +313,7 @@ mod tests {
             "https://anthropic-compatible.example/v1/messages",
         );
 
-        let client = <crate::providers::anthropic::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
+        let client = <crate::providers::anthropic_compatible::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
             .expect("Client::from_env should build with ANTHROPIC_BASE_URL");
 
         assert_eq!(
@@ -314,7 +329,7 @@ mod tests {
         let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "dummy-key");
         let _base_url = EnvVarGuard::remove("ANTHROPIC_BASE_URL");
 
-        let client = <crate::providers::anthropic::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
+        let client = <crate::providers::anthropic_compatible::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
             .expect("Client::from_env should build without ANTHROPIC_BASE_URL");
 
         assert_eq!(client.base_url(), "https://api.anthropic.com");

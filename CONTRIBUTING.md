@@ -46,14 +46,16 @@ When adding or changing a provider, use this checklist to keep the provider
 integration consistent with Rig's generic client architecture and contributor
 expectations:
 
-- New OpenAI-chat-compatible providers MUST drive completions through
-  `openai::completion::GenericCompletionModel<Ext>` by implementing
+- New OpenAI-chat-compatible providers MUST drive completions through the
+  doc-hidden `openai_compatible::completion::GenericCompletionModel<Ext>`
+  support surface by implementing
   `OpenAICompatibleProvider` on the provider extension (see `minimax`, `zai`,
   `groq`, or `deepseek` for the template). Wire-dialect differences belong in
   the trait's hooks (`completion_path`, `prepare_request`,
   `finalize_request_body`) — not in a hand-rolled `CompletionModel`, request
   struct, or `TryFrom<message::Message>` conversion. The same applies to
-  Anthropic-shaped APIs via `AnthropicCompatibleProvider`.
+  Anthropic-shaped APIs via the doc-hidden `anthropic_compatible` support
+  surface and `AnthropicCompatibleProvider`.
 - `Client` and `ClientBuilder` public aliases use the correct generic types;
   the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`.
 - Provider extension and builder types are defined and wired through the
@@ -85,6 +87,13 @@ expectations:
   tests, or ignored live tests when cassette replay is unsuitable.
 - Companion provider crates update the root facade dependency, feature flag,
   re-export, README, examples, and crate docs as applicable.
+- Every built-in provider has a same-named opt-in feature in `rig-core`,
+  `rig-reqwest`, and `rig`. Add new providers to all three manifests, the
+  `providers-all` aggregates, module/re-export gates, provider-isolation CI
+  matrix, and any provider-specific test target's `required-features`.
+- Shared protocol-family code must not force compatible providers to enable a
+  concrete provider. Keep generic OpenAI- and Anthropic-compatible wire,
+  streaming, schema, and envelope support separate from concrete clients.
 - Examples and documentation use actual feature flags, module paths, model
   constants, and credential requirements.
 
@@ -151,7 +160,14 @@ Common checks:
 ```bash
 cargo test -p rig
 cargo test -p rig --all-features
+python3 scripts/check-examples.py
 ```
+
+`scripts/check-examples.py` discovers every standalone package and crate-local
+Cargo example target, then runs a separate `cargo build --locked` for each.
+Use `--list` to audit discovery or `--shard-index N --shard-count M` to
+reproduce a CI shard. Every example manifest or dev-dependency must declare the
+provider features it imports; a workspace-wide build is not a substitute.
 
 Provider-agnostic core tests:
 
@@ -175,14 +191,14 @@ Test code lives under `tests/providers/<provider>/cassette/`; fixtures live unde
 Replay an existing cassette suite with:
 
 ```bash
-cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
+cargo test -p rig --features openai --test openai openai::cassette -- --nocapture --test-threads=1
 ```
 
 Record or update fixtures with the relevant provider API key set:
 
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
-  cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
+  cargo test -p rig --features openai --test openai openai::cassette -- --nocapture --test-threads=1
 ```
 
 Keep record runs targeted to the provider and test being changed. Review cassette diffs carefully for secrets, bearer tokens, cookies, provider account identifiers, unrelated request/response churn, and unexpected provider behavior. Mention in your PR whether cassettes were replayed, recorded, or not applicable.
@@ -190,7 +206,7 @@ Keep record runs targeted to the provider and test being changed. Review cassett
 Run one cassette test by passing a test-name substring after the test target:
 
 ```bash
-cargo test -p rig --all-features --test gemini \
+cargo test -p rig --features gemini --test gemini \
   streaming_tools_smoke \
   -- --nocapture --test-threads=1
 ```

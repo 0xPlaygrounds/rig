@@ -66,7 +66,7 @@ impl_dual_dialect_provider!(
 
 client::impl_capabilities!(
     MiniMaxExt,
-    completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
+    completion = super::openai_compatible::completion::GenericCompletionModel<MiniMaxExt, H>,
     model_listing = MiniMaxModelLister<H>,
 );
 
@@ -83,12 +83,12 @@ crate::providers::internal::model_listing::impl_model_lister!(
     "/models"
 );
 
-impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
+impl super::openai_compatible::completion::OpenAICompatibleProvider for MiniMaxExt {
     const PROVIDER_NAME: &'static str = "minimax";
 
-    type StreamingUsage = super::openai::Usage;
+    type StreamingUsage = super::openai_compatible::Usage;
 
-    type Response = super::openai::CompletionResponse;
+    type Response = super::openai_compatible::CompletionResponse;
 }
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(

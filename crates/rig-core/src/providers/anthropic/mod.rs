@@ -14,7 +14,10 @@
 
 pub mod client;
 pub mod completion;
+#[cfg(feature = "anthropic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "anthropic")))]
 pub mod model_listing;
 pub mod streaming;
 
+#[cfg(feature = "anthropic")]
 pub use client::{Client, ClientBuilder};

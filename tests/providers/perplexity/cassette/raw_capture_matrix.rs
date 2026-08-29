@@ -40,7 +40,7 @@ use rig::completion::{
 };
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::{openai, perplexity};
+use rig::providers::{openai_compatible as openai, perplexity};
 use serde::Deserialize;
 use serde_json::{Value, json};
 

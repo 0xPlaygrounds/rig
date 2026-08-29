@@ -1,9 +1,10 @@
-use super::{client::ApiResponse, completion::Usage};
+use super::completion::Usage;
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
 #[cfg(test)]
 use crate::http_client;
 use crate::http_client::HttpClientExt;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 
@@ -165,11 +166,13 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     }
 }
 
+#[cfg(feature = "openai")]
 impl OpenAIEmbeddingsCompatible for super::OpenAIResponsesExt {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
+#[cfg(feature = "openai")]
 impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
@@ -219,6 +222,7 @@ pub struct GenericEmbeddingModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "openai")]
 pub type EmbeddingModel<H> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
 /// Default dimensions for OpenAI's known embedding models (also used by
@@ -320,11 +324,10 @@ where
 
         let (parts, body) = response.into_parts();
         let status = parts.status;
-        let provider_request_id =
-            crate::providers::internal::transcription::request_id_from_headers(
-                &parts.headers,
-                Ext::REQUEST_ID_HEADER,
-            );
+        let provider_request_id = crate::providers::internal::request_id_from_headers(
+            &parts.headers,
+            Ext::REQUEST_ID_HEADER,
+        );
         let response_body: Vec<u8> = body.await?;
         if status.is_success() {
             let parsed: ApiResponse<CompatibleEmbeddingResponse> =
@@ -519,7 +522,7 @@ mod tests {
     use crate::client::EmbeddingsClient;
     use crate::embeddings::EmbeddingModel as _;
     use crate::http_client::{LazyBody, MultipartForm, Request, Response, StreamingResponse};
-    use crate::providers::openai::CompletionsClient;
+    use crate::providers::openai_compatible::CompletionsClient;
     use crate::test_utils::RecordingHttpClient;
     use bytes::Bytes;
     use std::future::{self, Future};

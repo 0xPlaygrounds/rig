@@ -14,7 +14,7 @@
 use crate::client::BearerAuth;
 use crate::client::{self, DebugExt, Provider};
 use crate::completion::CompletionError;
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 // ================================================================
 // Main Perplexity Client
@@ -114,7 +114,7 @@ pub const SONAR: &str = "sonar";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::test_utils::MockCompletionModel;

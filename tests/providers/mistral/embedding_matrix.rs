@@ -9,7 +9,7 @@
 use super::support::with_mistral_embedding_cassette;
 use rig::client::EmbeddingsClient;
 use rig::embeddings::{EmbeddingModel as _, NormalizeEmbeddingResponse as _};
-use rig::providers::{mistral, openai};
+use rig::providers::{mistral, openai_compatible as openai};
 
 use crate::support::{
     EMBEDDING_INPUTS, EmbeddingMatrixExpectations, assert_normalized_embedding_response,

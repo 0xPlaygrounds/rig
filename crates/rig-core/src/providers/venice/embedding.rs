@@ -3,7 +3,9 @@
 //! From [Venice's embeddings endpoint](https://docs.venice.ai/api-reference/endpoint/embeddings/generate)
 // ================================================================
 
-use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
+use crate::providers::openai_compatible::embedding::{
+    GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
+};
 
 use super::client::VeniceExt;
 

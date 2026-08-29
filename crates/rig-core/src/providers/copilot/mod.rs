@@ -30,8 +30,10 @@ use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::completion_send::send_completion;
 use crate::providers::internal::envelope::DirectPayload;
-use crate::providers::openai;
-use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
+use crate::providers::openai_compatible as openai;
+use crate::providers::openai_compatible::responses_api::{
+    self, CompletionRequest as ResponsesRequest,
+};
 use crate::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -864,7 +866,7 @@ where
                 let usage = response
                     .usage
                     .as_ref()
-                    .map(super::openai::completion::Usage::to_normalized)
+                    .map(super::openai_compatible::completion::Usage::to_normalized)
                     .unwrap_or_default();
                 span.record_token_usage(&usage);
             },
@@ -1154,7 +1156,7 @@ impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
         let usage = self
             .usage
             .as_ref()
-            .map(super::openai::completion::Usage::to_normalized)
+            .map(super::openai_compatible::completion::Usage::to_normalized)
             .unwrap_or_default();
 
         let embeddings = self
@@ -1267,11 +1269,10 @@ where
         let response = self.client.send(req).await?;
         let (parts, body) = response.into_parts();
         let status = parts.status;
-        let provider_request_id =
-            crate::providers::internal::transcription::request_id_from_headers(
-                &parts.headers,
-                Some("x-request-id"),
-            );
+        let provider_request_id = crate::providers::internal::request_id_from_headers(
+            &parts.headers,
+            Some("x-request-id"),
+        );
         let body: Vec<u8> = body.await?;
         if status.is_success() {
             #[derive(Deserialize)]
@@ -1510,7 +1511,7 @@ mod tests {
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
-    use crate::providers::openai;
+    use crate::providers::openai_compatible;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
@@ -1614,7 +1615,7 @@ mod tests {
             }
         }"#;
 
-        let response: openai::completion::CompletionResponse =
+        let response: openai_compatible::completion::CompletionResponse =
             serde_json::from_str(json).expect("standard OpenAI response should deserialize");
         assert_eq!(response.id, "chatcmpl-abc123");
         assert_eq!(response.object, "chat.completion");
@@ -1626,7 +1627,7 @@ mod tests {
 
     #[test]
     fn deserialize_copilot_response_without_object_and_created() {
-        let response: openai::completion::CompletionResponse =
+        let response: openai_compatible::completion::CompletionResponse =
             serde_json::from_str(minimal_chat_response())
                 .expect("Copilot response should deserialize");
 
@@ -1654,7 +1655,7 @@ mod tests {
             }
         }"#;
 
-        let response: openai::completion::CompletionResponse =
+        let response: openai_compatible::completion::CompletionResponse =
             serde_json::from_str(json).expect("Claude-via-Copilot response should deserialize");
 
         assert_eq!(response.model, "claude-3.5-sonnet");

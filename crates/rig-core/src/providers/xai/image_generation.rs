@@ -49,6 +49,7 @@ impl JsonImageGenerationProvider for super::client::XAiExt {
     const IMAGE_GENERATION_PATH: &'static str = "/v1/images/generations";
     const PROVIDER_NAME: &'static str = "xai";
     type Response = ImageGenerationResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn image_generation_request_body(
         model: &str,

@@ -8,7 +8,7 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { workspace = true, features = ["rmcp"] }
+rig = { workspace = true, features = ["openai", "rmcp"] }
 anyhow = { workspace = true }
 axum = { workspace = true }
 hyper-util = { workspace = true, features = ["service", "server"] }

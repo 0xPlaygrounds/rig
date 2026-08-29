@@ -58,6 +58,7 @@ pub trait AnthropicCompatibleProvider: Provider {
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
 }
 
+#[cfg(feature = "anthropic")]
 impl AnthropicCompatibleProvider for super::client::AnthropicExt {
     const PROVIDER_NAME: &'static str = "anthropic";
 
@@ -1562,6 +1563,7 @@ pub struct GenericCompletionModel<Ext, T> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "anthropic")]
 pub type CompletionModel<T> = GenericCompletionModel<super::client::AnthropicExt, T>;
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
@@ -1773,6 +1775,7 @@ where
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl<T> GenericCompletionModel<super::client::AnthropicExt, T>
 where
     T: HttpClientExt,
@@ -2906,6 +2909,7 @@ impl AnthropicCompletionRequest {
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
@@ -3079,7 +3083,7 @@ impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "anthropic", feature = "minimax"))]
 mod tests {
     use super::*;
     use crate::message::EMPTY_RESPONSE_ERROR;
@@ -3689,7 +3693,7 @@ mod tests {
             })),
         );
         let request = AnthropicCompletionRequest::try_from_params::<
-            crate::providers::anthropic::client::AnthropicExt,
+            crate::providers::anthropic_compatible::client::AnthropicExt,
         >(
             AnthropicRequestParams {
                 model: CLAUDE_SONNET_4_6,
@@ -6951,7 +6955,7 @@ mod tests {
     async fn completion_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
@@ -6986,7 +6990,7 @@ mod tests {
     async fn completion_2xx_error_envelope_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         // Anthropic's `ApiResponse` is internally tagged on `type`; the `Error`
@@ -7023,7 +7027,7 @@ mod tests {
     async fn completion_streaming_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::HttpErrorStreamingClient;
         use futures::StreamExt;
 
@@ -7137,7 +7141,7 @@ mod tests {
         use super::*;
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         const REQUEST_ID: &str = "req_unit_anthropic_0001";
@@ -7202,7 +7206,7 @@ mod tests {
             assert_eq!(raw["stop_sequence"], "alpha");
 
             let renormalized = typed
-                .normalize(<crate::providers::anthropic::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
+                .normalize(<crate::providers::anthropic_compatible::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
                 .expect("re-normalize the capture");
             assert_eq!(response.identity(), renormalized.identity());
             assert_eq!(response.finish_reason(), renormalized.finish_reason());
@@ -7230,7 +7234,7 @@ mod tests {
                 .expect("typed route");
             assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
             let reassembled = raw
-                .normalize(<crate::providers::anthropic::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
+                .normalize(<crate::providers::anthropic_compatible::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
                 .expect("normalize");
 
             let normalized = model

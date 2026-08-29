@@ -188,8 +188,7 @@ where
     // (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id =
-        super::transcription::request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let bytes: Bytes = body.await?;
 
     if !status.is_success() {
@@ -212,7 +211,7 @@ mod tests {
     struct DefaultAudioExt;
 
     impl Provider for DefaultAudioExt {
-        type Builder = crate::providers::openai::OpenAICompletionsExtBuilder;
+        type Builder = crate::providers::openai_compatible::OpenAICompletionsExtBuilder;
         const VERIFY_PATH: &'static str = "/models";
     }
 

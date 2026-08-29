@@ -48,8 +48,66 @@ tokio-test = { workspace = true }
 futures = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
+[[example]]
+name = "cohere_image_embeddings"
+required-features = ["cohere"]
+
 [features]
 default = ["rustls"]
+providers-all = [
+  "anthropic",
+  "azure",
+  "chatgpt",
+  "cohere",
+  "copilot",
+  "deepseek",
+  "doubleword",
+  "gemini",
+  "groq",
+  "huggingface",
+  "hyperbolic",
+  "llamacpp",
+  "minimax",
+  "mira",
+  "mistral",
+  "moonshot",
+  "ollama",
+  "openai",
+  "openrouter",
+  "perplexity",
+  "together",
+  "venice",
+  "voyageai",
+  "xai",
+  "xiaomimimo",
+  "zai",
+]
+anthropic = ["rig-core/anthropic"]
+azure = ["rig-core/azure"]
+chatgpt = ["rig-core/chatgpt"]
+cohere = ["rig-core/cohere"]
+copilot = ["rig-core/copilot"]
+deepseek = ["rig-core/deepseek"]
+doubleword = ["rig-core/doubleword"]
+gemini = ["rig-core/gemini"]
+groq = ["rig-core/groq"]
+huggingface = ["rig-core/huggingface"]
+hyperbolic = ["rig-core/hyperbolic"]
+llamacpp = ["rig-core/llamacpp"]
+minimax = ["rig-core/minimax"]
+mira = ["rig-core/mira"]
+mistral = ["rig-core/mistral"]
+moonshot = ["rig-core/moonshot"]
+ollama = ["rig-core/ollama"]
+openai = ["rig-core/openai"]
+openrouter = ["rig-core/openrouter"]
+perplexity = ["rig-core/perplexity"]
+together = ["rig-core/together"]
+venice = ["rig-core/venice"]
+voyageai = ["rig-core/voyageai"]
+xai = ["rig-core/xai"]
+xiaomimimo = ["rig-core/xiaomimimo"]
+zai = ["rig-core/zai"]
 socks = ["reqwest/socks"]
 # Provider-aware conveniences need the same feature surface as rig-core's
 # optional modalities.
@@ -57,11 +115,13 @@ audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 websocket = ["websocket-rustls"]
 websocket-rustls = [
+  "openai",
   "dep:tokio-tungstenite",
   "tokio-tungstenite/connect",
   "rustls",
 ]
 websocket-native-tls = [
+  "openai",
   "dep:tokio-tungstenite",
   "tokio-tungstenite/connect",
   "native-tls",

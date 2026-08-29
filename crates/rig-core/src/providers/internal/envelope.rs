@@ -14,7 +14,7 @@
 /// valid success payload is treated as an error envelope and the raw body is
 /// preserved for the caller; `message` is only used for logging.
 #[derive(Debug)]
-pub(crate) struct ApiErrorResponse {
+pub struct ApiErrorResponse {
     pub(crate) message: String,
 }
 
@@ -64,12 +64,22 @@ where
 ///
 /// The error message is used only for logging; callers preserve the raw
 /// response body via `from_http_response` when the envelope is an error.
-pub(crate) trait ProviderEnvelope {
+#[doc(hidden)]
+pub trait ProviderEnvelope {
     /// The success payload carried by the envelope.
     type Payload;
 
     /// Split the envelope into its payload or the provider's error message.
     fn into_payload(self) -> Result<Self::Payload, String>;
+}
+
+/// Success-or-error envelope shared by OpenAI-compatible HTTP APIs.
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+#[doc(hidden)]
+pub enum OpenAiApiResponse<T> {
+    Ok(T),
+    Err(ApiErrorResponse),
 }
 
 /// Identity envelope for providers whose 2xx body IS the success payload
@@ -86,7 +96,7 @@ impl<T> ProviderEnvelope for DirectPayload<T> {
     }
 }
 
-impl<T> ProviderEnvelope for crate::providers::openai::client::ApiResponse<T> {
+impl<T> ProviderEnvelope for OpenAiApiResponse<T> {
     type Payload = T;
 
     fn into_payload(self) -> Result<T, String> {
@@ -99,7 +109,7 @@ impl<T> ProviderEnvelope for crate::providers::openai::client::ApiResponse<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::providers::openai::client::ApiResponse;
+    use super::OpenAiApiResponse as ApiResponse;
 
     #[derive(Debug, serde::Deserialize)]
     struct Success {

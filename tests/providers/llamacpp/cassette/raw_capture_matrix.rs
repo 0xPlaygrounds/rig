@@ -8,7 +8,7 @@
 //! wire type for this provider is [`llamacpp::CompletionResponse`] — OpenAI's
 //! payload plus llama.cpp's `timings`. Every completion the seam returns
 //! therefore carries `raw`: the value
-//! [`raw_completion`](rig::providers::openai::GenericCompletionModel::raw_completion)
+//! [`raw_completion`](rig::providers::openai_compatible::GenericCompletionModel::raw_completion)
 //! would have returned, serialized with `serde_json::to_value` before
 //! normalization. Nothing about it is sent to the server. `raw == Value::Null`
 //! means only that a `CompletionResponse` was built by hand without a provider
@@ -50,7 +50,7 @@
 use rig::completion::NormalizeCompletionResponse as _;
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
 use rig::prelude::*;
-use rig::providers::{llamacpp, openai};
+use rig::providers::{llamacpp, openai_compatible as openai};
 use serde::Deserialize;
 use serde_json::Value;
 

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::client::{MistralExt, Usage};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::{
     completion::{self, CompletionError},
     json_utils,
@@ -474,7 +474,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 mod tests {
     use super::*;
     use crate::completion::NormalizeCompletionResponse as _;
-    use crate::providers::openai::completion::OpenAICompatibleProvider;
+    use crate::providers::openai_compatible::completion::OpenAICompatibleProvider;
 
     #[test]
     fn deserializes_response_with_array_and_null_content() {

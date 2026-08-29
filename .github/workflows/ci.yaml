@@ -72,6 +72,123 @@ jobs:
       - name: Test WASM chat worker runtime
         run: node --test examples/candle_wasm_chat/www/worker-runtime.test.mjs
 
+  provider_features:
+    name: provider feature / ${{ matrix.provider }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider:
+          - anthropic
+          - azure
+          - chatgpt
+          - cohere
+          - copilot
+          - deepseek
+          - doubleword
+          - gemini
+          - groq
+          - huggingface
+          - hyperbolic
+          - llamacpp
+          - minimax
+          - mira
+          - mistral
+          - moonshot
+          - ollama
+          - openai
+          - openrouter
+          - perplexity
+          - together
+          - venice
+          - voyageai
+          - xai
+          - xiaomimimo
+          - zai
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          sccache: "true"
+
+      - name: Check provider through the public facade
+        run: >-
+          cargo check --locked -p rig --no-default-features
+          --features "reqwest,rustls,${{ matrix.provider }}"
+
+  provider_feature_baselines:
+    name: provider feature / baselines
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          sccache: "true"
+
+      - name: Check no-provider core
+        run: cargo check --locked -p rig-core --no-default-features
+
+      - name: Check no-provider facade
+        run: cargo check --locked -p rig --no-default-features
+
+      - name: Check every provider together
+        run: >-
+          cargo check --locked -p rig --no-default-features
+          --features "providers-all,reqwest,rustls"
+
+  provider_features_status:
+    name: stable / provider features
+    if: ${{ always() }}
+    needs: [provider_features, provider_feature_baselines]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every provider-feature check
+        env:
+          MATRIX_RESULT: ${{ needs.provider_features.result }}
+          BASELINE_RESULT: ${{ needs.provider_feature_baselines.result }}
+        run: |
+          test "$MATRIX_RESULT" = success
+          test "$BASELINE_RESULT" = success
+
+  example_builds:
+    name: examples / shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          protoc: "true"
+          sccache: "true"
+
+      - name: Build independent examples
+        run: >-
+          python3 scripts/check-examples.py
+          --shard-index ${{ matrix.shard }} --shard-count 4
+
+  examples_status:
+    name: stable / examples
+    if: ${{ always() }}
+    needs: [example_builds]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every example shard
+        env:
+          SHARD_RESULT: ${{ needs.example_builds.result }}
+        run: test "$SHARD_RESULT" = success
+
   # rig-core is in the matrix below rather than in a job of its own: the body
   # was character-for-character identical, and `matrix.package` reproduces the
   # same `stable / check rig-core wasm target` job name, so this is one fewer
@@ -245,13 +362,16 @@ jobs:
         run: cargo check --locked -p rig --tests
 
       # The workspace sweep over the default members' default features, plus
-      # the facade's `bedrock` feature. `bedrock` rides along because the
+      # the facade's `bedrock` and `providers-all` features. `bedrock` rides
+      # along because the
       # bedrock wire-conformance suite compiles into the facade's `bedrock`
       # test binary and this step is the one
       # `tests/core/streaming_conformance_registry.rs` names as executing it
       # (rig-bedrock itself is already a default member, so the extra compile
-      # cost is marginal). Everything that needs the remaining optional
-      # features executes in nightly.yaml's identical-command full run.
+      # cost is marginal). `providers-all` preserves the complete cassette
+      # test surface now that concrete providers are no longer default
+      # features. Everything that needs the remaining optional features
+      # executes in nightly.yaml's full all-features run.
       #
       # No provider API keys, deliberately: the cassette suites replay
       # recorded traffic with a dummy key, every live test is
@@ -273,7 +393,7 @@ jobs:
       # finished.
       - name: Test with latest nextest release
         run: >-
-          cargo nextest run --locked --features bedrock --retries 2
+          cargo nextest run --locked --features bedrock,providers-all --retries 2
           -E 'not (binary(identity_leak) | binary(macro_hygiene))'
 
       - name: Show sccache statistics

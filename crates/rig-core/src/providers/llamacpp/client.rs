@@ -1,7 +1,7 @@
 use crate::client::{self, ApiKey, DebugExt, Nothing, Provider, Transport};
 use crate::http_client;
 use crate::providers::internal::model_listing::{ListModelEntry, impl_model_lister};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 // ================================================================
 // Main llama.cpp Client
@@ -349,7 +349,7 @@ mod tests {
     use super::*;
     use crate::client::{EmbeddingsClient, RerankingClient};
     use crate::embeddings::EmbeddingModel as _;
-    use crate::providers::openai::embedding::EncodingFormat;
+    use crate::providers::openai_compatible::embedding::EncodingFormat;
     use crate::test_utils::RecordingHttpClient;
 
     #[test]

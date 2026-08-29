@@ -171,7 +171,7 @@ where
                 .post("/audio/transcriptions")?
                 .header("Content-Type", "application/json"),
             body,
-            <super::client::OpenRouterExt as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+            <super::client::OpenRouterExt as crate::providers::openai_compatible::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
             |_, body_bytes| Ok(serde_json::from_slice::<TranscriptionResponse>(body_bytes)?),
         )
         .await

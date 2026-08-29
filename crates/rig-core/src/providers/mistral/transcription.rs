@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::transcription::request_id_from_headers;
+use crate::providers::internal::request_id_from_headers;
 use crate::providers::internal::transcription::{TranscriptionFields, transcription_form};
 use crate::providers::mistral::Client;
 use crate::transcription::{self, NormalizeTranscriptionResponse, TranscriptionError};
@@ -154,7 +154,7 @@ where
         let status = parts.status;
         let provider_request_id = request_id_from_headers(
             &parts.headers,
-            <super::client::MistralExt as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+            <super::client::MistralExt as crate::providers::openai_compatible::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
         );
         let response_bytes = body.await?;
 

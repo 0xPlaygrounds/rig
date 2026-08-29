@@ -112,6 +112,7 @@ fn portable_contract_paths_resolve() {
 /// A single `use rig::prelude::*` provides `completion_model`,
 /// `agent`, and `extractor` — the full pre-split client surface from one import.
 #[test]
+#[cfg(feature = "openai")]
 fn completion_client_single_import_surface() {
     use rig::prelude::*;
 
@@ -136,6 +137,7 @@ fn completion_client_single_import_surface() {
 /// Guards the restored `rig::client::CompletionClient` path (documented in
 /// `README.md` / `MIGRATING.md`) and the bundled-transport constructor.
 #[test]
+#[cfg(feature = "openai")]
 fn completion_client_explicit_facade_import_surface() {
     use rig::client::{AgentClientExt, CompletionClient, DefaultTransportClient};
 

@@ -34,6 +34,12 @@ exposed features, integrations, or module paths. If adding or exposing a
 companion provider/vector-store crate, update the root dependency, feature,
 facade re-export, examples, README, and crate docs as applicable.
 
+Built-in providers are opt-in features mirrored across `rig-core`,
+`rig-reqwest`, and `rig`, and each aggregate belongs in `providers-all`. Do not
+make a compatible provider imply the concrete `openai` or `anthropic` feature;
+put reusable protocol support behind internal `cfg(any(...))` gates. Provider
+examples and test targets must declare the exact provider features they use.
+
 ## Core Architecture
 
 Rig is built around provider-agnostic traits:

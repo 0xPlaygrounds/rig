@@ -2,7 +2,7 @@
 
 use rig::completion::Prompt;
 use rig::prelude::*;
-use rig::providers::{mira, openai};
+use rig::providers::{mira, openai_compatible as openai};
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 

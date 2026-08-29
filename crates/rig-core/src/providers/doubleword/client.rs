@@ -25,11 +25,11 @@ impl Provider for DoublewordExt {
 
 impl DebugExt for DoublewordExt {}
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for DoublewordExt {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for DoublewordExt {
     const PROVIDER_NAME: &'static str = "doubleword";
 
-    type StreamingUsage = crate::providers::openai::Usage;
-    type Response = crate::providers::openai::CompletionResponse;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
+    type Response = crate::providers::openai_compatible::CompletionResponse;
 }
 
 client::impl_capabilities!(

@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::telemetry::ProviderResponseExt;
 
 // ================================================================

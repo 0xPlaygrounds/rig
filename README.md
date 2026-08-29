@@ -114,9 +114,23 @@ Use the root `rig` facade when you want feature-gated access to companion crates
 or use `rig-core` directly when you only need the core provider abstractions.
 
 ```bash
-cargo add rig
-# or: cargo add rig-core
+cargo add rig --features openai
 ```
+
+Built-in providers are opt-in. Add exactly the provider features your
+application uses; the default feature set contains no concrete provider. For
+example, a Gemini-only application can use:
+
+```toml
+rig = { version = "0.42", default-features = false, features = ["agent", "derive", "gemini", "reqwest-middleware-rustls"] }
+```
+
+The provider features are `anthropic`, `azure`, `chatgpt`, `cohere`, `copilot`,
+`deepseek`, `doubleword`, `gemini`, `groq`, `huggingface`, `hyperbolic`,
+`llamacpp`, `minimax`, `mira`, `mistral`, `moonshot`, `ollama`, `openai`,
+`openrouter`, `perplexity`, `together`, `venice`, `voyageai`, `xai`,
+`xiaomimimo`, and `zai`. `providers-all` is an explicit convenience feature
+for documentation, CI, and applications that genuinely need the full set.
 
 ### Simple example
 ```rust
@@ -152,7 +166,7 @@ You can find more examples in each crate's `examples` directory (for example, [`
 The root `rig` facade exposes companion crates behind one feature per integration:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.42", features = ["lancedb", "fastembed", "openai"] }
 ```
 
 | Integration | Crate | Feature | Module path |

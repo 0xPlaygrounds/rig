@@ -1,12 +1,12 @@
 //! xAI completion support through its OpenAI-compatible Responses API.
 
-pub use crate::providers::openai::responses_api::CompletionResponse;
+pub use crate::providers::openai_compatible::responses_api::CompletionResponse;
 
 use super::client::XAiExt;
 
 /// xAI completion model, driven by the shared Responses implementation.
 pub type CompletionModel<H> =
-    crate::providers::openai::responses_api::GenericResponsesCompletionModel<XAiExt, H>;
+    crate::providers::openai_compatible::responses_api::GenericResponsesCompletionModel<XAiExt, H>;
 
 /// xAI completion models.
 pub const GROK_2_1212: &str = "grok-2-1212";

@@ -65,15 +65,15 @@ impl_dual_dialect_provider!(
 
 client::impl_capabilities!(
     ZAiExt,
-    completion = super::openai::completion::GenericCompletionModel<ZAiExt, H>,
+    completion = super::openai_compatible::completion::GenericCompletionModel<ZAiExt, H>,
 );
 
-impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
+impl super::openai_compatible::completion::OpenAICompatibleProvider for ZAiExt {
     const PROVIDER_NAME: &'static str = "zai";
 
-    type StreamingUsage = super::openai::Usage;
+    type StreamingUsage = super::openai_compatible::Usage;
 
-    type Response = super::openai::CompletionResponse;
+    type Response = super::openai_compatible::CompletionResponse;
 }
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(

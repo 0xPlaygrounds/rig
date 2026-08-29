@@ -60,6 +60,9 @@ pub trait JsonImageGenerationProvider: Provider {
         + WasmCompatSend
         + WasmCompatSync
         + NormalizeImageGenerationResponse;
+
+    /// The provider's success-or-error response envelope.
+    type Envelope: DeserializeOwned + ProviderEnvelope<Payload = Self::Response>;
     fn image_generation_request_builder<H>(
         client: &Client<Self, H>,
         _model: &str,
@@ -125,7 +128,7 @@ where
     ) -> Result<(Ext::Response, Option<String>), ImageGenerationError> {
         let builder = Ext::image_generation_request_builder(&self.client, &self.model)?;
         let body = Ext::image_generation_request_body(&self.model, request)?;
-        send_image_generation::<_, crate::providers::openai::client::ApiResponse<Ext::Response>>(
+        send_image_generation::<_, Ext::Envelope>(
             &self.client,
             builder,
             body,
@@ -196,8 +199,7 @@ where
     // path (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id =
-        super::transcription::request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let response_body = body.into_future().await?;
 

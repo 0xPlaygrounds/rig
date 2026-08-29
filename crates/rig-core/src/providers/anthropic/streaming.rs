@@ -149,7 +149,7 @@ pub enum ContentDelta {
     /// `content_block_delta` frame (which would classify it `Corrupt` and
     /// surface an `Err` item per frame). It decodes to a no-op, warned at the
     /// interpret site — the same shape as
-    /// [`ContentPartChunkPart::Unknown`](crate::providers::openai::responses_api::streaming::ContentPartChunkPart).
+    /// `openai::responses_api::streaming::ContentPartChunkPart::Unknown`.
     Unknown(serde_json::Value),
 }
 
@@ -857,6 +857,7 @@ fn handle_event(
 }
 
 #[cfg(test)]
+#[cfg(feature = "anthropic")]
 mod tests {
     use super::super::completion::{
         AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
@@ -904,7 +905,7 @@ mod tests {
         strict_tools: bool,
     ) -> Result<Value, CompletionError> {
         let typed = AnthropicCompletionRequest::try_from_params::<
-            crate::providers::anthropic::client::AnthropicExt,
+            crate::providers::anthropic_compatible::client::AnthropicExt,
         >(
             AnthropicRequestParams {
                 model,
@@ -931,7 +932,7 @@ mod tests {
         });
 
         let mut tools =
-            build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
+            build_tool_definitions::<crate::providers::anthropic_compatible::client::AnthropicExt>(
                 vec![crate::completion::ToolDefinition {
                     name: "rig_tool".to_string(),
                     description: "Rig tool".to_string(),
@@ -1174,7 +1175,7 @@ mod tests {
         let top_level_cache_control =
             resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
         let mut tools =
-            build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
+            build_tool_definitions::<crate::providers::anthropic_compatible::client::AnthropicExt>(
                 vec![crate::completion::ToolDefinition {
                     name: "rig_tool".to_string(),
                     description: "Rig tool".to_string(),
@@ -1773,7 +1774,8 @@ mod tests {
         let ContentDelta::CitationsDelta { citation } = delta else {
             panic!("expected CitationsDelta");
         };
-        let crate::providers::anthropic::completion::Citation::CharLocation(citation) = citation
+        let crate::providers::anthropic_compatible::completion::Citation::CharLocation(citation) =
+            citation
         else {
             panic!("expected CharLocation");
         };
@@ -1809,8 +1811,8 @@ mod tests {
         };
         assert!(matches!(
             citation,
-            crate::providers::anthropic::completion::Citation::SearchResultLocation(
-                crate::providers::anthropic::completion::SearchResultLocationCitation {
+            crate::providers::anthropic_compatible::completion::Citation::SearchResultLocation(
+                crate::providers::anthropic_compatible::completion::SearchResultLocationCitation {
                     search_result_index: 0,
                     start_block_index: 0,
                     end_block_index: 1,
@@ -1846,7 +1848,7 @@ mod tests {
         };
         assert!(matches!(
             citation,
-            crate::providers::anthropic::completion::Citation::WebSearchResultLocation(ref citation)
+            crate::providers::anthropic_compatible::completion::Citation::WebSearchResultLocation(ref citation)
                 if citation.url == "https://example.com/shannon"
                     && citation.encrypted_index == "encrypted-reference"
         ));
@@ -1878,8 +1880,8 @@ mod tests {
         };
         assert!(matches!(
             citation,
-            crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
-                crate::providers::anthropic::completion::WebSearchResultLocationCitation {
+            crate::providers::anthropic_compatible::completion::Citation::WebSearchResultLocation(
+                crate::providers::anthropic_compatible::completion::WebSearchResultLocationCitation {
                     title: None,
                     ..
                 }
@@ -2014,11 +2016,13 @@ mod tests {
         };
         assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(1));
         assert_eq!(
-            additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
+            additional_params
+                [crate::providers::anthropic_compatible::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
             "code_execution_tool_result"
         );
         assert_eq!(
-            additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
+            additional_params
+                [crate::providers::anthropic_compatible::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
                 ["stdout"],
             "42\n"
         );
@@ -2124,8 +2128,8 @@ mod tests {
                 &StreamingEvent::ContentBlockDelta {
                     index: 2,
                     delta: ContentDelta::CitationsDelta {
-                        citation: crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
-                            crate::providers::anthropic::completion::WebSearchResultLocationCitation {
+                        citation: crate::providers::anthropic_compatible::completion::Citation::WebSearchResultLocation(
+                            crate::providers::anthropic_compatible::completion::WebSearchResultLocationCitation {
                                 cited_text: "Claude Shannon was born on April 30, 1916."
                                     .to_string(),
                                 url: "https://example.com/shannon".to_string(),
@@ -2166,12 +2170,13 @@ mod tests {
         };
         assert_eq!(
             server_tool_use.additional_params.as_ref().unwrap()
-                [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
+                [crate::providers::anthropic_compatible::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
             "server_tool_use"
         );
         assert_eq!(
             server_tool_use.additional_params.as_ref().unwrap()
-                [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["input"]["query"],
+                [crate::providers::anthropic_compatible::completion::ANTHROPIC_RAW_CONTENT_KEY]["input"]
+                ["query"],
             "claude shannon birth date"
         );
 
@@ -2181,8 +2186,8 @@ mod tests {
         };
         assert_eq!(
             web_search_result.additional_params.as_ref().unwrap()
-                [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"][0]
-                ["encrypted_content"],
+                [crate::providers::anthropic_compatible::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
+                [0]["encrypted_content"],
             "encrypted-content"
         );
 
@@ -2190,11 +2195,12 @@ mod tests {
             panic!("expected answer text");
         };
         assert_eq!(answer.text, "Claude Shannon was born on April 30, 1916.");
-        let citations = crate::providers::anthropic::completion::anthropic_citations(answer)
-            .expect("expected preserved citations");
+        let citations =
+            crate::providers::anthropic_compatible::completion::anthropic_citations(answer)
+                .expect("expected preserved citations");
         assert!(matches!(
             citations.first(),
-            Some(crate::providers::anthropic::completion::Citation::WebSearchResultLocation(citation))
+            Some(crate::providers::anthropic_compatible::completion::Citation::WebSearchResultLocation(citation))
                 if citation.encrypted_index == "encrypted-index"
         ));
     }
@@ -2204,15 +2210,16 @@ mod tests {
         let event = StreamingEvent::ContentBlockDelta {
             index: 0,
             delta: ContentDelta::CitationsDelta {
-                citation: crate::providers::anthropic::completion::Citation::CharLocation(
-                    crate::providers::anthropic::completion::CharLocationCitation {
-                        cited_text: "The grass is green.".to_string(),
-                        document_index: 0,
-                        document_title: Some("Example".to_string()),
-                        start_char_index: 0,
-                        end_char_index: 20,
-                    },
-                ),
+                citation:
+                    crate::providers::anthropic_compatible::completion::Citation::CharLocation(
+                        crate::providers::anthropic_compatible::completion::CharLocationCitation {
+                            cited_text: "The grass is green.".to_string(),
+                            document_index: 0,
+                            document_title: Some("Example".to_string()),
+                            start_char_index: 0,
+                            end_char_index: 20,
+                        },
+                    ),
             },
         };
 
@@ -2230,8 +2237,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_citation_deltas_are_preserved_on_final_text() {
-        let citation = crate::providers::anthropic::completion::Citation::CharLocation(
-            crate::providers::anthropic::completion::CharLocationCitation {
+        let citation = crate::providers::anthropic_compatible::completion::Citation::CharLocation(
+            crate::providers::anthropic_compatible::completion::CharLocationCitation {
                 cited_text: "The grass is green.".to_string(),
                 document_index: 0,
                 document_title: Some("Example".to_string()),
@@ -2274,8 +2281,8 @@ mod tests {
                 &StreamingEvent::ContentBlockDelta {
                     index: 0,
                     delta: ContentDelta::CitationsDelta {
-                        citation: crate::providers::anthropic::completion::Citation::CharLocation(
-                            crate::providers::anthropic::completion::CharLocationCitation {
+                        citation: crate::providers::anthropic_compatible::completion::Citation::CharLocation(
+                            crate::providers::anthropic_compatible::completion::CharLocationCitation {
                                 cited_text: "The grass is green.".to_string(),
                                 document_index: 0,
                                 document_title: Some("Example".to_string()),
@@ -2306,7 +2313,8 @@ mod tests {
         };
 
         assert_eq!(text.text, "the grass is green");
-        let citations = crate::providers::anthropic::completion::anthropic_citations(text).unwrap();
+        let citations =
+            crate::providers::anthropic_compatible::completion::anthropic_citations(text).unwrap();
         assert_eq!(citations, vec![citation]);
     }
 
@@ -2596,7 +2604,7 @@ mod tests {
         use super::super::super::completion::CLAUDE_SONNET_4_6;
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::streaming::StreamedAssistantContent;
         use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;

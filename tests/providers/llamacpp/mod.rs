@@ -133,6 +133,7 @@ mod cassette_support;
 
 mod cassette {
     mod agent;
+    #[cfg(feature = "openai")]
     mod bare_openai_client;
     mod content_matrix;
     mod context;

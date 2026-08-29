@@ -22,6 +22,15 @@
 //! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
 //! - Integrate LLMs in your app with minimal boilerplate
 //!
+//! # Provider features
+//!
+//! Concrete providers are opt-in. Enable the feature matching every provider
+//! your application imports; the default `derive` feature enables none. For
+//! example, use `features = ["gemini"]` for a Gemini-only `rig-core` build.
+//! `providers-all` explicitly enables the complete built-in provider set for
+//! CI and documentation builds. When pairing this crate with `rig-reqwest`,
+//! enable the same provider feature there as well.
+//!
 //! # Simple example
 //! ```ignore
 //! use rig_core::{
@@ -29,6 +38,7 @@
 //!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };
+//! use rig_reqwest::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {

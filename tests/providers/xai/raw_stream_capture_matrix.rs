@@ -24,7 +24,7 @@
 
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
 use rig::prelude::*;
-use rig::providers::openai::responses_api::streaming::StreamingCompletionResponse;
+use rig::providers::openai_compatible::responses_api::streaming::StreamingCompletionResponse;
 use rig::providers::xai;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;

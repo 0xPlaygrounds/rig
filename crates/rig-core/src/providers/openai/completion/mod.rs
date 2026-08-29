@@ -2,13 +2,13 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::client::ApiResponse;
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::string_or_vec;
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 use crate::telemetry::{
     CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
 };
@@ -1618,7 +1618,7 @@ pub struct CompletionModelOptions {
 
 /// Contract for provider extensions that speak the OpenAI Chat Completions wire
 /// format through [`GenericCompletionModel`]. Mirrors
-/// [`AnthropicCompatibleProvider`](crate::providers::anthropic::completion::AnthropicCompatibleProvider)
+/// `anthropic::completion::AnthropicCompatibleProvider`
 /// on the Anthropic-compatible side.
 ///
 /// Request construction runs the hooks in a fixed order:
@@ -1628,7 +1628,7 @@ pub struct CompletionModelOptions {
 /// [`finalize_request_body_with_options`](Self::finalize_request_body_with_options)
 /// on the serialized body — so the finalize hook always sees the streaming
 /// parameters and model-level options.
-pub trait OpenAICompatibleProvider: crate::client::Provider {
+pub trait OpenAICompatibleProvider {
     /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
     const PROVIDER_NAME: &'static str;
 
@@ -1856,6 +1856,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     }
 }
 
+#[cfg(feature = "openai")]
 impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
@@ -1952,6 +1953,7 @@ pub struct GenericCompletionModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "openai")]
 pub type CompletionModel<H> = GenericCompletionModel<super::OpenAICompletionsExt, H>;
 
 impl<Ext, H> GenericCompletionModel<Ext, H> {
@@ -4306,7 +4308,7 @@ mod tests {
 
         let response: completion::CompletionResponse =
             response
-                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+                .normalize(<crate::providers::openai_compatible::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
                 .unwrap();
 
         assert_eq!(response.choice.len(), 1);
@@ -4504,7 +4506,7 @@ mod tests {
     async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel;
-        use crate::providers::openai::CompletionsClient;
+        use crate::providers::openai_compatible::CompletionsClient;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"slow down","type":"rate_limit","code":"rate_limit_exceeded"}"#;
@@ -4547,7 +4549,7 @@ mod tests {
     async fn completion_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel;
-        use crate::providers::openai::CompletionsClient;
+        use crate::providers::openai_compatible::CompletionsClient;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
@@ -4594,7 +4596,7 @@ mod tests {
         use super::*;
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::openai::CompletionsClient;
+        use crate::providers::openai_compatible::CompletionsClient;
         use crate::test_utils::RecordingHttpClient;
 
         const REQUEST_ID: &str = "req_unit_chat_0001";
@@ -4663,7 +4665,7 @@ mod tests {
 
             // The capture and the normalized response tell one story.
             let renormalized = typed
-                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+                .normalize(<crate::providers::openai_compatible::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
                 .expect("re-normalize the capture")
                 .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
             assert_eq!(response.identity(), renormalized.identity());
@@ -4694,7 +4696,7 @@ mod tests {
                 .expect("typed route");
             assert_eq!(id.as_deref(), Some(REQUEST_ID));
             let reassembled = raw
-                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+                .normalize(<crate::providers::openai_compatible::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
                 .expect("normalize")
                 .with_optional_provider_request_id(id);
 

@@ -10,7 +10,7 @@ use crate::providers::internal::sse_transport::{
     FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream,
 };
 use crate::providers::internal::wire::{self, WireEvent};
-use crate::providers::openai::responses_api::{
+use crate::providers::openai_compatible::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
 use crate::streaming;
@@ -1546,6 +1546,7 @@ where
 }
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod tests {
     use super::{
         ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator,
@@ -1558,7 +1559,7 @@ mod tests {
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
     use crate::providers::internal::wire::WireEvent;
-    use crate::providers::openai::responses_api::{
+    use crate::providers::openai_compatible::responses_api::{
         AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
         ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
     };
@@ -3700,7 +3701,7 @@ data: {completed}
     /// deltas were streamed (websocket replays hit exactly this quadrant).
     #[tokio::test]
     async fn terminal_body_message_text_merges_into_reasoning_only_replay() {
-        use crate::providers::openai::responses_api::Output;
+        use crate::providers::openai_compatible::responses_api::Output;
 
         let raw_choices = vec![RawStreamingChoice::ReasoningDelta {
             provider_id: crate::streaming::WireId::new("rs_1"),
