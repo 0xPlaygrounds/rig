@@ -516,7 +516,10 @@ where
     }
 }
 
-#[cfg(test)]
+// These drive the concrete `CompletionsClient`, which is `openai`-only. The
+// provider-agnostic wire assertions live in `wire_tests` below so they still
+// run in a sparse build (azure, groq, openrouter, ...).
+#[cfg(all(test, feature = "openai"))]
 mod tests {
     use super::*;
     use crate::client::EmbeddingsClient;
@@ -760,17 +763,6 @@ mod tests {
         assert!(http_client.requests().is_empty());
     }
 
-    #[test]
-    fn public_openai_embedding_response_requires_usage() {
-        let body = r#"{
-            "object": "list",
-            "model": "text-embedding-3-small",
-            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1] }]
-        }"#;
-
-        assert!(serde_json::from_str::<EmbeddingResponse>(body).is_err());
-    }
-
     #[tokio::test]
     async fn embedding_preserves_raw_provider_error_json_on_api_error_envelope() {
         let body = r#"{"message":"embedding quota exceeded","type":"insufficient_quota"}"#;
@@ -826,5 +818,23 @@ mod tests {
             Some(http::StatusCode::UNAUTHORIZED)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+
+    /// `usage` is not optional on the shared embeddings response type; a
+    /// gateway that omits it must fail loudly rather than report zero tokens.
+    #[test]
+    fn public_openai_embedding_response_requires_usage() {
+        let body = r#"{
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1] }]
+        }"#;
+
+        assert!(serde_json::from_str::<EmbeddingResponse>(body).is_err());
     }
 }

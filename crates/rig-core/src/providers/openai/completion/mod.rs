@@ -3696,6 +3696,7 @@ mod tests {
     }
 
     /// The predicate is what the provider extension actually consults.
+    #[cfg(feature = "openai")]
     #[test]
     fn openai_extension_asks_for_the_modern_cap_only_on_reasoning_models() {
         let ext = super::super::OpenAICompletionsExt::default();
@@ -4262,6 +4263,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn deserialize_llama_cpp_response_with_reasoning_content() {
         let request = r#"
@@ -4502,6 +4504,7 @@ mod tests {
         assert!(matches!(parts[1], UserContent::File { .. }));
     }
 
+    #[cfg(feature = "openai")]
     #[tokio::test]
     async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
         use crate::client::CompletionClient;
@@ -4545,6 +4548,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "openai")]
     #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
@@ -4592,6 +4596,8 @@ mod tests {
     /// contract. `with_error_response_headers` is the only unary double that
     /// carries headers; with `200 OK` it is simply a successful response with
     /// headers (`completion_send` already relies on that).
+    // Exercises the concrete `CompletionsClient`, which is `openai`-only.
+    #[cfg(feature = "openai")]
     mod raw_capture {
         use super::*;
         use crate::client::CompletionClient;

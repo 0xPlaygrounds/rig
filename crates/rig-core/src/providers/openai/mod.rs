@@ -40,10 +40,12 @@ pub mod responses_api;
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 
-#[cfg(all(feature = "openai", feature = "image"))]
+// Azure reuses these wire types for its own image endpoint, so the module has
+// to survive an `azure`-without-`openai` build (see `azure::image_generation`).
+#[cfg(all(feature = "image", any(feature = "azure", feature = "openai")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
-#[cfg(all(feature = "openai", feature = "image"))]
+#[cfg(all(feature = "image", any(feature = "azure", feature = "openai")))]
 pub use image_generation::*;
 
 #[cfg(feature = "openai")]

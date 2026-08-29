@@ -119,6 +119,26 @@ jobs:
           cargo check --locked -p rig --no-default-features
           --features "reqwest,rustls,${{ matrix.provider }}"
 
+      # `--all-targets` and the media features are both load-bearing, and the
+      # library-only check above is blind to each of them.
+      #
+      # Without `--all-targets` the lib *test* target is never built, so a
+      # `#[cfg(test)] mod tests` living in a module shared by every
+      # OpenAI-compatible provider can reference `openai`-only items and stay
+      # green here while `cargo test --features <provider>` fails for 21 of
+      # the 26 providers. Without `image,audio` the shared wire types those
+      # features unlock are never compiled against a provider that is not
+      # `openai` — which is how `azure,image` came to fail with an unresolved
+      # `openai_compatible::ImageGenerationResponse`.
+      #
+      # Against rig-core rather than the facade: that is the crate the shared
+      # provider modules live in, and it keeps the job off the facade's
+      # dev-dependency graph.
+      - name: Check provider test targets with media features
+        run: >-
+          cargo check --locked -p rig-core --no-default-features
+          --features "${{ matrix.provider }},image,audio" --all-targets
+
   provider_feature_baselines:
     name: provider feature / baselines
     runs-on: ubuntu-latest
@@ -131,8 +151,10 @@ jobs:
         with:
           sccache: "true"
 
+      # `--all-targets`: the provider-free build is also the one where a test
+      # module that quietly depends on a provider feature is most visible.
       - name: Check no-provider core
-        run: cargo check --locked -p rig-core --no-default-features
+        run: cargo check --locked -p rig-core --no-default-features --all-targets
 
       - name: Check no-provider facade
         run: cargo check --locked -p rig --no-default-features

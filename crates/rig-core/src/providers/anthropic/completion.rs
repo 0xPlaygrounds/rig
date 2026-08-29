@@ -3083,7 +3083,7 @@ impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T
     }
 }
 
-#[cfg(all(test, feature = "anthropic", feature = "minimax"))]
+#[cfg(all(test, feature = "anthropic"))]
 mod tests {
     use super::*;
     use crate::message::EMPTY_RESPONSE_ERROR;
@@ -3621,6 +3621,10 @@ mod tests {
         );
     }
 
+    // The only test here that reaches for a concrete Anthropic-compatible
+    // gateway; the rest of the module is protocol-level and must run under a
+    // plain `anthropic` build.
+    #[cfg(feature = "minimax")]
     #[test]
     fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
         let mut additional_params = serde_json::Value::Null;

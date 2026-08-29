@@ -55,6 +55,12 @@ required-features = ["cohere"]
 [features]
 default = ["rustls"]
 providers-all = [
+  # Forwarded explicitly: rig-core keys its full-surface lint coverage off its
+  # own `providers-all` (the `cfg_attr(not(providers-all), allow(dead_code, ...))`
+  # sites), and enabling the 26 features one by one does not turn that on.
+  # Without this line `cargo clippy -p rig-reqwest --features providers-all`
+  # silently lints rig-core with those allows still active.
+  "rig-core/providers-all",
   "anthropic",
   "azure",
   "chatgpt",

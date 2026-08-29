@@ -22,8 +22,10 @@
 //! enabled by default. `providers-all` is an explicit aggregate intended for
 //! CI, documentation, and applications that truly need every provider. With
 //! `reqwest` enabled, the feature is forwarded to the default-transport alias
-//! in `rig-reqwest`; without `reqwest`, the transport-generic `rig-core` type
-//! remains available at the same provider path.
+//! in `rig-reqwest` and the provider is reachable at `rig::providers::<name>`.
+//! Without `reqwest` there is no `rig::providers` module at all — it is itself
+//! gated on that feature — so reach the transport-generic types through
+//! `rig::core::providers::<name>` instead.
 //!
 //! # Companion integrations
 //!
