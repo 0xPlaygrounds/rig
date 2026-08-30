@@ -27,7 +27,7 @@ impl Provider for MistralExt {
     const VERIFY_PATH: &'static str = "/v1/models";
 }
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralExt {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for MistralExt {
     const PROVIDER_NAME: &'static str = "mistral";
 
     /// Mistral labels its transport request id `mistral-correlation-id`, and

@@ -11,27 +11,77 @@
 //! # Ok(())
 //! # }
 //! ```
+#[cfg(feature = "openai")]
 pub mod client;
 pub mod completion;
+#[cfg(any(
+    feature = "azure",
+    feature = "copilot",
+    feature = "doubleword",
+    feature = "llamacpp",
+    feature = "mistral",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "together",
+    feature = "venice",
+))]
 pub mod embedding;
+#[cfg(feature = "openai")]
 pub mod model_listing;
+#[cfg(any(
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "openai",
+    feature = "xai"
+))]
 pub mod responses_api;
 
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "openai", feature = "audio"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 
-#[cfg(feature = "image")]
+// Azure reuses these wire types for its own image endpoint, so the module has
+// to survive an `azure`-without-`openai` build (see `azure::image_generation`).
+#[cfg(all(feature = "image", any(feature = "azure", feature = "openai")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
-#[cfg(feature = "image")]
+#[cfg(all(feature = "image", any(feature = "azure", feature = "openai")))]
 pub use image_generation::*;
 
+#[cfg(feature = "openai")]
 pub mod transcription;
 
+// These wire types belong to the OpenAI-compatible transcription protocol,
+// not the concrete OpenAI client. Keep one nameable support path for providers
+// such as Azure, Groq, Hugging Face, and Venice when `openai` is disabled.
+#[cfg(any(
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice",
+))]
+pub use crate::providers::internal::transcription::{
+    DurationTag, TokensTag, TranscriptionInputTokenDetails, TranscriptionResponse,
+    TranscriptionUsage,
+};
+
+#[cfg(feature = "openai")]
 pub use client::*;
 pub use completion::*;
+#[cfg(any(
+    feature = "azure",
+    feature = "copilot",
+    feature = "doubleword",
+    feature = "llamacpp",
+    feature = "mistral",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "together",
+    feature = "venice",
+))]
 pub use embedding::*;
+#[cfg(feature = "openai")]
 pub use model_listing::*;
 
 /// Recursively ensures all object schemas in a JSON schema respect OpenAI structured output restrictions.
@@ -71,11 +121,12 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
     (name, value)
 }
 
-#[cfg(feature = "audio")]
+#[cfg(all(feature = "openai", feature = "audio"))]
 pub use audio_generation::{TTS_1, TTS_1_HD};
 
 pub use streaming::*;
-pub use transcription::*;
+#[cfg(feature = "openai")]
+pub use transcription::{CompletionsTranscriptionModel, TranscriptionModel, WHISPER_1};
 
 #[cfg(test)]
 mod tests {

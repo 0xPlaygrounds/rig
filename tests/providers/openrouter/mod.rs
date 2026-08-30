@@ -12,6 +12,7 @@ mod cassette {
     mod models;
     mod multi_extract;
     mod multimodal;
+    #[cfg(feature = "openai")]
     mod openai_responses_compat;
     mod permission_control;
     mod prompt_caching;

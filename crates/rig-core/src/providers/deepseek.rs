@@ -15,7 +15,7 @@
 use serde_json::Value;
 
 use crate::client::{self, BearerAuth, DebugExt, Provider};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
     completion::{self, CompletionError},
@@ -417,7 +417,7 @@ mod tests {
     };
     use crate::message::ToolChoice as RigToolChoice;
     use crate::model::ModelListingError;
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::test_utils::{MockCompletionModel, RecordingHttpClient};

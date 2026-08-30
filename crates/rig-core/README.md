@@ -25,7 +25,20 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Installation
 ```bash
-cargo add rig-core
+cargo add rig-core --features openai
+```
+
+Every built-in provider is an opt-in Cargo feature, and the default feature
+set enables no concrete provider. Enable only the providers you use. The
+`providers-all` aggregate restores the complete provider surface for CI,
+documentation, or explicitly multi-provider applications.
+
+When using `rig-core` directly with the bundled HTTP transport, enable the same
+provider on `rig-reqwest` and import its construction prelude:
+
+```toml
+rig-core = { version = "0.42", features = ["openai"] }
+rig-reqwest = { version = "0.42", features = ["openai"] }
 ```
 
 ## WASM target support
@@ -42,6 +55,7 @@ use rig_core::{
     completion::{AssistantContent, CompletionModel},
     providers::openai,
 };
+use rig_reqwest::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,35 +83,43 @@ You can find more examples in the repository-level `examples/` directory. Many p
 ## Integrations
 Rig supports the following LLM providers out of the box:
 
-- Anthropic
-- Azure OpenAI
-- ChatGPT and GitHub Copilot auth-backed clients
-- Cohere
-- DeepSeek
-- Gemini
-- Groq
-- Hugging Face
-- Hyperbolic
-- llama.cpp (`llama-server`, and llamafile)
-- MiniMax
-- Mira
-- Mistral
-- Moonshot
-- Ollama
-- OpenAI
-- OpenRouter
-- Perplexity
-- Together
-- Venice
-- Voyage AI
-- xAI
-- Xiaomi MiMo
-- Z.ai
+No provider is enabled by default; each is behind the Cargo feature named
+beside it.
+
+- Anthropic — `anthropic`
+- Azure OpenAI — `azure`
+- ChatGPT auth-backed client — `chatgpt`
+- Cohere — `cohere`
+- DeepSeek — `deepseek`
+- Doubleword — `doubleword`
+- Gemini — `gemini`
+- GitHub Copilot auth-backed client — `copilot`
+- Groq — `groq`
+- Hugging Face — `huggingface`
+- Hyperbolic — `hyperbolic`
+- llama.cpp (`llama-server`, and llamafile) — `llamacpp`
+- MiniMax — `minimax`
+- Mira — `mira`
+- Mistral — `mistral`
+- Moonshot — `moonshot`
+- Ollama — `ollama`
+- OpenAI — `openai`
+- OpenRouter — `openrouter`
+- Perplexity — `perplexity`
+- Together — `together`
+- Venice — `venice`
+- Voyage AI — `voyageai`
+- xAI — `xai`
+- Xiaomi MiMo — `xiaomimimo`
+- Z.ai — `zai`
+
+`providers-all` is an explicit aggregate for documentation, CI, and
+applications that genuinely need the full set.
 
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.42", features = ["lancedb", "fastembed", "openai"] }
 ```
 
 - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)

@@ -26,7 +26,7 @@ use crate::client;
 use crate::providers::internal::anthropic_compatible::{
     AnthropicBaseUrl, impl_dual_dialect_provider,
 };
-use crate::{completion::CompletionError, providers::openai};
+use crate::{completion::CompletionError, providers::openai_compatible as openai};
 
 // ================================================================
 // Main Moonshot Client
@@ -112,6 +112,30 @@ pub const KIMI_K2_5: &str = "kimi-k2.5";
 
 /// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<MoonshotExt, H>;
+/// Raw completion payload from the OpenAI-dialect model — what
+/// `CompletionModel::raw_completion` returns. Shared with the OpenAI Chat
+/// Completions path, and named here so it is reachable and documented
+/// without enabling `openai`. `AnthropicClient` answers with
+/// [`AnthropicCompletionResponse`] instead.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
+
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
+
+/// Raw completion payload from the Anthropic-dialect model — what
+/// `AnthropicClient`'s `raw_completion` returns. Named here so it is
+/// reachable without enabling `anthropic`.
+pub type AnthropicCompletionResponse =
+    crate::providers::anthropic_compatible::completion::CompletionResponse;
+
+/// Terminal streaming record from the Anthropic-dialect model's
+/// `raw_stream`.
+pub type AnthropicStreamingCompletionResponse =
+    crate::providers::anthropic_compatible::streaming::StreamingCompletionResponse;
 
 impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
     const PROVIDER_NAME: &'static str = "moonshot";
@@ -171,7 +195,7 @@ mod tests {
     use crate::message::{
         AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction,
     };
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
 

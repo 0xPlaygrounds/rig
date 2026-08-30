@@ -7,7 +7,7 @@ use core::ops::RangeInclusive;
 
 use crate::{
     embeddings::EmbeddingError,
-    providers::openai::embedding::{
+    providers::openai_compatible::embedding::{
         EmbeddingDimensions, GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
     },
 };
@@ -119,7 +119,7 @@ mod tests {
     use super::QWEN3_EMBEDDING_8B;
     use crate::client::EmbeddingsClient;
     use crate::embeddings::{EmbeddingError, EmbeddingModel as _};
-    use crate::providers::{doubleword, openai::embedding::EncodingFormat};
+    use crate::providers::{doubleword, openai_compatible::embedding::EncodingFormat};
     use crate::test_utils::RecordingHttpClient;
 
     /// A width Doubleword never returns, so a test that reads it back proves
@@ -256,7 +256,11 @@ mod tests {
     #[tokio::test]
     async fn an_openai_named_model_cannot_bypass_zero_width_validation() {
         assert!(matches!(
-            rejected_dimensions(crate::providers::openai::TEXT_EMBEDDING_ADA_002, 0).await,
+            rejected_dimensions(
+                crate::providers::openai_compatible::TEXT_EMBEDDING_ADA_002,
+                0
+            )
+            .await,
             EmbeddingError::InvalidParameterValue {
                 provider: "doubleword",
                 parameter: "dimensions",

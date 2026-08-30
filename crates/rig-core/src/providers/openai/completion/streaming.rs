@@ -11,7 +11,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     CompatibleTerminal, CompatibleToolCallChunk,
 };
 use crate::providers::internal::wire;
-use crate::providers::openai::completion::{
+use crate::providers::openai_compatible::completion::{
     CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
 };
 use crate::streaming::{self, RawStreamingResult, StreamFinal};
@@ -61,7 +61,7 @@ where
     Ok(value.and_then(|value| match value {
         serde_json::Value::String(text) => Some(text),
         serde_json::Value::Array(parts) => {
-            let text = crate::providers::openai::completion::joined_text_parts(&parts);
+            let text = crate::providers::openai_compatible::completion::joined_text_parts(&parts);
             (!text.is_empty()).then_some(text)
         }
         _ => None,
@@ -340,8 +340,10 @@ where
         let path = self.client.ext().completion_path(&self.model);
         let resolved_model = request.model.clone();
         let modern_output_cap = self.sends_modern_output_cap(&request.model);
-        let mut request_as_json =
-            crate::providers::openai::completion::request_body(&request, modern_output_cap)?;
+        let mut request_as_json = crate::providers::openai_compatible::completion::request_body(
+            &request,
+            modern_output_cap,
+        )?;
 
         // `merge` is shallow, so include_usage is inserted into any
         // caller-supplied stream_options rather than merged over it: the
@@ -428,10 +430,51 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletionsExt, U = Usage> {
+struct OpenAICompatibleProfile<Ext, U = Usage> {
     provider: Ext,
     emits_complete_single_chunk_tool_calls: bool,
     usage: std::marker::PhantomData<U>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct OpenAIWireExt;
+
+/// A local stub rather than a borrowed concrete provider builder: this marker
+/// only names the OpenAI wire dialect for the shared streaming driver, and it
+/// has to compile for every OpenAI-compatible provider, not only `openai`.
+#[derive(Debug, Default, Clone, Copy)]
+struct OpenAIWireExtBuilder;
+
+impl crate::client::ProviderBuilder for OpenAIWireExtBuilder {
+    type Extension<H>
+        = OpenAIWireExt
+    where
+        H: crate::http_client::HttpClientExt;
+    type ApiKey = crate::client::BearerAuth;
+
+    const BASE_URL: &'static str = "https://openai-wire.invalid";
+
+    fn build<H>(
+        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+    ) -> crate::http_client::Result<Self::Extension<H>>
+    where
+        H: crate::http_client::HttpClientExt,
+    {
+        Ok(OpenAIWireExt)
+    }
+}
+
+impl crate::client::Provider for OpenAIWireExt {
+    type Builder = OpenAIWireExtBuilder;
+    const VERIFY_PATH: &'static str = "/models";
+}
+
+impl OpenAICompatibleProvider for OpenAIWireExt {
+    const PROVIDER_NAME: &'static str = "openai-compatible";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
+
+    type StreamingUsage = Usage;
+    type Response = super::CompletionResponse;
 }
 
 impl<Ext, U> CompatibleStreamProfile for OpenAICompatibleProfile<Ext, U>
@@ -555,8 +598,8 @@ where
     openai_chat_completions_compatible::send_compatible_raw_streaming_request(
         http_client,
         req,
-        <crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
-        OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletionsExt, Usage>::default(),
+        OpenAIWireExt::REQUEST_ID_HEADER,
+        OpenAICompatibleProfile::<OpenAIWireExt, Usage>::default(),
     )
     .await
 }
@@ -568,6 +611,11 @@ where
 /// parameter rather than a constant because this helper is public and the
 /// chat-completions wire shape is shared: hardcoding `"openai"` would label
 /// every out-of-tree compatible provider's stream as OpenAI's.
+///
+/// Reaching it needs the `openai` feature: this module compiles for any of
+/// the OpenAI-compatible providers, but `providers::openai` — the stable
+/// spelling — is that feature's alias for it. The `openai_compatible` path is
+/// `#[doc(hidden)]` and free to move, so do not build against it.
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,

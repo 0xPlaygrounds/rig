@@ -17,6 +17,7 @@ dist/
 # LanceDB example/test store artifacts (created at the workspace root)
 /data/
 
-# The `discord_bot` example is its own workspace; its lockfile pins the
-# unpatchable `serenity`/`rustls` 0.22 graph that the root workspace excludes.
-examples/discord_bot/Cargo.lock
+
+# Bytecode from scripts/ (check-examples.py and friends)
+__pycache__/
+*.pyc

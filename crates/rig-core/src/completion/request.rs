@@ -123,6 +123,7 @@ impl CompletionError {
     /// Non-success HTTP responses remain [`CompletionError::HttpError`] so provider response
     /// helpers can read status and body. Other transport failures keep the existing
     /// [`CompletionError::ProviderError`] display string behavior.
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
         if error.non_success_status().is_some() {
             Self::HttpError(error)
@@ -917,6 +918,7 @@ impl CompletionRequest {
         crate::message::non_empty(messages).map(|content| Message::User { content })
     }
 
+    #[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
     pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
         let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {

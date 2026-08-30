@@ -6,12 +6,24 @@ Each example is its own package. Run one with:
 cargo run -p <example-name>
 ```
 
-`discord_bot` is the exception: it is excluded from the workspace and carries
-its own lockfile, so run it with
-`cargo run --manifest-path examples/discord_bot/Cargo.toml`.
-
 Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `COHERE_API_KEY`). See each example's source for specifics.
+
+Each manifest declares the exact provider features its source imports. Keep
+that list current when changing an example; examples must not rely on feature
+unification from another workspace package. To reproduce the PR gate locally,
+list or build every example independently with:
+
+```sh
+python3 scripts/check-examples.py --list
+python3 scripts/check-examples.py
+```
+
+CI shards the same stable list with `--shard-index` and `--shard-count`. The
+runner type-checks (`cargo check --locked`) rather than links: one process per
+standalone package, so none can borrow another's features, and one per group of
+crate-local targets that share a package and a `required-features` set, since
+those resolve identically. Provider-backed binaries are never executed.
 
 | Example | Description |
 | --- | --- |
@@ -41,7 +53,6 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `complex_agentic_loop_claude` | See source. |
 | `custom_vector_store` | Example: Implementing a custom vector store backend |
 | `debate` | See source. |
-| `discord_bot` | Deploys an agent as a Discord bot. Its own workspace — run it with `cargo run --manifest-path examples/discord_bot/Cargo.toml`, not `-p discord_bot`. |
 | `enum_dispatch` | See source. |
 | `extractor` | Demonstrates typed extraction and extraction with usage metadata. |
 | `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so an `AgentHook` gates the patch on `ctx.turn() == 1` to force the tool only up front. |

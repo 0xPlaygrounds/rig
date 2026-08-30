@@ -1,13 +1,23 @@
+// The concrete OpenAI ext markers exist only under `feature = "openai"`; the
+// wire types below are also consumed by `providers::azure`, which is why this
+// module is reachable without them.
+#[cfg(feature = "openai")]
 use super::{OpenAICompletionsExt, OpenAIResponsesExt};
 use crate::image_generation;
-use crate::image_generation::{
-    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
-};
-use crate::json_utils::merge_inplace;
-use crate::providers::internal::image_generation::{
-    GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
-};
+use crate::image_generation::{ImageGenerationError, NormalizeImageGenerationResponse};
+use crate::providers::internal::image_generation::decode_base64_image;
 use serde::{Deserialize, Serialize};
+// The request builder and the model impls below are `openai`-only; Azure
+// reaches this module for the wire types alone.
+#[cfg(feature = "openai")]
+use crate::image_generation::ImageGenerationRequest;
+#[cfg(feature = "openai")]
+use crate::json_utils::merge_inplace;
+#[cfg(feature = "openai")]
+use crate::providers::internal::image_generation::{
+    GenericImageGenerationModel, JsonImageGenerationProvider,
+};
+#[cfg(feature = "openai")]
 use serde_json::json;
 
 // ================================================================
@@ -48,9 +58,11 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 }
 
 /// OpenAI image generation model.
+#[cfg(feature = "openai")]
 pub type ImageGenerationModel<T> = GenericImageGenerationModel<OpenAIResponsesExt, T>;
 
 /// OpenAI image generation model for a client using Chat Completions.
+#[cfg(feature = "openai")]
 pub type CompletionsImageGenerationModel<T> = GenericImageGenerationModel<OpenAICompletionsExt, T>;
 
 /// Build the `/v1/images/generations` body.
@@ -70,6 +82,7 @@ pub type CompletionsImageGenerationModel<T> = GenericImageGenerationModel<OpenAI
 /// endpoint reached through the same client may still take the field, and may
 /// need it to answer with base64 rather than a URL; such a caller passes it
 /// explicitly through `additional_params`, which the merge below now honors.
+#[cfg(feature = "openai")]
 fn build_request(model: &str, generation_request: ImageGenerationRequest) -> serde_json::Value {
     let mut request = json!({
         "model": model,
@@ -96,11 +109,13 @@ fn build_request(model: &str, generation_request: ImageGenerationRequest) -> ser
     request
 }
 
+#[cfg(feature = "openai")]
 impl JsonImageGenerationProvider for OpenAIResponsesExt {
     const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
     type Response = ImageGenerationResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn image_generation_request_body(
         model: &str,
@@ -110,11 +125,13 @@ impl JsonImageGenerationProvider for OpenAIResponsesExt {
     }
 }
 
+#[cfg(feature = "openai")]
 impl JsonImageGenerationProvider for OpenAICompletionsExt {
     const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
     type Response = ImageGenerationResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn image_generation_request_body(
         model: &str,
@@ -124,12 +141,12 @@ impl JsonImageGenerationProvider for OpenAICompletionsExt {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "openai"))]
 mod tests {
     use super::*;
     use crate::client::image_generation::ImageGenerationClient;
     use crate::image_generation::ImageGenerationModel as _;
-    use crate::providers::openai::Client;
+    use crate::providers::openai_compatible::Client;
     use crate::test_utils::RecordingHttpClient;
 
     fn request() -> ImageGenerationRequest {

@@ -2,7 +2,7 @@ use rig::client::DefaultTransportClient as _;
 use rig::{
     completion::TypedPrompt,
     prelude::*,
-    providers::{azure::Client, openai::GPT_5_MINI},
+    providers::{azure::Client, openai_compatible::GPT_5_MINI},
 };
 use schemars::JsonSchema;
 use serde::Deserialize;

@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::telemetry::ProviderResponseExt;
 
 // ================================================================
@@ -53,6 +53,12 @@ pub const MISTRAL_SMALL_3_2_24B: &str = "mistral-small-3-2-24b-instruct";
 /// specialized to Venice.
 pub type CompletionModel<H> =
     openai::completion::GenericCompletionModel<super::client::VeniceExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 // ================================================================
 // Venice-specific request parameters

@@ -1,9 +1,11 @@
-use super::{client::ApiResponse, completion::Usage};
+use super::completion::Usage;
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
+#[cfg_attr(not(feature = "providers-all"), allow(unused_imports))]
 #[cfg(test)]
 use crate::http_client;
 use crate::http_client::HttpClientExt;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 
@@ -165,11 +167,13 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     }
 }
 
+#[cfg(feature = "openai")]
 impl OpenAIEmbeddingsCompatible for super::OpenAIResponsesExt {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
+#[cfg(feature = "openai")]
 impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
@@ -219,6 +223,7 @@ pub struct GenericEmbeddingModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "openai")]
 pub type EmbeddingModel<H> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
 /// Default dimensions for OpenAI's known embedding models (also used by
@@ -320,11 +325,10 @@ where
 
         let (parts, body) = response.into_parts();
         let status = parts.status;
-        let provider_request_id =
-            crate::providers::internal::transcription::request_id_from_headers(
-                &parts.headers,
-                Ext::REQUEST_ID_HEADER,
-            );
+        let provider_request_id = crate::providers::internal::request_id_from_headers(
+            &parts.headers,
+            Ext::REQUEST_ID_HEADER,
+        );
         let response_body: Vec<u8> = body.await?;
         if status.is_success() {
             let parsed: ApiResponse<CompatibleEmbeddingResponse> =
@@ -513,13 +517,16 @@ where
     }
 }
 
-#[cfg(test)]
+// These drive the concrete `CompletionsClient`, which is `openai`-only. The
+// provider-agnostic wire assertions live in `wire_tests` below so they still
+// run in a sparse build (azure, groq, openrouter, ...).
+#[cfg(all(test, feature = "openai"))]
 mod tests {
     use super::*;
     use crate::client::EmbeddingsClient;
     use crate::embeddings::EmbeddingModel as _;
     use crate::http_client::{LazyBody, MultipartForm, Request, Response, StreamingResponse};
-    use crate::providers::openai::CompletionsClient;
+    use crate::providers::openai_compatible::CompletionsClient;
     use crate::test_utils::RecordingHttpClient;
     use bytes::Bytes;
     use std::future::{self, Future};
@@ -757,17 +764,6 @@ mod tests {
         assert!(http_client.requests().is_empty());
     }
 
-    #[test]
-    fn public_openai_embedding_response_requires_usage() {
-        let body = r#"{
-            "object": "list",
-            "model": "text-embedding-3-small",
-            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1] }]
-        }"#;
-
-        assert!(serde_json::from_str::<EmbeddingResponse>(body).is_err());
-    }
-
     #[tokio::test]
     async fn embedding_preserves_raw_provider_error_json_on_api_error_envelope() {
         let body = r#"{"message":"embedding quota exceeded","type":"insufficient_quota"}"#;
@@ -823,5 +819,23 @@ mod tests {
             Some(http::StatusCode::UNAUTHORIZED)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+
+    /// `usage` is not optional on the shared embeddings response type; a
+    /// gateway that omits it must fail loudly rather than report zero tokens.
+    #[test]
+    fn public_openai_embedding_response_requires_usage() {
+        let body = r#"{
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1] }]
+        }"#;
+
+        assert!(serde_json::from_str::<EmbeddingResponse>(body).is_err());
     }
 }

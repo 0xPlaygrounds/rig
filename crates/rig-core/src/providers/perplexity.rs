@@ -14,7 +14,7 @@
 use crate::client::BearerAuth;
 use crate::client::{self, DebugExt, Provider};
 use crate::completion::CompletionError;
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 // ================================================================
 // Main Perplexity Client
@@ -94,6 +94,12 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 
 /// Perplexity completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<PerplexityExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;
@@ -114,7 +120,7 @@ pub const SONAR: &str = "sonar";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::test_utils::MockCompletionModel;

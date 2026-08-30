@@ -21,6 +21,13 @@ pub const SCRIBE_V2: &str = "elevenlabs/scribe-v2";
 /// `fal-ai/wizper`
 pub const WIZPER: &str = "fal-ai/wizper";
 
+// The shared wire types this provider's `raw_transcription` returns. Named
+// here so they are reachable and documented without enabling `openai`.
+pub use crate::providers::internal::transcription::{
+    DurationTag, TokensTag, TranscriptionInputTokenDetails, TranscriptionResponse,
+    TranscriptionUsage,
+};
+
 /// Venice transcription model using the shared OpenAI-style implementation.
 pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
@@ -32,6 +39,8 @@ where
     const MODEL_IN_FORM: bool = true;
     const PROVIDER_NAME: &'static str = "venice";
     const REQUEST_ID_HEADER: Option<&'static str> = None;
+    type Response = crate::providers::internal::transcription::TranscriptionResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn transcription_request(
         &self,

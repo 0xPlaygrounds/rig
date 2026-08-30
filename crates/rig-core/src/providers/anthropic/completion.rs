@@ -58,6 +58,7 @@ pub trait AnthropicCompatibleProvider: Provider {
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
 }
 
+#[cfg(feature = "anthropic")]
 impl AnthropicCompatibleProvider for super::client::AnthropicExt {
     const PROVIDER_NAME: &'static str = "anthropic";
 
@@ -174,7 +175,16 @@ pub struct OutputTokensDetails {
 ///
 /// Distinguishes 1-hour cache writes (~2x base input token price) from
 /// 5-minute writes (~1.25x), which is what makes a mixed-TTL configuration
-/// (see [`CompletionModel::with_static_prefix_cache_ttl`]) observable.
+// `CompletionModel` is the `anthropic`-gated alias, but this file also
+// compiles for the compatible providers, where the link has no target.
+#[cfg_attr(
+    feature = "anthropic",
+    doc = "(see [`CompletionModel::with_static_prefix_cache_ttl`]) observable."
+)]
+#[cfg_attr(
+    not(feature = "anthropic"),
+    doc = "(see `CompletionModel::with_static_prefix_cache_ttl`) observable."
+)]
 /// Unknown buckets a provider may add later are ignored on deserialization.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct CacheCreation {
@@ -764,7 +774,12 @@ fn extract_anthropic_doc_params(
 ///
 /// # Example
 ///
-/// ```no_run
+// `providers::anthropic` is the `anthropic` feature's alias for this module,
+// so the example only compiles in a build that has it. The compatible
+// providers reaching this file (`minimax`, `moonshot`, `xiaomimimo`, `zai`)
+// would need the `#[doc(hidden)]` path, which is not what a user should write.
+#[cfg_attr(feature = "anthropic", doc = "```no_run")]
+#[cfg_attr(not(feature = "anthropic"), doc = "```ignore")]
 /// use rig_core::completion::message::{self, AssistantContent};
 /// use rig_core::providers::anthropic::completion::anthropic_citations;
 ///
@@ -1562,6 +1577,7 @@ pub struct GenericCompletionModel<Ext, T> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "anthropic")]
 pub type CompletionModel<T> = GenericCompletionModel<super::client::AnthropicExt, T>;
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
@@ -1773,6 +1789,7 @@ where
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl<T> GenericCompletionModel<super::client::AnthropicExt, T>
 where
     T: HttpClientExt,
@@ -1891,6 +1908,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// Strict tools support optional parameters, so declared `required` lists are
 /// preserved. Unsupported validation keywords are moved into descriptions as
 /// model guidance instead of reaching the constrained-decoding compiler.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
@@ -1914,6 +1932,7 @@ fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
 /// Anthropic rejects `allOf` at the top level of a tool input even when every
 /// branch describes an object. Merge those object branches into the root while
 /// preserving per-property collisions as nested `allOf` constraints.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn flatten_root_all_of(schema: &mut serde_json::Value) {
     use serde_json::{Map, Value};
 
@@ -1937,6 +1956,7 @@ fn flatten_root_all_of(schema: &mut serde_json::Value) {
 /// `type` beside `$ref`. Resolve local root references before transformation so
 /// both requirements can be met while retaining definitions needed by nested
 /// references.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn inline_local_root_reference(schema: &mut serde_json::Value) {
     use serde_json::Value;
 
@@ -1978,6 +1998,7 @@ fn inline_local_root_reference(schema: &mut serde_json::Value) {
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_document_definitions(
     root_definitions: serde_json::Value,
     local_definitions: Option<serde_json::Value>,
@@ -1999,6 +2020,7 @@ fn merge_document_definitions(
 /// Merge keywords adjacent to a root `$ref` into its resolved object. JSON
 /// Schema applies those siblings conjunctively; simply replacing the root with
 /// the referenced object would silently discard valid constraints.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_root_reference_siblings(
     referenced: &mut serde_json::Map<String, serde_json::Value>,
     siblings: serde_json::Map<String, serde_json::Value>,
@@ -2047,6 +2069,7 @@ fn merge_root_reference_siblings(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_root_all_of(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2089,6 +2112,7 @@ fn merge_root_all_of(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_schema_properties(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2127,6 +2151,7 @@ fn merge_schema_properties(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn merge_required_properties(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2150,6 +2175,7 @@ fn merge_required_properties(
     }
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value {
     use serde_json::{Map, Value};
 
@@ -2306,6 +2332,7 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
     Value::Object(strict)
 }
 
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 fn schema_has_type(schema_type: Option<&serde_json::Value>, expected: &str) -> bool {
     match schema_type {
         Some(serde_json::Value::String(schema_type)) => schema_type == expected,
@@ -2906,6 +2933,7 @@ impl AnthropicCompletionRequest {
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
@@ -3079,7 +3107,7 @@ impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "anthropic"))]
 mod tests {
     use super::*;
     use crate::message::EMPTY_RESPONSE_ERROR;
@@ -3617,6 +3645,10 @@ mod tests {
         );
     }
 
+    // The only test here that reaches for a concrete Anthropic-compatible
+    // gateway; the rest of the module is protocol-level and must run under a
+    // plain `anthropic` build.
+    #[cfg(feature = "minimax")]
     #[test]
     fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
         let mut additional_params = serde_json::Value::Null;
@@ -3689,7 +3721,7 @@ mod tests {
             })),
         );
         let request = AnthropicCompletionRequest::try_from_params::<
-            crate::providers::anthropic::client::AnthropicExt,
+            crate::providers::anthropic_compatible::client::AnthropicExt,
         >(
             AnthropicRequestParams {
                 model: CLAUDE_SONNET_4_6,
@@ -6951,7 +6983,7 @@ mod tests {
     async fn completion_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
@@ -6986,7 +7018,7 @@ mod tests {
     async fn completion_2xx_error_envelope_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         // Anthropic's `ApiResponse` is internally tagged on `type`; the `Error`
@@ -7023,7 +7055,7 @@ mod tests {
     async fn completion_streaming_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::HttpErrorStreamingClient;
         use futures::StreamExt;
 
@@ -7137,7 +7169,7 @@ mod tests {
         use super::*;
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::providers::anthropic_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         const REQUEST_ID: &str = "req_unit_anthropic_0001";
@@ -7202,7 +7234,7 @@ mod tests {
             assert_eq!(raw["stop_sequence"], "alpha");
 
             let renormalized = typed
-                .normalize(<crate::providers::anthropic::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
+                .normalize(<crate::providers::anthropic_compatible::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
                 .expect("re-normalize the capture");
             assert_eq!(response.identity(), renormalized.identity());
             assert_eq!(response.finish_reason(), renormalized.finish_reason());
@@ -7230,7 +7262,7 @@ mod tests {
                 .expect("typed route");
             assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
             let reassembled = raw
-                .normalize(<crate::providers::anthropic::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
+                .normalize(<crate::providers::anthropic_compatible::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
                 .expect("normalize");
 
             let normalized = model

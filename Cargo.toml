@@ -61,10 +61,6 @@ exclude = [
     # Data/infra dirs under examples/ that are not Cargo packages.
     "examples/documents",
     "examples/otel",
-    # Its own workspace: `serenity` is the only published Discord client and
-    # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
-    # Excluding it keeps that subtree out of the workspace lockfile.
-    "examples/discord_bot",
 ]
 
 [workspace.lints.clippy]
@@ -334,6 +330,137 @@ tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 url = { workspace = true }
 
+[[test]]
+name = "anthropic"
+required-features = ["anthropic"]
+
+[[test]]
+name = "azure"
+required-features = ["azure"]
+
+[[test]]
+name = "cassette_cache_prefix"
+required-features = [
+  "anthropic",
+  "cohere",
+  "deepseek",
+  "doubleword",
+  "gemini",
+  "groq",
+  "mistral",
+  "openai",
+  "openrouter",
+  "perplexity",
+  "venice",
+  "xai",
+]
+
+[[test]]
+name = "chatgpt"
+required-features = ["chatgpt"]
+
+[[test]]
+name = "cohere"
+required-features = ["cohere"]
+
+[[test]]
+name = "copilot"
+required-features = ["copilot"]
+
+[[test]]
+name = "deepseek"
+required-features = ["deepseek"]
+
+[[test]]
+name = "doubleword"
+required-features = ["doubleword"]
+
+[[test]]
+name = "gemini"
+required-features = ["gemini"]
+
+[[test]]
+name = "groq"
+required-features = ["groq"]
+
+[[test]]
+name = "huggingface"
+required-features = ["huggingface"]
+
+[[test]]
+name = "hyperbolic"
+required-features = ["hyperbolic"]
+
+# No `required-features`: each module below self-gates on its store feature,
+# and requiring `openai` for the whole target meant `--features bedrock` (or
+# any single store) built none of it and passed silently.
+[[test]]
+name = "integrations"
+
+[[test]]
+name = "llamacpp"
+required-features = ["llamacpp"]
+
+[[test]]
+name = "minimax"
+required-features = ["minimax"]
+
+[[test]]
+name = "mira"
+required-features = ["mira"]
+
+[[test]]
+name = "mistral"
+required-features = ["mistral"]
+
+[[test]]
+name = "mistralrs"
+required-features = ["openai"]
+
+[[test]]
+name = "moonshot"
+required-features = ["moonshot"]
+
+[[test]]
+name = "ollama"
+required-features = ["ollama"]
+
+[[test]]
+name = "openai"
+required-features = ["openai"]
+
+[[test]]
+name = "openrouter"
+required-features = ["openrouter"]
+
+[[test]]
+name = "perplexity"
+required-features = ["perplexity"]
+
+[[test]]
+name = "together"
+required-features = ["together"]
+
+[[test]]
+name = "venice"
+required-features = ["venice"]
+
+[[test]]
+name = "voyageai"
+required-features = ["voyageai"]
+
+[[test]]
+name = "xai"
+required-features = ["xai"]
+
+[[test]]
+name = "xiaomimimo"
+required-features = ["xiaomimimo"]
+
+[[test]]
+name = "zai"
+required-features = ["zai"]
+
 [features]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent"]
@@ -342,6 +469,62 @@ test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
 # lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.
 facade-build-tests = []
+providers-all = [
+  "anthropic",
+  "azure",
+  "chatgpt",
+  "cohere",
+  "copilot",
+  "deepseek",
+  "doubleword",
+  "gemini",
+  "groq",
+  "huggingface",
+  "hyperbolic",
+  "llamacpp",
+  "minimax",
+  "mira",
+  "mistral",
+  "moonshot",
+  "ollama",
+  "openai",
+  "openrouter",
+  "perplexity",
+  "together",
+  "venice",
+  "voyageai",
+  "xai",
+  "xiaomimimo",
+  "zai",
+  "rig-core/providers-all",
+  "rig-reqwest?/providers-all",
+]
+anthropic = ["rig-core/anthropic", "rig-reqwest?/anthropic"]
+azure = ["rig-core/azure", "rig-reqwest?/azure"]
+chatgpt = ["rig-core/chatgpt", "rig-reqwest?/chatgpt"]
+cohere = ["rig-core/cohere", "rig-reqwest?/cohere"]
+copilot = ["rig-core/copilot", "rig-reqwest?/copilot"]
+deepseek = ["rig-core/deepseek", "rig-reqwest?/deepseek"]
+doubleword = ["rig-core/doubleword", "rig-reqwest?/doubleword"]
+gemini = ["rig-core/gemini", "rig-reqwest?/gemini"]
+groq = ["rig-core/groq", "rig-reqwest?/groq"]
+huggingface = ["rig-core/huggingface", "rig-reqwest?/huggingface"]
+hyperbolic = ["rig-core/hyperbolic", "rig-reqwest?/hyperbolic"]
+llamacpp = ["rig-core/llamacpp", "rig-reqwest?/llamacpp"]
+minimax = ["rig-core/minimax", "rig-reqwest?/minimax"]
+mira = ["rig-core/mira", "rig-reqwest?/mira"]
+mistral = ["rig-core/mistral", "rig-reqwest?/mistral"]
+moonshot = ["rig-core/moonshot", "rig-reqwest?/moonshot"]
+ollama = ["rig-core/ollama", "rig-reqwest?/ollama"]
+openai = ["rig-core/openai", "rig-reqwest?/openai"]
+openrouter = ["rig-core/openrouter", "rig-reqwest?/openrouter"]
+perplexity = ["rig-core/perplexity", "rig-reqwest?/perplexity"]
+together = ["rig-core/together", "rig-reqwest?/together"]
+venice = ["rig-core/venice", "rig-reqwest?/venice"]
+voyageai = ["rig-core/voyageai", "rig-reqwest?/voyageai"]
+xai = ["rig-core/xai", "rig-reqwest?/xai"]
+xiaomimimo = ["rig-core/xiaomimimo", "rig-reqwest?/xiaomimimo"]
+zai = ["rig-core/zai", "rig-reqwest?/zai"]
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [
@@ -375,9 +558,9 @@ rayon = ["rig-core/rayon"]
 rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
 reqwest = ["dep:rig-reqwest"]
-websocket = ["reqwest", "rig-reqwest/websocket"]
-websocket-rustls = ["reqwest", "rig-reqwest/websocket-rustls"]
-websocket-native-tls = ["reqwest", "rig-reqwest/websocket-native-tls"]
+websocket = ["openai", "reqwest", "rig-reqwest/websocket"]
+websocket-rustls = ["openai", "reqwest", "rig-reqwest/websocket-rustls"]
+websocket-native-tls = ["openai", "reqwest", "rig-reqwest/websocket-native-tls"]
 rustls = [
   "rig-reqwest?/rustls",
   "rig-fastembed?/hf-hub-rustls-tls",

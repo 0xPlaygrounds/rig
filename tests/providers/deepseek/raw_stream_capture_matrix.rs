@@ -33,7 +33,6 @@ use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ReasoningContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -41,7 +40,7 @@ use serde_json::{Value, json};
 use super::support::{assert_matches_recorded_token, with_deepseek_cassette_result};
 use crate::support::collect_text_and_terminal;
 
-type DeepSeekTerminal = StreamingCompletionResponse<deepseek::Usage>;
+type DeepSeekTerminal = deepseek::StreamingCompletionResponse;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;

@@ -13,7 +13,7 @@ use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
-use rig::providers::{groq, openai};
+use rig::providers::{groq, openai_compatible as openai};
 use rig::streaming::{StreamedAssistantContent, StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -462,7 +462,7 @@ struct RawResponseMetadata {
 }
 
 impl RawResponseMetadata {
-    fn capture(raw: &openai::CompletionResponse) -> Self {
+    fn capture(raw: &groq::CompletionResponse) -> Self {
         Self {
             id: raw.id.clone(),
             model: raw.model.clone(),

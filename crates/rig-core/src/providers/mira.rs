@@ -43,13 +43,13 @@ crate::providers::internal::model_listing::impl_model_lister!(
 
 impl DebugExt for MiraExt {}
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for MiraExt {
     const PROVIDER_NAME: &'static str = "mira";
 
     // Mira's gateway rejects tool parameters.
     const SUPPORTS_TOOLS: bool = false;
 
-    type StreamingUsage = crate::providers::openai::Usage;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
 
     // Mira's gateway does not accept OpenAI structured-output parameters.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
@@ -66,7 +66,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
 
     fn prepare_request(
         &self,
-        request: &mut crate::providers::openai::completion::CompletionRequest,
+        request: &mut crate::providers::openai_compatible::completion::CompletionRequest,
     ) -> Result<(), CompletionError> {
         // Mira's gateway rejects pass-through parameters (tools are dropped
         // via `SUPPORTS_TOOLS = false` during conversion).
@@ -89,7 +89,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
             .get_mut("messages")
             .and_then(serde_json::Value::as_array_mut)
         {
-            crate::providers::openai::completion::sanitize_plain_text_history(
+            crate::providers::openai_compatible::completion::sanitize_plain_text_history(
                 messages,
                 Some(("\n", false)),
                 true,
@@ -147,7 +147,13 @@ client::impl_provider_from_env!(MiraExt, input = String, api_key_env = "MIRA_API
 
 /// Mira completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> =
-    crate::providers::openai::completion::GenericCompletionModel<MiraExt, H>;
+    crate::providers::openai_compatible::completion::GenericCompletionModel<MiraExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;
@@ -305,7 +311,7 @@ mod tests {
     use super::*;
     use crate::completion::FinishReason;
     use crate::completion::NormalizeCompletionResponse;
-    use crate::providers::openai::completion::OpenAICompatibleProvider;
+    use crate::providers::openai_compatible::completion::OpenAICompatibleProvider;
 
     /// Normalize a Mira wire response the way the shared completion path does,
     /// threading Mira's own descriptor name through the conversion.

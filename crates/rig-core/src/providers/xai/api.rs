@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::completion::{self, CompletionError};
 use crate::message::{Message as RigMessage, MimeType, ReasoningContent};
-use crate::providers::openai::responses_api::ReasoningSummary;
+use crate::providers::openai_compatible::responses_api::ReasoningSummary;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CompletionRequest {
@@ -23,7 +23,7 @@ struct CompletionRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openai::responses_api::ToolChoice>,
+    tool_choice: Option<crate::providers::openai_compatible::responses_api::ToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<Value>,
 }
@@ -31,7 +31,7 @@ struct CompletionRequest {
 fn normalize_strict_tool(mut tool: Value) -> Value {
     if tool.get("type").and_then(Value::as_str) == Some("function") {
         if let Some(parameters) = tool.get_mut("parameters") {
-            crate::providers::openai::sanitize_schema(parameters);
+            crate::providers::openai_compatible::sanitize_schema(parameters);
         }
         if let Some(tool) = tool.as_object_mut() {
             tool.insert("strict".to_string(), Value::Bool(true));
@@ -43,7 +43,7 @@ fn normalize_strict_tool(mut tool: Value) -> Value {
 pub(crate) fn create_completion_request(
     model: String,
     req: crate::completion::CompletionRequest,
-    default_tools: &[crate::providers::openai::responses_api::ResponsesToolDefinition],
+    default_tools: &[crate::providers::openai_compatible::responses_api::ResponsesToolDefinition],
     strict_tools: bool,
     stream: bool,
 ) -> Result<(String, Value), CompletionError> {
@@ -113,7 +113,7 @@ pub(crate) fn create_completion_request(
         tools,
         tool_choice: req
             .tool_choice
-            .map(crate::providers::openai::responses_api::ToolChoice::try_from)
+            .map(crate::providers::openai_compatible::responses_api::ToolChoice::try_from)
             .transpose()?,
         additional_params: (!additional_params.is_null()).then_some(additional_params),
     };
@@ -487,7 +487,7 @@ mod tests {
         AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolChoice,
         ToolResultContent, UserContent,
     };
-    use crate::providers::openai::responses_api::ReasoningSummary;
+    use crate::providers::openai_compatible::responses_api::ReasoningSummary;
     use crate::test_utils::MockCompletionModel;
 
     fn request_value(request: CompletionRequest) -> serde_json::Value {
@@ -641,7 +641,7 @@ mod tests {
             ]
         }));
         let default_tools = [
-            crate::providers::openai::responses_api::ResponsesToolDefinition::function(
+            crate::providers::openai_compatible::responses_api::ResponsesToolDefinition::function(
                 "default_tool",
                 "A model-level default tool",
                 serde_json::json!({

@@ -188,8 +188,7 @@ where
     // (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id =
-        super::transcription::request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let bytes: Bytes = body.await?;
 
     if !status.is_success() {
@@ -211,8 +210,33 @@ mod tests {
     /// The default body every provider inherits unless it overrides it.
     struct DefaultAudioExt;
 
+    /// A local stub rather than a borrowed concrete provider builder: this
+    /// module tests the *shared* audio driver, so it has to compile for every
+    /// provider that enables `audio`, not only for `openai`.
+    #[derive(Debug, Default, Clone, Copy)]
+    struct DefaultAudioExtBuilder;
+
+    impl crate::client::ProviderBuilder for DefaultAudioExtBuilder {
+        type Extension<H>
+            = DefaultAudioExt
+        where
+            H: crate::http_client::HttpClientExt;
+        type ApiKey = crate::client::BearerAuth;
+
+        const BASE_URL: &'static str = "https://audio.invalid";
+
+        fn build<H>(
+            _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+        ) -> crate::http_client::Result<Self::Extension<H>>
+        where
+            H: crate::http_client::HttpClientExt,
+        {
+            Ok(DefaultAudioExt)
+        }
+    }
+
     impl Provider for DefaultAudioExt {
-        type Builder = crate::providers::openai::OpenAICompletionsExtBuilder;
+        type Builder = DefaultAudioExtBuilder;
         const VERIFY_PATH: &'static str = "/models";
     }
 

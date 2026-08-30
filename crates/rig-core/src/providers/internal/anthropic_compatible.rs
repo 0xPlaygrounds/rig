@@ -104,7 +104,7 @@ macro_rules! impl_dual_dialect_provider {
 
         #[derive(Debug, Default, Clone)]
         pub struct $anthropic_builder {
-            anthropic: $crate::providers::anthropic::client::AnthropicBuilder,
+            anthropic: $crate::providers::anthropic_compatible::client::AnthropicBuilder,
         }
 
         #[derive(Debug, Default, Clone, Copy)]
@@ -117,7 +117,7 @@ macro_rules! impl_dual_dialect_provider {
         pub type AnthropicClient<H> = $crate::client::Client<$anthropic_ext, H>;
         pub type AnthropicClientBuilder<H = $crate::markers::Missing> = $crate::client::ClientBuilder<
             $anthropic_builder,
-            $crate::providers::anthropic::client::AnthropicKey,
+            $crate::providers::anthropic_compatible::client::AnthropicKey,
             H,
         >;
 
@@ -139,7 +139,7 @@ macro_rules! impl_dual_dialect_provider {
         $crate::client::impl_capabilities!(
             $anthropic_ext,
             completion =
-                $crate::providers::anthropic::completion::GenericCompletionModel<$anthropic_ext, H>,
+                $crate::providers::anthropic_compatible::completion::GenericCompletionModel<$anthropic_ext, H>,
         );
 
         $crate::client::impl_default_provider_builder!(
@@ -147,12 +147,12 @@ macro_rules! impl_dual_dialect_provider {
             api_key = $crate::client::BearerAuth,
             base_url = $base_url,
         );
-        $crate::providers::anthropic::client::impl_anthropic_compatible_builder!(
+        $crate::providers::anthropic_compatible::client::impl_anthropic_compatible_builder!(
             $anthropic_builder => $anthropic_ext,
             base_url = $anthropic_base_url,
         );
 
-        impl $crate::providers::anthropic::completion::AnthropicCompatibleProvider
+        impl $crate::providers::anthropic_compatible::completion::AnthropicCompatibleProvider
             for $anthropic_ext
         {
             const PROVIDER_NAME: &'static str = $anthropic_name;

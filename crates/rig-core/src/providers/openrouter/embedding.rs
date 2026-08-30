@@ -1,5 +1,7 @@
 use super::client::OpenRouterExt;
-use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
+use crate::providers::openai_compatible::embedding::{
+    GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
+};
 
 impl OpenAIEmbeddingsCompatible for OpenRouterExt {
     const PROVIDER_NAME: &'static str = "openrouter";
@@ -12,7 +14,7 @@ pub type EmbeddingModel<H> = GenericEmbeddingModel<OpenRouterExt, H>;
 mod tests {
     use crate::client::EmbeddingsClient;
     use crate::embeddings::{EmbeddingError, EmbeddingModel as _};
-    use crate::providers::{openai::embedding::EncodingFormat, openrouter};
+    use crate::providers::{openai_compatible::embedding::EncodingFormat, openrouter};
     use crate::test_utils::RecordingHttpClient;
 
     const RESPONSE_BODY: &str = r#"{

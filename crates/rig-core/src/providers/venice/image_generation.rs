@@ -87,6 +87,7 @@ impl JsonImageGenerationProvider for super::client::VeniceExt {
     const IMAGE_GENERATION_PATH: &'static str = "/image/generate";
     const PROVIDER_NAME: &'static str = "venice";
     type Response = ImageGenerationResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn image_generation_request_body(
         model: &str,

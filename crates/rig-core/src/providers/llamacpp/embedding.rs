@@ -9,8 +9,10 @@
 //! request with a 500 rather than reshaping it.
 
 use crate::embeddings::EmbeddingError;
-use crate::providers::openai;
-use crate::providers::openai::embedding::{EmbeddingDimensions, OpenAIEmbeddingsCompatible};
+use crate::providers::openai_compatible as openai;
+use crate::providers::openai_compatible::embedding::{
+    EmbeddingDimensions, OpenAIEmbeddingsCompatible,
+};
 
 impl OpenAIEmbeddingsCompatible for super::client::LlamacppExt {
     const PROVIDER_NAME: &'static str = "llamacpp";

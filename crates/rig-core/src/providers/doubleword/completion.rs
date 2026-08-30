@@ -5,7 +5,7 @@
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
 //! [`DoublewordExt`](super::client::DoublewordExt) in `client.rs`.
 
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 // ================================================================
 // Doubleword Completion Models
@@ -29,3 +29,14 @@ pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 /// specialized to Doubleword.
 pub type CompletionModel<H> =
     openai::completion::GenericCompletionModel<super::client::DoublewordExt, H>;
+/// Raw completion payload: what `CompletionModel::raw_completion` returns.
+/// Shared with the OpenAI Chat Completions path, and named here so it is
+/// reachable and documented without enabling `openai`.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
+
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;

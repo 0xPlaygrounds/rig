@@ -27,7 +27,7 @@ use std::fmt::Debug;
 use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder};
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -397,11 +397,22 @@ pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
 /// Azure OpenAI completion model, driven by the shared OpenAI Chat Completions
 /// path. The deployment-scoped URL (including `api-version`) is produced by
-/// [`completion_path`](crate::providers::openai::completion::OpenAICompatibleProvider::completion_path)
+/// [`completion_path`](crate::providers::openai_compatible::completion::OpenAICompatibleProvider::completion_path)
 /// on [`AzureExt`], pinned to the deployment this model handle was created
 /// with (a per-request `model` override changes only the request body, as
 /// before the migration).
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<AzureExt, H>;
+/// Raw completion payload: what `CompletionModel::raw_completion` returns.
+/// Shared with the OpenAI Chat Completions path, and named here so it is
+/// reachable and documented without enabling `openai`.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
+
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 impl openai::completion::OpenAICompatibleProvider for AzureExt {
     const PROVIDER_NAME: &'static str = "azure.openai";
@@ -427,6 +438,13 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
 // Azure OpenAI Transcription API
 // ================================================================
 
+// The shared wire types this provider's `raw_transcription` returns. Named
+// here so they are reachable and documented without enabling `openai`.
+pub use crate::providers::internal::transcription::{
+    DurationTag, TokensTag, TranscriptionInputTokenDetails, TranscriptionResponse,
+    TranscriptionUsage,
+};
+
 /// Azure OpenAI transcription model; `model` identifies the Azure deployment.
 pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
@@ -438,6 +456,8 @@ where
     const MODEL_IN_FORM: bool = false;
     const PROVIDER_NAME: &'static str = "azure.openai";
     const REQUEST_ID_HEADER: Option<&'static str> = None;
+    type Response = crate::providers::internal::transcription::TranscriptionResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn transcription_request(
         &self,
@@ -461,8 +481,11 @@ mod image_generation {
     use crate::providers::internal::image_generation::{
         GenericImageGenerationModel, JsonImageGenerationProvider,
     };
-    use crate::providers::openai::ImageGenerationResponse;
     use serde_json::json;
+
+    // The shared wire type this provider's `raw_image_generation` returns.
+    // Re-exported so it is reachable and documented without enabling `openai`.
+    pub use crate::providers::openai_compatible::ImageGenerationResponse;
 
     /// Azure OpenAI image generation model; `model` identifies the deployment.
     pub type ImageGenerationModel<T> = GenericImageGenerationModel<AzureExt, T>;
@@ -471,6 +494,7 @@ mod image_generation {
         const IMAGE_GENERATION_PATH: &'static str = "";
         const PROVIDER_NAME: &'static str = "azure.openai";
         type Response = ImageGenerationResponse;
+        type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
         fn image_generation_request_builder<H>(
             client: &crate::client::Client<Self, H>,

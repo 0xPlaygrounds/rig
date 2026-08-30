@@ -24,16 +24,16 @@ impl Provider for TogetherExt {
 
 impl DebugExt for TogetherExt {}
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for TogetherExt {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for TogetherExt {
     const PROVIDER_NAME: &'static str = "together";
 
-    type StreamingUsage = crate::providers::openai::Usage;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
 
     // Together's structured-output support is model-dependent; keep the
     // pre-migration behavior of dropping `output_schema` with a warning.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
-    type Response = crate::providers::openai::CompletionResponse;
+    type Response = crate::providers::openai_compatible::CompletionResponse;
 
     // The client base URL is the bare host; embeddings build their own v1 path.
     fn completion_path(&self, _model: &str) -> String {

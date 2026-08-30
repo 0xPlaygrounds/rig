@@ -8,7 +8,7 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { workspace = true }
+rig = { workspace = true, features = ["anthropic"] }
 anyhow = { workspace = true }
 bytes = { workspace = true }
 http = { workspace = true }

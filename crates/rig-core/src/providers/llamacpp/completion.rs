@@ -5,7 +5,7 @@
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
 //! [`LlamacppExt`](super::client::LlamacppExt) in `client.rs`.
 
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use serde::{Deserialize, Serialize};
 
 // ================================================================
@@ -26,6 +26,12 @@ pub const LLAMA_CPP: &str = "LLaMA_CPP";
 /// path.
 pub type CompletionModel<H> =
     openai::completion::GenericCompletionModel<super::client::LlamacppExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 /// Server-side timing accounting `llama-server` reports beside `usage`.
 ///
@@ -80,7 +86,16 @@ pub struct Timings {
 /// `StreamingCompletionChunk` does carry a `#[serde(flatten)]` catch-all for
 /// exactly this reason. Preserving it here removes that asymmetry for
 /// llama.cpp and follows the precedent
-/// [`deepseek`](crate::providers::deepseek) and [`mira`](crate::providers::mira)
+// Both targets are feature-gated modules; this file compiles for `llamacpp`
+// alone, where neither exists.
+#[cfg_attr(
+    all(feature = "deepseek", feature = "mira"),
+    doc = "[`deepseek`](crate::providers::deepseek) and [`mira`](crate::providers::mira)"
+)]
+#[cfg_attr(
+    not(all(feature = "deepseek", feature = "mira")),
+    doc = "`deepseek` and `mira`"
+)]
 /// set: a provider that adds fields to the wire declares its own response type
 /// rather than pretending the OpenAI one describes it.
 ///

@@ -5,7 +5,7 @@
 //! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
 //! no flag to request it, nothing about it reaches the wire, and a
 //! `Value::Null` only ever means a response built by hand with no provider
-//! payload behind it. Groq reuses the shared [`openai::CompletionResponse`]
+//! payload behind it. Groq reuses the shared [`groq::CompletionResponse`]
 //! wire type rather than declaring its own, so the raw view is that type
 //! serialized — and it is what makes Groq's timing accounting
 //! (`usage.queue_time`, `prompt_time`, `completion_time`, `total_time`)
@@ -15,7 +15,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `openai::CompletionResponse` and re-serializes equal | recorded |
+//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `groq::CompletionResponse` and re-serializes equal | recorded |
 //! | 2 | `raw_exposes_queue_time` | provider-only field | `raw.usage.queue_time` and `raw.system_fingerprint` equal the fixture body | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (body and `x-request-id` header) and equals its own `raw` re-normalized | recorded |
 //!
@@ -36,7 +36,7 @@ use rig::completion::{
 };
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::{groq, openai};
+use rig::providers::groq;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -164,7 +164,7 @@ async fn raw_round_trips_openai_type() {
             let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
             let response = model.completion(request(&model)).await?;
             let raw = &response.raw;
-            let typed = openai::CompletionResponse::deserialize(raw)
+            let typed = groq::CompletionResponse::deserialize(raw)
                 .expect("raw is the shared OpenAI CompletionResponse Groq parses into");
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
@@ -273,7 +273,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
     let raw = &response.raw;
-    let renormalized = openai::CompletionResponse::deserialize(raw)
+    let renormalized = groq::CompletionResponse::deserialize(raw)
         .expect("raw is the shared OpenAI type")
         .normalize(PROVIDER)
         .expect("raw normalizes")

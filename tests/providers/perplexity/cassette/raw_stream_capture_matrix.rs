@@ -5,7 +5,7 @@
 //! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
 //! `raw_stream` yielded as its terminal record — for Perplexity the shared
 //! chat-completions terminal [`StreamingCompletionResponse`] over the shared
-//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
+//! [`perplexity::StreamingCompletionResponse`] — serialized. Capture is always on: there is no flag to
 //! request it, nothing about it reaches the wire, and a `Value::Null` only ever
 //! means a terminal built by hand with no provider record behind it. It is the
 //! terminal record only, never the stream's frames. Perplexity reports usage on
@@ -16,7 +16,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<openai::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded last frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `perplexity::StreamingCompletionResponse` and re-serializes equal; the normalized terminal reproduces the recorded last frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only field | `raw.usage` counts equal the recorded last frame's; `raw.additional_params.object` equals the frames' tag | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -29,8 +29,7 @@
 
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
-use rig::providers::{openai, perplexity};
+use rig::providers::perplexity;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -38,7 +37,7 @@ use serde_json::{Value, json};
 use super::super::support::{assert_matches_recorded_token, with_perplexity_cassette};
 use crate::support::collect_text_and_terminal;
 
-type PerplexityTerminal = StreamingCompletionResponse<openai::Usage>;
+type PerplexityTerminal = perplexity::StreamingCompletionResponse;
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;

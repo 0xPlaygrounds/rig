@@ -9,9 +9,9 @@
 //!   (web search, thinking control, characters);
 //! - [`EmbeddingModel`] — `POST /embeddings`;
 //! - [`VeniceModelLister`] — `GET /models`;
-//! - [`ImageGenerationModel`] — Venice's native `POST /image/generate`
+//! - `ImageGenerationModel` — Venice's native `POST /image/generate`
 //!   (feature `image`);
-//! - [`AudioGenerationModel`] — `POST /audio/speech` (feature `audio`);
+//! - `AudioGenerationModel` — `POST /audio/speech` (feature `audio`);
 //! - [`TranscriptionModel`] — `POST /audio/transcriptions`.
 //!
 //! Venice's video, image-editing, music, web-augmentation (`/augment/*`),

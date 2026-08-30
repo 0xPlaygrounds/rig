@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::client::{MistralExt, Usage};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::{
     completion::{self, CompletionError},
     json_utils,
@@ -59,13 +59,14 @@ pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
 /// Mistral completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<MistralExt, H>;
-
-/// Mistral's provider-native terminal streaming record: the value carried by
-/// the final item of the stream returned by `CompletionModel::raw_stream`.
-/// Shared with the OpenAI Chat Completions path but carrying Mistral's own
-/// usage payload (cached-token fallbacks).
-pub type MistralStreamingCompletionResponse =
-    openai::StreamingCompletionResponse<super::client::Usage>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries. Shared with the OpenAI Chat
+/// Completions path but carrying Mistral's own usage payload (cached-token
+/// fallbacks).
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::mistral::client::Usage,
+    >;
 
 // =================================================================
 // Rig Implementation Types
@@ -474,7 +475,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 mod tests {
     use super::*;
     use crate::completion::NormalizeCompletionResponse as _;
-    use crate::providers::openai::completion::OpenAICompatibleProvider;
+    use crate::providers::openai_compatible::completion::OpenAICompatibleProvider;
 
     #[test]
     fn deserializes_response_with_array_and_null_content() {

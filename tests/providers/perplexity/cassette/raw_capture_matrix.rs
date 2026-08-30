@@ -7,7 +7,7 @@
 //! no flag to request it, nothing about it reaches the wire, and a
 //! `Value::Null` only ever means a response built by hand with no provider
 //! payload behind it. Perplexity reuses the shared
-//! [`openai::CompletionResponse`] wire type, so the raw view is that type
+//! [`perplexity::CompletionResponse`] wire type, so the raw view is that type
 //! serialized. That framing matters here more than for any other provider in
 //! this family: Perplexity's wire also carries `citations` and
 //! `search_results`, which the shared type does *not* model — and the
@@ -19,7 +19,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `openai::CompletionResponse` and re-serializes equal | recorded |
+//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `perplexity::CompletionResponse` and re-serializes equal | recorded |
 //! | 2 | `raw_exposes_object_not_citations` | provider-only field | `raw.object` equals the fixture body; the fixture's `citations` are not in `raw` (unmodeled by the wire type) | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes and equals its own `raw` re-normalized | recorded |
 //!
@@ -40,7 +40,7 @@ use rig::completion::{
 };
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::{openai, perplexity};
+use rig::providers::perplexity;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -150,7 +150,7 @@ async fn raw_round_trips_openai_type() {
                 .await
                 .expect("the turn should succeed");
             let raw = &response.raw;
-            let typed = openai::CompletionResponse::deserialize(raw)
+            let typed = perplexity::CompletionResponse::deserialize(raw)
                 .expect("raw is the shared OpenAI CompletionResponse Perplexity parses into");
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
@@ -253,7 +253,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
     let raw = &response.raw;
-    let renormalized = openai::CompletionResponse::deserialize(raw)
+    let renormalized = perplexity::CompletionResponse::deserialize(raw)
         .expect("raw is the shared OpenAI type")
         .normalize(PROVIDER)
         .expect("raw normalizes")

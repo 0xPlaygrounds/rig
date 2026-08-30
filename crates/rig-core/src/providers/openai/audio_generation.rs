@@ -1,7 +1,7 @@
 use crate::providers::internal::audio_generation::{
     GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::providers::openai::{OpenAICompletionsExt, OpenAIResponsesExt};
+use crate::providers::openai_compatible::{OpenAICompletionsExt, OpenAIResponsesExt};
 
 pub const TTS_1: &str = "tts-1";
 pub const TTS_1_HD: &str = "tts-1-hd";
@@ -29,7 +29,7 @@ mod tests {
     use super::*;
     use crate::audio_generation::{AudioGenerationError, AudioGenerationModel as _};
     use crate::client::audio_generation::AudioGenerationClient;
-    use crate::providers::openai::Client;
+    use crate::providers::openai_compatible::Client;
     use crate::test_utils::RecordingHttpClient;
 
     #[tokio::test]

@@ -1,5 +1,5 @@
 use super::client::HuggingFaceExt;
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -37,6 +37,12 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 /// path. The sub-provider's completion endpoint and model-identifier mapping
 /// are applied by [`HuggingFaceExt`]'s `OpenAICompatibleProvider` impl.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<HuggingFaceExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;

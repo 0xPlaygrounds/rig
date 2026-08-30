@@ -203,6 +203,7 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
 /// a caller who wants it does today, and pins that it works. So "rig cannot"
 /// is not the reason; "one provider, one wire" is.
 #[tokio::test]
+#[cfg(feature = "openai")]
 async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
     use rig::completion::CompletionModel as _;
     use rig::prelude::*;

@@ -10,12 +10,12 @@
 //! routes differ in where the transport id lives:
 //!
 //! - **chat route** — the wire type is the shared
-//!   [`openai::CompletionResponse`], which has no slot for the `x-request-id`
+//!   [`rig::providers::copilot::ChatCompletionResponse`], which has no slot for the `x-request-id`
 //!   response header; plain `raw_completion(..).normalize(..)` therefore
 //!   *lacks* `provider_request_id`, and only the `_with_request_id` pair plus
 //!   `with_optional_provider_request_id` reproduces `completion`.
 //! - **responses route** — the wire type
-//!   ([`responses_api::CompletionResponse`]) carries `provider_request_id`
+//!   ([`rig::providers::copilot::ResponsesCompletionResponse`]) carries `provider_request_id`
 //!   itself (stamped by the request driver), so `raw_completion(..)` already
 //!   holds the id and the pair's second element is that same value.
 //!
@@ -44,8 +44,6 @@ use rig::completion::{
 };
 use rig::prelude::*;
 use rig::providers::copilot::{self, CopilotCompletionResponse};
-use rig::providers::openai;
-use rig::providers::openai::responses_api;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -235,7 +233,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
             context,
         );
         // And the rest of the normalized surface is that interaction's body.
-        let from_wire = openai::CompletionResponse::deserialize(body)
+        let from_wire = rig::providers::copilot::ChatCompletionResponse::deserialize(body)
             .expect("recorded body must be a chat-completions response")
             .normalize(COPILOT_PROVIDER)
             .expect("recorded body must normalize");
@@ -358,7 +356,7 @@ async fn responses_raw_completion_carries_request_id() {
             &recorded_request_id(scenario, index),
             context,
         );
-        let from_wire = responses_api::CompletionResponse::deserialize(body)
+        let from_wire = rig::providers::copilot::ResponsesCompletionResponse::deserialize(body)
             .expect("recorded body must be a Responses envelope")
             .normalize(COPILOT_PROVIDER)
             .expect("recorded body must normalize");

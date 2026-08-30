@@ -3,7 +3,32 @@
 mod completion;
 mod embeddings;
 mod http;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    )
+))]
 pub(crate) mod internal_streaming_profiles;
 mod memory;
 mod model_listing;

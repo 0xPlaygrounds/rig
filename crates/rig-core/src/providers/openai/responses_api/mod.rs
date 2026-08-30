@@ -1504,6 +1504,7 @@ pub struct GenericResponsesCompletionModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "openai")]
 pub type ResponsesCompletionModel<H> =
     GenericResponsesCompletionModel<super::OpenAIResponsesExt, H>;
 
@@ -1629,12 +1630,15 @@ where
     }
 }
 
+#[cfg(feature = "openai")]
 impl<T> GenericResponsesCompletionModel<super::OpenAIResponsesExt, T>
 where
     T: HttpClientExt + Clone + 'static,
 {
     /// Use the Completions API instead of Responses.
-    pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
+    pub fn completions_api(
+        self,
+    ) -> crate::providers::openai_compatible::completion::CompletionModel<T> {
         super::completion::CompletionModel::new(self.client.completions_api(), &self.model)
     }
 }
@@ -1964,7 +1968,12 @@ pub struct StructuredOutputsInput {
 /// Add reasoning to a [`CompletionRequest`].
 ///
 /// # Example
-/// ```
+// `providers::openai` is the `openai` feature's alias for this module, so the
+// example only compiles in a build that has it. The other providers reaching
+// this file (`chatgpt`, `copilot`, `xai`) would need the `#[doc(hidden)]`
+// compatible path, which is not what a user should write.
+#[cfg_attr(feature = "openai", doc = "```")]
+#[cfg_attr(not(feature = "openai"), doc = "```ignore")]
 /// use rig_core::providers::openai::responses_api::{
 ///     Reasoning, ReasoningContext, ReasoningEffort, ReasoningMode,
 /// };
@@ -2562,7 +2571,7 @@ where
         let (mut response, provider_request_id) = if Ext::USES_2XX_ERROR_ENVELOPE {
             send_completion::<
                 _,
-                crate::providers::openai::client::ApiResponse<CompletionResponse>,
+                crate::providers::internal::envelope::OpenAiApiResponse<CompletionResponse>,
                 _,
             >(
                 &self.client,
@@ -3295,6 +3304,7 @@ mod tests {
     /// Responses stream whose reasoning deltas lack `item_id` keys
     /// accumulation by a minted identity that never becomes a durable id, so
     /// the next request carries no fabricated `output-{index}` item.
+    #[cfg(feature = "openai")]
     #[tokio::test]
     async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
         use crate::test_utils::streaming_conformance::{fixtures, ok_chunks};
@@ -3826,9 +3836,10 @@ mod tests {
         assert!(input[0].to_string().contains("System only"));
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn responses_model_can_fallback_to_system_messages_in_input() {
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
@@ -3851,11 +3862,12 @@ mod tests {
         assert_eq!(input[1]["role"], "user");
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn responses_client_can_fallback_to_system_messages_in_input() {
         use crate::prelude::CompletionClient;
 
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
@@ -3878,9 +3890,10 @@ mod tests {
         assert_eq!(input[1]["role"], "user");
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn responses_model_can_lift_all_system_messages_via_placement() {
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
@@ -3912,11 +3925,12 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn responses_client_placement_survives_completions_api_round_trip() {
         use crate::prelude::CompletionClient;
 
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
@@ -3980,9 +3994,10 @@ mod tests {
         assert!(tool.parameters.get("additionalProperties").is_none());
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn responses_model_strict_tools_opt_in_sanitizes_all_function_tools() {
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
@@ -4019,9 +4034,10 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn responses_model_default_preserves_all_function_tools_as_constructed() {
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
@@ -4050,9 +4066,10 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn responses_explicit_strict_tool_stays_strict_on_default_model() {
-        let client = crate::providers::openai::Client::new_with(
+        let client = crate::providers::openai_compatible::Client::new_with(
             "dummy-key",
             crate::test_utils::RecordingHttpClient::new(""),
         )
@@ -5228,11 +5245,12 @@ mod tests {
         assert!(json["content"][0].get("file_url").is_none());
     }
 
+    #[cfg(feature = "openai")]
     #[tokio::test]
     async fn responses_completion_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel;
-        use crate::providers::openai::Client;
+        use crate::providers::openai_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
@@ -5676,11 +5694,12 @@ mod tests {
     /// value is the body as parsed — the transport id lives on the normalized
     /// response, beside the capture, not inside it. `with_error_response_headers`
     /// with `200 OK` is the one unary double that carries response headers.
+    #[cfg(feature = "openai")]
     mod raw_capture {
         use super::*;
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
-        use crate::providers::openai::Client;
+        use crate::providers::openai_compatible::Client;
         use crate::test_utils::RecordingHttpClient;
 
         const REQUEST_ID: &str = "req_unit_responses_0001";
@@ -5768,7 +5787,7 @@ mod tests {
             assert_eq!(typed.provider_request_id, None);
 
             let renormalized = typed
-                .normalize(<crate::providers::openai::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
+                .normalize(<crate::providers::openai_compatible::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
                 .expect("re-normalize the capture")
                 .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
             assert_eq!(response.identity(), renormalized.identity());
@@ -5794,7 +5813,7 @@ mod tests {
                 .expect("typed route");
             assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
             let reassembled = raw
-                .normalize(<crate::providers::openai::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
+                .normalize(<crate::providers::openai_compatible::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
                 .expect("normalize");
 
             let normalized = model

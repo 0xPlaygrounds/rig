@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::openai;
+use super::openai_compatible as openai;
 use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
@@ -148,6 +148,10 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 
 /// Groq completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<GroqExt, H>;
+/// Raw completion payload: what `CompletionModel::raw_completion` returns.
+/// Shared with the OpenAI Chat Completions path, and named here so it is
+/// reachable and documented without enabling `openai`.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
 
 /// Groq's provider-native terminal streaming record: the value carried by the
 /// final item of the stream returned by `CompletionModel::raw_stream`. Shared
@@ -157,7 +161,7 @@ pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
 client::impl_provider_from_env!(GroqExt, input = String, api_key_env = "GROQ_API_KEY");
 
 #[cfg(test)]
-use crate::providers::openai::client::ApiResponse;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 
 fn apply_native_tools_to_additional_params(
     extra: &mut Map<String, Value>,
@@ -271,6 +275,13 @@ pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
 pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
 pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
+// The shared wire types this provider's `raw_transcription` returns. Named
+// here so they are reachable and documented without enabling `openai`.
+pub use crate::providers::internal::transcription::{
+    DurationTag, TokensTag, TranscriptionInputTokenDetails, TranscriptionResponse,
+    TranscriptionUsage,
+};
+
 /// Groq transcription model using the shared OpenAI-style implementation.
 pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
@@ -282,6 +293,8 @@ where
     const MODEL_IN_FORM: bool = true;
     const PROVIDER_NAME: &'static str = "groq";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
+    type Response = crate::providers::internal::transcription::TranscriptionResponse;
+    type Envelope = crate::providers::internal::envelope::OpenAiApiResponse<Self::Response>;
 
     fn transcription_request(
         &self,
@@ -293,7 +306,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::{completion::CompletionRequestBuilder, test_utils::MockCompletionModel};

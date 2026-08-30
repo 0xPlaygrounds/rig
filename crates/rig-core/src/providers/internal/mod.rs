@@ -9,25 +9,228 @@
 //! crate-private.
 
 pub mod adapter;
+// Shared provider drivers expose a superset of the operations used by any one
+// feature-gated provider. Keep sparse provider builds warning-free without
+// weakening linting for provider implementations themselves.
+#[cfg(any(
+    feature = "minimax",
+    feature = "moonshot",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+#[cfg_attr(
+    not(feature = "providers-all"),
+    allow(dead_code, unused_imports, unused_macros)
+)]
 pub(crate) mod anthropic_compatible;
-#[cfg(feature = "audio")]
+#[cfg(all(
+    feature = "audio",
+    any(
+        feature = "azure",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "venice",
+        feature = "xai"
+    )
+))]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub(crate) mod audio_generation;
+#[cfg(any(feature = "chatgpt", feature = "copilot"))]
 pub(crate) mod auth;
 pub mod chunk_lifecycle;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "cohere",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub(crate) mod completion_send;
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(
+    not(target_family = "wasm"),
+    any(feature = "chatgpt", feature = "copilot")
+))]
 pub(crate) mod device_auth;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "cohere",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "voyageai",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub(crate) mod envelope;
-#[cfg(feature = "image")]
+#[cfg(all(
+    feature = "image",
+    any(
+        feature = "azure",
+        feature = "hyperbolic",
+        feature = "openai",
+        feature = "venice",
+        feature = "xai"
+    )
+))]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub(crate) mod image_generation;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
+#[cfg_attr(
+    not(feature = "providers-all"),
+    allow(dead_code, unused_imports, unused_macros)
+)]
 pub(crate) mod model_listing;
+#[cfg(any(
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub(crate) mod openai_chat_completions_compatible;
+#[cfg(feature = "llamacpp")]
 pub(crate) mod rerank;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) mod schema;
 #[cfg(any(test, debug_assertions))]
 pub(crate) mod sequence_law;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "cohere",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
+#[cfg(any(
+    feature = "azure",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "mistral",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice"
+))]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code, unused_imports))]
 pub(crate) mod transcription;
 pub mod wire;
 
@@ -106,6 +309,7 @@ pub fn resolve_empty_tool_result_names(history: &mut [crate::message::Message]) 
 /// construction.
 #[derive(Clone, Copy)]
 #[doc(hidden)]
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub enum LogTarget {
     Completions,
     Streaming,
@@ -131,6 +335,23 @@ pub fn trace_json(target: LogTarget, label: &str, value: &impl serde::Serialize)
     }
 }
 
+/// Reads a provider transport request id from a response header, when the
+/// provider declares one and the value is non-empty.
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
+pub(crate) fn request_id_from_headers(
+    headers: &http::HeaderMap,
+    request_id_header: Option<&str>,
+) -> Option<String> {
+    request_id_header.and_then(|header| {
+        headers
+            .get(header)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
+}
+
+#[cfg_attr(not(feature = "providers-all"), allow(dead_code))]
 pub(crate) fn completion_usage(
     input_tokens: u64,
     output_tokens: u64,

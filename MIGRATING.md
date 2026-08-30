@@ -806,6 +806,55 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Built-in providers are opt-in Cargo features
+
+No concrete provider is compiled unless you name it. `rig`'s default feature
+set is unchanged in every other respect, but it no longer pulls in any
+provider, so existing code fails to compile on upgrade:
+
+```
+error[E0433]: failed to resolve: could not find `openai` in `providers`
+```
+
+Add the feature for each provider module you use:
+
+```toml
+rig = { version = "0.42", features = ["openai", "anthropic"] }
+```
+
+The features are `anthropic`, `azure`, `chatgpt`, `cohere`, `copilot`,
+`deepseek`, `doubleword`, `gemini`, `groq`, `huggingface`, `hyperbolic`,
+`llamacpp`, `minimax`, `mira`, `mistral`, `moonshot`, `ollama`, `openai`,
+`openrouter`, `perplexity`, `together`, `venice`, `voyageai`, `xai`,
+`xiaomimimo`, and `zai` — the same name on `rig`, `rig-core` and
+`rig-reqwest`, so a direct `rig-core` dependency needs the same addition.
+`providers-all` is an explicit aggregate for documentation, CI, and
+applications that genuinely need every provider; prefer naming the two or
+three you use, since that is the point of the change.
+
+Paths, types, and behavior are otherwise identical once the feature is on,
+with one rename below. The capability features (`image`, `audio`) and the
+companion crates are unaffected — a companion crate enables whatever provider
+it needs itself.
+
+`mistral::completion::MistralStreamingCompletionResponse` is now
+`mistral::completion::StreamingCompletionResponse`, the name every other
+provider uses for the same thing. It is the same type; only the name changed.
+
+The OpenAI- and Anthropic-compatible provider families share one protocol
+implementation, reachable as `providers::openai_compatible` and
+`providers::anthropic_compatible`. Both are `#[doc(hidden)]` and **not
+public API**: they exist so a build that enables, say, only `groq` still has
+the shared tree compiled, and their contents may move in any release. Name
+the wire types through the provider you use — `groq::CompletionResponse`,
+`azure::TranscriptionResponse`, `minimax::AnthropicCompletionResponse` —
+rather than through the shared path.
+
+One consequence for crates implementing their own OpenAI-compatible provider:
+`providers::openai::completion::streaming::send_compatible_streaming_request`
+now needs the `openai` feature, since `providers::openai` is that feature's
+alias for the shared tree.
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in
@@ -863,7 +912,7 @@ plugin), all additive or derive-only:
   provide `Send + 'static` futures for hosts that spawn tasks; the borrowed
   methods remain the implementation surface.
 
-### The `discord-bot` feature is gone; the integration is an example
+### The `discord-bot` feature is gone
 
 `rig`'s `discord-bot` feature, rig-agent's `discord-bot` feature, and
 `rig_agent::integrations::discord_bot` (`DiscordExt`, `DiscordBotError`) are
@@ -874,17 +923,12 @@ weaknesses — with no version to bump to. A demo-grade integration is not worth
 putting that in the dependency graph of everyone who builds the facade with
 `--all-features`.
 
-The code moved verbatim to `examples/discord_bot`, which is now excluded from
-the workspace and carries its own lockfile, so `serenity` is out of the
-workspace `Cargo.lock` entirely. If you were using `DiscordExt`, copy
-`examples/discord_bot/src/discord_bot.rs` into your own crate and depend on
-`serenity` directly — it is ~230 lines over the public `Agent` API and needs
-nothing internal. Two incidental trims came with the move: the unused
-`DiscordExt::into_discord_bot_from_env` default method and the
-`DiscordBotError::MissingToken` variant it fed.
-
-Run the example with `cargo run --manifest-path examples/discord_bot/Cargo.toml`
-(`-p discord_bot` no longer resolves).
+The code lived on briefly as `examples/discord_bot` and is now removed
+outright, so `serenity` is out of the repository entirely. If you were using
+`DiscordExt`, recover it from git history (`git show
+7fd476a15:examples/discord_bot/src/discord_bot.rs`) and depend on `serenity`
+directly — it is ~230 lines over the public `Agent` API and needs nothing
+internal.
 
 ### Run lifecycle hooks and transport middleware
 

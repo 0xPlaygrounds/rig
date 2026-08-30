@@ -5,7 +5,7 @@
 //!
 //! Capture is always on. llama.cpp streams through the shared OpenAI Chat
 //! Completions model, whose
-//! [`raw_stream`](rig::providers::openai::GenericCompletionModel::raw_stream)
+//! [`raw_stream`](rig::providers::openai_compatible::GenericCompletionModel::raw_stream)
 //! yields [`openai::StreamingCompletionResponse`] as its terminal record: the
 //! usage from the stream's final `data:` frame plus the envelope fields the
 //! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
@@ -47,7 +47,7 @@
 use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
-use rig::providers::{llamacpp, openai};
+use rig::providers::{llamacpp, openai_compatible as openai};
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 use serde::Deserialize;
 use serde_json::Value;

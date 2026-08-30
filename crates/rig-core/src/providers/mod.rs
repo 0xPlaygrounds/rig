@@ -31,17 +31,23 @@
 //! [`EmbeddingsClient`](crate::client::EmbeddingsClient) are implemented only
 //! when the provider declares that capability.
 //!
+//! Every concrete provider is behind its same-named Cargo feature. The default
+//! build exposes only provider-neutral contracts and shared infrastructure;
+//! `providers-all` is the explicit aggregate for the full module tree.
+//!
 //! # Provider implementation checklist
 //!
 //! When adding or changing a provider, verify that the integration includes:
 //!
 //! - for OpenAI-chat-compatible APIs: completions driven by
-//!   [`GenericCompletionModel`](crate::providers::openai::completion::GenericCompletionModel)
-//!   via an
-//!   [`OpenAICompatibleProvider`](crate::providers::openai::completion::OpenAICompatibleProvider)
+//!   `openai_compatible::completion::GenericCompletionModel`
+//!   via an `openai_compatible::completion::OpenAICompatibleProvider`
 //!   impl on the provider extension (never a hand-rolled completion model,
 //!   request struct, or message conversion — dialect differences go in the
 //!   trait's hooks);
+//! - a same-named feature in `rig-core`, `rig-reqwest`, and the root `rig`
+//!   facade, inclusion in each `providers-all` aggregate, and corresponding
+//!   module/re-export/test gates;
 //! - public `Client` and `ClientBuilder` aliases with the correct generics,
 //!   including a `ClientBuilder` API-key generic matching `ProviderBuilder::ApiKey`;
 //! - the `Provider`, `ProviderBuilder`, `Capabilities`, and `ProviderClient`
@@ -107,30 +113,144 @@
 //! # Ok(())
 //! # }
 //! ```
-pub mod anthropic;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "minimax",
+    feature = "moonshot",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+// Not public API despite being `pub`: a public type alias in every
+// compatible provider names types from this tree, so it cannot be
+// `pub(crate)`. `#[doc(hidden)]` plus the MIGRATING note is the contract —
+// reach these types through the provider that returns them.
+#[doc(hidden)]
+#[path = "anthropic/mod.rs"]
+// This physical module is shared by several feature-gated provider facades.
+// Individual builds intentionally use only the subset needed by that provider;
+// the items that go unused carry their own narrow `allow`, so the rest of the
+// tree keeps its lint coverage in sparse builds.
+pub mod anthropic_compatible;
+#[cfg(feature = "anthropic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "anthropic")))]
+// The shared physical module is `#[doc(hidden)]`; without `doc(inline)`
+// rustdoc suppresses this re-export and the provider vanishes from the docs.
+#[doc(inline)]
+pub use anthropic_compatible as anthropic;
+#[cfg(feature = "azure")]
+#[cfg_attr(docsrs, doc(cfg(feature = "azure")))]
 pub mod azure;
+#[cfg(feature = "chatgpt")]
+#[cfg_attr(docsrs, doc(cfg(feature = "chatgpt")))]
 pub mod chatgpt;
+#[cfg(feature = "cohere")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cohere")))]
 pub mod cohere;
+#[cfg(feature = "copilot")]
+#[cfg_attr(docsrs, doc(cfg(feature = "copilot")))]
 pub mod copilot;
+#[cfg(feature = "deepseek")]
+#[cfg_attr(docsrs, doc(cfg(feature = "deepseek")))]
 pub mod deepseek;
+#[cfg(feature = "doubleword")]
+#[cfg_attr(docsrs, doc(cfg(feature = "doubleword")))]
 pub mod doubleword;
+#[cfg(feature = "gemini")]
+#[cfg_attr(docsrs, doc(cfg(feature = "gemini")))]
 pub mod gemini;
+#[cfg(feature = "groq")]
+#[cfg_attr(docsrs, doc(cfg(feature = "groq")))]
 pub mod groq;
+#[cfg(feature = "huggingface")]
+#[cfg_attr(docsrs, doc(cfg(feature = "huggingface")))]
 pub mod huggingface;
+#[cfg(feature = "hyperbolic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "hyperbolic")))]
 pub mod hyperbolic;
 pub mod internal;
+#[cfg(feature = "llamacpp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "llamacpp")))]
 pub mod llamacpp;
+#[cfg(feature = "minimax")]
+#[cfg_attr(docsrs, doc(cfg(feature = "minimax")))]
 pub mod minimax;
+#[cfg(feature = "mira")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mira")))]
 pub mod mira;
+#[cfg(feature = "mistral")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mistral")))]
 pub mod mistral;
+#[cfg(feature = "moonshot")]
+#[cfg_attr(docsrs, doc(cfg(feature = "moonshot")))]
 pub mod moonshot;
+#[cfg(feature = "ollama")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ollama")))]
 pub mod ollama;
-pub mod openai;
+#[cfg(test)]
+mod wire_type_aliases;
+// OpenAI-compatible providers share this protocol implementation, while the
+// concrete OpenAI namespace is only exported when `openai` is enabled.
+#[cfg(any(
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai",
+))]
+// Not public API despite being `pub`: a public type alias in every
+// compatible provider names types from this tree, so it cannot be
+// `pub(crate)`. `#[doc(hidden)]` plus the MIGRATING note is the contract —
+// reach these types through the provider that returns them.
+#[doc(hidden)]
+#[path = "openai/mod.rs"]
+// This physical module is shared by the OpenAI-compatible provider family.
+// Sparse feature builds intentionally leave capability-specific helpers unused;
+// those items carry their own narrow `allow`, so the rest of the tree keeps its
+// lint coverage in sparse builds.
+pub mod openai_compatible;
+#[cfg(feature = "openai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "openai")))]
+// The shared physical module is `#[doc(hidden)]`; without `doc(inline)`
+// rustdoc suppresses this re-export and the provider vanishes from the docs.
+#[doc(inline)]
+pub use openai_compatible as openai;
+#[cfg(feature = "openrouter")]
+#[cfg_attr(docsrs, doc(cfg(feature = "openrouter")))]
 pub mod openrouter;
+#[cfg(feature = "perplexity")]
+#[cfg_attr(docsrs, doc(cfg(feature = "perplexity")))]
 pub mod perplexity;
+#[cfg(feature = "together")]
+#[cfg_attr(docsrs, doc(cfg(feature = "together")))]
 pub mod together;
+#[cfg(feature = "venice")]
+#[cfg_attr(docsrs, doc(cfg(feature = "venice")))]
 pub mod venice;
+#[cfg(feature = "voyageai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "voyageai")))]
 pub mod voyageai;
+#[cfg(feature = "xai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "xai")))]
 pub mod xai;
+#[cfg(feature = "xiaomimimo")]
+#[cfg_attr(docsrs, doc(cfg(feature = "xiaomimimo")))]
 pub mod xiaomimimo;
+#[cfg(feature = "zai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "zai")))]
 pub mod zai;

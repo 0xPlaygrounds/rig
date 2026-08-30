@@ -5,7 +5,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     providers::internal::openai_chat_completions_compatible::map_openai_finish_reason,
-    providers::openai,
+    providers::openai_compatible as openai,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -890,7 +890,7 @@ impl ProviderResponseExt for CompletionResponse {
 // response *message* types are the shared OpenAI ones; only OpenRouter's
 // response envelope, provider routing preferences, and the conversion rules
 // below are provider-specific.
-pub use crate::providers::openai::completion::{
+pub use crate::providers::openai_compatible::completion::{
     FileData, ImageUrl, Message, ReasoningDetails, ResponseImage, UserContent, VideoUrl,
 };
 
@@ -1479,15 +1479,16 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         let tool_choice = req
             .tool_choice
             .clone()
-            .map(crate::providers::openai::completion::ToolChoice::try_from)
+            .map(crate::providers::openai_compatible::completion::ToolChoice::try_from)
             .transpose()?;
 
-        let tools: Vec<crate::providers::openai::completion::ToolDefinition> = req
+        let tools: Vec<crate::providers::openai_compatible::completion::ToolDefinition> = req
             .tools
             .clone()
             .into_iter()
             .map(|tool| {
-                let def = crate::providers::openai::completion::ToolDefinition::from(tool);
+                let def =
+                    crate::providers::openai_compatible::completion::ToolDefinition::from(tool);
                 if strict_tools { def.with_strict() } else { def }
             })
             .collect();
@@ -3715,7 +3716,7 @@ mod tests {
     /// a null wire id rather than an empty string.
     #[test]
     fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
-        use crate::providers::openai::completion::OpenAICompatibleProvider as _;
+        use crate::providers::openai_compatible::completion::OpenAICompatibleProvider as _;
 
         let detail = json!({
             "type": "reasoning.encrypted",

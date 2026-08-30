@@ -1,5 +1,5 @@
 use crate::client::{self, BearerAuth, DebugExt, Provider};
-use crate::providers::openai::responses_api::{
+use crate::providers::openai_compatible::responses_api::{
     ResponsesProviderExt, ResponsesToolDefinition, SystemInstructionsPlacement,
 };
 
