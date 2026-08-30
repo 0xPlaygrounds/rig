@@ -26,12 +26,9 @@ class Build:
     command: tuple[str, ...]
 
 
-def cargo_metadata(manifest: pathlib.Path | None = None) -> dict[str, object]:
-    command = ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"]
-    if manifest is not None:
-        command.extend(["--manifest-path", str(manifest.relative_to(ROOT))])
+def cargo_metadata() -> dict[str, object]:
     completed = subprocess.run(
-        command,
+        ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"],
         cwd=ROOT,
         check=False,
         stdout=subprocess.PIPE,

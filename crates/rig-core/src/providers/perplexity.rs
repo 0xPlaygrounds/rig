@@ -94,6 +94,12 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 
 /// Perplexity completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<PerplexityExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;

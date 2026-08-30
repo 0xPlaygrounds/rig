@@ -133,6 +133,12 @@ pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 /// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> =
     crate::providers::openai_compatible::completion::GenericCompletionModel<HyperbolicExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;

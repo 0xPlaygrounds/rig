@@ -26,6 +26,12 @@ pub const LLAMA_CPP: &str = "LLaMA_CPP";
 /// path.
 pub type CompletionModel<H> =
     openai::completion::GenericCompletionModel<super::client::LlamacppExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 /// Server-side timing accounting `llama-server` reports beside `usage`.
 ///

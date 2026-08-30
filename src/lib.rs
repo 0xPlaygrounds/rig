@@ -9,7 +9,9 @@
 //! …) with the default `agent` feature — the same surface as before the runtime
 //! split — and always exposes the runtime-independent contracts explicitly as
 //! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool`. The
-//! classic API also lives at `crate::agent::tool`. Classic construction
+//! classic API also lives at `crate::agent::tool` (a code span, not a link:
+//! the target is gated on `agent`, so linking it breaks `cargo doc` for a
+//! build without that feature). Classic construction
 //! methods such as `client.agent(...)` come from
 //! `crate::client::AgentClientExt`; `use rig::prelude::*;` brings it in
 //! alongside the canonical `CompletionClient`, the same surface as before the
@@ -192,7 +194,9 @@ pub mod streaming {
 /// [`crate::tool::PortableDynamicTool`] (and in full under
 /// [`crate::tool::portable`]). The live registry (`server`) is the agent
 /// runtime's and needs the `agent` feature; the same surface also lives at
-/// `crate::agent::tool` for code that prefers the explicit runtime path.
+/// `crate::agent::tool` for code that prefers the explicit runtime path
+/// (a code span rather than a link, since that path needs the `agent`
+/// feature and rustdoc resolves intra-doc links per build).
 pub mod tool {
     // Canonical execution values — portable, always available.
     pub use rig_core::tool::{

@@ -122,6 +122,17 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 
 /// Together AI completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<TogetherExt, H>;
+/// Raw completion payload: what `CompletionModel::raw_completion` returns.
+/// Shared with the OpenAI Chat Completions path, and named here so it is
+/// reachable and documented without enabling `openai`.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
+
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 #[cfg(test)]
 mod tests {

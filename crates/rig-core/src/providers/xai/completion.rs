@@ -1,6 +1,11 @@
 //! xAI completion support through its OpenAI-compatible Responses API.
 
 pub use crate::providers::openai_compatible::responses_api::CompletionResponse;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries. Shared with the OpenAI
+/// Responses path, and named here so it is reachable and documented without
+/// enabling `openai`.
+pub use crate::providers::openai_compatible::responses_api::streaming::StreamingCompletionResponse;
 
 use super::client::XAiExt;
 

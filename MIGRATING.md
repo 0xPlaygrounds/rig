@@ -806,6 +806,36 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Built-in providers are opt-in Cargo features
+
+No concrete provider is compiled unless you name it. `rig`'s default feature
+set is unchanged in every other respect, but it no longer pulls in any
+provider, so existing code fails to compile on upgrade:
+
+```
+error[E0433]: failed to resolve: could not find `openai` in `providers`
+```
+
+Add the feature for each provider module you use:
+
+```toml
+rig = { version = "0.42", features = ["openai", "anthropic"] }
+```
+
+The features are `anthropic`, `azure`, `chatgpt`, `cohere`, `copilot`,
+`deepseek`, `doubleword`, `gemini`, `groq`, `huggingface`, `hyperbolic`,
+`llamacpp`, `minimax`, `mira`, `mistral`, `moonshot`, `ollama`, `openai`,
+`openrouter`, `perplexity`, `together`, `venice`, `voyageai`, `xai`,
+`xiaomimimo`, and `zai` — the same name on `rig`, `rig-core` and
+`rig-reqwest`, so a direct `rig-core` dependency needs the same addition.
+`providers-all` is an explicit aggregate for documentation, CI, and
+applications that genuinely need every provider; prefer naming the two or
+three you use, since that is the point of the change.
+
+Nothing moves: paths, types, and behavior are identical once the feature is
+on. The capability features (`image`, `audio`) and the companion crates are
+unaffected — a companion crate enables whatever provider it needs itself.
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in

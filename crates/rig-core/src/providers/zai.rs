@@ -76,6 +76,19 @@ impl super::openai_compatible::completion::OpenAICompatibleProvider for ZAiExt {
     type Response = super::openai_compatible::CompletionResponse;
 }
 
+/// Raw completion payload: what `raw_completion` on this provider's
+/// completion model returns. Shared with the OpenAI Chat Completions path,
+/// and named here so it is reachable and documented without enabling
+/// `openai`.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
+
+/// Terminal streaming record: the value the final item of the stream
+/// `raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
+
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
     &[
         (GENERAL_API_BASE_URL, ANTHROPIC_API_BASE_URL),

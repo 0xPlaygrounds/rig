@@ -148,6 +148,10 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 
 /// Groq completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<GroqExt, H>;
+/// Raw completion payload: what `CompletionModel::raw_completion` returns.
+/// Shared with the OpenAI Chat Completions path, and named here so it is
+/// reachable and documented without enabling `openai`.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
 
 /// Groq's provider-native terminal streaming record: the value carried by the
 /// final item of the stream returned by `CompletionModel::raw_stream`. Shared

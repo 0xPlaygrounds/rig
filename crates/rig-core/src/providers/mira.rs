@@ -148,6 +148,12 @@ client::impl_provider_from_env!(MiraExt, input = String, api_key_env = "MIRA_API
 /// Mira completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> =
     crate::providers::openai_compatible::completion::GenericCompletionModel<MiraExt, H>;
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;

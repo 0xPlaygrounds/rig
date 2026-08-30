@@ -402,6 +402,17 @@ pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 /// with (a per-request `model` override changes only the request body, as
 /// before the migration).
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<AzureExt, H>;
+/// Raw completion payload: what `CompletionModel::raw_completion` returns.
+/// Shared with the OpenAI Chat Completions path, and named here so it is
+/// reachable and documented without enabling `openai`.
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
+
+/// Terminal streaming record: the value the final item of the stream
+/// `CompletionModel::raw_stream` returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::StreamingCompletionResponse<
+        crate::providers::openai_compatible::Usage,
+    >;
 
 impl openai::completion::OpenAICompatibleProvider for AzureExt {
     const PROVIDER_NAME: &'static str = "azure.openai";

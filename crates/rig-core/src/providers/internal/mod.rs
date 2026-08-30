@@ -106,8 +106,6 @@ pub(crate) mod envelope;
     feature = "image",
     any(
         feature = "azure",
-        feature = "gemini",
-        feature = "huggingface",
         feature = "hyperbolic",
         feature = "openai",
         feature = "venice",
@@ -224,7 +222,6 @@ pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
 #[cfg(any(
     feature = "azure",
-    feature = "copilot",
     feature = "gemini",
     feature = "groq",
     feature = "huggingface",

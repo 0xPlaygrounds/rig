@@ -1177,10 +1177,17 @@ where
     }
 }
 
+// Gated on the six providers the checks name, not on `providers-all`: an
+// aggregate gate lets an otherwise-complete feature set compile zero of them.
 #[cfg(all(
     target_arch = "wasm32",
     target_os = "unknown",
-    feature = "providers-all"
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "mistral",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter"
 ))]
 mod wasm_model_listing_compile_checks {
     use super::{ModelListingClient, Nothing};
