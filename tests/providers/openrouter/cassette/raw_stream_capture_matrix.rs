@@ -29,7 +29,6 @@
 
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
-use rig::providers::openai_compatible::completion::streaming::StreamingCompletionResponse;
 use rig::providers::openrouter;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
@@ -39,7 +38,7 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::{assert_matches_recorded_token, with_openrouter_cassette_result};
 use crate::support::collect_text_and_terminal;
 
-type OpenRouterTerminal = StreamingCompletionResponse<openrouter::Usage>;
+type OpenRouterTerminal = openrouter::StreamingCompletionResponse;
 
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";

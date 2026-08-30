@@ -164,6 +164,17 @@ jobs:
           cargo test --locked -p rig-core --no-default-features
           --features "${{ matrix.provider }}" --doc
 
+      # `cargo test --doc` compiles doctest bodies but never resolves
+      # intra-doc links, and the workspace doc job runs `--all-features`,
+      # where every provider module exists. A `[link]` to a feature-gated
+      # item inside a shared tree is only broken here.
+      - name: Document provider
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: >-
+          cargo doc --locked -p rig-core --no-default-features
+          --features "${{ matrix.provider }}" --no-deps
+
   provider_feature_baselines:
     name: provider feature / baselines
     runs-on: ubuntu-latest

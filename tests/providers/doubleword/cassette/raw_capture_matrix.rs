@@ -4,7 +4,7 @@
 //! **The feature.** Every blocking completion attaches the value the model's
 //! inherent `raw_completion` returned onto the normalized
 //! [`rig::completion::CompletionResponse::raw`]. Doubleword reuses the
-//! shared [`openai::CompletionResponse`] wire type, so the raw view is that
+//! shared [`doubleword::CompletionResponse`] wire type, so the raw view is that
 //! type serialized. Capture is always on: there is no flag to request it,
 //! nothing about it reaches the wire, and a `Value::Null` only ever means a
 //! response built by hand with no provider payload behind it. `raw` is a
@@ -18,7 +18,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `openai::CompletionResponse` and re-serializes equal | recorded |
+//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `doubleword::CompletionResponse` and re-serializes equal | recorded |
 //! | 2 | `raw_exposes_object` | provider-only field | `raw.object` equals the fixture body; the unmodeled usage extras are absent | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes and equals its own `raw` re-normalized | recorded |
 //!
@@ -40,7 +40,7 @@ use rig::completion::{
 };
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::{doubleword, openai_compatible as openai};
+use rig::providers::doubleword;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -147,7 +147,7 @@ async fn raw_round_trips_openai_type() {
             let model = client.completion_model(DEFAULT_MODEL);
             let response = model.completion(request(&model)).await?;
             let raw = &response.raw;
-            let typed = openai::CompletionResponse::deserialize(raw)
+            let typed = doubleword::CompletionResponse::deserialize(raw)
                 .expect("raw is the shared OpenAI CompletionResponse Doubleword parses into");
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
@@ -247,7 +247,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
     let raw = &response.raw;
-    let renormalized = openai::CompletionResponse::deserialize(raw)
+    let renormalized = doubleword::CompletionResponse::deserialize(raw)
         .expect("raw is the shared OpenAI type")
         .normalize(PROVIDER)
         .expect("raw normalizes")

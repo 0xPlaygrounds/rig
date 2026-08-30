@@ -175,7 +175,16 @@ pub struct OutputTokensDetails {
 ///
 /// Distinguishes 1-hour cache writes (~2x base input token price) from
 /// 5-minute writes (~1.25x), which is what makes a mixed-TTL configuration
-/// (see [`CompletionModel::with_static_prefix_cache_ttl`]) observable.
+// `CompletionModel` is the `anthropic`-gated alias, but this file also
+// compiles for the compatible providers, where the link has no target.
+#[cfg_attr(
+    feature = "anthropic",
+    doc = "(see [`CompletionModel::with_static_prefix_cache_ttl`]) observable."
+)]
+#[cfg_attr(
+    not(feature = "anthropic"),
+    doc = "(see `CompletionModel::with_static_prefix_cache_ttl`) observable."
+)]
 /// Unknown buckets a provider may add later are ignored on deserialization.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct CacheCreation {

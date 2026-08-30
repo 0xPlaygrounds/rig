@@ -4,7 +4,7 @@
 //! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
 //! `raw_stream` yielded as its terminal record — for Groq the shared
 //! chat-completions terminal [`StreamingCompletionResponse`] over the shared
-//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
+//! [`groq::StreamingCompletionResponse`] — serialized. Capture is always on: there is no flag to
 //! request it, nothing about it reaches the wire, and a `Value::Null` only ever
 //! means a terminal built by hand with no provider record behind it. It is the
 //! terminal record only, never the stream's frames. Groq's terminal usage
@@ -15,7 +15,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<openai::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `groq::StreamingCompletionResponse` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_queue_time` | terminal-only field | `raw.usage.queue_time` and `raw.additional_params.x_groq.id` equal the recorded terminal frame's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -27,8 +27,7 @@
 
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
-use rig::providers::openai_compatible::completion::streaming::StreamingCompletionResponse;
-use rig::providers::{groq, openai_compatible as openai};
+use rig::providers::groq;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -39,7 +38,7 @@ use super::support::{
 };
 use crate::support::collect_text_and_terminal;
 
-type GroqTerminal = StreamingCompletionResponse<openai::Usage>;
+type GroqTerminal = groq::StreamingCompletionResponse;
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";

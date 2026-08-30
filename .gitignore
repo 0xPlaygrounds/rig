@@ -17,3 +17,7 @@ dist/
 # LanceDB example/test store artifacts (created at the workspace root)
 /data/
 
+
+# Bytecode from scripts/ (check-examples.py and friends)
+__pycache__/
+*.pyc

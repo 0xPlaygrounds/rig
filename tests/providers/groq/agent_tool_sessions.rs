@@ -462,7 +462,7 @@ struct RawResponseMetadata {
 }
 
 impl RawResponseMetadata {
-    fn capture(raw: &openai::CompletionResponse) -> Self {
+    fn capture(raw: &groq::CompletionResponse) -> Self {
         Self {
             id: raw.id.clone(),
             model: raw.model.clone(),

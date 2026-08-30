@@ -86,7 +86,16 @@ pub struct Timings {
 /// `StreamingCompletionChunk` does carry a `#[serde(flatten)]` catch-all for
 /// exactly this reason. Preserving it here removes that asymmetry for
 /// llama.cpp and follows the precedent
-/// [`deepseek`](crate::providers::deepseek) and [`mira`](crate::providers::mira)
+// Both targets are feature-gated modules; this file compiles for `llamacpp`
+// alone, where neither exists.
+#[cfg_attr(
+    all(feature = "deepseek", feature = "mira"),
+    doc = "[`deepseek`](crate::providers::deepseek) and [`mira`](crate::providers::mira)"
+)]
+#[cfg_attr(
+    not(all(feature = "deepseek", feature = "mira")),
+    doc = "`deepseek` and `mira`"
+)]
 /// set: a provider that adds fields to the wire declares its own response type
 /// rather than pretending the OpenAI one describes it.
 ///
