@@ -391,9 +391,11 @@ required-features = ["huggingface"]
 name = "hyperbolic"
 required-features = ["hyperbolic"]
 
+# No `required-features`: each module below self-gates on its store feature,
+# and requiring `openai` for the whole target meant `--features bedrock` (or
+# any single store) built none of it and passed silently.
 [[test]]
 name = "integrations"
-required-features = ["openai"]
 
 [[test]]
 name = "llamacpp"

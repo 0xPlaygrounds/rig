@@ -440,7 +440,10 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
 
 // The shared wire types this provider's `raw_transcription` returns. Named
 // here so they are reachable and documented without enabling `openai`.
-pub use crate::providers::internal::transcription::{TranscriptionResponse, TranscriptionUsage};
+pub use crate::providers::internal::transcription::{
+    DurationTag, TokensTag, TranscriptionInputTokenDetails, TranscriptionResponse,
+    TranscriptionUsage,
+};
 
 /// Azure OpenAI transcription model; `model` identifies the Azure deployment.
 pub type TranscriptionModel<T> =

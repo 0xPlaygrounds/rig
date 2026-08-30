@@ -277,7 +277,10 @@ pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
 // The shared wire types this provider's `raw_transcription` returns. Named
 // here so they are reachable and documented without enabling `openai`.
-pub use crate::providers::internal::transcription::{TranscriptionResponse, TranscriptionUsage};
+pub use crate::providers::internal::transcription::{
+    DurationTag, TokensTag, TranscriptionInputTokenDetails, TranscriptionResponse,
+    TranscriptionUsage,
+};
 
 /// Groq transcription model using the shared OpenAI-style implementation.
 pub type TranscriptionModel<T> =

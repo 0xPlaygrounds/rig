@@ -23,7 +23,10 @@ pub const WIZPER: &str = "fal-ai/wizper";
 
 // The shared wire types this provider's `raw_transcription` returns. Named
 // here so they are reachable and documented without enabling `openai`.
-pub use crate::providers::internal::transcription::{TranscriptionResponse, TranscriptionUsage};
+pub use crate::providers::internal::transcription::{
+    DurationTag, TokensTag, TranscriptionInputTokenDetails, TranscriptionResponse,
+    TranscriptionUsage,
+};
 
 /// Venice transcription model using the shared OpenAI-style implementation.
 pub type TranscriptionModel<T> =
