@@ -765,7 +765,12 @@ fn extract_anthropic_doc_params(
 ///
 /// # Example
 ///
-/// ```no_run
+// `providers::anthropic` is the `anthropic` feature's alias for this module,
+// so the example only compiles in a build that has it. The compatible
+// providers reaching this file (`minimax`, `moonshot`, `xiaomimimo`, `zai`)
+// would need the `#[doc(hidden)]` path, which is not what a user should write.
+#[cfg_attr(feature = "anthropic", doc = "```no_run")]
+#[cfg_attr(not(feature = "anthropic"), doc = "```ignore")]
 /// use rig_core::completion::message::{self, AssistantContent};
 /// use rig_core::providers::anthropic::completion::anthropic_citations;
 ///

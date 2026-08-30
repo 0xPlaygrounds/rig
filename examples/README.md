@@ -20,8 +20,10 @@ python3 scripts/check-examples.py
 ```
 
 CI shards the same stable list with `--shard-index` and `--shard-count`. The
-runner uses one `cargo build --locked` process per standalone package or
-crate-local target and never executes provider-backed binaries.
+runner type-checks (`cargo check --locked`) rather than links: one process per
+standalone package, so none can borrow another's features, and one per group of
+crate-local targets that share a package and a `required-features` set, since
+those resolve identically. Provider-backed binaries are never executed.
 
 | Example | Description |
 | --- | --- |

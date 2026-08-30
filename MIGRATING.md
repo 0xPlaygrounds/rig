@@ -832,9 +832,14 @@ The features are `anthropic`, `azure`, `chatgpt`, `cohere`, `copilot`,
 applications that genuinely need every provider; prefer naming the two or
 three you use, since that is the point of the change.
 
-Nothing moves: paths, types, and behavior are identical once the feature is
-on. The capability features (`image`, `audio`) and the companion crates are
-unaffected — a companion crate enables whatever provider it needs itself.
+Paths, types, and behavior are otherwise identical once the feature is on,
+with one rename below. The capability features (`image`, `audio`) and the
+companion crates are unaffected — a companion crate enables whatever provider
+it needs itself.
+
+`mistral::completion::MistralStreamingCompletionResponse` is now
+`mistral::completion::StreamingCompletionResponse`, the name every other
+provider uses for the same thing. It is the same type; only the name changed.
 
 The OpenAI- and Anthropic-compatible provider families share one protocol
 implementation, reachable as `providers::openai_compatible` and

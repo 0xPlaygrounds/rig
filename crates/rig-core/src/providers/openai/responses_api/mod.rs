@@ -1968,7 +1968,12 @@ pub struct StructuredOutputsInput {
 /// Add reasoning to a [`CompletionRequest`].
 ///
 /// # Example
-/// ```
+// `providers::openai` is the `openai` feature's alias for this module, so the
+// example only compiles in a build that has it. The other providers reaching
+// this file (`chatgpt`, `copilot`, `xai`) would need the `#[doc(hidden)]`
+// compatible path, which is not what a user should write.
+#[cfg_attr(feature = "openai", doc = "```")]
+#[cfg_attr(not(feature = "openai"), doc = "```ignore")]
 /// use rig_core::providers::openai::responses_api::{
 ///     Reasoning, ReasoningContext, ReasoningEffort, ReasoningMode,
 /// };

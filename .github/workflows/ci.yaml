@@ -155,6 +155,15 @@ jobs:
           cargo check --locked -p rig --no-default-features
           --features "reqwest,rustls,agent,derive,${{ matrix.provider }}" --tests
 
+      # Doctests are collected from `#[doc(hidden)]` modules too, so an example
+      # spelling a feature-gated path (`providers::openai::…` inside the shared
+      # tree) fails to compile for every *other* provider that reaches that
+      # file. `--all-features` in the doctest job cannot see it.
+      - name: Run provider doctests
+        run: >-
+          cargo test --locked -p rig-core --no-default-features
+          --features "${{ matrix.provider }}" --doc
+
   provider_feature_baselines:
     name: provider feature / baselines
     runs-on: ubuntu-latest
