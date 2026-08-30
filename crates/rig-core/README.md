@@ -83,33 +83,38 @@ You can find more examples in the repository-level `examples/` directory. Many p
 ## Integrations
 Rig supports the following LLM providers out of the box:
 
-Each name below is also its Cargo feature name (lowercase, without spaces or
-punctuation). No provider is enabled by default.
+No provider is enabled by default; each is behind the Cargo feature named
+beside it.
 
-- Anthropic
-- Azure OpenAI
-- ChatGPT and GitHub Copilot auth-backed clients
-- Cohere
-- DeepSeek
-- Gemini
-- Groq
-- Hugging Face
-- Hyperbolic
-- llama.cpp (`llama-server`, and llamafile)
-- MiniMax
-- Mira
-- Mistral
-- Moonshot
-- Ollama
-- OpenAI
-- OpenRouter
-- Perplexity
-- Together
-- Venice
-- Voyage AI
-- xAI
-- Xiaomi MiMo
-- Z.ai
+- Anthropic — `anthropic`
+- Azure OpenAI — `azure`
+- ChatGPT auth-backed client — `chatgpt`
+- Cohere — `cohere`
+- DeepSeek — `deepseek`
+- Doubleword — `doubleword`
+- Gemini — `gemini`
+- GitHub Copilot auth-backed client — `copilot`
+- Groq — `groq`
+- Hugging Face — `huggingface`
+- Hyperbolic — `hyperbolic`
+- llama.cpp (`llama-server`, and llamafile) — `llamacpp`
+- MiniMax — `minimax`
+- Mira — `mira`
+- Mistral — `mistral`
+- Moonshot — `moonshot`
+- Ollama — `ollama`
+- OpenAI — `openai`
+- OpenRouter — `openrouter`
+- Perplexity — `perplexity`
+- Together — `together`
+- Venice — `venice`
+- Voyage AI — `voyageai`
+- xAI — `xai`
+- Xiaomi MiMo — `xiaomimimo`
+- Z.ai — `zai`
+
+`providers-all` is an explicit aggregate for documentation, CI, and
+applications that genuinely need the full set.
 
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 

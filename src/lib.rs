@@ -23,9 +23,10 @@
 //! CI, documentation, and applications that truly need every provider. With
 //! `reqwest` enabled, the feature is forwarded to the default-transport alias
 //! in `rig-reqwest` and the provider is reachable at `rig::providers::<name>`.
-//! Without `reqwest` there is no `rig::providers` module at all — it is itself
-//! gated on that feature — so reach the transport-generic types through
-//! `rig::core::providers::<name>` instead.
+//! Without `reqwest` that alias is not built, and `rig::providers` resolves
+//! through the `rig_core` re-export instead — the same path, carrying the
+//! transport-generic types, which take an explicit `HttpClientExt` rather
+//! than defaulting to `ReqwestClient`.
 //!
 //! # Companion integrations
 //!
