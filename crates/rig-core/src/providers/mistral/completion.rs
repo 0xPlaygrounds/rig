@@ -60,18 +60,13 @@ pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 /// Mistral completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H> = openai::completion::GenericCompletionModel<MistralExt, H>;
 /// Terminal streaming record: the value the final item of the stream
-/// `CompletionModel::raw_stream` returns carries.
+/// `CompletionModel::raw_stream` returns carries. Shared with the OpenAI Chat
+/// Completions path but carrying Mistral's own usage payload (cached-token
+/// fallbacks).
 pub type StreamingCompletionResponse =
     crate::providers::openai_compatible::StreamingCompletionResponse<
         crate::providers::mistral::client::Usage,
     >;
-
-/// Mistral's provider-native terminal streaming record: the value carried by
-/// the final item of the stream returned by `CompletionModel::raw_stream`.
-/// Shared with the OpenAI Chat Completions path but carrying Mistral's own
-/// usage payload (cached-token fallbacks).
-pub type MistralStreamingCompletionResponse =
-    openai::StreamingCompletionResponse<super::client::Usage>;
 
 // =================================================================
 // Rig Implementation Types

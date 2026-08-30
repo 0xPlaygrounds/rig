@@ -119,6 +119,8 @@ socks = ["reqwest/socks"]
 # optional modalities.
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
+# `websocket` is a convenience alias for the rustls flavor. The module itself
+# is gated on either flavor, so `websocket-native-tls` alone works too.
 websocket = ["websocket-rustls"]
 websocket-rustls = [
   "openai",

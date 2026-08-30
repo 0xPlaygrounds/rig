@@ -836,6 +836,15 @@ Nothing moves: paths, types, and behavior are identical once the feature is
 on. The capability features (`image`, `audio`) and the companion crates are
 unaffected — a companion crate enables whatever provider it needs itself.
 
+The OpenAI- and Anthropic-compatible provider families share one protocol
+implementation, reachable as `providers::openai_compatible` and
+`providers::anthropic_compatible`. Both are `#[doc(hidden)]` and **not
+public API**: they exist so a build that enables, say, only `groq` still has
+the shared tree compiled, and their contents may move in any release. Name
+the wire types through the provider you use — `groq::CompletionResponse`,
+`azure::TranscriptionResponse`, `minimax::AnthropicCompletionResponse` —
+rather than through the shared path.
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in

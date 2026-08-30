@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
-"""Build every Rig example as an independent Cargo consumer.
+"""Type-check every Rig example as an independent Cargo consumer.
 
-The commands are intentionally one-target-per-process. Cargo feature
-unification is scoped to each invocation, so an example cannot borrow a
-provider feature from another workspace member.
+Each standalone example package gets its own process: Cargo feature
+unification is scoped to one invocation, so an example cannot borrow a
+provider feature from another workspace member — the property this script
+exists to enforce. Crate-local `[[example]]` targets that share a package
+*and* a `required-features` set resolve identically, so they are batched
+into one invocation; that is a smaller process count, not a weaker check.
+
+`cargo check` rather than `cargo build`: these examples are compile-only
+(nothing here runs them), and skipping codegen and linking cuts roughly a
+third of the CPU.
+
+Builds are ordered by feature set so that a contiguous shard recompiles
+`rig`/`rig-core` once per distinct set rather than once per example.
 """
 
 from __future__ import annotations
@@ -24,6 +34,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class Build:
     identifier: str
     command: tuple[str, ...]
+    # Groups builds that resolve to the same dependency graph, so sharding can
+    # keep them together instead of paying for the same rebuild in two shards.
+    feature_key: str = ""
 
 
 def cargo_metadata() -> dict[str, object]:
@@ -44,6 +57,25 @@ def packages(metadata: dict[str, object]) -> list[dict[str, object]]:
     if not isinstance(value, list):
         raise RuntimeError("Cargo metadata did not contain a packages array")
     return value
+
+
+def rig_feature_key(package: dict[str, object]) -> str:
+    """The example's `rig` dependency features, as a sort key.
+
+    Two examples with the same key resolve `rig`/`rig-core` identically, so
+    running them back to back reuses the compilation instead of evicting it.
+    """
+    dependencies = package.get("dependencies")
+    if not isinstance(dependencies, list):
+        return ""
+    for dependency in dependencies:
+        if not isinstance(dependency, dict) or dependency.get("name") != "rig":
+            continue
+        features = dependency.get("features")
+        if not isinstance(features, list):
+            return ""
+        return ",".join(sorted(str(feature) for feature in features))
+    return ""
 
 
 def relative_manifest(package: dict[str, object]) -> pathlib.Path:
@@ -94,16 +126,18 @@ def discover() -> list[Build]:
                 identifier=f"standalone:{manifest.parent.name}",
                 command=(
                     "cargo",
-                    "build",
+                    "check",
                     "--locked",
                     "--manifest-path",
                     str(manifest),
                     "--package",
                     name,
                 ),
+                feature_key=rig_feature_key(package),
             )
         )
 
+    grouped: dict[tuple[str, str], list[str]] = {}
     for package in workspace_packages:
         manifest = relative_manifest(package)
         if manifest in metadata_manifests:
@@ -124,25 +158,33 @@ def discover() -> list[Build]:
                 isinstance(feature, str) for feature in required
             ):
                 raise RuntimeError(f"Malformed example target metadata for {package_name}")
-            command = [
-                "cargo",
-                "build",
-                "--locked",
-                "--package",
-                package_name,
-                "--example",
-                target_name,
-            ]
-            if required:
-                command.extend(["--features", ",".join(sorted(required))])
-            builds.append(
-                Build(
-                    identifier=f"crate:{package_name}/{target_name}",
-                    command=tuple(command),
-                )
-            )
+            grouped.setdefault(
+                (package_name, ",".join(sorted(required))), []
+            ).append(target_name)
 
-    builds.sort(key=lambda build: build.identifier)
+    groups_per_package: dict[str, int] = {}
+    for package_name, _ in grouped:
+        groups_per_package[package_name] = groups_per_package.get(package_name, 0) + 1
+    for (package_name, features), target_names in grouped.items():
+        command = ["cargo", "check", "--locked", "--package", package_name]
+        for target_name in sorted(target_names):
+            command.extend(["--example", target_name])
+        if features:
+            command.extend(["--features", features])
+        # One identifier per invocation; the feature set disambiguates a
+        # package whose targets fall into more than one group.
+        identifier = f"crate:{package_name}"
+        if groups_per_package[package_name] > 1:
+            identifier += f"[{features or 'default'}]"
+        builds.append(
+            Build(
+                identifier=identifier,
+                command=tuple(command),
+                feature_key=f"{package_name}::{features}",
+            )
+        )
+
+    builds.sort(key=lambda build: (build.feature_key, build.identifier))
     identifiers = [build.identifier for build in builds]
     if len(identifiers) != len(set(identifiers)):
         raise RuntimeError("Example discovery produced duplicate identifiers")
@@ -173,11 +215,14 @@ def main(argv: Sequence[str] = ()) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
 
-    selected = [
-        build
-        for position, build in enumerate(all_builds)
-        if position % args.shard_count == args.shard_index
-    ]
+    # Contiguous slices, not round robin: `all_builds` is ordered by feature
+    # set, so a slice recompiles each distinct `rig` configuration once.
+    # Striding would scatter one feature set across every shard and pay for it
+    # in each.
+    total = len(all_builds)
+    start = total * args.shard_index // args.shard_count
+    end = total * (args.shard_index + 1) // args.shard_count
+    selected = all_builds[start:end]
     print(
         f"Discovered {len(all_builds)} independent example builds; "
         f"shard {args.shard_index + 1}/{args.shard_count} contains {len(selected)}."

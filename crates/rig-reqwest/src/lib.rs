@@ -103,7 +103,13 @@ impl std::ops::Deref for ReqwestMiddlewareClient {
 }
 
 pub mod client;
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
+// Either TLS flavor builds the module: `websocket` is a convenience alias for
+// `websocket-rustls`, so gating on the flavors means `websocket-native-tls`
+// alone also yields a usable `openai_websocket`.
+#[cfg(all(
+    not(target_family = "wasm"),
+    any(feature = "websocket-rustls", feature = "websocket-native-tls")
+))]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod openai_websocket;
 pub mod providers;
@@ -113,7 +119,10 @@ mod runtime;
 /// Bring the default-transport traits into scope.
 pub mod prelude {
     pub use crate::client::{DefaultTransportBuilder, DefaultTransportClient};
-    #[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
+    #[cfg(all(
+        not(target_family = "wasm"),
+        any(feature = "websocket-rustls", feature = "websocket-native-tls")
+    ))]
     pub use crate::openai_websocket::ResponsesWebSocketExt;
 }
 

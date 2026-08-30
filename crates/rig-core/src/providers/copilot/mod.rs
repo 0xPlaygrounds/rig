@@ -607,6 +607,18 @@ fn route_for_model(model: &str) -> CompletionRoute {
     }
 }
 
+/// The wire payloads [`CopilotCompletionResponse`] and
+/// [`CopilotStreamingResponse`] wrap, one per route. Named here so matching
+/// on a variant does not require enabling `openai` to spell its contents.
+pub type ChatCompletionResponse =
+    crate::providers::openai_compatible::completion::CompletionResponse;
+pub type ResponsesCompletionResponse =
+    crate::providers::openai_compatible::responses_api::CompletionResponse;
+pub type ChatStreamingCompletionResponse =
+    crate::providers::openai_compatible::completion::streaming::StreamingCompletionResponse;
+pub type ResponsesStreamingCompletionResponse =
+    crate::providers::openai_compatible::responses_api::streaming::StreamingCompletionResponse;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "api", rename_all = "snake_case")]
 pub enum CopilotCompletionResponse {

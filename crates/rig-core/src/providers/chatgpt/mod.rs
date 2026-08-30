@@ -24,7 +24,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai_compatible::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
-use crate::streaming::StreamingCompletionResponse;
+use crate::streaming::StreamingCompletionResponse as NormalizedStreamingResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::fmt::Debug;
@@ -166,6 +166,17 @@ impl responses_api::ResponsesProviderExt for ChatGPTExt {
 }
 
 client::impl_capabilities!(ChatGPTExt, completion = ResponsesCompletionModel<H>);
+
+/// Raw completion payload: what [`ResponsesCompletionModel::raw_completion`]
+/// returns. Shared with the OpenAI Responses path, and named here so it is
+/// reachable and documented without enabling `openai`.
+pub type CompletionResponse =
+    crate::providers::openai_compatible::responses_api::CompletionResponse;
+
+/// Terminal streaming record: the value the final item of the stream
+/// [`ResponsesCompletionModel::raw_stream`] returns carries.
+pub type StreamingCompletionResponse =
+    crate::providers::openai_compatible::responses_api::streaming::StreamingCompletionResponse;
 
 impl DebugExt for ChatGPTExt {}
 
@@ -615,7 +626,7 @@ where
     async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<NormalizedStreamingResponse, CompletionError> {
         Self::stream(self, completion_request).await
     }
 }
@@ -632,7 +643,7 @@ where
     pub async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<NormalizedStreamingResponse, CompletionError> {
         let raw = self.raw_stream(completion_request).await?;
 
         Ok(responses_api::streaming::normalize_responses_stream(

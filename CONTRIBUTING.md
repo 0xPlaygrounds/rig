@@ -164,8 +164,10 @@ python3 scripts/check-examples.py
 ```
 
 `scripts/check-examples.py` discovers every standalone package and crate-local
-Cargo example target, then runs a separate build for each, against the
-workspace lockfile.
+Cargo example target and type-checks them against the workspace lockfile. Each
+standalone package gets its own invocation, so it cannot borrow a feature from
+another workspace member; crate-local targets sharing a package and a
+`required-features` set are checked together, since they resolve identically.
 Use `--list` to audit discovery or `--shard-index N --shard-count M` to
 reproduce a CI shard. Every example manifest or dev-dependency must declare the
 provider features it imports; a workspace-wide build is not a substitute.

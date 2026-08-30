@@ -229,7 +229,7 @@ jobs:
           protoc: "true"
           sccache: "true"
 
-      - name: Build independent examples
+      - name: Check independent examples
         run: >-
           python3 scripts/check-examples.py
           --shard-index ${{ matrix.shard }} --shard-count 4

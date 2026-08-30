@@ -15,7 +15,10 @@
 //! frames; the pipeline's policy differs by design (documented in
 //! MIGRATING.md, #2258).
 
-#![cfg(all(not(target_family = "wasm"), feature = "websocket"))]
+#![cfg(all(
+    not(target_family = "wasm"),
+    any(feature = "websocket-rustls", feature = "websocket-native-tls")
+))]
 
 use futures::{SinkExt, StreamExt};
 use rig_core::client::CompletionClient as _;

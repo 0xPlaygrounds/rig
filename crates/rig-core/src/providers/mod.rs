@@ -120,6 +120,10 @@
     feature = "xiaomimimo",
     feature = "zai"
 ))]
+// Not public API despite being `pub`: a public type alias in every
+// compatible provider names types from this tree, so it cannot be
+// `pub(crate)`. `#[doc(hidden)]` plus the MIGRATING note is the contract —
+// reach these types through the provider that returns them.
 #[doc(hidden)]
 #[path = "anthropic/mod.rs"]
 // This physical module is shared by several feature-gated provider facades.
@@ -207,6 +211,10 @@ pub mod ollama;
     feature = "xiaomimimo",
     feature = "zai",
 ))]
+// Not public API despite being `pub`: a public type alias in every
+// compatible provider names types from this tree, so it cannot be
+// `pub(crate)`. `#[doc(hidden)]` plus the MIGRATING note is the contract —
+// reach these types through the provider that returns them.
 #[doc(hidden)]
 #[path = "openai/mod.rs"]
 // This physical module is shared by the OpenAI-compatible provider family.

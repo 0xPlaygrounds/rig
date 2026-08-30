@@ -76,10 +76,11 @@ impl super::openai_compatible::completion::OpenAICompatibleProvider for ZAiExt {
     type Response = super::openai_compatible::CompletionResponse;
 }
 
-/// Raw completion payload: what `raw_completion` on this provider's
-/// completion model returns. Shared with the OpenAI Chat Completions path,
+/// Raw completion payload from the OpenAI-dialect model — what `Client`'s
+/// `raw_completion` returns. Shared with the OpenAI Chat Completions path,
 /// and named here so it is reachable and documented without enabling
-/// `openai`.
+/// `openai`. `AnthropicClient` answers with
+/// [`AnthropicCompletionResponse`] instead.
 pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
 
 /// Terminal streaming record: the value the final item of the stream
@@ -88,6 +89,17 @@ pub type StreamingCompletionResponse =
     crate::providers::openai_compatible::StreamingCompletionResponse<
         crate::providers::openai_compatible::Usage,
     >;
+
+/// Raw completion payload from the Anthropic-dialect model — what
+/// `AnthropicClient`'s `raw_completion` returns. Named here so it is
+/// reachable without enabling `anthropic`.
+pub type AnthropicCompletionResponse =
+    crate::providers::anthropic_compatible::completion::CompletionResponse;
+
+/// Terminal streaming record from the Anthropic-dialect model's
+/// `raw_stream`.
+pub type AnthropicStreamingCompletionResponse =
+    crate::providers::anthropic_compatible::streaming::StreamingCompletionResponse;
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
     &[
