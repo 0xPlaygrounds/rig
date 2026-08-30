@@ -427,6 +427,10 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
 // Azure OpenAI Transcription API
 // ================================================================
 
+// The shared wire types this provider's `raw_transcription` returns. Named
+// here so they are reachable and documented without enabling `openai`.
+pub use crate::providers::internal::transcription::{TranscriptionResponse, TranscriptionUsage};
+
 /// Azure OpenAI transcription model; `model` identifies the Azure deployment.
 pub type TranscriptionModel<T> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
@@ -463,8 +467,11 @@ mod image_generation {
     use crate::providers::internal::image_generation::{
         GenericImageGenerationModel, JsonImageGenerationProvider,
     };
-    use crate::providers::openai_compatible::ImageGenerationResponse;
     use serde_json::json;
+
+    // The shared wire type this provider's `raw_image_generation` returns.
+    // Re-exported so it is reachable and documented without enabling `openai`.
+    pub use crate::providers::openai_compatible::ImageGenerationResponse;
 
     /// Azure OpenAI image generation model; `model` identifies the deployment.
     pub type ImageGenerationModel<T> = GenericImageGenerationModel<AzureExt, T>;
