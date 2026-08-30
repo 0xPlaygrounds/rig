@@ -8,9 +8,9 @@
 //! [`CompletionModel::raw_completion`](rig::providers::copilot::CompletionModel::raw_completion)
 //! would have returned — the route-tagged
 //! [`CopilotCompletionResponse`](rig::providers::copilot::CopilotCompletionResponse)
-//! (`{"api":"chat", …}` wrapping [`openai::CompletionResponse`] on the
+//! (`{"api":"chat", …}` wrapping [`rig::providers::copilot::ChatCompletionResponse`] on the
 //! chat-completions route, `{"api":"responses", …}` wrapping
-//! [`responses_api::CompletionResponse`] on the Responses route) — serialized
+//! [`rig::providers::copilot::ResponsesCompletionResponse`] on the Responses route) — serialized
 //! with `serde_json::to_value` before normalization. Nothing about it is sent
 //! to Copilot. `raw == Value::Null` means only that a `CompletionResponse` was
 //! built by hand without a provider response behind it, which no cell here can
@@ -47,7 +47,6 @@ use rig::completion::NormalizeCompletionResponse as _;
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
 use rig::prelude::*;
 use rig::providers::copilot::{self, CopilotCompletionResponse};
-use rig::providers::openai_compatible as openai;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -206,7 +205,7 @@ async fn chat_raw_round_trips_provider_type() {
 
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_chat_body(&body, scenario);
-    openai::CompletionResponse::deserialize(&body)
+    rig::providers::copilot::ChatCompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response");
 }
 
@@ -309,7 +308,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
         .expect("the test body must have captured the response");
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_chat_body(&body, scenario);
-    let from_wire = openai::CompletionResponse::deserialize(&body)
+    let from_wire = rig::providers::copilot::ChatCompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response")
         .normalize(COPILOT_PROVIDER)
         .expect("recorded body must normalize")
@@ -463,11 +462,10 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
         .expect("the test body must have captured the response");
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_responses_body(&body, scenario);
-    let from_wire =
-        rig::providers::openai_compatible::responses_api::CompletionResponse::deserialize(&body)
-            .expect("recorded body must be a Responses envelope")
-            .normalize(COPILOT_PROVIDER)
-            .expect("recorded body must normalize")
-            .with_optional_provider_request_id(response.provider_request_id.clone());
+    let from_wire = rig::providers::copilot::ResponsesCompletionResponse::deserialize(&body)
+        .expect("recorded body must be a Responses envelope")
+        .normalize(COPILOT_PROVIDER)
+        .expect("recorded body must normalize")
+        .with_optional_provider_request_id(response.provider_request_id.clone());
     assert_normalizes_like_own_wire(response, from_wire);
 }

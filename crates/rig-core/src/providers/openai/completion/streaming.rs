@@ -611,6 +611,11 @@ where
 /// parameter rather than a constant because this helper is public and the
 /// chat-completions wire shape is shared: hardcoding `"openai"` would label
 /// every out-of-tree compatible provider's stream as OpenAI's.
+///
+/// Reaching it needs the `openai` feature: this module compiles for any of
+/// the OpenAI-compatible providers, but `providers::openai` — the stable
+/// spelling — is that feature's alias for it. The `openai_compatible` path is
+/// `#[doc(hidden)]` and free to move, so do not build against it.
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,

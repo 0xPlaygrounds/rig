@@ -186,6 +186,8 @@ pub mod moonshot;
 #[cfg(feature = "ollama")]
 #[cfg_attr(docsrs, doc(cfg(feature = "ollama")))]
 pub mod ollama;
+#[cfg(test)]
+mod wire_type_aliases;
 // OpenAI-compatible providers share this protocol implementation, while the
 // concrete OpenAI namespace is only exported when `openai` is enabled.
 #[cfg(any(

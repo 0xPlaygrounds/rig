@@ -236,7 +236,11 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
 ];
 
 /// Module names under `providers/` that are not providers.
-const NON_PROVIDER_MODULES: &[&str] = &["mod", "internal"];
+///
+/// `wire_type_aliases` is a `#[cfg(test)]` guard that coerces every provider's
+/// public wire-type alias to the type its driver declares; it has no wire of
+/// its own.
+const NON_PROVIDER_MODULES: &[&str] = &["mod", "internal", "wire_type_aliases"];
 
 /// Every provider module name under `crates/rig-core/src/providers/`, plus
 /// every `crates/rig-*` package directory — discovered from the tree, never

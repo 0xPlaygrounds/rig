@@ -25,5 +25,8 @@ pub mod image_generation;
 pub mod transcription;
 
 pub use client::{Client, ClientBuilder, SubProvider};
+// The wire types this provider returns, at the provider root like every
+// other compatible provider surfaces them.
+pub use completion::{CompletionResponse, StreamingCompletionResponse};
 #[cfg(feature = "image")]
 pub use image_generation::image_generation_models::*;

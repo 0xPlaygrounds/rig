@@ -85,6 +85,8 @@ pub mod embedding;
 pub mod rerank;
 
 pub use client::{Client, ClientBuilder, LlamacppApiKey, LlamacppBuilder, LlamacppExt};
-pub use completion::{CompletionModel, CompletionResponse, LLAMA_CPP, Timings};
+pub use completion::{
+    CompletionModel, CompletionResponse, LLAMA_CPP, StreamingCompletionResponse, Timings,
+};
 pub use embedding::EmbeddingModel;
 pub use rerank::RerankModel;

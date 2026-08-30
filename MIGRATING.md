@@ -850,6 +850,11 @@ the wire types through the provider you use — `groq::CompletionResponse`,
 `azure::TranscriptionResponse`, `minimax::AnthropicCompletionResponse` —
 rather than through the shared path.
 
+One consequence for crates implementing their own OpenAI-compatible provider:
+`providers::openai::completion::streaming::send_compatible_streaming_request`
+now needs the `openai` feature, since `providers::openai` is that feature's
+alias for the shared tree.
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in
