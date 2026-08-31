@@ -228,7 +228,10 @@ impl RequestBuilderLike for reqwest::RequestBuilder {
     }
 }
 
-#[cfg(feature = "reqwest-middleware")]
+#[cfg(any(
+    feature = "reqwest-middleware-rustls",
+    feature = "reqwest-middleware-native-tls"
+))]
 impl ReqwestLike for reqwest_middleware::ClientWithMiddleware {
     type Builder = reqwest_middleware::RequestBuilder;
     fn request_builder(&self, method: http::Method, url: String) -> Self::Builder {
@@ -236,7 +239,10 @@ impl ReqwestLike for reqwest_middleware::ClientWithMiddleware {
     }
 }
 
-#[cfg(feature = "reqwest-middleware")]
+#[cfg(any(
+    feature = "reqwest-middleware-rustls",
+    feature = "reqwest-middleware-native-tls"
+))]
 impl RequestBuilderLike for reqwest_middleware::RequestBuilder {
     fn with_headers(self, headers: http::HeaderMap) -> Self {
         self.headers(headers)
@@ -388,7 +394,10 @@ macro_rules! impl_http_client_ext_via {
 impl_http_client_ext_via!(reqwest::Client);
 
 impl_http_client_ext_via!(
-    #[cfg(feature = "reqwest-middleware")]
+    #[cfg(any(
+        feature = "reqwest-middleware-rustls",
+        feature = "reqwest-middleware-native-tls"
+    ))]
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
     reqwest_middleware::ClientWithMiddleware
 );

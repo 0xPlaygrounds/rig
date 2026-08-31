@@ -78,6 +78,37 @@ fn rig_core_tls_flavor_does_not_imply_the_transport() {
     }
 }
 
+/// Every crate that pulls rig-core's transport in also names a TLS flavor.
+///
+/// `rig-reqwest` defaulted to `rustls`; rig-core does not, so a bare
+/// `features = ["reqwest"]` compiles and then fails every HTTPS request inside
+/// reqwest's connector. A workspace build hides it — feature unification
+/// supplies `rustls` from the facade — so check the manifests directly.
+#[test]
+fn transport_dependents_name_a_tls_flavor() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates");
+    let mut offenders = Vec::new();
+    for entry in std::fs::read_dir(&root).expect("crates/ is readable") {
+        let manifest = entry.expect("dir entry").path().join("Cargo.toml");
+        let Ok(text) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        for line in text.lines() {
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with("rig-core =") || !trimmed.contains("\"reqwest\"") {
+                continue;
+            }
+            if !(trimmed.contains("\"rustls\"") || trimmed.contains("\"native-tls\"")) {
+                offenders.push(format!("{}: {trimmed}", manifest.display()));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "rig-core transport dependencies without a TLS flavor: {offenders:#?}"
+    );
+}
+
 /// The other half of the contract: naming the feature does deliver the
 /// transport. Without this, `reqwest` could silently stop being wired up and
 /// only a downstream compile error would notice.

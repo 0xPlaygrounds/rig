@@ -28,7 +28,7 @@ pgvector = { workspace = true, features = ["sqlx"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.42.0", features = ["reqwest", "rustls"] }
 anyhow = { workspace = true }
 log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

@@ -21,7 +21,7 @@ proc-macro = true
 
 [dev-dependencies]
 anyhow = { workspace = true }
-rig-core = { path = "../rig-core", features = ["reqwest"] }
+rig-core = { path = "../rig-core", features = ["reqwest", "rustls"] }
 rig-agent = { path = "../rig-agent" }
 schemars = { workspace = true }
 serde = { workspace = true }

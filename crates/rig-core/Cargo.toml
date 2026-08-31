@@ -148,6 +148,10 @@ native-tls = [
   "reqwest?/system-proxy",
   "tokio-tungstenite?/native-tls",
 ]
+# `reqwest-middleware` is a convenience alias for the rustls flavor. The
+# `ClientWithMiddleware` transport impl gates on either flavor, so
+# `reqwest-middleware-native-tls` alone yields a usable impl too — naming only
+# the umbrella here would leave that flavor compiling the crate with no impl.
 reqwest-middleware = ["reqwest-middleware-rustls"]
 reqwest-middleware-rustls = [
   "reqwest",

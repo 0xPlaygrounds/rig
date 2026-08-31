@@ -43,9 +43,14 @@ when the caller has no tokio runtime (Bevy task pools, smol,
 `futures::executor`): reqwest futures are driven on a lazily started fallback
 runtime.
 
+Enable it together with a TLS flavor — `features = ["reqwest", "rustls"]` (or
+`native-tls`). The flavor features only select a backend; on their own they do
+not switch the transport on, and `reqwest` on its own builds with no TLS
+backend at all.
+
 Without the feature there is no default transport — construct clients with
 `new_with(..)` / `.http_client(..)` and any `HttpClientExt` implementation. The
-`rig` facade enables `reqwest` in its own default feature set.
+`rig` facade enables `reqwest` and `rustls` in its own default feature set.
 
 ## WASM target support
 

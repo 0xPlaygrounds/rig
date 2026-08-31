@@ -843,7 +843,13 @@ What moved, and what got simpler because it no longer crosses a crate boundary:
 `rig-core`'s transport features are `reqwest`, `rustls`, `native-tls`, `socks`,
 `reqwest-middleware{,-rustls,-native-tls}` and `websocket{,-rustls,-native-tls}`
 — the same names the facade already exposes. A crate that depended on
-`rig-reqwest` should depend on `rig-core` with `features = ["reqwest"]`.
+`rig-reqwest` should depend on `rig-core` with
+`features = ["reqwest", "rustls"]`.
+
+**Name a TLS flavor.** `rig-reqwest` defaulted to `rustls`; `rig-core` has no
+default, so `features = ["reqwest"]` alone builds reqwest with no TLS backend
+and every HTTPS request fails at run time. `rustls` and `native-tls` only
+select a flavor — they do not switch the transport on — so name both.
 
 
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype

@@ -40,7 +40,7 @@ tracing-futures = { workspace = true, features = ["futures-03"] }
 anyhow = { workspace = true }
 # `cargo test -p rig-agent` needs rig-core's mock models even when the
 # `test-utils` feature is not requested explicitly.
-rig-core = { path = "../rig-core", features = ["test-utils", "reqwest"] }
+rig-core = { path = "../rig-core", features = ["test-utils", "reqwest", "rustls"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

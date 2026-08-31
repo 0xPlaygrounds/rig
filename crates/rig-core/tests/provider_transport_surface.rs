@@ -11,7 +11,6 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
-use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 fn providers_dir() -> PathBuf {
@@ -123,50 +122,122 @@ fn every_transport_generic_provider_type_defaults_its_transport() {
 /// Types declared in a provider's submodules stay reachable at the provider
 /// root: `huggingface::CompletionModel`, not only
 /// `huggingface::completion::CompletionModel`.
+///
+/// The check is that each name RESOLVES, not that `mod.rs` mentions it: a
+/// substring scan passes on `pub use responses_api::ResponsesCompletionModel;`
+/// when asked about `CompletionModel`, which is exactly how the root-surface
+/// regression this file exists to prevent slipped through in the first place.
+/// So the list below is compiled — every entry is a real path resolution, and
+/// `root_hoists_are_exhaustive` keeps the list honest against the tree.
+mod root_paths {
+    #![allow(dead_code)]
+    use rig_core::providers as p;
+
+    macro_rules! pin {
+        ($($alias:ident => $path:ty),* $(,)?) => {
+            $( pub type $alias = $path; )*
+        };
+    }
+
+    pin! {
+        AnthropicAnthropicModelLister => p::anthropic::AnthropicModelLister,
+        AnthropicClient => p::anthropic::Client,
+        AnthropicCompletionModel => p::anthropic::CompletionModel,
+        CohereClient => p::cohere::Client,
+        CohereCompletionModel => p::cohere::CompletionModel,
+        CohereEmbeddingModel => p::cohere::EmbeddingModel,
+        CohereImageEmbeddingModel => p::cohere::ImageEmbeddingModel,
+        DoublewordClient => p::doubleword::Client,
+        DoublewordCompletionModel => p::doubleword::CompletionModel,
+        DoublewordEmbeddingModel => p::doubleword::EmbeddingModel,
+        GeminiCachedContentClient => p::gemini::CachedContentClient,
+        GeminiClient => p::gemini::Client,
+        GeminiCompletionModel => p::gemini::CompletionModel,
+        GeminiEmbeddingModel => p::gemini::EmbeddingModel,
+        GeminiGeminiInteractionsModelLister => p::gemini::GeminiInteractionsModelLister,
+        GeminiGeminiModelLister => p::gemini::GeminiModelLister,
+        GeminiInteractionsClient => p::gemini::InteractionsClient,
+        GeminiTranscriptionModel => p::gemini::TranscriptionModel,
+        HuggingfaceClient => p::huggingface::Client,
+        HuggingfaceCompletionModel => p::huggingface::CompletionModel,
+        HuggingfaceTranscriptionModel => p::huggingface::TranscriptionModel,
+        LlamacppClient => p::llamacpp::Client,
+        LlamacppCompletionModel => p::llamacpp::CompletionModel,
+        LlamacppEmbeddingModel => p::llamacpp::EmbeddingModel,
+        LlamacppRerankModel => p::llamacpp::RerankModel,
+        MistralClient => p::mistral::Client,
+        MistralCompletionModel => p::mistral::CompletionModel,
+        MistralEmbeddingModel => p::mistral::EmbeddingModel,
+        MistralTranscriptionModel => p::mistral::TranscriptionModel,
+        OpenaiClient => p::openai::Client,
+        OpenaiCompletionsClient => p::openai::CompletionsClient,
+        OpenaiCompletionsTranscriptionModel => p::openai::CompletionsTranscriptionModel,
+        OpenaiEmbeddingModel => p::openai::EmbeddingModel,
+        OpenaiTranscriptionModel => p::openai::TranscriptionModel,
+        OpenrouterClient => p::openrouter::Client,
+        OpenrouterCompletionModel => p::openrouter::CompletionModel,
+        OpenrouterEmbeddingModel => p::openrouter::EmbeddingModel,
+        OpenrouterTranscriptionModel => p::openrouter::TranscriptionModel,
+        TogetherClient => p::together::Client,
+        TogetherCompletionModel => p::together::CompletionModel,
+        TogetherEmbeddingModel => p::together::EmbeddingModel,
+        VeniceClient => p::venice::Client,
+        VeniceCompletionModel => p::venice::CompletionModel,
+        VeniceEmbeddingModel => p::venice::EmbeddingModel,
+        VeniceTranscriptionModel => p::venice::TranscriptionModel,
+        XaiClient => p::xai::Client,
+        XaiCompletionModel => p::xai::CompletionModel,
+    }
+    // Only the capability features gate these; rig-core compiles every
+    // provider unconditionally today.
+    #[cfg(feature = "audio")]
+    pin! {
+        OpenaiAudioGenerationModel => p::openai::AudioGenerationModel,
+        OpenaiCompletionsAudioGenerationModel => p::openai::CompletionsAudioGenerationModel,
+        OpenrouterAudioGenerationModel => p::openrouter::AudioGenerationModel,
+        VeniceAudioGenerationModel => p::venice::AudioGenerationModel,
+        XaiAudioGenerationModel => p::xai::AudioGenerationModel,
+    }
+    // Only the capability features gate these; rig-core compiles every
+    // provider unconditionally today.
+    #[cfg(feature = "image")]
+    pin! {
+        GeminiImageGenerationModel => p::gemini::ImageGenerationModel,
+        HuggingfaceImageGenerationModel => p::huggingface::ImageGenerationModel,
+        OpenaiCompletionsImageGenerationModel => p::openai::CompletionsImageGenerationModel,
+        OpenaiImageGenerationModel => p::openai::ImageGenerationModel,
+        VeniceImageGenerationModel => p::venice::ImageGenerationModel,
+        XaiImageGenerationModel => p::xai::ImageGenerationModel,
+    }
+}
+
+/// The compiled list above must cover every submodule-declared transport
+/// type, or a newly hoisted type could regress unnoticed.
 #[test]
-fn transport_generic_types_are_reachable_at_the_provider_root() {
+fn root_hoists_are_exhaustive() {
     let root = providers_dir();
-    let mut by_module: HashMap<String, BTreeSet<(String, String)>> = HashMap::new();
+    let pinned = include_str!("provider_transport_surface.rs");
+    let mut unpinned = Vec::new();
     for (module, name, file, _) in transport_generic_types() {
-        // Only submodule declarations need hoisting; a single-file provider
-        // already declares at its root.
         let rel = file.strip_prefix(&root).expect("under providers/");
         if rel.components().count() < 2 {
             continue;
         }
-        let submodule = file
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-        if submodule == "mod" {
+        if file.file_stem().is_some_and(|s| s == "mod") {
             continue;
         }
-        by_module
-            .entry(module)
-            .or_default()
-            .insert((submodule, name));
-    }
-
-    let mut unreachable = Vec::new();
-    for (module, types) in by_module {
-        let mod_rs = root.join(&module).join("mod.rs");
-        let Ok(source) = std::fs::read_to_string(&mod_rs) else {
-            continue;
-        };
-        // `pub use <submodule>::*;` re-exports everything that submodule
-        // declares; anything else must name the type.
-        for (submodule, name) in types {
-            let glob = format!("pub use {submodule}::*;");
-            if source.contains(&glob) || source.contains(&name) {
-                continue;
-            }
-            unreachable.push(format!("{module}::{name} (declared in {submodule}.rs)"));
+        let path = format!("p::{module}::{name}");
+        if !pinned.contains(&path) {
+            unpinned.push(path);
         }
     }
-    unreachable.sort();
+    unpinned.sort();
+    unpinned.dedup();
     assert!(
-        unreachable.is_empty(),
-        "transport-generic provider types not re-exported at their provider root: \
-         {unreachable:?}\nAdd a `pub use` in the provider's mod.rs."
+        unpinned.is_empty(),
+        "transport-generic types declared in a submodule with no compiled \
+         root-path pin in `mod root_paths`: {unpinned:?}\nAdd each to the \
+         `pin!` list (and re-export it at the provider root if it does not \
+         resolve)."
     );
 }

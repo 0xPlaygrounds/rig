@@ -231,6 +231,13 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
 
     /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold one
     /// transport for many providers without naming it in their types.
+    ///
+    /// Not to be confused with `Client::boxed`, which erases a built provider
+    /// client's transport and returns a `Client`. A `Client` also implements
+    /// this trait, so its inherent method wins at a call site — but a generic
+    /// `fn erase<H: HttpClientExt>(h: H)` handed a `Client` reaches *this* one
+    /// and boxes the whole client as a transport, which is almost never what
+    /// the caller meant.
     fn boxed(self) -> BoxedHttpClient
     where
         Self: Sized + 'static,
