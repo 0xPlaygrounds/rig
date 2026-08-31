@@ -15,8 +15,6 @@
 //! runtime-agnostic futures (a tokio `JoinHandle`, a `futures` channel receiver
 //! for streamed bodies), so nothing is ever `block_on`'d and no thread parks.
 
-pub use reqwest;
-
 use super::{
     Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result, StreamingResponse,
     multipart::PartContent,

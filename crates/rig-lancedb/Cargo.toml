@@ -27,8 +27,12 @@ httpmock = { workspace = true }
 
 [features]
 default = []
-rig-rustls = ["rig-core/rustls"]
-rig-native-tls = ["rig-core/native-tls"]
+# These knobs exist so a standalone `rig-lancedb` consumer can pick a TLS
+# flavor for the bundled transport. rig-core's flavor features only *select* a
+# backend (`reqwest?/rustls`), so each must also switch the transport on —
+# otherwise the knob resolves to nothing and the user silently gets no TLS.
+rig-rustls = ["rig-core/reqwest", "rig-core/rustls"]
+rig-native-tls = ["rig-core/reqwest", "rig-core/native-tls"]
 
 [[example]]
 name = "vector_search_local_ann"

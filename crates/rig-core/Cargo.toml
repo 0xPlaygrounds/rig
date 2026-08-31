@@ -129,6 +129,11 @@ image = []
 # transport unless asked, so wasm and custom-transport consumers pay nothing.
 # The `rig` facade turns it on in its own default set, so the common path is
 # unchanged.
+#
+# PAIR IT WITH A TLS FLAVOR — `features = ["reqwest", "rustls"]`. This feature
+# selects no backend, so on its own it builds a reqwest that fails every HTTPS
+# request in the connector at run time. Not a `compile_error!` because a
+# plain-HTTP host (a local llama.cpp or Ollama server) is a legitimate build.
 reqwest = ["dep:reqwest", "dep:tokio"]
 socks = ["reqwest", "reqwest/socks"]
 # TLS flavor selection only: `reqwest?/…` rather than `reqwest/…` so naming a

@@ -154,6 +154,7 @@ mod root_paths {
         GeminiClient => p::gemini::Client,
         GeminiCompletionModel => p::gemini::CompletionModel,
         GeminiEmbeddingModel => p::gemini::EmbeddingModel,
+        GeminiInteractionsCompletionModel => p::gemini::InteractionsCompletionModel,
         GeminiGeminiInteractionsModelLister => p::gemini::GeminiInteractionsModelLister,
         GeminiGeminiModelLister => p::gemini::GeminiModelLister,
         GeminiInteractionsClient => p::gemini::InteractionsClient,
@@ -170,6 +171,8 @@ mod root_paths {
         MistralEmbeddingModel => p::mistral::EmbeddingModel,
         MistralTranscriptionModel => p::mistral::TranscriptionModel,
         OpenaiClient => p::openai::Client,
+        OpenaiCompletionModel => p::openai::CompletionModel,
+        OpenaiResponsesCompletionModel => p::openai::ResponsesCompletionModel,
         OpenaiCompletionsClient => p::openai::CompletionsClient,
         OpenaiCompletionsTranscriptionModel => p::openai::CompletionsTranscriptionModel,
         OpenaiEmbeddingModel => p::openai::EmbeddingModel,
@@ -220,10 +223,13 @@ fn root_hoists_are_exhaustive() {
     let mut unpinned = Vec::new();
     for (module, name, file, _) in transport_generic_types() {
         let rel = file.strip_prefix(&root).expect("under providers/");
-        if rel.components().count() < 2 {
-            continue;
-        }
-        if file.file_stem().is_some_and(|s| s == "mod") {
+        // Skip only the PROVIDER root (`openai/mod.rs`), which declares at the
+        // root by definition. A submodule root — `openai/responses_api/mod.rs`,
+        // `gemini/interactions_api/mod.rs` — still owes a hoist, and skipping
+        // every `mod.rs` is how `ResponsesCompletionModel` went unchecked.
+        let is_provider_root =
+            rel.components().count() == 2 && file.file_stem().is_some_and(|stem| stem == "mod");
+        if rel.components().count() < 2 || is_provider_root {
             continue;
         }
         let path = format!("p::{module}::{name}");

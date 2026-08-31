@@ -78,28 +78,50 @@ fn rig_core_tls_flavor_does_not_imply_the_transport() {
     }
 }
 
-/// Every crate that pulls rig-core's transport in also names a TLS flavor.
+/// Every manifest that pulls rig-core's transport in also names a TLS flavor.
 ///
 /// `rig-reqwest` defaulted to `rustls`; rig-core does not, so a bare
 /// `features = ["reqwest"]` compiles and then fails every HTTPS request inside
 /// reqwest's connector. A workspace build hides it — feature unification
-/// supplies `rustls` from the facade — so check the manifests directly.
+/// supplies `rustls` from the facade — so read the manifests directly.
+///
+/// Whitespace is normalized before matching so a wrapped dependency table
+/// (rustfmt/taplo will wrap these lines as feature lists grow) cannot silence
+/// the guard, and `examples/` and the root facade are covered alongside
+/// `crates/`.
 #[test]
 fn transport_dependents_name_a_tls_flavor() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates");
-    let mut offenders = Vec::new();
-    for entry in std::fs::read_dir(&root).expect("crates/ is readable") {
-        let manifest = entry.expect("dir entry").path().join("Cargo.toml");
-        let Ok(text) = std::fs::read_to_string(&manifest) else {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut manifests = vec![root.join("Cargo.toml")];
+    for dir in ["crates", "examples"] {
+        let Ok(entries) = std::fs::read_dir(root.join(dir)) else {
             continue;
         };
-        for line in text.lines() {
-            let trimmed = line.trim_start();
-            if !trimmed.starts_with("rig-core =") || !trimmed.contains("\"reqwest\"") {
+        for entry in entries {
+            let manifest = entry.expect("dir entry").path().join("Cargo.toml");
+            if manifest.is_file() {
+                manifests.push(manifest);
+            }
+        }
+    }
+    manifests.sort();
+
+    let mut offenders = Vec::new();
+    for manifest in manifests {
+        let text = std::fs::read_to_string(&manifest).expect("readable manifest");
+        // Collapse the file so a dependency table spanning several lines reads
+        // the same as a one-liner.
+        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        for (index, _) in flat.match_indices("rig-core = {") {
+            let Some(close) = flat[index..].find('}') else {
+                continue;
+            };
+            let entry = &flat[index..index + close];
+            if !entry.contains("\"reqwest\"") {
                 continue;
             }
-            if !(trimmed.contains("\"rustls\"") || trimmed.contains("\"native-tls\"")) {
-                offenders.push(format!("{}: {trimmed}", manifest.display()));
+            if !(entry.contains("\"rustls\"") || entry.contains("\"native-tls\"")) {
+                offenders.push(format!("{}: {entry}", manifest.display()));
             }
         }
     }
