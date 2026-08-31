@@ -795,7 +795,7 @@ determinism_test!(
             .http_client(http.clone())
             .build()
             .expect("groq client should build")
-            .completion_model(rig::providers::groq::LLAMA_3_1_8B_INSTANT)
+            .completion_model(rig::providers::groq::LLAMA_PROMPT_GUARD_2_22M)
     }
 );
 
