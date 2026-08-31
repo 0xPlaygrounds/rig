@@ -106,21 +106,59 @@ fn transport_dependents_name_a_tls_flavor() {
     }
     manifests.sort();
 
+    fn names_a_flavor(entry: &str) -> bool {
+        entry.contains("\"rustls\"") || entry.contains("\"native-tls\"")
+    }
+
     let mut offenders = Vec::new();
     for manifest in manifests {
         let text = std::fs::read_to_string(&manifest).expect("readable manifest");
         // Collapse the file so a dependency table spanning several lines reads
         // the same as a one-liner.
         let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        // Inline dependency tables: `rig-core = { …, features = [...] }`.
         for (index, _) in flat.match_indices("rig-core = {") {
             let Some(close) = flat[index..].find('}') else {
                 continue;
             };
             let entry = &flat[index..index + close];
-            if !entry.contains("\"reqwest\"") {
-                continue;
+            if entry.contains("\"reqwest\"") && !names_a_flavor(entry) {
+                offenders.push(format!("{}: {entry}", manifest.display()));
             }
-            if !(entry.contains("\"rustls\"") || entry.contains("\"native-tls\"")) {
+        }
+
+        // Feature entries: `foo = ["rig-core/reqwest", …]` — how a crate
+        // feature like `rig-lancedb`'s `rig-rustls` switches the transport on,
+        // which the inline-table scan cannot see.
+        //
+        // The root facade is exempt: its own `reqwest` feature is the knob a
+        // user pairs with the sibling `rustls`/`native-tls` knobs, not a choice
+        // made on their behalf. (It behaved the same before this crate fold —
+        // the facade's `rig-reqwest` dep was `default-features = false`.)
+        let is_facade = manifest.parent() == Some(root);
+        for (index, _) in flat.match_indices("\"rig-core/reqwest\"") {
+            if is_facade {
+                break;
+            }
+            let start = flat[..index]
+                .rfind(" = [")
+                .map_or(0, |at| flat[..at].rfind([']', '}']).map_or(0, |p| p + 1));
+            let Some(close) = flat[index..].find(']') else {
+                continue;
+            };
+            let entry = flat[start..index + close].trim();
+            if !entry.contains("rig-core/rustls") && !entry.contains("rig-core/native-tls") {
+                offenders.push(format!("{}: {entry}", manifest.display()));
+            }
+        }
+
+        // `[dependencies.rig-core]` section tables.
+        for (index, _) in flat.match_indices("[dependencies.rig-core]") {
+            let rest = &flat[index..];
+            let end = rest[1..].find('[').map_or(rest.len(), |at| at + 1);
+            let entry = &rest[..end];
+            if entry.contains("\"reqwest\"") && !names_a_flavor(entry) {
                 offenders.push(format!("{}: {entry}", manifest.display()));
             }
         }

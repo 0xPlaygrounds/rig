@@ -1107,10 +1107,10 @@ the type name. It is for hosts that *hold* one transport for many providers
 
 ```rust
 use rig::client::ProviderFromEnv as _;
-use rig::http_client::{BoxedHttpClient, ReqwestClient};
+use rig::http_client::{BoxedHttpClient, reqwest};
 use rig::providers::openai;
 
-let transport: BoxedHttpClient = ReqwestClient::default().boxed();
+let transport = BoxedHttpClient::new(reqwest::Client::default());
 let client: openai::Client<BoxedHttpClient> =
     openai::OpenAIResponsesExt::from_env_boxed(transport.clone())?;
 // …and the same `transport` for every other provider the host talks to.
@@ -1301,12 +1301,14 @@ Err(AuthError::Http(e)) => match e {
 `authorize()` helpers are unchanged. `Client::http_client()` is new: it
 borrows the transport a `Client<Ext, H>` sends through.
 
-### `http_client::ReqwestClient` / `from_reqwest` live in a reqwest-only module
+### `http_client::from_reqwest` lives in a reqwest-only module
 
-Both still resolve at `rig::http_client::ReqwestClient` and
-`rig::http_client::from_reqwest`; they are re-exported from the bundled
-reqwest transport module, which is now the only place rig-core names a reqwest
-type. `http_client::Error::non_success_with_details(status, headers, body)` is
+> `ReqwestClient` is gone entirely later in this release — see "`rig-reqwest`
+> is gone" above. `rig::http_client::from_reqwest` still resolves, and the
+> reqwest crate itself is re-exported at `rig::http_client::reqwest`.
+
+`from_reqwest` is re-exported from the bundled reqwest transport module, which
+is the only place rig-core names a reqwest type. `http_client::Error::non_success_with_details(status, headers, body)` is
 the new transport-agnostic constructor for the headers-preserving non-success
 error — custom `HttpClientExt` implementations should build their errors with
 it so `non_success_headers()` keeps working for retry policies.

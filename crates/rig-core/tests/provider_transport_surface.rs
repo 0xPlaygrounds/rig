@@ -212,6 +212,94 @@ mod root_paths {
         VeniceImageGenerationModel => p::venice::ImageGenerationModel,
         XaiImageGenerationModel => p::xai::ImageGenerationModel,
     }
+    // Macro-generated types. `transport_generic_types` parses literal
+    // declarations, so it cannot see these at all — the `impl_model_lister!`
+    // listers or the `Client`/`AnthropicClient` pair the anthropic-compatible
+    // macro emits. Dropping `= DefaultHttp` from either macro left both source
+    // scans green while ~20 public types stopped resolving without an `H`, so
+    // they are pinned by compilation instead.
+    pin! {
+        MacroDeepSeekModelLister => p::deepseek::DeepSeekModelLister,
+        MacroGroqModelLister => p::groq::GroqModelLister,
+        MacroLlamacppModelLister => p::llamacpp::LlamacppModelLister,
+        MacroMiniMaxModelLister => p::minimax::MiniMaxModelLister,
+        MacroMiraModelLister => p::mira::MiraModelLister,
+        MacroMistralModelLister => p::mistral::MistralModelLister,
+        MacroMoonshotModelLister => p::moonshot::MoonshotModelLister,
+        MacroOpenAICompletionsModelLister => p::openai::OpenAICompletionsModelLister,
+        MacroOpenAIModelLister => p::openai::OpenAIModelLister,
+        MacroOpenRouterModelLister => p::openrouter::OpenRouterModelLister,
+        MacroVeniceModelLister => p::venice::VeniceModelLister,
+        MacroXiaomiMimoModelLister => p::xiaomimimo::XiaomiMimoModelLister,
+        MacroMiniMaxClient => p::minimax::Client,
+        MacroMiniMaxAnthropicClient => p::minimax::AnthropicClient,
+        MacroMoonshotClient => p::moonshot::Client,
+        MacroMoonshotAnthropicClient => p::moonshot::AnthropicClient,
+        MacroXiaomiMimoClient => p::xiaomimimo::Client,
+        MacroXiaomiMimoAnthropicClient => p::xiaomimimo::AnthropicClient,
+        MacroZAiClient => p::zai::Client,
+        MacroZAiAnthropicClient => p::zai::AnthropicClient,
+    }
+}
+
+/// Every `impl_model_lister!` call site is pinned above. The listers are the
+/// macro-generated types most likely to grow, and a new one that nobody pins
+/// would inherit the same blind spot.
+#[test]
+fn macro_generated_listers_are_pinned() {
+    let root = providers_dir();
+    let pinned = include_str!("provider_transport_surface.rs");
+    let mut files = Vec::new();
+    rust_files(&root, &mut files);
+    let mut unpinned = Vec::new();
+    for file in files {
+        if file.ends_with("internal/model_listing.rs") {
+            continue;
+        }
+        let rel = file.strip_prefix(&root).expect("under providers/");
+        let module = rel
+            .components()
+            .next()
+            .map(|c| {
+                c.as_os_str()
+                    .to_string_lossy()
+                    .trim_end_matches(".rs")
+                    .to_string()
+            })
+            .unwrap_or_default();
+        let source = std::fs::read_to_string(&file).expect("readable source");
+        let mut rest = source.as_str();
+        while let Some(at) = rest.find("impl_model_lister!(") {
+            rest = &rest[at + "impl_model_lister!(".len()..];
+            // The first bare identifier after the doc-comment lines is the name.
+            let name = rest
+                .lines()
+                .map(str::trim)
+                .find(|line| {
+                    !line.is_empty()
+                        && !line.starts_with("///")
+                        && !line.starts_with("//")
+                        && !line.starts_with("#[")
+                })
+                .unwrap_or_default()
+                .trim_end_matches(',')
+                .to_string();
+            if name.is_empty() {
+                continue;
+            }
+            let path = format!("p::{module}::{name}");
+            if !pinned.contains(&path) {
+                unpinned.push(path);
+            }
+        }
+    }
+    unpinned.sort();
+    unpinned.dedup();
+    assert!(
+        unpinned.is_empty(),
+        "`impl_model_lister!` types with no compiled pin in `mod root_paths`: \
+         {unpinned:?}"
+    );
 }
 
 /// The compiled list above must cover every submodule-declared transport
