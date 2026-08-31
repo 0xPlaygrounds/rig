@@ -75,7 +75,11 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
 }
 
 #[cfg(feature = "audio")]
-pub use audio_generation::{TTS_1, TTS_1_HD};
+// The model types alongside the constants; the deleted `rig-reqwest` alias
+// tree exposed both at the provider root.
+pub use audio_generation::{
+    AudioGenerationModel, CompletionsAudioGenerationModel, TTS_1, TTS_1_HD,
+};
 
 pub use streaming::*;
 pub use transcription::*;

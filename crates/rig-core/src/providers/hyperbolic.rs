@@ -168,7 +168,8 @@ mod image_generation {
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
     /// Hyperbolic image generation model.
-    pub type ImageGenerationModel<T> = GenericImageGenerationModel<HyperbolicExt, T>;
+    pub type ImageGenerationModel<T = crate::http_client::DefaultHttp> =
+        GenericImageGenerationModel<HyperbolicExt, T>;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Image {

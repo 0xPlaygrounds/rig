@@ -580,9 +580,9 @@ macro_rules! impl_provider_from_env {
 pub(crate) use impl_provider_from_env;
 
 /// Construction with an explicit transport. rig-core never chooses a transport
-/// for you; the bundled `reqwest` one is behind the `reqwest` feature, whose
-/// The `reqwest` feature adds inherent constructors that supply
-/// the one-argument `new(api_key)` on top of this.
+/// for you; the bundled `reqwest` one is behind the `reqwest` feature, which
+/// adds inherent constructors supplying the one-argument `new(api_key)`,
+/// `from_env()` and `from_val(input)` on top of this.
 impl<Ext, H> Client<Ext, H>
 where
     Ext: Provider,
@@ -710,9 +710,8 @@ where
 /// state — so `provider::Client::builder()` resolves without an `H` annotation
 /// (it is the only `builder` inherent fn, so `H` infers to `Missing`). The
 /// returned builder's `H` slot is `Missing` too; [`ClientBuilder::http_client`]
-/// must be called before [`ClientBuilder::build`] (or a transport crate's
-/// default-substituting `build`, such as the `reqwest` feature's
-/// the `reqwest` feature's inherent `build`).
+/// must be called before [`ClientBuilder::build`] — or the `reqwest` feature's
+/// inherent `build`, which substitutes the bundled transport.
 impl<Ext> Client<Ext, Missing>
 where
     Ext: Provider,

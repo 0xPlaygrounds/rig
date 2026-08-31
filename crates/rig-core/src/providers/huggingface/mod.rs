@@ -24,6 +24,12 @@ pub mod completion;
 pub mod image_generation;
 pub mod transcription;
 
+// Hoisted to the provider root, where the deleted `rig-reqwest` alias tree
+// put them and where callers name them.
 pub use client::{Client, ClientBuilder, SubProvider};
+pub use completion::CompletionModel;
+#[cfg(feature = "image")]
+pub use image_generation::ImageGenerationModel;
 #[cfg(feature = "image")]
 pub use image_generation::image_generation_models::*;
+pub use transcription::TranscriptionModel;

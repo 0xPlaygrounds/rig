@@ -826,10 +826,13 @@ What moved, and what got simpler because it no longer crosses a crate boundary:
   `openai::Client::from_env()`, `Client::new(key)` and
   `Client::builder().api_key(..).build()` resolve on their own. Delete
   `use rig_reqwest::prelude::*;` / `use rig::client::DefaultTransportClient;`.
-- **`rig_reqwest::providers` is gone.** Its only content was restoring the
-  transport default, which rig-core's own aliases now carry: with the `reqwest`
-  feature `openai::CompletionModel` again means `…<reqwest::Client>`. Use
-  `rig::providers::…` (or `rig_core::providers::…`) as before.
+- **`rig_reqwest::providers` is gone.** It did two things: restore the
+  transport default, which rig-core's own aliases now carry (with the `reqwest`
+  feature `openai::CompletionModel` again means `…<reqwest::Client>`), and hoist
+  a handful of types declared in submodules up to the provider root. Both are
+  reproduced in rig-core, so `rig::providers::…` (or `rig_core::providers::…`)
+  reads as before; `tests/provider_transport_surface.rs` now guards both halves
+  the way the deleted `providers_complete.rs` guarded the mirror.
 - **`rig_reqwest::openai_websocket`** is `rig_core::openai_websocket`, behind
   the same `websocket` features.
 - `ReqwestClient::boxed()` is now `HttpClientExt::boxed`, a provided method on

@@ -29,10 +29,14 @@ pub use cached_content::{
 };
 pub use client::{Client, InteractionsClient};
 pub use completion::CompletionModel;
+// Hoisted to the provider root, where the deleted `rig-reqwest` alias tree put
+// them and where callers name them.
 pub use embedding::{EMBEDDING_001, EMBEDDING_004, EmbeddingModel};
 #[cfg(feature = "image")]
 pub use image_generation::{GEMINI_2_5_FLASH_IMAGE, ImageGenerationModel};
+pub use interactions_api::InteractionsCompletionModel;
 pub use model_listing::*;
+pub use transcription::TranscriptionModel;
 
 pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};

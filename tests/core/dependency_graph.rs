@@ -64,6 +64,20 @@ fn rig_core_is_runtime_and_transport_free_by_default() {
     );
 }
 
+/// Picking a TLS flavor is not the same as asking for the transport. The
+/// vector-store crates forward `rustls`/`native-tls` for their own graphs, so
+/// a consumer that names one must not silently acquire reqwest and tokio.
+#[test]
+fn rig_core_tls_flavor_does_not_imply_the_transport() {
+    for flavor in ["rustls", "native-tls"] {
+        assert_absent(
+            "rig-core",
+            &["--no-default-features", "--features", flavor],
+            &["tokio", "reqwest"],
+        );
+    }
+}
+
 /// The other half of the contract: naming the feature does deliver the
 /// transport. Without this, `reqwest` could silently stop being wired up and
 /// only a downstream compile error would notice.

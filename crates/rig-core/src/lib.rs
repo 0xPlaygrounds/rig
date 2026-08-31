@@ -161,11 +161,11 @@ pub mod image_generation;
 pub mod json_utils;
 pub mod loaders;
 pub mod markers;
+pub mod memory;
+pub mod model;
 // Either TLS flavor builds the module: `websocket` is a convenience alias for
 // `websocket-rustls`, so gating on the flavors means `websocket-native-tls`
 // alone also yields a usable `openai_websocket`.
-pub mod memory;
-pub mod model;
 #[cfg(all(
     not(target_family = "wasm"),
     any(feature = "websocket-rustls", feature = "websocket-native-tls")

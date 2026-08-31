@@ -131,30 +131,41 @@ image = []
 # unchanged.
 reqwest = ["dep:reqwest", "dep:tokio"]
 socks = ["reqwest", "reqwest/socks"]
+# TLS flavor selection only: `reqwest?/…` rather than `reqwest/…` so naming a
+# flavor does NOT switch the transport on. A consumer that picks `rustls` for a
+# vector-store crate's sake must not silently acquire reqwest and tokio.
 rustls = [
-  "reqwest",
-  "reqwest/rustls",
-  "reqwest/charset",
-  "reqwest/http2",
-  "reqwest/system-proxy",
+  "reqwest?/rustls",
+  "reqwest?/charset",
+  "reqwest?/http2",
+  "reqwest?/system-proxy",
   "tokio-tungstenite?/rustls-tls-webpki-roots",
 ]
 native-tls = [
-  "reqwest",
-  "reqwest/native-tls",
-  "reqwest/charset",
-  "reqwest/http2",
-  "reqwest/system-proxy",
+  "reqwest?/native-tls",
+  "reqwest?/charset",
+  "reqwest?/http2",
+  "reqwest?/system-proxy",
   "tokio-tungstenite?/native-tls",
 ]
 reqwest-middleware = ["reqwest-middleware-rustls"]
-reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
-reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]
+reqwest-middleware-rustls = [
+  "reqwest",
+  "dep:reqwest-middleware",
+  "rustls",
+  "reqwest-middleware/rustls",
+]
+reqwest-middleware-native-tls = ["reqwest", "dep:reqwest-middleware", "native-tls"]
 # `websocket` is a convenience alias for the rustls flavor. The module gates on
 # either flavor, so `websocket-native-tls` alone yields a usable module too.
 websocket = ["websocket-rustls"]
-websocket-rustls = ["dep:tokio-tungstenite", "tokio-tungstenite/connect", "rustls"]
-websocket-native-tls = ["dep:tokio-tungstenite", "tokio-tungstenite/connect", "native-tls"]
+websocket-rustls = ["reqwest", "dep:tokio-tungstenite", "tokio-tungstenite/connect", "rustls"]
+websocket-native-tls = [
+  "reqwest",
+  "dep:tokio-tungstenite",
+  "tokio-tungstenite/connect",
+  "native-tls",
+]
 derive = ["dep:rig-derive"]
 test-utils = []
 pdf = ["dep:lopdf"]

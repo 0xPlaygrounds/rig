@@ -130,11 +130,12 @@ fn completion_client_single_import_surface() {
     let _extractor = client.extractor::<Extracted>("gpt-4o").build();
 }
 
-/// The explicit facade imports `rig::client::{CompletionClient, AgentClientExt,
-/// CompletionClient}` expose the same surface as the prelude (`new`,
-/// `completion_model`, `agent`, `extractor`) without depending on `rig-core`.
-/// Guards the restored `rig::client::CompletionClient` path (documented in
-/// `README.md` / `MIGRATING.md`) and the bundled-transport constructor.
+/// The explicit facade imports `rig::client::{AgentClientExt, CompletionClient}`
+/// expose the same surface as the prelude (`new`, `completion_model`, `agent`,
+/// `extractor`) without depending on `rig-core`. Guards the restored
+/// `rig::client::CompletionClient` path (documented in `README.md` /
+/// `MIGRATING.md`); `new` itself is inherent since the transport folded into
+/// rig-core, so no import supplies it.
 #[test]
 fn completion_client_explicit_facade_import_surface() {
     use rig::client::{AgentClientExt, CompletionClient};
