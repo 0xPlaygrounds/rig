@@ -1,5 +1,10 @@
 //! Wire-conformance suite for the `openai_responses_websocket` family.
 //!
+//! End-to-end over the REAL tungstenite backend and a local websocket server:
+//! this is the suite that proves the bundled backend delivers the wire
+//! faithfully. The protocol itself is tested against an in-memory connection in
+//! rig-core.
+//!
 //! The frames are the shared OpenAI Responses fixture's, re-wrapped as one
 //! JSON websocket message per SSE `data:` line — the wire events are identical
 //! across the two transports, only the framing differs. The driver runs the
@@ -15,16 +20,18 @@
 //! frames; the pipeline's policy differs by design (documented in
 //! MIGRATING.md, #2258).
 
-#![cfg(all(not(target_family = "wasm"), feature = "websocket"))]
+#![cfg(not(target_family = "wasm"))]
+#![allow(clippy::expect_used)]
 
 use futures::{SinkExt, StreamExt};
 use rig_core::client::CompletionClient as _;
 use rig_core::completion::{CompletionError, CompletionModel as _};
+use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+use rig_core::test_utils::RecordingHttpClient;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
 };
-use rig_reqwest::openai_websocket::{ResponsesWebSocketEvent, ResponsesWebSocketExt as _};
-use rig_reqwest::prelude::DefaultTransportBuilder as _;
+use rig_tungstenite::DefaultWebSocketClient as _;
 use tokio::net::TcpListener;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
@@ -178,9 +185,12 @@ fn driver() -> conformance::WireDriver {
             })?;
             spawn_server(listener, messages, abort);
 
+            // The HTTP transport is never used: a websocket session only
+            // borrows the model for its request mapping.
             let client = rig_core::providers::openai::Client::builder()
                 .api_key("test-key")
                 .base_url(format!("http://{address}/v1"))
+                .http_client(RecordingHttpClient::new("{}"))
                 .build()
                 .map_err(|error| CompletionError::ProviderError(error.to_string()))?;
             let model = client.completion_model("gpt-5.4");

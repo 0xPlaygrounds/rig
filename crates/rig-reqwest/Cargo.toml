@@ -37,13 +37,11 @@ url = { workspace = true }
 # single-threaded fallback runtime and drives reqwest futures there.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time"] }
-tokio-tungstenite = { workspace = true, optional = true }
 
 [dev-dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = ["test-utils"] }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tokio-tungstenite = { workspace = true, features = ["handshake"] }
 tokio-test = { workspace = true }
 futures = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -55,30 +53,17 @@ socks = ["reqwest/socks"]
 # optional modalities.
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
-websocket = ["websocket-rustls"]
-websocket-rustls = [
-  "dep:tokio-tungstenite",
-  "tokio-tungstenite/connect",
-  "rustls",
-]
-websocket-native-tls = [
-  "dep:tokio-tungstenite",
-  "tokio-tungstenite/connect",
-  "native-tls",
-]
 rustls = [
   "reqwest/rustls",
   "reqwest/charset",
   "reqwest/http2",
   "reqwest/system-proxy",
-  "tokio-tungstenite?/rustls-tls-webpki-roots",
 ]
 native-tls = [
   "reqwest/native-tls",
   "reqwest/charset",
   "reqwest/http2",
   "reqwest/system-proxy",
-  "tokio-tungstenite?/native-tls",
 ]
 reqwest-middleware = ["reqwest-middleware-rustls"]
 reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]

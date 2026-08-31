@@ -9818,6 +9818,7 @@ dependencies = [
  "rig-scylladb",
  "rig-sqlite",
  "rig-surrealdb",
+ "rig-tungstenite",
  "rig-vectorize",
  "rig-vertexai",
  "rmcp",
@@ -10169,7 +10170,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
- "tokio-tungstenite 0.29.0",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -10274,6 +10274,22 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "rig-tungstenite"
+version = "0.42.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "futures",
+ "http 1.4.2",
+ "rig-core",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite 0.29.0",
+ "tracing",
 ]
 
 [[package]]

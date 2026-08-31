@@ -43,6 +43,14 @@ fn expected_aliases() -> Vec<(String, String)> {
         if module == "internal" || module == "mod" {
             continue;
         }
+        // The provider websocket sessions are generic over the HTTP transport
+        // too, but they live behind rig-core's `websocket` feature, which this
+        // crate does not enable — the socket is `rig-tungstenite`'s, not the
+        // reqwest transport's. An alias here would not compile, so the alias
+        // tree deliberately stops at the HTTP surface.
+        if file.file_name().is_some_and(|name| name == "websocket.rs") {
+            continue;
+        }
         let source = std::fs::read_to_string(&file).expect("readable source");
         for line in source.lines() {
             let line = line.trim_start();

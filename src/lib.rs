@@ -49,6 +49,16 @@ pub use rig_core::*;
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
 pub use rig_reqwest;
 
+/// The bundled `tokio-tungstenite` websocket backend and its default-backend
+/// conveniences (`rig-tungstenite`). With the `websocket` feature,
+/// `client.responses_websocket("gpt-5.4")` opens a session over it with no
+/// backend named; without it, rig has no websocket backend and a session is
+/// opened with `connect_with(..)` and any
+/// [`rig_core::ws_client::WebSocketClientExt`] implementation.
+#[cfg(feature = "websocket")]
+#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
+pub use rig_tungstenite;
+
 /// Provider clients and models, with the transport defaulted to the bundled
 /// `reqwest` one.
 #[cfg(feature = "reqwest")]
@@ -160,6 +170,11 @@ pub mod prelude {
     // `builder().build()` over the bundled reqwest transport.
     #[cfg(feature = "reqwest")]
     pub use rig_reqwest::prelude::*;
+    // Default-backend websocket traits: `client.responses_websocket(..)` and
+    // `builder().connect()` over the bundled tungstenite backend, plus the
+    // provider's own session extension trait.
+    #[cfg(feature = "websocket")]
+    pub use rig_tungstenite::prelude::*;
 }
 
 /// Low-level streaming values plus classic streaming traits.

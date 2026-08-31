@@ -72,7 +72,7 @@ anyhow = { workspace = true }
 # for every rig-core test target (unit, integration, doctest), so the
 # sequence laws panic in ALL of rig's own suites while staying log-only in
 # downstream builds.
-rig-core = { path = ".", features = ["test-utils"] }
+rig-core = { path = ".", features = ["test-utils", "websocket"] }
 # identity-leak compile-fail tests (tests/identity_leak.rs)
 # 1.0.111: the compiler-output normalization the trybuild cases were written against.
 trybuild = "1.0.111"
@@ -102,3 +102,8 @@ test-utils = []
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
+# The transport-agnostic websocket contract (`ws_client`) and the provider
+# websocket sessions written against it. Adds no dependency — the contract is
+# built from `http`/`bytes`/`futures`/`url`, which rig-core already has — but
+# stays gated so the surface is opt-in, matching `audio`/`image`.
+websocket = []
