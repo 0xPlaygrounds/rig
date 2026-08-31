@@ -88,12 +88,13 @@ client::impl_default_provider_builder!(
     base_url = PERPLEXITY_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<PerplexityExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<PerplexityExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
 
 /// Perplexity completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H> = openai::completion::GenericCompletionModel<PerplexityExt, H>;
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
+    openai::completion::GenericCompletionModel<PerplexityExt, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;

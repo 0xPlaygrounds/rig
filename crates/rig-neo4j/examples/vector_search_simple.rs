@@ -6,7 +6,6 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
-use rig_reqwest::prelude::*;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};

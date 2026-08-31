@@ -8,6 +8,7 @@ More information about this crate can be found in the [crate documentation](http
   - [Table of contents](#table-of-contents)
   - [Features](#features)
   - [Installation](#installation)
+  - [HTTP transport](#http-transport)
   - [WASM target support](#wasm-target-support)
   - [Simple example:](#simple-example)
   - [Integrations](#integrations)
@@ -27,6 +28,24 @@ More information about this crate can be found in the [crate documentation](http
 ```bash
 cargo add rig-core
 ```
+
+## HTTP transport
+
+`rig-core` is transport-agnostic: every provider client is generic over an
+`H: HttpClientExt`. The bundled [`reqwest`](https://docs.rs/reqwest) transport
+lives behind the non-default `reqwest` feature, which supplies the
+`HttpClientExt` implementation for `reqwest::Client` (and, with
+`reqwest-middleware`, for `reqwest_middleware::ClientWithMiddleware`), the
+OpenAI Responses websocket mode, and the transport default that makes
+`openai::CompletionModel` mean `…<reqwest::Client>` and
+`openai::Client::from_env()` resolve without naming a transport. It also works
+when the caller has no tokio runtime (Bevy task pools, smol,
+`futures::executor`): reqwest futures are driven on a lazily started fallback
+runtime.
+
+Without the feature there is no default transport — construct clients with
+`new_with(..)` / `.http_client(..)` and any `HttpClientExt` implementation. The
+`rig` facade enables `reqwest` in its own default feature set.
 
 ## WASM target support
 

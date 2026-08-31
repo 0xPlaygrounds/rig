@@ -184,12 +184,6 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
             "MCP tool adapter crate (rmcp client handler, McpTool); no provider wire of its own",
         ),
     ),
-    (
-        "rig-reqwest",
-        Exempt(
-            "transport crate (reqwest HttpClientExt impl, default-transport traits, websocket); no provider wire of its own",
-        ),
-    ),
     ("rig-bedrock", Families(&["bedrock"])),
     ("rig-candle", Families(&["candle"])),
     ("rig-gemini-grpc", Families(&["gemini_grpc"])),

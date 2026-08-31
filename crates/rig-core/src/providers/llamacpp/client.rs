@@ -267,7 +267,7 @@ client::impl_default_provider_builder!(
     base_url = LLAMACPP_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<LlamacppExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<LlamacppExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<LlamacppBuilder, LlamacppApiKey, H>;
 

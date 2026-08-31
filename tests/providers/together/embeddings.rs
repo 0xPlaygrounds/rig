@@ -1,6 +1,4 @@
 //! Together embeddings smoke test.
-
-use rig::client::DefaultTransportClient as _;
 use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
 use rig::providers::together;

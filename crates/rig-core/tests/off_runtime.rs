@@ -4,12 +4,13 @@
 //! so the server side runs on its own tokio runtime thread while the client
 //! side is driven entirely by `futures::executor::block_on`.
 
+#![cfg(all(feature = "reqwest", not(target_family = "wasm")))]
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use bytes::Bytes;
 use futures::StreamExt;
+use rig_core::http_client::reqwest;
 use rig_core::http_client::{HttpClientExt, NoBody, Request};
-use rig_reqwest::ReqwestClient;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 
@@ -54,7 +55,7 @@ fn serve_once(body: &'static str, chunks: usize) -> String {
 #[test]
 fn unary_request_without_a_tokio_runtime() {
     let url = serve_once("hello from std", 1);
-    let client = ReqwestClient::default();
+    let client = reqwest::Client::default();
     let request = Request::builder()
         .method(http::Method::GET)
         .uri(url)
@@ -73,7 +74,7 @@ fn unary_request_without_a_tokio_runtime() {
 #[test]
 fn streamed_body_without_a_tokio_runtime() {
     let url = serve_once("one two three four five six seven eight", 4);
-    let client = ReqwestClient::default();
+    let client = reqwest::Client::default();
     let request = Request::builder()
         .method(http::Method::GET)
         .uri(url)
@@ -99,7 +100,7 @@ fn streamed_body_without_a_tokio_runtime() {
 #[tokio::test]
 async fn unary_request_inside_a_tokio_runtime_takes_the_direct_path() {
     let url = serve_once("hello from tokio", 1);
-    let client = ReqwestClient::default();
+    let client = reqwest::Client::default();
     let request = Request::builder()
         .method(http::Method::GET)
         .uri(url)

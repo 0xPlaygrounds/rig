@@ -25,7 +25,8 @@ pub const TTS_INWORLD_1_5_MAX: &str = "tts-inworld-1-5-max";
 const DEFAULT_VOICE: &str = "af_sky";
 
 /// Venice audio generation model.
-pub type AudioGenerationModel<T> = GenericAudioGenerationModel<VeniceExt, T>;
+pub type AudioGenerationModel<T = crate::http_client::DefaultHttp> =
+    GenericAudioGenerationModel<VeniceExt, T>;
 
 impl RawAudioGenerationProvider for VeniceExt {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";

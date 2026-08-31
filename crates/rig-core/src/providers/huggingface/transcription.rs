@@ -16,7 +16,7 @@ pub const WHISPER_SMALL: &str = "openai/whisper-small";
 
 pub use crate::providers::openai::TranscriptionResponse;
 
-pub type TranscriptionModel<T> =
+pub type TranscriptionModel<T = crate::http_client::DefaultHttp> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
         crate::providers::huggingface::client::HuggingFaceExt,
         T,

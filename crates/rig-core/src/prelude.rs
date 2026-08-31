@@ -38,3 +38,9 @@ pub use crate::tool::PortableTool;
 pub use crate::vector_store::VectorStoreIndex;
 pub use crate::vector_store::in_memory_store::InMemoryVectorStore;
 pub use crate::vector_store::request::VectorSearchRequest;
+
+#[cfg(all(
+    not(target_family = "wasm"),
+    any(feature = "websocket-rustls", feature = "websocket-native-tls")
+))]
+pub use crate::openai_websocket::ResponsesWebSocketExt;

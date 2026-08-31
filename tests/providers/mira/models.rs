@@ -1,6 +1,4 @@
 //! Migrated from `examples/agent_with_mira.rs`.
-
-use rig::client::DefaultTransportClient as _;
 use rig::client::ModelListingClient;
 use rig::providers::mira;
 

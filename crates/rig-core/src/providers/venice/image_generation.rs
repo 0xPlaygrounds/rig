@@ -81,7 +81,8 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 }
 
 /// Venice image generation model.
-pub type ImageGenerationModel<T> = GenericImageGenerationModel<super::client::VeniceExt, T>;
+pub type ImageGenerationModel<T = crate::http_client::DefaultHttp> =
+    GenericImageGenerationModel<super::client::VeniceExt, T>;
 
 impl JsonImageGenerationProvider for super::client::VeniceExt {
     const IMAGE_GENERATION_PATH: &'static str = "/image/generate";

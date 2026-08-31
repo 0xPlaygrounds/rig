@@ -1,6 +1,4 @@
 //! Migrated from `examples/transcription.rs`.
-
-use rig::client::DefaultTransportClient as _;
 use rig::prelude::TranscriptionClient;
 use rig::providers::groq;
 use rig::transcription::TranscriptionModel;

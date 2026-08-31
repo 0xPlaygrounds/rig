@@ -32,7 +32,6 @@
 //! ```
 
 use rig::client::CompletionClient as _;
-use rig::client::DefaultTransportClient as _;
 use rig::providers::xai;
 
 use crate::cache_conformance::{

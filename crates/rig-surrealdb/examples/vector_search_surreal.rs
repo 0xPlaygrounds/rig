@@ -6,7 +6,6 @@ use rig_core::{
     embeddings::EmbeddingsBuilder,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_reqwest::prelude::*;
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::Surreal;

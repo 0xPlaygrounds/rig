@@ -613,7 +613,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
     let client = rig::providers::llamacpp::Client::from_url_with(
         "http://127.0.0.1:1",
-        rig::http_client::ReqwestClient::default(),
+        rig::http_client::reqwest::Client::default(),
     )
     .expect("client should build");
     let model = client.completion_model(CASSETTE_MODEL);
@@ -667,7 +667,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
     let client = rig::providers::llamacpp::Client::from_url_with(
         "http://127.0.0.1:1",
-        rig::http_client::ReqwestClient::default(),
+        rig::http_client::reqwest::Client::default(),
     )
     .expect("client should build");
     let model = client.completion_model(CASSETTE_MODEL);

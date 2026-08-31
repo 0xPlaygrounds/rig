@@ -4,8 +4,6 @@
 //! lister was added, so the endpoint could not be recorded. Moonshot documents
 //! the OpenAI-style `{"object":"list","data":[…]}` envelope this decodes
 //! (rig#2079).
-
-use rig::client::DefaultTransportClient as _;
 use rig::client::ModelListingClient;
 use rig::providers::moonshot;
 

@@ -24,7 +24,7 @@ pub const LLAMA_CPP: &str = "LLaMA_CPP";
 
 /// llama.cpp completion model, driven by the shared OpenAI Chat Completions
 /// path.
-pub type CompletionModel<H> =
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
     openai::completion::GenericCompletionModel<super::client::LlamacppExt, H>;
 
 /// Server-side timing accounting `llama-server` reports beside `usage`.

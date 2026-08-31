@@ -1463,7 +1463,6 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// use rig_core::vector_store::request::VectorSearchRequest;
 /// use serde::{Deserialize, Serialize};
 /// use tokio_rusqlite::Connection;
-/// use rig_reqwest::prelude::*;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(Embed, Clone, Debug, Deserialize, Serialize)]

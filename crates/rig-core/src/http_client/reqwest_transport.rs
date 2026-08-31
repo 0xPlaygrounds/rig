@@ -1,30 +1,10 @@
-#![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(
-    test,
-    allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        clippy::unwrap_used,
-        clippy::unreachable
-    )
-)]
-//! The bundled `reqwest` transport for Rig.
+//! The bundled `reqwest` transport, behind the non-default `reqwest` feature.
 //!
-//! `rig-core` is transport-agnostic: every provider client is generic over an
-//! `H: HttpClientExt`, and rig-core itself names no default transport and
-//! depends on neither reqwest nor tokio. This crate supplies:
-//!
-//! - [`ReqwestClient`], a newtype over [`reqwest::Client`] implementing
-//!   [`HttpClientExt`] (and, behind the `reqwest-middleware` feature,
-//!   [`ReqwestMiddlewareClient`] over `reqwest_middleware::ClientWithMiddleware`).
-//! - The default-transport conveniences the `rig` facade re-exports:
-//!   [`client::DefaultTransportClient`] / [`client::DefaultTransportBuilder`]
-//!   (so `Client::new(key)`, `Client::from_env()`, `builder().…build()` work
-//!   without naming a transport) and the [`providers`] alias tree (so
-//!   `openai::CompletionModel` means `…<reqwest::Client>` in type position).
-//! - The OpenAI Responses websocket mode ([`openai_websocket`], feature
-//!   `websocket`).
+//! rig-core is transport-agnostic: every provider client is generic over an
+//! `H: HttpClientExt`. This module supplies the implementation for
+//! [`reqwest::Client`] (and, behind `reqwest-middleware`, for
+//! `reqwest_middleware::ClientWithMiddleware`), which is what
+//! [`super::DefaultHttp`] resolves to when the feature is on.
 //!
 //! # Running without a tokio runtime
 //!
@@ -37,85 +17,12 @@
 
 pub use reqwest;
 
-/// The bundled transport: a thin newtype over [`reqwest::Client`] that
-/// implements [`HttpClientExt`].
-///
-/// A newtype rather than `reqwest::Client` itself because the orphan rule
-/// forbids implementing rig-core's trait for reqwest's type from this crate.
-/// It derefs to the inner client, converts `From<reqwest::Client>`, and
-/// `Default` builds `reqwest::Client::default()`.
-#[derive(Clone, Debug, Default)]
-pub struct ReqwestClient(pub reqwest::Client);
-
-impl From<reqwest::Client> for ReqwestClient {
-    fn from(client: reqwest::Client) -> Self {
-        Self(client)
-    }
-}
-
-impl ReqwestClient {
-    /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold
-    /// one transport for many providers without naming it in their types.
-    pub fn boxed(self) -> BoxedHttpClient {
-        BoxedHttpClient::new(self)
-    }
-}
-
-impl From<ReqwestClient> for BoxedHttpClient {
-    fn from(client: ReqwestClient) -> Self {
-        client.boxed()
-    }
-}
-
-impl std::ops::Deref for ReqwestClient {
-    type Target = reqwest::Client;
-    fn deref(&self) -> &reqwest::Client {
-        &self.0
-    }
-}
-
-/// [`HttpClientExt`] for a `reqwest_middleware::ClientWithMiddleware`.
-#[cfg(feature = "reqwest-middleware")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
-#[derive(Clone, Debug)]
-pub struct ReqwestMiddlewareClient(pub reqwest_middleware::ClientWithMiddleware);
-
-#[cfg(feature = "reqwest-middleware")]
-impl From<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient {
-    fn from(client: reqwest_middleware::ClientWithMiddleware) -> Self {
-        Self(client)
-    }
-}
-
-#[cfg(feature = "reqwest-middleware")]
-impl std::ops::Deref for ReqwestMiddlewareClient {
-    type Target = reqwest_middleware::ClientWithMiddleware;
-    fn deref(&self) -> &reqwest_middleware::ClientWithMiddleware {
-        &self.0
-    }
-}
-
-pub mod client;
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
-pub mod openai_websocket;
-pub mod providers;
-#[cfg(not(target_family = "wasm"))]
-mod runtime;
-
-/// Bring the default-transport traits into scope.
-pub mod prelude {
-    pub use crate::client::{DefaultTransportBuilder, DefaultTransportClient};
-    #[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-    pub use crate::openai_websocket::ResponsesWebSocketExt;
-}
-
-use bytes::Bytes;
-use rig_core::http_client::{
-    BoxedHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
-    StreamingResponse, multipart::PartContent,
+use super::{
+    Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result, StreamingResponse,
+    multipart::PartContent,
 };
-use rig_core::wasm_compat::*;
+use crate::wasm_compat::*;
+use bytes::Bytes;
 use std::pin::Pin;
 
 /// Map a transport-level `reqwest::Error` onto the transport-agnostic
@@ -239,7 +146,7 @@ async fn into_forwarded_streaming_response(
 
     use futures::{SinkExt, StreamExt};
     let (mut tx, rx) = futures::channel::mpsc::channel::<Result<Bytes>>(16);
-    runtime::spawn_off_runtime(async move {
+    super::runtime::spawn_off_runtime(async move {
         let mut body = response.bytes_stream();
         while let Some(chunk) = body.next().await {
             if tx.send(chunk.map_err(Error::instance)).await.is_err() {
@@ -299,10 +206,10 @@ trait RequestBuilderLike: Sized + WasmCompatSend + 'static {
     fn send_request(self) -> impl Future<Output = Result<reqwest::Response>> + WasmCompatSend;
 }
 
-impl ReqwestLike for ReqwestClient {
+impl ReqwestLike for reqwest::Client {
     type Builder = reqwest::RequestBuilder;
     fn request_builder(&self, method: http::Method, url: String) -> Self::Builder {
-        self.0.request(method, url)
+        self.request(method, url)
     }
 }
 
@@ -322,10 +229,10 @@ impl RequestBuilderLike for reqwest::RequestBuilder {
 }
 
 #[cfg(feature = "reqwest-middleware")]
-impl ReqwestLike for ReqwestMiddlewareClient {
+impl ReqwestLike for reqwest_middleware::ClientWithMiddleware {
     type Builder = reqwest_middleware::RequestBuilder;
     fn request_builder(&self, method: http::Method, url: String) -> Self::Builder {
-        self.0.request(method, url)
+        self.request(method, url)
     }
 }
 
@@ -363,8 +270,8 @@ where
     FutOff: Future<Output = Result<T>> + WasmCompatSend,
 {
     #[cfg(not(target_family = "wasm"))]
-    if !runtime::in_tokio() {
-        return runtime::run_off_runtime(async move {
+    if !super::runtime::in_tokio() {
+        return super::runtime::run_off_runtime(async move {
             let response = request.send_request().await?;
             off_runtime(response).await
         })
@@ -478,12 +385,12 @@ macro_rules! impl_http_client_ext_via {
     };
 }
 
-impl_http_client_ext_via!(ReqwestClient);
+impl_http_client_ext_via!(reqwest::Client);
 
 impl_http_client_ext_via!(
     #[cfg(feature = "reqwest-middleware")]
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
-    ReqwestMiddlewareClient
+    reqwest_middleware::ClientWithMiddleware
 );
 
 // Compile-time thread-safety contract: the transport handle is shared across
@@ -491,7 +398,7 @@ impl_http_client_ext_via!(
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync_static<T: Send + Sync + 'static>() {}
-    assert_send_sync_static::<ReqwestClient>();
+    assert_send_sync_static::<reqwest::Client>();
 };
 
 #[cfg(test)]

@@ -16,6 +16,9 @@ pub mod completion;
 pub mod embedding;
 pub mod model_listing;
 pub mod responses_api;
+// Hoisted to the provider root the way every other model type is; the old
+// `rig-reqwest` alias tree exposed it here.
+pub use responses_api::ResponsesCompletionModel;
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]

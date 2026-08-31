@@ -1562,7 +1562,8 @@ pub struct GenericCompletionModel<Ext, T> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type CompletionModel<T> = GenericCompletionModel<super::client::AnthropicExt, T>;
+pub type CompletionModel<T = crate::http_client::DefaultHttp> =
+    GenericCompletionModel<super::client::AnthropicExt, T>;
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
 where

@@ -101,7 +101,6 @@ pub struct WithBuilderTools(ToolServer);
 /// ```no_run
 /// use rig_agent::AgentBuilder;
 /// use rig_core::{client::CompletionClient, providers::openai};
-/// use rig_reqwest::prelude::*;
 ///
 /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
 /// let openai = openai::Client::from_env()?;

@@ -1,6 +1,4 @@
 //! Hyperbolic image generation smoke test.
-
-use rig::client::DefaultTransportClient as _;
 use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
 use rig::providers::hyperbolic;

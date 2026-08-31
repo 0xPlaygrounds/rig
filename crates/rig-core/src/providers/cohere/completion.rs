@@ -588,7 +588,7 @@ impl TryFrom<Message> for message::Message {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = crate::http_client::DefaultHttp> {
     pub(crate) client: Client<T>,
     pub model: String,
 }

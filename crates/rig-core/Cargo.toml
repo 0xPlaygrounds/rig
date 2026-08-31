@@ -52,6 +52,20 @@ eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
 mime = { workspace = true }
+# The bundled transport, behind the non-default `reqwest` feature. rig-core
+# stays transport-agnostic by default: nothing below is compiled unless the
+# feature is named.
+reqwest = { workspace = true, optional = true, features = [
+  "json",
+  "stream",
+  "multipart",
+] }
+reqwest-middleware = { workspace = true, optional = true, features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+] }
 # futures-timer's default backend uses a background timer thread, which cannot
 # drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
 # the target is browser wasm — regardless of feature flags — so
@@ -65,6 +79,18 @@ futures-timer = { workspace = true, features = ["wasm-bindgen"] }
 # cannot select a randomness backend from the target triple alone, so opt in to
 # lopdf's Web Crypto backend only for Rig's supported browser target.
 lopdf = { workspace = true, optional = true, features = ["wasm_js"] }
+
+# The bundled transport needs a tokio reactor on native. When the caller has
+# none (Bevy task pools, smol, futures::executor), `http_client::runtime`
+# lazily starts a single-threaded fallback runtime and drives reqwest futures
+# there.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, optional = true, features = [
+  "rt",
+  "rt-multi-thread",
+  "time",
+] }
+tokio-tungstenite = { workspace = true, optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
@@ -83,6 +109,8 @@ futures = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
+# the moved websocket conformance suite drives a local ws server
+tokio-tungstenite = { workspace = true, features = ["handshake"] }
 redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
@@ -97,6 +125,36 @@ tracing-opentelemetry = { workspace = true }
 default = ["derive"]
 audio = []
 image = []
+# The bundled reqwest transport. Deliberately NOT default: rig-core names no
+# transport unless asked, so wasm and custom-transport consumers pay nothing.
+# The `rig` facade turns it on in its own default set, so the common path is
+# unchanged.
+reqwest = ["dep:reqwest", "dep:tokio"]
+socks = ["reqwest", "reqwest/socks"]
+rustls = [
+  "reqwest",
+  "reqwest/rustls",
+  "reqwest/charset",
+  "reqwest/http2",
+  "reqwest/system-proxy",
+  "tokio-tungstenite?/rustls-tls-webpki-roots",
+]
+native-tls = [
+  "reqwest",
+  "reqwest/native-tls",
+  "reqwest/charset",
+  "reqwest/http2",
+  "reqwest/system-proxy",
+  "tokio-tungstenite?/native-tls",
+]
+reqwest-middleware = ["reqwest-middleware-rustls"]
+reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
+reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]
+# `websocket` is a convenience alias for the rustls flavor. The module gates on
+# either flavor, so `websocket-native-tls` alone yields a usable module too.
+websocket = ["websocket-rustls"]
+websocket-rustls = ["dep:tokio-tungstenite", "tokio-tungstenite/connect", "rustls"]
+websocket-native-tls = ["dep:tokio-tungstenite", "tokio-tungstenite/connect", "native-tls"]
 derive = ["dep:rig-derive"]
 test-utils = []
 pdf = ["dep:lopdf"]

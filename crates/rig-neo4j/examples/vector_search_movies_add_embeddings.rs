@@ -4,8 +4,6 @@
 //! See the Neo4j tutorial for more information on how to import the dataset.
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
-
-use rig_reqwest::prelude::*;
 use std::env;
 
 use rig_core::{

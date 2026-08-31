@@ -51,7 +51,6 @@ default-members = [
     "crates/rig-core",
     "crates/rig-run",
     "crates/rig-agent",
-    "crates/rig-reqwest",
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
@@ -111,7 +110,6 @@ edition = "2024"
 # `rig.workspace = true` (add per-example features at the use site).
 rig = { path = ".", version = "0.42.0" }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0" }
-rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
 rig-core = { path = "crates/rig-core", version = "0.42.0" }
 rig-run = { path = "crates/rig-run", version = "0.42.0" }
@@ -239,7 +237,6 @@ workspace = true
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
 rig-run = { path = "crates/rig-run", version = "0.42.0" }
-rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0", optional = true }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.42.0", optional = true, default-features = false }
@@ -366,32 +363,32 @@ sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
-audio = ["rig-core/audio", "rig-agent?/audio", "rig-reqwest?/audio"]
-image = ["rig-core/image", "rig-agent?/image", "rig-reqwest?/image"]
+audio = ["rig-core/audio", "rig-agent?/audio"]
+image = ["rig-core/image", "rig-agent?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
 rayon = ["rig-core/rayon"]
 rmcp = ["dep:rig-rmcp"]
-socks = ["reqwest", "rig-reqwest/socks"]
-reqwest = ["dep:rig-reqwest"]
-websocket = ["reqwest", "rig-reqwest/websocket"]
-websocket-rustls = ["reqwest", "rig-reqwest/websocket-rustls"]
-websocket-native-tls = ["reqwest", "rig-reqwest/websocket-native-tls"]
+socks = ["reqwest", "rig-core/socks"]
+reqwest = ["rig-core/reqwest"]
+websocket = ["reqwest", "rig-core/websocket"]
+websocket-rustls = ["reqwest", "rig-core/websocket-rustls"]
+websocket-native-tls = ["reqwest", "rig-core/websocket-native-tls"]
 rustls = [
-  "rig-reqwest?/rustls",
+  "rig-core/rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
   "rig-helixdb?/rustls",
   "rig-lancedb?/rig-rustls",
   "rig-milvus?/rustls",
 ]
 native-tls = [
-  "rig-reqwest?/native-tls",
+  "rig-core/native-tls",
   "rig-fastembed?/hf-hub-native-tls",
   "rig-helixdb?/native-tls",
   "rig-lancedb?/rig-native-tls",
   "rig-milvus?/native-tls",
 ]
-reqwest-middleware = ["reqwest", "rig-reqwest/reqwest-middleware"]
-reqwest-middleware-rustls = ["reqwest", "rig-reqwest/reqwest-middleware-rustls"]
-reqwest-middleware-native-tls = ["reqwest", "rig-reqwest/reqwest-middleware-native-tls"]
+reqwest-middleware = ["reqwest", "rig-core/reqwest-middleware"]
+reqwest-middleware-rustls = ["reqwest", "rig-core/reqwest-middleware-rustls"]
+reqwest-middleware-native-tls = ["reqwest", "rig-core/reqwest-middleware-native-tls"]

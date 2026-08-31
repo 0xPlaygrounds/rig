@@ -22,7 +22,7 @@ pub const SCRIBE_V2: &str = "elevenlabs/scribe-v2";
 pub const WIZPER: &str = "fal-ai/wizper";
 
 /// Venice transcription model using the shared OpenAI-style implementation.
-pub type TranscriptionModel<T> =
+pub type TranscriptionModel<T = crate::http_client::DefaultHttp> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
 impl<T> OpenAiTranscriptionClient for Client<T>

@@ -1,6 +1,5 @@
 use anyhow::Result;
 use futures::StreamExt;
-use rig::prelude::*;
 use rig::providers::gemini::{
     self,
     interactions_api::{

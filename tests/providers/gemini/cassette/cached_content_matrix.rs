@@ -50,7 +50,6 @@
 //! ```
 
 use rig::client::CompletionClient as _;
-use rig::client::DefaultTransportBuilder as _;
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use std::time::Duration;

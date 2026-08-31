@@ -18,3 +18,7 @@ pub mod model_listing;
 pub mod streaming;
 
 pub use client::{Client, ClientBuilder};
+// Hoisted to the provider root, where the old `rig-reqwest` alias tree put
+// them and where callers name them.
+pub use completion::CompletionModel;
+pub use model_listing::AnthropicModelLister;

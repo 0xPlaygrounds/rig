@@ -17,7 +17,6 @@ use neo4rs::ConfigBuilder;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig_neo4j::Neo4jClient;
-use rig_reqwest::prelude::*;
 
 use std::env;
 

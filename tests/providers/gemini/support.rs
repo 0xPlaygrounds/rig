@@ -1,5 +1,4 @@
 use futures::FutureExt;
-use rig::client::DefaultTransportBuilder as _;
 use rig::providers::gemini;
 use serde::Deserialize;
 use std::future::Future;
@@ -324,8 +323,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
         .api_key(cassette.api_key("GEMINI_API_KEY"))
         .base_url(cassette.base_url())
         .http_client(
-            rig::http_client::ReqwestClient::default()
-                .boxed()
+            rig::http_client::BoxedHttpClient::new(rig::http_client::reqwest::Client::default())
                 .with_middleware(middleware),
         )
         .build()

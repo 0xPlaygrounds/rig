@@ -76,7 +76,7 @@ impl OpenAIEmbeddingsCompatible for MistralExt {
     }
 }
 
-pub type EmbeddingModel<H> = GenericEmbeddingModel<MistralExt, H>;
+pub type EmbeddingModel<H = crate::http_client::DefaultHttp> = GenericEmbeddingModel<MistralExt, H>;
 
 #[cfg(test)]
 mod tests {

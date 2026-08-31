@@ -108,7 +108,7 @@ impl Debug for ChatGPTExt {
     }
 }
 
-pub type Client<H> = client::Client<ChatGPTExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<ChatGPTExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H>;
 
@@ -335,7 +335,7 @@ impl<H> ClientBuilder<H> {
 }
 
 #[derive(Clone)]
-pub struct ResponsesCompletionModel<H> {
+pub struct ResponsesCompletionModel<H = crate::http_client::DefaultHttp> {
     client: Client<H>,
     pub model: String,
     pub tools: Vec<responses_api::ResponsesToolDefinition>,

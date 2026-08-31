@@ -3,7 +3,6 @@ use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed, client::EmbeddingsClient, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex,
 };
-use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`

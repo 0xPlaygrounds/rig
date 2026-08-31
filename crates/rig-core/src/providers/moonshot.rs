@@ -111,7 +111,8 @@ pub const KIMI_K2: &str = "kimi-k2";
 pub const KIMI_K2_5: &str = "kimi-k2.5";
 
 /// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H> = openai::completion::GenericCompletionModel<MoonshotExt, H>;
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
+    openai::completion::GenericCompletionModel<MoonshotExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
     const PROVIDER_NAME: &'static str = "moonshot";

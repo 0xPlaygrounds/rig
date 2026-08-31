@@ -4,17 +4,17 @@
 //! sequential session. Each connection supports a single in-flight response at a
 //! time, which matches OpenAI's current protocol constraints.
 
-use futures::{SinkExt, StreamExt};
-use rig_core::completion::NormalizeCompletionResponse;
-use rig_core::completion::{self, CompletionError};
-use rig_core::http_client::HttpClientExt;
-use rig_core::providers::internal::adapter::{TriagedFrame, triage_frame};
-use rig_core::providers::openai::Client as OpenAIClient;
-use rig_core::providers::openai::responses_api::streaming::{
+use crate::completion::NormalizeCompletionResponse;
+use crate::completion::{self, CompletionError};
+use crate::http_client::HttpClientExt;
+use crate::providers::internal::adapter::{TriagedFrame, triage_frame};
+use crate::providers::openai::Client as OpenAIClient;
+use crate::providers::openai::responses_api::streaming::{
     ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
     StreamingCompletionChunk, classify_responses_frame, completion_response_from_raw_choices,
 };
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::time::Duration;
@@ -25,20 +25,20 @@ use tokio_tungstenite::{
 };
 use url::Url;
 
-use rig_core::providers::openai::responses_api::{
+use crate::providers::openai::responses_api::{
     CompletionResponse, ResponseStatus, ResponsesCompletionModel, ResponsesUsage,
 };
 
 type OpenAIWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
-type WebSocketRawChoice = rig_core::streaming::RawStreamingChoice<
-    rig_core::providers::openai::responses_api::streaming::StreamingCompletionResponse,
+type WebSocketRawChoice = crate::streaming::RawStreamingChoice<
+    crate::providers::openai::responses_api::streaming::StreamingCompletionResponse,
 >;
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// The transport request-id header this endpoint reports, shared with the
-/// HTTP twins through [`rig_core::providers::openai::responses_api::ResponsesProviderExt::REQUEST_ID_HEADER`] — the
+/// HTTP twins through [`crate::providers::openai::responses_api::ResponsesProviderExt::REQUEST_ID_HEADER`] — the
 /// websocket upgrade is answered by the same service and reports the same id.
 const REQUEST_ID_HEADER: Option<&'static str> =
-    <rig_core::providers::openai::OpenAIResponsesExt as rig_core::providers::openai::responses_api::ResponsesProviderExt>::REQUEST_ID_HEADER;
+    <crate::providers::openai::OpenAIResponsesExt as crate::providers::openai::responses_api::ResponsesProviderExt>::REQUEST_ID_HEADER;
 
 /// Options for a `response.create` message sent over OpenAI WebSocket mode.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -65,7 +65,7 @@ struct ResponsesWebSocketClientEvent {
     #[serde(rename = "type")]
     kind: ResponsesWebSocketClientEventKind,
     #[serde(flatten)]
-    request: rig_core::providers::openai::responses_api::CompletionRequest,
+    request: crate::providers::openai::responses_api::CompletionRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate: Option<bool>,
 }
@@ -174,7 +174,7 @@ pub enum ResponsesWebSocketEvent {
     /// An unrecognized event's raw payload — warned and skipped on the
     /// semantic path, forwarded verbatim so the streaming surface can carry
     /// it on the `RawStreamingChoice::Unknown` passthrough channel.
-    Unknown(rig_core::streaming::UnknownPayload),
+    Unknown(crate::streaming::UnknownPayload),
 }
 
 impl ResponsesWebSocketEvent {
@@ -325,7 +325,7 @@ where
     /// Sends a `response.create` event for a Rig completion request.
     pub async fn send(
         &mut self,
-        completion_request: rig_core::completion::CompletionRequest,
+        completion_request: crate::completion::CompletionRequest,
     ) -> Result<(), CompletionError> {
         self.send_with_options(
             completion_request,
@@ -337,7 +337,7 @@ where
     /// Sends a `response.create` event with explicit websocket-mode options.
     pub async fn send_with_options(
         &mut self,
-        completion_request: rig_core::completion::CompletionRequest,
+        completion_request: crate::completion::CompletionRequest,
         options: ResponsesWebSocketCreateOptions,
     ) -> Result<(), CompletionError> {
         self.ensure_open()?;
@@ -361,8 +361,8 @@ where
             generate: options.generate,
         };
 
-        rig_core::providers::internal::trace_json(
-            rig_core::providers::internal::LogTarget::Completions,
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
             "OpenAI websocket request",
             &payload,
         );
@@ -427,7 +427,7 @@ where
     /// Sends a warmup turn (`generate: false`) and returns the resulting response ID.
     pub async fn warmup(
         &mut self,
-        completion_request: rig_core::completion::CompletionRequest,
+        completion_request: crate::completion::CompletionRequest,
     ) -> Result<String, CompletionError> {
         self.send_with_options(
             completion_request,
@@ -445,7 +445,7 @@ where
     /// wire response is needed.
     pub async fn completion(
         &mut self,
-        completion_request: rig_core::completion::CompletionRequest,
+        completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let provider = self.model.provider_name();
         self.send(completion_request).await?;
@@ -468,7 +468,7 @@ where
     /// applies the provider-local mapping — one websocket turn either way.
     pub async fn raw_completion(
         &mut self,
-        completion_request: rig_core::completion::CompletionRequest,
+        completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
         self.send(completion_request).await?;
         self.wait_for_completed_response().await
@@ -494,9 +494,8 @@ where
 
     fn prepare_request(
         &self,
-        completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<rig_core::providers::openai::responses_api::CompletionRequest, CompletionError>
-    {
+        completion_request: crate::completion::CompletionRequest,
+    ) -> Result<crate::providers::openai::responses_api::CompletionRequest, CompletionError> {
         let mut request = self.model.create_completion_request(completion_request)?;
 
         // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
@@ -592,7 +591,7 @@ where
                     // Semantic skip, raw passthrough: the accumulator never
                     // sees the frame, but the streaming surface still yields
                     // it verbatim.
-                    raw_choices.push(rig_core::streaming::RawStreamingChoice::Unknown(value));
+                    raw_choices.push(crate::streaming::RawStreamingChoice::Unknown(value));
                 }
             }
         }
@@ -956,7 +955,7 @@ fn websocket_provider_error(error: tungstenite::Error) -> CompletionError {
 
 /// OpenAI Responses websocket mode on an OpenAI client.
 ///
-/// Lives in `rig-reqwest` because the socket itself is a native
+/// Native-only because the socket itself is a native
 /// `tokio-tungstenite` transport; `H` is only used for the completion model
 /// the session wraps. Bring the trait into scope with `use rig::prelude::*`.
 pub trait ResponsesWebSocketExt<H> {
@@ -983,7 +982,7 @@ where
         &self,
         model: impl Into<String>,
     ) -> ResponsesWebSocketSessionBuilder<H> {
-        use rig_core::client::CompletionClient as _;
+        use crate::client::CompletionClient as _;
         ResponsesWebSocketSessionBuilder::new(self.completion_model(model))
     }
 
@@ -1006,14 +1005,14 @@ mod tests {
         ResponsesWebSocketCreateOptions, ResponsesWebSocketDoneEvent, ResponsesWebSocketEvent,
         parse_server_event, terminal_response_result, websocket_provider_error, websocket_url,
     };
+    use crate::client::CompletionClient;
+    use crate::completion::CompletionModel;
     use crate::prelude::*;
-    use futures::{SinkExt, StreamExt};
-    use rig_core::client::CompletionClient;
-    use rig_core::completion::CompletionModel;
-    use rig_core::providers::openai::responses_api::{
+    use crate::providers::openai::responses_api::{
         CompletionResponse, IncompleteDetailsReason, Output, ResponseError, ResponseObject,
         ResponseStatus, ResponsesUsage,
     };
+    use futures::{SinkExt, StreamExt};
     use serde_json::json;
 
     /// Build the `tungstenite::Error` a rejected upgrade produces: the status,
@@ -1293,7 +1292,7 @@ mod tests {
                 input_tokens_details: None,
                 output_tokens: 2,
                 output_tokens_details: Some(
-                    rig_core::providers::openai::responses_api::OutputTokensDetails {
+                    crate::providers::openai::responses_api::OutputTokensDetails {
                         reasoning_tokens: 0,
                     },
                 ),
@@ -1513,7 +1512,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -1533,14 +1532,14 @@ mod tests {
         // incomplete status to the same finish reason as the unary path.
         assert_eq!(
             normalized.finish_reason(),
-            Some(rig_core::completion::FinishReason::Length)
+            Some(crate::completion::FinishReason::Length)
         );
         assert_eq!(normalized.usage.input_tokens, 1);
         assert_eq!(normalized.usage.output_tokens, 2);
         assert_eq!(normalized.usage.total_tokens, 3);
         assert!(matches!(
             normalized.choice.first(),
-            Some(rig_core::completion::AssistantContent::Text(text)) if text.text == "partial"
+            Some(crate::completion::AssistantContent::Text(text)) if text.text == "partial"
         ));
 
         server.await.expect("server task should finish");
@@ -1611,7 +1610,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -1631,7 +1630,7 @@ mod tests {
             .choice
             .iter()
             .filter_map(|content| match content {
-                rig_core::completion::AssistantContent::Text(text) => Some(text.text.clone()),
+                crate::completion::AssistantContent::Text(text) => Some(text.text.clone()),
                 _ => None,
             })
             .collect();
@@ -1643,7 +1642,7 @@ mod tests {
         assert!(
             normalized.choice.iter().any(|content| matches!(
                 content,
-                rig_core::completion::AssistantContent::Reasoning(_)
+                crate::completion::AssistantContent::Reasoning(_)
             )),
             "the interleaved reasoning must survive"
         );
@@ -1704,7 +1703,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -1722,7 +1721,7 @@ mod tests {
 
         assert!(matches!(
             normalized.choice.first(),
-            Some(rig_core::completion::AssistantContent::Text(text)) if text.text == "hello there"
+            Some(crate::completion::AssistantContent::Text(text)) if text.text == "hello there"
         ));
         assert_eq!(normalized.message_id.as_deref(), Some("msg_terminal_1"));
 
@@ -1786,7 +1785,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -1804,11 +1803,11 @@ mod tests {
 
         assert!(matches!(
             normalized.choice.first(),
-            Some(rig_core::completion::AssistantContent::Text(text)) if text.text == "partial from body"
+            Some(crate::completion::AssistantContent::Text(text)) if text.text == "partial from body"
         ));
         assert_eq!(
             normalized.finish_reason(),
-            Some(rig_core::completion::FinishReason::Length)
+            Some(crate::completion::FinishReason::Length)
         );
         assert_eq!(normalized.message_id.as_deref(), Some("msg_body_only_1"));
 
@@ -1902,7 +1901,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -1981,7 +1980,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2087,7 +2086,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2183,7 +2182,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2325,7 +2324,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2412,7 +2411,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2532,7 +2531,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2642,7 +2641,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2684,7 +2683,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2728,7 +2727,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2769,7 +2768,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2856,7 +2855,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2950,9 +2949,9 @@ mod tests {
     #[tokio::test]
     async fn websocket_conformance_replays_sse_fixture_frames() {
         let fixture =
-            rig_core::test_utils::streaming_conformance::fixtures::openai_responses::fixture();
+            crate::test_utils::streaming_conformance::fixtures::openai_responses::fixture();
         // The shared fixture scripts byte frames; re-wrap them as ws messages.
-        let byte_frame = |frame: &rig_core::test_utils::streaming_conformance::WireInput| {
+        let byte_frame = |frame: &crate::test_utils::streaming_conformance::WireInput| {
             frame
                 .as_bytes()
                 .cloned()
@@ -2972,7 +2971,7 @@ mod tests {
         let server = spawn_ws_server_with_messages(listener, messages);
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -2992,7 +2991,7 @@ mod tests {
             .choice
             .iter()
             .filter_map(|content| match content {
-                rig_core::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+                crate::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
                 _ => None,
             })
             .collect();
@@ -3001,7 +3000,7 @@ mod tests {
             .choice
             .iter()
             .filter_map(|content| match content {
-                rig_core::completion::AssistantContent::ToolCall(call) => {
+                crate::completion::AssistantContent::ToolCall(call) => {
                     Some(call.function.name.as_str())
                 }
                 _ => None,
@@ -3014,7 +3013,7 @@ mod tests {
         // shared normalization maps to `ToolCalls` on every transport.
         assert_eq!(
             normalized.finish_reason(),
-            Some(rig_core::completion::FinishReason::ToolCalls)
+            Some(crate::completion::FinishReason::ToolCalls)
         );
 
         server.await.expect("server task should finish");
@@ -3061,7 +3060,7 @@ mod tests {
         let server = spawn_ws_server_with_messages(listener, messages);
 
         let base_url = format!("http://{address}/v1");
-        let client = rig_core::providers::openai::Client::builder()
+        let client = crate::providers::openai::Client::builder()
             .api_key("test-key")
             .base_url(&base_url)
             .build()
@@ -3080,10 +3079,10 @@ mod tests {
         assert!(
             normalized.choice.iter().any(|content| matches!(
                 content,
-                rig_core::completion::AssistantContent::Reasoning(reasoning)
+                crate::completion::AssistantContent::Reasoning(reasoning)
                     if reasoning.content.iter().any(|block| matches!(
                         block,
-                        rig_core::message::ReasoningContent::Text { text, .. }
+                        crate::message::ReasoningContent::Text { text, .. }
                             if text.contains("thinking hard")
                     ))
             )),
@@ -3093,7 +3092,7 @@ mod tests {
         assert!(
             normalized.choice.iter().any(|content| matches!(
                 content,
-                rig_core::completion::AssistantContent::Text(text) if text.text == "answer"
+                crate::completion::AssistantContent::Text(text) if text.text == "answer"
             )),
             "text delta should survive alongside reasoning, got {:?}",
             normalized.choice

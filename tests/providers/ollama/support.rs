@@ -1,5 +1,4 @@
 use futures::FutureExt;
-use rig::client::DefaultTransportBuilder as _;
 use rig::client::Nothing;
 use rig::providers::ollama;
 use std::future::Future;

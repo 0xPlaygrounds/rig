@@ -49,10 +49,36 @@ fn assert_absent(package: &str, args: &[&str], forbidden: &[&str]) {
     }
 }
 
+/// rig-core carries the bundled transport, but only when asked: the `reqwest`
+/// feature is what pulls `reqwest` and `tokio` in, so a consumer that does not
+/// name it — every wasm and custom-transport build — pays for neither.
+/// `--all-features` necessarily includes it, which is why the ceiling here is
+/// the default feature set rather than the full one.
 #[test]
-fn rig_core_is_runtime_and_transport_free() {
+fn rig_core_is_runtime_and_transport_free_by_default() {
     assert_absent("rig-core", &[], &["tokio", "reqwest"]);
-    assert_absent("rig-core", &["--all-features"], &["tokio", "reqwest"]);
+    assert_absent(
+        "rig-core",
+        &["--no-default-features"],
+        &["tokio", "reqwest"],
+    );
+}
+
+/// The other half of the contract: naming the feature does deliver the
+/// transport. Without this, `reqwest` could silently stop being wired up and
+/// only a downstream compile error would notice.
+#[test]
+fn rig_core_reqwest_feature_pulls_the_transport() {
+    let names = normal_dependency_names(
+        "rig-core",
+        &["--no-default-features", "--features", "reqwest"],
+    );
+    for expected in ["reqwest", "tokio"] {
+        assert!(
+            names.iter().any(|name| name == expected),
+            "`rig-core --features reqwest` must depend on `{expected}`"
+        );
+    }
 }
 
 #[test]

@@ -4,7 +4,6 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::client::DefaultTransportClient;
 use rig::prelude::*;
 use rig::providers::openai;
 use schemars::JsonSchema;

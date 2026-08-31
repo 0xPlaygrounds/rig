@@ -1,6 +1,6 @@
 use futures::FutureExt;
-use rig::client::DefaultTransportBuilder as _;
-use rig::http_client::{BoxedHttpClient, ReqwestClient};
+use rig::http_client::BoxedHttpClient;
+use rig::http_client::reqwest;
 use rig::providers::anthropic;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -41,7 +41,7 @@ pub(super) async fn with_anthropic_boxed_cassette<F, Fut>(
     let client = anthropic::Client::builder()
         .api_key(cassette.api_key("ANTHROPIC_API_KEY"))
         .base_url(cassette.base_url())
-        .http_client(ReqwestClient::default().boxed())
+        .http_client(BoxedHttpClient::new(reqwest::Client::default()))
         .build()
         .expect("client should build");
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
@@ -66,7 +66,7 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     let client = anthropic::Client::builder()
         .api_key(cassette.api_key("ANTHROPIC_API_KEY"))
         .base_url(cassette.base_url())
-        .http_client(ReqwestClient::default().boxed().with_middleware(middleware))
+        .http_client(BoxedHttpClient::new(reqwest::Client::default()).with_middleware(middleware))
         .build()
         .expect("client should build");
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;

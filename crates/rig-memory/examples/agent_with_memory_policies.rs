@@ -17,7 +17,6 @@ use rig_agent::prelude::*;
 use rig_core::completion::Message;
 use rig_core::providers::openai;
 use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory, TokenWindowMemory};
-use rig_reqwest::prelude::*;
 
 fn approx_token_count(message: &Message) -> usize {
     let text = match message {

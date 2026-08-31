@@ -31,7 +31,7 @@ pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
 /// Completion model wrapper for the Gemini Interactions API.
 #[derive(Clone, Debug)]
-pub struct InteractionsCompletionModel<T> {
+pub struct InteractionsCompletionModel<T = crate::http_client::DefaultHttp> {
     pub(crate) client: InteractionsClient<T>,
     pub model: String,
 }

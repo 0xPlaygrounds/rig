@@ -19,7 +19,6 @@ use rig_core::{
     vector_store::request::VectorSearchRequest,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_reqwest::prelude::*;
 use rig_vectorize::VectorizeVectorStore;
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]

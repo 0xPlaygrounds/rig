@@ -1,8 +1,6 @@
 //! OpenAI audio generation smoke test.
 
 use rig::audio_generation::AudioGenerationModel;
-
-use rig::client::DefaultTransportClient as _;
 use rig::client::audio_generation::AudioGenerationClient;
 use rig::providers::openai;
 

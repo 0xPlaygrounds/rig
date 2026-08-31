@@ -88,7 +88,7 @@ client::impl_default_provider_builder!(
     base_url = HYPERBOLIC_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<HyperbolicExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<HyperbolicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
 
@@ -131,7 +131,7 @@ pub const DEEPSEEK_R1_ZERO: &str = "deepseek-ai/DeepSeek-R1-Zero";
 pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
 /// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H> =
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
     crate::providers::openai::completion::GenericCompletionModel<HyperbolicExt, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
@@ -244,7 +244,7 @@ mod audio_generation {
     use serde_json::json;
 
     #[derive(Clone)]
-    pub struct AudioGenerationModel<T> {
+    pub struct AudioGenerationModel<T = crate::http_client::DefaultHttp> {
         client: Client<T>,
         pub language: String,
     }

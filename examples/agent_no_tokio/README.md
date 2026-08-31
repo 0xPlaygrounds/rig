@@ -13,7 +13,7 @@ system or any other tick-driven host would use.
 OPENAI_API_KEY=… cargo run -p agent_no_tokio
 ```
 
-Tokio appears only transitively, inside `rig-reqwest`, which drives the HTTP
+Tokio appears only transitively, inside rig-core's bundled transport, which drives the HTTP
 wire on a private runtime:
 
 ```sh

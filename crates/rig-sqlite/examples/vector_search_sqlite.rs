@@ -7,7 +7,6 @@ use rig_core::{
     providers::openai::Client,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig_reqwest::prelude::*;
 use rig_sqlite::{
     Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
 };

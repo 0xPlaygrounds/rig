@@ -1952,7 +1952,8 @@ pub struct GenericCompletionModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type CompletionModel<H> = GenericCompletionModel<super::OpenAICompletionsExt, H>;
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
+    GenericCompletionModel<super::OpenAICompletionsExt, H>;
 
 impl<Ext, H> GenericCompletionModel<Ext, H> {
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {

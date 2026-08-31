@@ -27,5 +27,5 @@ pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 /// Doubleword completion model — the shared OpenAI-compatible
 /// [`GenericCompletionModel`](openai::completion::GenericCompletionModel)
 /// specialized to Doubleword.
-pub type CompletionModel<H> =
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
     openai::completion::GenericCompletionModel<super::client::DoublewordExt, H>;

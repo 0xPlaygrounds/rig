@@ -1,5 +1,4 @@
 use assert_fs::TempDir;
-use rig::client::DefaultTransportBuilder as _;
 use rig::providers::chatgpt::{self, ChatGPTAuth};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;

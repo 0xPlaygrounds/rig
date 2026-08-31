@@ -34,7 +34,6 @@
 //! ```
 
 use rig::client::CompletionClient as _;
-use rig::client::DefaultTransportClient as _;
 use rig::providers::deepseek;
 
 use crate::cache_conformance::{

@@ -4,7 +4,6 @@ use mongodb::{
     options::ClientOptions,
 };
 use rig_core::{providers::openai, vector_store::request::VectorSearchRequest};
-use rig_reqwest::prelude::*;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;

@@ -43,4 +43,5 @@ impl JinaCompatibleRerank for super::client::LlamacppExt {
 }
 
 /// llama.cpp rerank model, driven by the shared Jina-compatible rerank path.
-pub type RerankModel<H> = GenericRerankModel<super::client::LlamacppExt, H>;
+pub type RerankModel<H = crate::http_client::DefaultHttp> =
+    GenericRerankModel<super::client::LlamacppExt, H>;

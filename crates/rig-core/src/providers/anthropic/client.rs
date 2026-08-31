@@ -53,7 +53,7 @@ impl ApiKey for AnthropicKey {
     }
 }
 
-pub type Client<H> = client::Client<AnthropicExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<AnthropicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
 

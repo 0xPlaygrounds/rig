@@ -105,7 +105,7 @@ jobs:
       # independent wasm breaks behind an extra CI round-trip.
       fail-fast: false
       matrix:
-        package: [rig-core, rig-run, rig-reqwest, rig-agent, rig, rig-candle, candle_wasm_chat]
+        package: [rig-core, rig-run, rig-agent, rig, rig-candle, candle_wasm_chat]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -326,7 +326,7 @@ jobs:
       # is the authoritative plain-`cargo test` execution.
       - name: Test rig-core and rig-agent with all features
         run: >-
-          cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-agent -p rig-rmcp --all-features
+          cargo nextest run --locked -p rig-core -p rig-agent -p rig-rmcp --all-features
           --retries 2 -E 'not binary(macro_hygiene)'
 
       # `cargo nextest run` (in the `test` job) selects the workspace's
@@ -390,7 +390,7 @@ jobs:
       # the second attempt would conceal nondeterminism rather than tolerate a
       # flaky network.
       - name: Test out-of-facade streaming conformance and structural guards
-        run: cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
+        run: cargo nextest run --locked -p rig-core -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
 
       - name: Show sccache statistics
         if: always() && env.RUSTC_WRAPPER == 'sccache'

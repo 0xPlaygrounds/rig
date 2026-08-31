@@ -10,6 +10,9 @@ pub mod rerank;
 pub mod transcription;
 pub mod verify;
 
+#[cfg(feature = "reqwest")]
+mod default_transport;
+
 use bytes::Bytes;
 pub use completion::{CompletionClient, ConstructCompletionModel};
 pub use embeddings::{ConstructEmbeddingModel, EmbeddingsClient};
@@ -119,7 +122,7 @@ pub trait ProviderClient {
 /// the knowledge of which environment variables configure a provider; it
 /// never picks a transport itself. A transport crate supplies the ergonomic
 /// `from_env()` / `from_val()` by calling these with its client — see
-/// `rig-reqwest`'s `DefaultTransportClient`, re-exported through the `rig`
+/// the inherent default-transport constructors, available through the `rig`
 /// facade prelude.
 pub trait ProviderFromEnv: Provider {
     /// Provider-specific input accepted by [`Self::from_val_with`].
@@ -211,7 +214,7 @@ impl ApiKey for Nothing {}
 /// [`crate::http_client::HttpClientExt`] implementation. rig-core has no
 /// default *concrete* transport: construct with [`Client::new_with`] /
 /// [`ClientBuilder::http_client`], or use the bundled `reqwest` transport's
-/// conveniences (`rig-reqwest`, re-exported by the `rig` facade) which pin
+/// conveniences (the `reqwest` feature, on by default in the `rig` facade) which pin
 /// `H` for you. In type position `H` defaults to the erased
 /// [`BoxedHttpClient`], so `Client<Ext>` means "any transport" — the shape a
 /// host that owns one transport for many providers holds (see
@@ -577,8 +580,8 @@ macro_rules! impl_provider_from_env {
 pub(crate) use impl_provider_from_env;
 
 /// Construction with an explicit transport. rig-core never chooses a transport
-/// for you; the bundled `reqwest` one lives in `rig-reqwest`, whose
-/// `DefaultTransportClient` (re-exported via the `rig` facade prelude) supplies
+/// for you; the bundled `reqwest` one is behind the `reqwest` feature, whose
+/// The `reqwest` feature adds inherent constructors that supply
 /// the one-argument `new(api_key)` on top of this.
 impl<Ext, H> Client<Ext, H>
 where
@@ -708,8 +711,8 @@ where
 /// (it is the only `builder` inherent fn, so `H` infers to `Missing`). The
 /// returned builder's `H` slot is `Missing` too; [`ClientBuilder::http_client`]
 /// must be called before [`ClientBuilder::build`] (or a transport crate's
-/// default-substituting `build`, such as `rig-reqwest`'s
-/// `DefaultTransportBuilder`).
+/// default-substituting `build`, such as the `reqwest` feature's
+/// the `reqwest` feature's inherent `build`).
 impl<Ext> Client<Ext, Missing>
 where
     Ext: Provider,
@@ -889,7 +892,7 @@ where
 /// - `H = Missing` means the caller has not yet called [`Self::http_client`]; rig-core's own
 ///   `build()` is only reachable once a concrete `HttpClientExt` backend has been supplied. A
 ///   transport crate may add a default-substituting `build` for the `Missing` state (the
-///   bundled one is `rig-reqwest`'s `DefaultTransportBuilder`, in the `rig` facade prelude).
+///   bundled one is the inherent `build` the `reqwest` feature adds).
 ///
 /// Keeping `Missing` as the *type-level* placeholder means the builder's generics describe what
 /// the caller has actually provided, instead of pretending a default value is already present.

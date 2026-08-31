@@ -110,11 +110,12 @@ macro_rules! impl_dual_dialect_provider {
         #[derive(Debug, Default, Clone, Copy)]
         pub struct $anthropic_ext;
 
-        pub type Client<H> = $crate::client::Client<$ext, H>;
+        pub type Client<H = $crate::http_client::DefaultHttp> = $crate::client::Client<$ext, H>;
         pub type ClientBuilder<H = $crate::markers::Missing> =
             $crate::client::ClientBuilder<$builder, $crate::client::BearerAuth, H>;
 
-        pub type AnthropicClient<H> = $crate::client::Client<$anthropic_ext, H>;
+        pub type AnthropicClient<H = $crate::http_client::DefaultHttp> =
+            $crate::client::Client<$anthropic_ext, H>;
         pub type AnthropicClientBuilder<H = $crate::markers::Missing> = $crate::client::ClientBuilder<
             $anthropic_builder,
             $crate::providers::anthropic::client::AnthropicKey,

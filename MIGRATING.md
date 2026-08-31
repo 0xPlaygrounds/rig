@@ -806,6 +806,43 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### `rig-reqwest` is gone; the bundled transport is a `rig-core` feature
+
+The crate is deleted. Everything it held now lives in `rig-core` behind the
+**non-default** `reqwest` feature, which the `rig` facade turns on in its own
+default set — so `rig = "0.42"` users need change nothing.
+
+What moved, and what got simpler because it no longer crosses a crate boundary:
+
+- **`ReqwestClient` is gone.** rig-core owns `HttpClientExt`, so it implements
+  it for `reqwest::Client` directly; the newtype existed only because the
+  orphan rule forbade that from a downstream crate. Replace
+  `rig_reqwest::ReqwestClient::default()` with `reqwest::Client::default()`
+  (`rig::http_client::reqwest` re-exports the crate). Same for
+  `ReqwestMiddlewareClient` → `reqwest_middleware::ClientWithMiddleware`.
+- **`DefaultTransportClient` / `DefaultTransportBuilder` are gone**, and you no
+  longer import anything to construct a client. They were traits only so the
+  impls could live downstream of the types; they are now inherent, so
+  `openai::Client::from_env()`, `Client::new(key)` and
+  `Client::builder().api_key(..).build()` resolve on their own. Delete
+  `use rig_reqwest::prelude::*;` / `use rig::client::DefaultTransportClient;`.
+- **`rig_reqwest::providers` is gone.** Its only content was restoring the
+  transport default, which rig-core's own aliases now carry: with the `reqwest`
+  feature `openai::CompletionModel` again means `…<reqwest::Client>`. Use
+  `rig::providers::…` (or `rig_core::providers::…`) as before.
+- **`rig_reqwest::openai_websocket`** is `rig_core::openai_websocket`, behind
+  the same `websocket` features.
+- `ReqwestClient::boxed()` is now `HttpClientExt::boxed`, a provided method on
+  the trait, so any transport can be erased. In a file that also imports
+  `futures::FutureExt`, call `BoxedHttpClient::new(transport)` instead — both
+  traits offer a `boxed` and the call is ambiguous.
+
+`rig-core`'s transport features are `reqwest`, `rustls`, `native-tls`, `socks`,
+`reqwest-middleware{,-rustls,-native-tls}` and `websocket{,-rustls,-native-tls}`
+— the same names the facade already exposes. A crate that depended on
+`rig-reqwest` should depend on `rig-core` with `features = ["reqwest"]`.
+
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in
@@ -1054,11 +1091,10 @@ the type name. It is for hosts that *hold* one transport for many providers
   applied. The one break: `Client::<Ext>::builder()` no longer resolves —
   `builder()` lives on `Client<Ext, Missing>`, so spell it
   `Client::<Ext, Missing>::builder()` (or go through a provider's
-  `ClientBuilder`/the rig-reqwest prelude as before).
+  `ClientBuilder` as before).
 - `ProviderFromEnv::from_env_boxed(http)` / `from_val_boxed(input, http)`
   return `Client<Self, BoxedHttpClient>`; `Client::boxed(self)` erases a built
-  client's transport; `rig_reqwest::ReqwestClient::boxed()` /
-  `impl From<ReqwestClient> for BoxedHttpClient`.
+  client's transport; `HttpClientExt::boxed()` erases any transport.
 
 ```rust
 use rig::client::ProviderFromEnv as _;
@@ -1152,7 +1188,12 @@ unchanged. What changes:
   reconcile_managed_erased_tools}`, `Agent::tool_server_handle()`. rig-agent's `tokio` is
   optional, enabled only by `test-utils`.
 
-### rig-core has no default transport; the bundled reqwest transport is the new `rig-reqwest` crate
+### rig-core has no default transport
+
+> Superseded later in this same release: the transport moved back into
+> `rig-core` behind the non-default `reqwest` feature and `rig-reqwest` was
+> deleted. See "`rig-reqwest` is gone" above; the rest of this section is the
+> history of how the transport became optional.
 
 `rig-core` no longer depends on `reqwest` or `tokio` and no longer names a
 default HTTP transport anywhere: every `H` type parameter that used to default

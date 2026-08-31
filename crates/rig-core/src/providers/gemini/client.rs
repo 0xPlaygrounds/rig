@@ -43,12 +43,13 @@ where
 }
 
 /// Gemini GenerateContent client.
-pub type Client<H> = client::Client<GeminiExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<GeminiExt, H>;
 /// Builder for the Gemini GenerateContent client.
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
 /// Gemini Interactions API client.
-pub type InteractionsClient<H> = client::Client<GeminiInteractionsExt, H>;
+pub type InteractionsClient<H = crate::http_client::DefaultHttp> =
+    client::Client<GeminiInteractionsExt, H>;
 
 impl ApiKey for GeminiApiKey {}
 

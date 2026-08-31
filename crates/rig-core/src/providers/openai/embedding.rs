@@ -219,7 +219,8 @@ pub struct GenericEmbeddingModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type EmbeddingModel<H> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
+pub type EmbeddingModel<H = crate::http_client::DefaultHttp> =
+    GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
 /// Default dimensions for OpenAI's known embedding models (also used by
 /// Azure OpenAI, which deploys the same models).

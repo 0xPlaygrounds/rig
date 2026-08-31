@@ -5,8 +5,6 @@
     clippy::unwrap_used,
     clippy::unreachable
 )]
-
-use rig::client::DefaultTransportBuilder as _;
 use serde_json::json;
 use testcontainers::{
     GenericImage,

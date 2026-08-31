@@ -1,4 +1,3 @@
-use rig::client::DefaultTransportBuilder as _;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 

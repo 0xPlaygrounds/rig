@@ -7,7 +7,6 @@ use rig_core::{
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_postgres::PostgresVectorStore;
-use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 

@@ -2,7 +2,6 @@ use rig_agent::completion::Prompt;
 use rig_agent::prelude::*;
 use rig_core::providers;
 use rig_derive::rig_tool;
-use rig_reqwest::prelude::*;
 
 /// Add two numbers
 #[rig_tool]

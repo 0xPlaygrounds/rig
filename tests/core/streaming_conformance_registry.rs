@@ -59,7 +59,7 @@ const FACADE_CI_STEP: &str = "Test with latest nextest release";
 const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
     OutOfBinaryFamily {
         family: "openai_responses_websocket",
-        suite_file: "crates/rig-reqwest/tests/streaming_conformance_websocket.rs",
+        suite_file: "crates/rig-core/tests/streaming_conformance_websocket.rs",
         ci_step: GUARD_CI_STEP,
         ci_selector: Some("binary(streaming_conformance_websocket)"),
         ci_package: Some("rig-core"),

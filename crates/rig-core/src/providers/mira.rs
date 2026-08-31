@@ -107,7 +107,7 @@ client::impl_default_provider_builder!(
     base_url = MIRA_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<MiraExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<MiraExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
 
@@ -146,7 +146,7 @@ pub struct ChatChoice {
 client::impl_provider_from_env!(MiraExt, input = String, api_key_env = "MIRA_API_KEY");
 
 /// Mira completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H> =
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
     crate::providers::openai::completion::GenericCompletionModel<MiraExt, H>;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {

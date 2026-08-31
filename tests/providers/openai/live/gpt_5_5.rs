@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "websocket")]
 use rig::completion::CompletionModel;
 #[cfg(feature = "websocket")]
-use rig::rig_reqwest::openai_websocket::ResponsesWebSocketEvent;
+use rig::openai_websocket::ResponsesWebSocketEvent;
 
 use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
 use crate::support::{

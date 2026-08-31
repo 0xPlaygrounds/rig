@@ -15,16 +15,18 @@
 //! frames; the pipeline's policy differs by design (documented in
 //! MIGRATING.md, #2258).
 
-#![cfg(all(not(target_family = "wasm"), feature = "websocket"))]
+#![cfg(all(
+    not(target_family = "wasm"),
+    any(feature = "websocket-rustls", feature = "websocket-native-tls")
+))]
 
 use futures::{SinkExt, StreamExt};
 use rig_core::client::CompletionClient as _;
 use rig_core::completion::{CompletionError, CompletionModel as _};
+use rig_core::openai_websocket::{ResponsesWebSocketEvent, ResponsesWebSocketExt as _};
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
 };
-use rig_reqwest::openai_websocket::{ResponsesWebSocketEvent, ResponsesWebSocketExt as _};
-use rig_reqwest::prelude::DefaultTransportBuilder as _;
 use tokio::net::TcpListener;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 

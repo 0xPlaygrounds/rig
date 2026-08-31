@@ -19,7 +19,6 @@ use rig_core::{
 };
 use rig_core::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_qdrant::{QdrantFilter, QdrantVectorStore};
-use rig_reqwest::prelude::*;
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
 struct Word {

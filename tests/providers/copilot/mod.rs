@@ -20,7 +20,6 @@ mod structured_output;
 mod typed_prompt_tools;
 
 use assert_fs::TempDir;
-use rig::client::DefaultTransportBuilder as _;
 use rig::providers::copilot;
 use std::borrow::Cow;
 use std::future::Future;

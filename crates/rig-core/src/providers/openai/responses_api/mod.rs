@@ -1504,7 +1504,7 @@ pub struct GenericResponsesCompletionModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type ResponsesCompletionModel<H> =
+pub type ResponsesCompletionModel<H = crate::http_client::DefaultHttp> =
     GenericResponsesCompletionModel<super::OpenAIResponsesExt, H>;
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>

@@ -33,7 +33,7 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 }
 
 #[derive(Clone)]
-pub struct ImageGenerationModel<T> {
+pub struct ImageGenerationModel<T = crate::http_client::DefaultHttp> {
     client: Client<T>,
     pub model: String,
 }

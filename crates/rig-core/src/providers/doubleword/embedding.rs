@@ -112,7 +112,8 @@ impl OpenAIEmbeddingsCompatible for DoublewordExt {
 
 /// Doubleword embedding model, driven by the shared OpenAI-compatible
 /// embeddings path.
-pub type EmbeddingModel<T> = GenericEmbeddingModel<DoublewordExt, T>;
+pub type EmbeddingModel<T = crate::http_client::DefaultHttp> =
+    GenericEmbeddingModel<DoublewordExt, T>;
 
 #[cfg(test)]
 mod tests {

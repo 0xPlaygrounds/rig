@@ -8,7 +8,6 @@ use rig_core::{
     providers::openai::Client,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-use rig_reqwest::prelude::*;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;

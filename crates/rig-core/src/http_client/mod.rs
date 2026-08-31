@@ -8,7 +8,36 @@ mod erased;
 pub mod middleware;
 pub mod multipart;
 pub mod retry;
+#[cfg(all(feature = "reqwest", not(target_family = "wasm")))]
+mod runtime;
 pub mod sse;
+
+#[cfg(feature = "reqwest")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+mod reqwest_transport;
+
+/// The bundled `reqwest` transport, re-exported so callers need not depend on
+/// it separately.
+#[cfg(feature = "reqwest")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+pub use ::reqwest;
+#[cfg(feature = "reqwest")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+pub use reqwest_transport::{from_reqwest, multipart_form};
+
+/// The transport a provider type falls back to when its `H` is not named.
+///
+/// With the `reqwest` feature this is the bundled transport, which is what
+/// makes `openai::CompletionModel` mean `…<reqwest::Client>` in type position.
+/// Without it there is no transport to default to, so the slot resolves to the
+/// same [`Missing`](crate::markers::Missing) marker the client builder uses for
+/// an unfilled transport — every constructor still takes an explicit
+/// `H: HttpClientExt`.
+#[cfg(feature = "reqwest")]
+pub type DefaultHttp = ::reqwest::Client;
+/// See [`DefaultHttp`].
+#[cfg(not(feature = "reqwest"))]
+pub type DefaultHttp = crate::markers::Missing;
 use crate::wasm_compat::*;
 pub use erased::BoxedHttpClient;
 pub use middleware::HttpMiddleware;
@@ -199,6 +228,15 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
     where
         T: Into<Bytes> + WasmCompatSend;
+
+    /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold one
+    /// transport for many providers without naming it in their types.
+    fn boxed(self) -> BoxedHttpClient
+    where
+        Self: Sized + 'static,
+    {
+        BoxedHttpClient::new(self)
+    }
 }
 
 #[cfg(test)]

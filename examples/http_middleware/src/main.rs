@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
 
     // Erase the default transport, then attach the middleware — no provider
     // code involved; the same handle could back every provider a host builds.
-    let http_client = BoxedHttpClient::new(rig::http_client::ReqwestClient::default())
+    let http_client = BoxedHttpClient::new(rig::http_client::reqwest::Client::default())
         .with_middleware(WireLogger);
 
     let client = anthropic::Client::builder()

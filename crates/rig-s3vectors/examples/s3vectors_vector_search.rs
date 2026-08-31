@@ -7,7 +7,6 @@ use rig_core::embeddings::EmbeddingsBuilder;
 use rig_core::providers::openai::{self, Client as OpenAIClient};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
-use rig_reqwest::prelude::*;
 use std::env;
 
 const BUCKET_NAME: &str = "foo_bucket";

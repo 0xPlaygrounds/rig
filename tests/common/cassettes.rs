@@ -3918,7 +3918,7 @@ then:
 /// server; only record mode carries a recorder.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct DirectRecordingHttpClient {
-    inner: rig::http_client::ReqwestClient,
+    inner: rig::http_client::reqwest::Client,
     recorder: Option<DirectRecorder>,
 }
 
@@ -3928,7 +3928,7 @@ impl DirectRecordingHttpClient {
     /// server.
     pub(crate) fn new(recorder: Option<DirectRecorder>) -> Self {
         Self {
-            inner: rig::http_client::ReqwestClient::default(),
+            inner: rig::http_client::reqwest::Client::default(),
             recorder,
         }
     }

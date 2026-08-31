@@ -1,5 +1,4 @@
 use futures::FutureExt;
-use rig::client::DefaultTransportBuilder as _;
 use rig::providers::cohere;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

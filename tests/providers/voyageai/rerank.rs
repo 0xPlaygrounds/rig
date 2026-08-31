@@ -1,6 +1,4 @@
 //! VoyageAI reranking smoke test.
-
-use rig::client::DefaultTransportClient as _;
 use rig::client::RerankingClient;
 use rig::providers::voyageai;
 use rig::rerank::RerankModel;

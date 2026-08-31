@@ -4,7 +4,6 @@
 
 use rig::{
     Embed,
-    client::DefaultTransportClient,
     embeddings::EmbeddingsBuilder,
     providers::cohere::{self, Client},
     vector_store::{

@@ -29,7 +29,7 @@ fn model_default_ndims(model: &str) -> Option<usize> {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = crate::http_client::DefaultHttp> {
     client: Client<T>,
     model: String,
     ndims: usize,

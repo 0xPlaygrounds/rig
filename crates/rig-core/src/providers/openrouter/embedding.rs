@@ -6,7 +6,8 @@ impl OpenAIEmbeddingsCompatible for OpenRouterExt {
     const REQUIRES_USAGE: bool = false;
 }
 
-pub type EmbeddingModel<H> = GenericEmbeddingModel<OpenRouterExt, H>;
+pub type EmbeddingModel<H = crate::http_client::DefaultHttp> =
+    GenericEmbeddingModel<OpenRouterExt, H>;
 
 #[cfg(test)]
 mod tests {

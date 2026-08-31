@@ -43,7 +43,6 @@
 //! with this name and these arguments) rather than on prose.
 
 use futures::FutureExt;
-use rig::client::DefaultTransportBuilder as _;
 use rig::providers::{llamacpp, openai};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -95,7 +94,7 @@ async fn llamacpp_cassette_on(
     // `cassette/error_matrix.rs`, which launches a server that requires it.
     let client = llamacpp::Client::from_url_with(
         &cassette.base_url(),
-        rig::http_client::ReqwestClient::default(),
+        rig::http_client::reqwest::Client::default(),
     )
     .expect("client should build");
 

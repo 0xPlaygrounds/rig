@@ -15,7 +15,7 @@ pub struct OpenRouterExtBuilder;
 
 type OpenRouterApiKey = BearerAuth;
 
-pub type Client<H> = client::Client<OpenRouterExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<OpenRouterExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
 

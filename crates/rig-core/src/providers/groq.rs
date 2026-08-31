@@ -142,12 +142,13 @@ client::impl_default_provider_builder!(
     base_url = GROQ_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<GroqExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<GroqExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GroqBuilder, GroqApiKey, H>;
 
 /// Groq completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H> = openai::completion::GenericCompletionModel<GroqExt, H>;
+pub type CompletionModel<H = crate::http_client::DefaultHttp> =
+    openai::completion::GenericCompletionModel<GroqExt, H>;
 
 /// Groq's provider-native terminal streaming record: the value carried by the
 /// final item of the stream returned by `CompletionModel::raw_stream`. Shared
@@ -272,7 +273,7 @@ pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
 pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
 /// Groq transcription model using the shared OpenAI-style implementation.
-pub type TranscriptionModel<T> =
+pub type TranscriptionModel<T = crate::http_client::DefaultHttp> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
 impl<T> OpenAiTranscriptionClient for Client<T>

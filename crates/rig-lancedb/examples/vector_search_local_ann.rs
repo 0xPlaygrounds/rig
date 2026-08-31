@@ -9,7 +9,6 @@ use rig_core::{
     vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-use rig_reqwest::prelude::*;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;

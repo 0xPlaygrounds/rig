@@ -4,9 +4,9 @@
 //! plain future plus a bounded [`RunEvents`] feed, so the future can be spawned
 //! on any executor — here Bevy's `AsyncComputeTaskPool` — while a synchronous
 //! loop (think: a game frame, an ECS system) drains the events with
-//! `try_next` and never blocks on the run. The HTTP transport (`rig-reqwest`)
-//! brings its own private tokio runtime for the wire; this crate's manifest
-//! depends on neither tokio nor reqwest. The transport is held erased
+//! `try_next` and never blocks on the run. The bundled HTTP transport (the
+//! `reqwest` feature) brings its own private tokio runtime for the wire; this
+//! crate's manifest depends on neither tokio nor reqwest directly. The transport is held erased
 //! ([`rig::http_client::BoxedHttpClient`]), the way a host runtime keeps one
 //! transport for every provider without naming it in its own types.
 //!
@@ -18,7 +18,6 @@ use anyhow::Result;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool, futures::check_ready};
 use rig::agent::MultiTurnStreamItem;
 use rig::client::ProviderFromEnv as _;
-use rig::http_client::ReqwestClient;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamedAssistantContent;
@@ -32,7 +31,8 @@ fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
     // client is `Client<OpenAIResponsesExt>` — `H` defaults to
     // `BoxedHttpClient`, so no transport type reaches this crate's signatures.
-    let transport = ReqwestClient::default().boxed();
+    let transport =
+        rig::http_client::BoxedHttpClient::new(rig::http_client::reqwest::Client::default());
     let agent = openai::OpenAIResponsesExt::from_env_boxed(transport)?
         .agent(openai::GPT_4O)
         .preamble(PREAMBLE)

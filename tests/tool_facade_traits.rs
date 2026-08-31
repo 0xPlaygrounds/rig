@@ -131,13 +131,13 @@ fn completion_client_single_import_surface() {
 }
 
 /// The explicit facade imports `rig::client::{CompletionClient, AgentClientExt,
-/// DefaultTransportClient}` expose the same surface as the prelude (`new`,
+/// CompletionClient}` expose the same surface as the prelude (`new`,
 /// `completion_model`, `agent`, `extractor`) without depending on `rig-core`.
 /// Guards the restored `rig::client::CompletionClient` path (documented in
 /// `README.md` / `MIGRATING.md`) and the bundled-transport constructor.
 #[test]
 fn completion_client_explicit_facade_import_surface() {
-    use rig::client::{AgentClientExt, CompletionClient, DefaultTransportClient};
+    use rig::client::{AgentClientExt, CompletionClient};
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
     struct Extracted {

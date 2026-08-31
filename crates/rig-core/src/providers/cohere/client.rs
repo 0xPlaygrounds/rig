@@ -21,7 +21,7 @@ pub struct CohereBuilder;
 
 type CohereApiKey = BearerAuth;
 
-pub type Client<H> = client::Client<CohereExt, H>;
+pub type Client<H = crate::http_client::DefaultHttp> = client::Client<CohereExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<CohereBuilder, CohereApiKey, H>;
 

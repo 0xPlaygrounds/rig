@@ -1,6 +1,4 @@
 //! Ollama model listing smoke test.
-
-use rig::client::DefaultTransportClient as _;
 use rig::client::{ModelListingClient, Nothing};
 use rig::providers::ollama;
 

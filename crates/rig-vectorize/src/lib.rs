@@ -6,7 +6,6 @@
 //! # Example
 //!
 //! ```ignore
-//! use rig_reqwest::prelude::*;
 //! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
