@@ -806,6 +806,92 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Websockets are transport-agnostic: the protocol moved to `rig-core`, the socket to `rig-tungstenite`
+
+The OpenAI Responses websocket mode used to live in `rig-reqwest`, because
+`tokio-tungstenite` did. That put OpenAI *protocol* — the event envelopes, the
+turn state machine, the `previous_response_id` chaining — inside the reqwest
+transport crate, forced a TLS feature axis onto it that had nothing to do with
+reqwest, and left the next provider's websocket support nowhere to go.
+
+It now follows the same split HTTP already had. `rig-core` states the contract
+and owns the protocol; a backend-named crate supplies the socket:
+
+| Was | Is |
+| --- | --- |
+| `rig_reqwest::openai_websocket::*` (protocol + session) | `rig_core::providers::openai::responses_api::websocket::*` |
+| `rig_reqwest::openai_websocket::ResponsesWebSocketExt` | `rig_core::…::websocket::ResponsesWebSocketExt` (backend-taking) and `rig_tungstenite::DefaultWebSocketClient` (bundled backend) |
+| — | `rig_core::ws_client` — `WebSocketClientExt`, `WebSocketConnection`, `Frame` |
+| `rig-reqwest` features `websocket`, `websocket-rustls`, `websocket-native-tls` | `rig-tungstenite` features `rustls` / `native-tls`; the facade keeps all three spellings, each usable on its own. A native-tls-**only** socket means depending on `rig-tungstenite` directly with `default-features = false` — through the facade, `websocket-native-tls` compiles rustls as well |
+
+**Through the `rig` facade the common path is unchanged.** With the `websocket`
+feature and `use rig::prelude::*`, this keeps working verbatim:
+
+```rust
+use rig::prelude::*;
+
+let client = rig::providers::openai::Client::from_env()?;
+let mut session = client.responses_websocket("gpt-5.4").await?;
+```
+
+The `responses_websocket(..)` / `builder().connect()` you were calling now come
+from `rig_tungstenite`'s `DefaultWebSocketClient` / `DefaultWebSocketBuilder`
+rather than from `rig-reqwest`, exactly as `from_env()` comes from
+`DefaultTransportClient`. Both are in `rig::prelude`.
+
+**If you named the old path directly**, update the import:
+
+```rust
+// Before
+use rig::rig_reqwest::openai_websocket::{ResponsesWebSocketEvent, ResponsesWebSocketExt as _};
+
+// After
+use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+use rig::prelude::*; // DefaultWebSocketClient
+```
+
+**If you depended on `rig-reqwest` directly for websockets**, depend on
+`rig-tungstenite` instead; `rig-reqwest` no longer has a `websocket` feature and
+no longer pulls in `tokio-tungstenite`.
+
+**To use a different websocket backend**, implement
+`rig_core::ws_client::WebSocketClientExt` and open the session with the
+backend-taking entry points, which name no backend:
+
+```rust
+use rig::providers::openai::responses_api::websocket::ResponsesWebSocketExt as _;
+
+let mut session = client.responses_websocket_with("gpt-5.4", &my_backend).await?;
+// or, with options:
+let mut session = client
+    .responses_websocket_builder("gpt-5.4")
+    .event_timeout(std::time::Duration::from_secs(30))
+    .connect_with(&my_backend)
+    .await?;
+```
+
+A session can also be built over an already-open connection with
+`ResponsesWebSocketSession::from_connection(model, connection, event_timeout)` —
+which is how the protocol is now tested, with no socket involved.
+
+Three smaller consequences:
+
+- **The connect-timeout error text changed.** The handshake deadline is the
+  backend's now (it owns the handshake), so a hung connect reports
+  `ProviderError: Http client error: timed out connecting the websocket after
+  30s` where it used to report `ProviderError: Timed out connecting to the
+  OpenAI websocket after 30s`. Both are `CompletionError::ProviderError`; only
+  code matching on the string is affected. The per-event timeout is unchanged —
+  it stays with the session, which is the only side that knows where a turn
+  ends.
+- `rig_core::http_client::Error::non_success_status()` and `non_success_body()`
+  are now public (they were `pub(crate)`). A websocket backend outside rig-core
+  builds a rejected upgrade into that error, and the provider layer reads the
+  status and body back off it.
+- `rig-core` gained a `websocket` feature, gating `ws_client` and the provider
+  session modules. It adds no dependency — rig-core still pulls in no tokio, no
+  reqwest and no tungstenite.
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in
@@ -1175,9 +1261,6 @@ rig-core. The transport lives in **`rig-reqwest`**:
 - `rig_reqwest::providers::*` — the familiar provider module tree with every
   transport-generic type aliased to `…<ReqwestClient>` for type position
   (`Agent<openai::CompletionModel>`, `let c: openai::Client = …`).
-- `rig_reqwest::openai_websocket` — the OpenAI Responses websocket mode
-  (feature `websocket`), with `ResponsesWebSocketExt` supplying
-  `client.responses_websocket(..)`.
 - It works without a tokio runtime (Bevy task pools, smol, `futures::executor`):
   reqwest futures are driven on a lazily started fallback runtime and the
   caller only ever polls runtime-agnostic futures.

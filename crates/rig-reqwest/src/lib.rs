@@ -23,9 +23,6 @@
 //!   (so `Client::new(key)`, `Client::from_env()`, `builder().…build()` work
 //!   without naming a transport) and the [`providers`] alias tree (so
 //!   `openai::CompletionModel` means `…<reqwest::Client>` in type position).
-//! - The OpenAI Responses websocket mode ([`openai_websocket`], feature
-//!   `websocket`).
-//!
 //! # Running without a tokio runtime
 //!
 //! Async reqwest needs a tokio reactor on native targets. Inside a tokio
@@ -96,9 +93,6 @@ impl std::ops::Deref for ReqwestMiddlewareClient {
 }
 
 pub mod client;
-#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
-pub mod openai_websocket;
 pub mod providers;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
@@ -106,8 +100,6 @@ mod runtime;
 /// Bring the default-transport traits into scope.
 pub mod prelude {
     pub use crate::client::{DefaultTransportBuilder, DefaultTransportClient};
-    #[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
-    pub use crate::openai_websocket::ResponsesWebSocketExt;
 }
 
 use bytes::Bytes;

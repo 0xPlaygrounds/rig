@@ -52,6 +52,7 @@ default-members = [
     "crates/rig-run",
     "crates/rig-agent",
     "crates/rig-reqwest",
+    "crates/rig-tungstenite",
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
@@ -263,6 +264,23 @@ rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.42.0", optional = 
 rig-vectorize = { path = "crates/rig-vectorize", version = "0.42.0", optional = true, default-features = false }
 rig-vertexai = { path = "crates/rig-vertexai", version = "0.42.0", optional = true, default-features = false }
 
+# The bundled websocket backend is native-only (tungstenite needs a tokio
+# reactor and raises a `compile_error!` on wasm), so it is scoped to non-wasm
+# targets. That is what lets `websocket` mean "the protocol, plus the bundled
+# backend where one exists": on wasm the feature still enables
+# `rig-core/websocket`, so `rig::ws_client` is reachable and a browser backend
+# can be implemented against it — which is the escape hatch the backend's own
+# wasm error message prescribes. Wiring the dependency unconditionally would
+# make that hatch unreachable through the facade.
+#
+# Not `default-features = false`, unlike the other optional companions: the
+# backend's own `default = ["rustls"]` is what guarantees that enabling
+# `websocket` always yields a socket that can do `wss://`. Turning defaults off
+# here would let `--no-default-features --features websocket` compile a
+# TLS-less backend that fails every handshake at runtime.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optional = true }
+
 [dev-dependencies]
 anyhow = { workspace = true }
 arrow-array = { workspace = true }
@@ -375,11 +393,32 @@ rayon = ["rig-core/rayon"]
 rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
 reqwest = ["dep:rig-reqwest"]
-websocket = ["reqwest", "rig-reqwest/websocket"]
-websocket-rustls = ["reqwest", "rig-reqwest/websocket-rustls"]
-websocket-native-tls = ["reqwest", "rig-reqwest/websocket-native-tls"]
+# The bundled websocket backend (`rig-tungstenite`) and the provider websocket
+# sessions it drives. Independent of the HTTP transport axis: a session borrows
+# the provider client for its request mapping, so `reqwest` comes along for the
+# client, not for the socket.
+#
+# `websocket` is the API gate — it is what `pub use rig_tungstenite` and the
+# prelude re-export are cfg'd on — and each of the three spellings is usable on
+# its own. `rig-tungstenite`'s own `default = ["rustls"]` applies (see its
+# dependency line), so `websocket` always has a working TLS stack; the
+# `websocket-*-tls` spellings add the workspace-wide TLS feature on top, which
+# is also what wires the backend up for `native-tls`.
+#
+# Additive features cannot express "replace rustls with native-tls": a
+# native-tls-ONLY socket means depending on `rig-tungstenite` directly with
+# `default-features = false, features = ["native-tls"]`. Through the facade,
+# `websocket-native-tls` gets you a working native-tls socket with rustls also
+# compiled in. That trade is deliberate — a build that silently cannot speak
+# `wss://` is worse than one that compiles a TLS stack it does not use.
+websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/websocket"]
+# `dep:rig-tungstenite` above resolves to nothing on wasm, where the dependency
+# is not in the graph: the feature degrades to the protocol alone.
+websocket-rustls = ["websocket", "rustls"]
+websocket-native-tls = ["websocket", "native-tls"]
 rustls = [
   "rig-reqwest?/rustls",
+  "rig-tungstenite?/rustls",
   "rig-fastembed?/hf-hub-rustls-tls",
   "rig-helixdb?/rustls",
   "rig-lancedb?/rig-rustls",
@@ -387,6 +426,7 @@ rustls = [
 ]
 native-tls = [
   "rig-reqwest?/native-tls",
+  "rig-tungstenite?/native-tls",
   "rig-fastembed?/hf-hub-native-tls",
   "rig-helixdb?/native-tls",
   "rig-lancedb?/rig-native-tls",

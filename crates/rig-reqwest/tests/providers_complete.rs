@@ -25,6 +25,10 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// Feature-gated modules whose transport-generic types have no alias here, by
+/// exact path under `rig-core/src/providers`.
+const WEBSOCKET_EXEMPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
+
 /// `(provider module, type name)` for every `pub type X<H>` / `pub struct X<H>`
 /// (or `<T>`) under rig-core's providers, excluding `internal/`.
 fn expected_aliases() -> Vec<(String, String)> {
@@ -41,6 +45,21 @@ fn expected_aliases() -> Vec<(String, String)> {
             .unwrap_or_default();
         let module = first.trim_end_matches(".rs").to_string();
         if module == "internal" || module == "mod" {
+            continue;
+        }
+        // The OpenAI websocket session types are generic over the HTTP
+        // transport too, but they live behind rig-core's `websocket` feature,
+        // which this crate does not enable — the socket is `rig-tungstenite`'s,
+        // not the reqwest transport's — so an alias here would not compile.
+        //
+        // Exempted by exact path, not by filename: a future provider that adds
+        // its own ungated `websocket.rs` must stay inside this guard, which
+        // exists to catch a type that silently stops defaulting to the bundled
+        // transport.
+        if WEBSOCKET_EXEMPTIONS
+            .iter()
+            .any(|exempt| rel == Path::new(exempt))
+        {
             continue;
         }
         let source = std::fs::read_to_string(&file).expect("readable source");

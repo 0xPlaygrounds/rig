@@ -53,7 +53,13 @@ pub enum Error {
 }
 
 impl Error {
-    pub(crate) fn non_success_status(&self) -> Option<StatusCode> {
+    /// The status this error carries, when it was built from a non-success
+    /// response. `None` for a response-less failure (connect, decode, timeout).
+    ///
+    /// Public because a transport crate outside rig-core needs it: a websocket
+    /// backend builds this error from a rejected upgrade, and the provider
+    /// layer that maps it back into its own error model reads the status here.
+    pub fn non_success_status(&self) -> Option<StatusCode> {
         match self {
             Self::InvalidStatusCode(status) | Self::InvalidStatusCodeWithMessage(status, _) => {
                 Some(*status)
@@ -63,7 +69,9 @@ impl Error {
         }
     }
 
-    pub(crate) fn non_success_body(&self) -> Option<&str> {
+    /// The response body this error preserved, when it has one. Companion to
+    /// [`Self::non_success_status`] and [`Self::non_success_headers`].
+    pub fn non_success_body(&self) -> Option<&str> {
         match self {
             Self::InvalidStatusCodeWithMessage(_, body) => Some(body.as_str()),
             Self::InvalidStatusCodeWithDetails { body, .. } => Some(body.as_str()),

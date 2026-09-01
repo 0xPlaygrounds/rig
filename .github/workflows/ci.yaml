@@ -170,6 +170,48 @@ jobs:
           fi
           echo "ok: rmcp on wasm fails with exactly one actionable error"
 
+  check-tungstenite-native-only:
+    name: stable / tungstenite rejected on wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          target: wasm32-unknown-unknown
+
+      # Same shape, and the same reasoning, as `check-rmcp-native-only` above:
+      # the crate's whole point is that `rig_core::ws_client` is where a wasm
+      # backend plugs in, so reaching for THIS crate on wasm must say that in
+      # one sentence rather than in a page of unresolved imports. Only a build
+      # asserts it — an item that drifts outside the `not(wasm)` gate leaks
+      # follow-on errors and nothing else would notice.
+      - name: Assert the native-only diagnostic is the only error
+        run: |
+          set +e
+          out=$(cargo check --package rig-tungstenite \
+                  --target wasm32-unknown-unknown 2>&1)
+          status=$?
+          set -e
+          echo "$out"
+          plain=$(printf '%s\n' "$out" | perl -pe 's/\e\[[0-9;]*[a-zA-Z]//g')
+          if [ $status -eq 0 ]; then
+            echo "::error::expected the tungstenite native-only compile_error, but the build succeeded — the gate is gone"
+            exit 1
+          fi
+          if ! printf '%s\n' "$plain" | grep -q 'rig-tungstenite is a native websocket backend'; then
+            echo "::error::build failed for the wrong reason; the native-only compile_error did not fire"
+            exit 1
+          fi
+          count=$(printf '%s\n' "$plain" | grep -E '^error(\[|:)' | grep -cv 'could not compile' || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly 1 error, got $count — an item outside rig-tungstenite's \`not(wasm)\` gate is leaking follow-on errors"
+            exit 1
+          fi
+          echo "ok: rig-tungstenite on wasm fails with exactly one actionable error"
+
   clippy:
     name: stable / clippy
     runs-on: ubuntu-latest
@@ -326,7 +368,7 @@ jobs:
       # is the authoritative plain-`cargo test` execution.
       - name: Test rig-core and rig-agent with all features
         run: >-
-          cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-agent -p rig-rmcp --all-features
+          cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-tungstenite -p rig-agent -p rig-rmcp --all-features
           --retries 2 -E 'not binary(macro_hygiene)'
 
       # `cargo nextest run` (in the `test` job) selects the workspace's
@@ -369,7 +411,7 @@ jobs:
       #     keeps "one triage policy site" true over time was itself unrun.
       #   * three wire-conformance families live in test binaries outside the
       #     `rig` facade — `openai_responses_websocket`
-      #     (`rig-core/tests/streaming_conformance_websocket.rs`), `candle`
+      #     (`rig-tungstenite/tests/streaming_conformance_websocket.rs`), `candle`
       #     (`rig-candle`) and `gemini_grpc` (`rig-gemini-grpc`) — so the
       #     registry reported them covered while nothing executed them.
       #     (`bedrock`'s suite is feature-gated inside `rig`, so the `test`
@@ -390,7 +432,7 @@ jobs:
       # the second attempt would conceal nondeterminism rather than tolerate a
       # flaky network.
       - name: Test out-of-facade streaming conformance and structural guards
-        run: cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
+        run: cargo nextest run --locked -p rig-core -p rig-tungstenite -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
 
       - name: Show sccache statistics
         if: always() && env.RUSTC_WRAPPER == 'sccache'

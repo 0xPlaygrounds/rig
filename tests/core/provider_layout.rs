@@ -173,9 +173,11 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
         Exempt("embeddings-only provider — no completion model, so no streaming wire"),
     ),
     // --- workspace packages -------------------------------------------------
-    // The bundled reqwest transport crate: no wire of its own. The OpenAI
-    // Responses websocket suite it hosts is the out-of-binary
-    // `openai_responses_websocket` family in streaming_conformance_registry.rs.
+    // The bundled transport crates: neither owns a wire. The OpenAI Responses
+    // websocket suite rig-tungstenite hosts is the out-of-binary
+    // `openai_responses_websocket` family in streaming_conformance_registry.rs;
+    // the wire itself belongs to the `openai` provider above, where the session
+    // lives.
     // MCP tool support (rmcp SDK): a tool-source crate, not a provider; no
     // wire family. Its in-process rmcp suites run in `cargo test -p rig-rmcp`.
     (
@@ -185,9 +187,17 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
         ),
     ),
     (
+        "rig-tungstenite",
+        Exempt(
+            "websocket backend crate (tungstenite WebSocketClientExt impl, default-backend \
+             traits); the protocol it carries is the `openai` provider's own \
+             `openai_responses_websocket` wire, whose end-to-end suite this crate hosts",
+        ),
+    ),
+    (
         "rig-reqwest",
         Exempt(
-            "transport crate (reqwest HttpClientExt impl, default-transport traits, websocket); no provider wire of its own",
+            "transport crate (reqwest HttpClientExt impl, default-transport traits); no provider wire of its own",
         ),
     ),
     ("rig-bedrock", Families(&["bedrock"])),
