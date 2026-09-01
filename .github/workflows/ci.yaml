@@ -219,8 +219,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # rustfmt: the generator formats its output with it, so the committed
+      # file is `cargo fmt --check` clean and reviewable as ordinary source.
+      # This action installs only what a job asks for.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
+        with:
+          components: rustfmt
 
       # `crates/rig-reqwest/src/providers.rs` is generated from rig-core's own
       # rustdoc output — see xtask/src/aliases.rs. This asserts the committed

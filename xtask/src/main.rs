@@ -96,6 +96,13 @@ fn diff_summary(committed: &str, generated: &str) -> String {
     out
 }
 
+/// What to say when rustfmt is not there at all, which is a setup problem
+/// rather than anything wrong with the generated source.
+const MISSING_RUSTFMT: &str = "\
+this task formats its output with rustfmt, which is not available.
+Install it with `rustup component add rustfmt`; in CI, ask the rust-setup
+action for it with `components: rustfmt`.";
+
 /// Format the generated source the way the repo formats everything else, so the
 /// committed file is `cargo fmt --check` clean and reviewable.
 fn rustfmt(workspace: &Path, source: &str) -> Result<String, String> {
@@ -109,7 +116,7 @@ fn rustfmt(workspace: &Path, source: &str) -> Result<String, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("could not run rustfmt: {error}"))?;
+        .map_err(|error| format!("{MISSING_RUSTFMT}\ncould not start rustfmt: {error}"))?;
     child
         .stdin
         .take()
@@ -120,10 +127,15 @@ fn rustfmt(workspace: &Path, source: &str) -> Result<String, String> {
         .wait_with_output()
         .map_err(|error| format!("rustfmt failed: {error}"))?;
     if !output.status.success() {
-        return Err(format!(
-            "rustfmt rejected the generated source:\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // rustup answers a missing component on stderr with a zero-length
+        // format, which reads like a rejection unless it is called out.
+        let hint = if stderr.contains("is not installed") {
+            MISSING_RUSTFMT
+        } else {
+            "rustfmt rejected the generated source:"
+        };
+        return Err(format!("{hint}\n{stderr}"));
     }
     String::from_utf8(output.stdout)
         .map_err(|error| format!("rustfmt output is not UTF-8: {error}"))
