@@ -4,12 +4,20 @@
 //! `let c: openai::Client = …` read as before rig-core lost its default transport.
 //!
 //! Each module re-exports everything from the rig-core provider module and then shadows the
-//! transport-generic names with defaulted aliases (nested rig-core paths stay generic). Generated
-//! from the provider sources; `tests/providers_complete.rs` checks nothing is missing.
+//! transport-generic names with defaulted aliases (nested rig-core paths stay generic).
 //!
 //! Construction goes through [`crate::client::DefaultTransportClient`] /
 //! [`crate::client::DefaultTransportBuilder`]: type-alias defaults do not apply in expression
 //! position, so `openai::Client::new(..)` needs those traits, not these aliases.
+//!
+//! # Generated file — do not edit
+//!
+//! Regenerate with `cargo xtask generate-provider-aliases`; CI runs the same
+//! command with `--check`. The source of truth is rig-core's own rustdoc
+//! output, so a type that is generic over the transport gets an alias here
+//! whether it was written by hand or produced by a macro, and a type whose
+//! parameter already has a default (`ClientBuilder<H = Missing>`) is left
+//! alone. See `xtask/src/aliases.rs`.
 
 /// The bundled transport every alias here defaults to.
 pub type DefaultHttp = crate::ReqwestClient;
@@ -18,7 +26,7 @@ pub mod anthropic {
     pub use rig_core::providers::anthropic::*;
     pub type AnthropicModelLister<H = super::DefaultHttp> =
         rig_core::providers::anthropic::model_listing::AnthropicModelLister<H>;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::anthropic::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::anthropic::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
         rig_core::providers::anthropic::completion::CompletionModel<H>;
 }
@@ -26,6 +34,7 @@ pub mod anthropic {
 pub mod azure {
     pub use rig_core::providers::azure::*;
     #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub type AudioGenerationModel<H = super::DefaultHttp> =
         rig_core::providers::azure::AudioGenerationModel<H>;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::azure::Client<H>;
@@ -33,6 +42,7 @@ pub mod azure {
         rig_core::providers::azure::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> = rig_core::providers::azure::EmbeddingModel<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type ImageGenerationModel<H = super::DefaultHttp> =
         rig_core::providers::azure::ImageGenerationModel<H>;
     pub type TranscriptionModel<H = super::DefaultHttp> =
@@ -48,13 +58,13 @@ pub mod chatgpt {
 
 pub mod cohere {
     pub use rig_core::providers::cohere::*;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::cohere::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::cohere::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::cohere::completion::CompletionModel<H>;
+        rig_core::providers::cohere::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::cohere::embeddings::EmbeddingModel<H>;
+        rig_core::providers::cohere::EmbeddingModel<H>;
     pub type ImageEmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::cohere::embeddings::ImageEmbeddingModel<H>;
+        rig_core::providers::cohere::ImageEmbeddingModel<H>;
 }
 
 pub mod copilot {
@@ -79,31 +89,32 @@ pub mod deepseek {
 
 pub mod doubleword {
     pub use rig_core::providers::doubleword::*;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::doubleword::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::doubleword::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::doubleword::completion::CompletionModel<H>;
+        rig_core::providers::doubleword::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::doubleword::embedding::EmbeddingModel<H>;
+        rig_core::providers::doubleword::EmbeddingModel<H>;
 }
 
 pub mod gemini {
     pub use rig_core::providers::gemini::*;
     pub type CachedContentClient<H = super::DefaultHttp> =
-        rig_core::providers::gemini::cached_content::CachedContentClient<H>;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::gemini::client::Client<H>;
+        rig_core::providers::gemini::CachedContentClient<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::gemini::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::gemini::completion::CompletionModel<H>;
+        rig_core::providers::gemini::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::gemini::embedding::EmbeddingModel<H>;
+        rig_core::providers::gemini::EmbeddingModel<H>;
     pub type GeminiInteractionsModelLister<H = super::DefaultHttp> =
-        rig_core::providers::gemini::model_listing::GeminiInteractionsModelLister<H>;
+        rig_core::providers::gemini::GeminiInteractionsModelLister<H>;
     pub type GeminiModelLister<H = super::DefaultHttp> =
-        rig_core::providers::gemini::model_listing::GeminiModelLister<H>;
+        rig_core::providers::gemini::GeminiModelLister<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type ImageGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::gemini::image_generation::ImageGenerationModel<H>;
+        rig_core::providers::gemini::ImageGenerationModel<H>;
     pub type InteractionsClient<H = super::DefaultHttp> =
-        rig_core::providers::gemini::client::InteractionsClient<H>;
+        rig_core::providers::gemini::InteractionsClient<H>;
     pub type InteractionsCompletionModel<H = super::DefaultHttp> =
         rig_core::providers::gemini::interactions_api::InteractionsCompletionModel<H>;
     pub type TranscriptionModel<H = super::DefaultHttp> =
@@ -123,10 +134,11 @@ pub mod groq {
 
 pub mod huggingface {
     pub use rig_core::providers::huggingface::*;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::huggingface::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::huggingface::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
         rig_core::providers::huggingface::completion::CompletionModel<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type ImageGenerationModel<H = super::DefaultHttp> =
         rig_core::providers::huggingface::image_generation::ImageGenerationModel<H>;
     pub type TranscriptionModel<H = super::DefaultHttp> =
@@ -136,27 +148,28 @@ pub mod huggingface {
 pub mod hyperbolic {
     pub use rig_core::providers::hyperbolic::*;
     #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub type AudioGenerationModel<H = super::DefaultHttp> =
         rig_core::providers::hyperbolic::AudioGenerationModel<H>;
     pub type Client<H = super::DefaultHttp> = rig_core::providers::hyperbolic::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
         rig_core::providers::hyperbolic::CompletionModel<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type ImageGenerationModel<H = super::DefaultHttp> =
         rig_core::providers::hyperbolic::ImageGenerationModel<H>;
 }
 
 pub mod llamacpp {
     pub use rig_core::providers::llamacpp::*;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::llamacpp::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::llamacpp::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::llamacpp::completion::CompletionModel<H>;
+        rig_core::providers::llamacpp::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::llamacpp::embedding::EmbeddingModel<H>;
+        rig_core::providers::llamacpp::EmbeddingModel<H>;
     pub type LlamacppModelLister<H = super::DefaultHttp> =
         rig_core::providers::llamacpp::client::LlamacppModelLister<H>;
-    pub type RerankModel<H = super::DefaultHttp> =
-        rig_core::providers::llamacpp::rerank::RerankModel<H>;
+    pub type RerankModel<H = super::DefaultHttp> = rig_core::providers::llamacpp::RerankModel<H>;
 }
 
 pub mod minimax {
@@ -179,15 +192,15 @@ pub mod mira {
 
 pub mod mistral {
     pub use rig_core::providers::mistral::*;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::mistral::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::mistral::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::mistral::completion::CompletionModel<H>;
+        rig_core::providers::mistral::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::mistral::embedding::EmbeddingModel<H>;
+        rig_core::providers::mistral::EmbeddingModel<H>;
     pub type MistralModelLister<H = super::DefaultHttp> =
-        rig_core::providers::mistral::model_listing::MistralModelLister<H>;
+        rig_core::providers::mistral::MistralModelLister<H>;
     pub type TranscriptionModel<H = super::DefaultHttp> =
-        rig_core::providers::mistral::transcription::TranscriptionModel<H>;
+        rig_core::providers::mistral::TranscriptionModel<H>;
 }
 
 pub mod moonshot {
@@ -215,50 +228,55 @@ pub mod ollama {
 pub mod openai {
     pub use rig_core::providers::openai::*;
     #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub type AudioGenerationModel<H = super::DefaultHttp> =
         rig_core::providers::openai::audio_generation::AudioGenerationModel<H>;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::openai::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::openai::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::openai::completion::CompletionModel<H>;
+        rig_core::providers::openai::CompletionModel<H>;
     #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub type CompletionsAudioGenerationModel<H = super::DefaultHttp> =
         rig_core::providers::openai::audio_generation::CompletionsAudioGenerationModel<H>;
     pub type CompletionsClient<H = super::DefaultHttp> =
-        rig_core::providers::openai::client::CompletionsClient<H>;
+        rig_core::providers::openai::CompletionsClient<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type CompletionsImageGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::openai::image_generation::CompletionsImageGenerationModel<H>;
+        rig_core::providers::openai::CompletionsImageGenerationModel<H>;
     pub type CompletionsTranscriptionModel<H = super::DefaultHttp> =
-        rig_core::providers::openai::transcription::CompletionsTranscriptionModel<H>;
+        rig_core::providers::openai::CompletionsTranscriptionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::openai::embedding::EmbeddingModel<H>;
+        rig_core::providers::openai::EmbeddingModel<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type ImageGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::openai::image_generation::ImageGenerationModel<H>;
+        rig_core::providers::openai::ImageGenerationModel<H>;
     pub type OpenAICompletionsModelLister<H = super::DefaultHttp> =
-        rig_core::providers::openai::model_listing::OpenAICompletionsModelLister<H>;
+        rig_core::providers::openai::OpenAICompletionsModelLister<H>;
     pub type OpenAIModelLister<H = super::DefaultHttp> =
-        rig_core::providers::openai::model_listing::OpenAIModelLister<H>;
+        rig_core::providers::openai::OpenAIModelLister<H>;
     pub type ResponsesCompletionModel<H = super::DefaultHttp> =
         rig_core::providers::openai::responses_api::ResponsesCompletionModel<H>;
     pub type TranscriptionModel<H = super::DefaultHttp> =
-        rig_core::providers::openai::transcription::TranscriptionModel<H>;
+        rig_core::providers::openai::TranscriptionModel<H>;
 }
 
 pub mod openrouter {
     pub use rig_core::providers::openrouter::*;
     #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub type AudioGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::openrouter::audio_generation::AudioGenerationModel<H>;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::openrouter::client::Client<H>;
+        rig_core::providers::openrouter::AudioGenerationModel<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::openrouter::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::openrouter::completion::CompletionModel<H>;
+        rig_core::providers::openrouter::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::openrouter::embedding::EmbeddingModel<H>;
+        rig_core::providers::openrouter::EmbeddingModel<H>;
     pub type OpenRouterModelLister<H = super::DefaultHttp> =
-        rig_core::providers::openrouter::model_listing::OpenRouterModelLister<H>;
+        rig_core::providers::openrouter::OpenRouterModelLister<H>;
     pub type TranscriptionModel<H = super::DefaultHttp> =
-        rig_core::providers::openrouter::transcription::TranscriptionModel<H>;
+        rig_core::providers::openrouter::TranscriptionModel<H>;
 }
 
 pub mod perplexity {
@@ -270,30 +288,32 @@ pub mod perplexity {
 
 pub mod together {
     pub use rig_core::providers::together::*;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::together::client::Client<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::together::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::together::completion::CompletionModel<H>;
+        rig_core::providers::together::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::together::embedding::EmbeddingModel<H>;
+        rig_core::providers::together::EmbeddingModel<H>;
 }
 
 pub mod venice {
     pub use rig_core::providers::venice::*;
     #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub type AudioGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::venice::audio_generation::AudioGenerationModel<H>;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::venice::client::Client<H>;
+        rig_core::providers::venice::AudioGenerationModel<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::venice::Client<H>;
     pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::venice::completion::CompletionModel<H>;
+        rig_core::providers::venice::CompletionModel<H>;
     pub type EmbeddingModel<H = super::DefaultHttp> =
-        rig_core::providers::venice::embedding::EmbeddingModel<H>;
+        rig_core::providers::venice::EmbeddingModel<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type ImageGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::venice::image_generation::ImageGenerationModel<H>;
+        rig_core::providers::venice::ImageGenerationModel<H>;
     pub type TranscriptionModel<H = super::DefaultHttp> =
-        rig_core::providers::venice::transcription::TranscriptionModel<H>;
+        rig_core::providers::venice::TranscriptionModel<H>;
     pub type VeniceModelLister<H = super::DefaultHttp> =
-        rig_core::providers::venice::client::VeniceModelLister<H>;
+        rig_core::providers::venice::VeniceModelLister<H>;
 }
 
 pub mod voyageai {
@@ -307,14 +327,15 @@ pub mod voyageai {
 pub mod xai {
     pub use rig_core::providers::xai::*;
     #[cfg(feature = "audio")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
     pub type AudioGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::xai::audio_generation::AudioGenerationModel<H>;
-    pub type Client<H = super::DefaultHttp> = rig_core::providers::xai::client::Client<H>;
-    pub type CompletionModel<H = super::DefaultHttp> =
-        rig_core::providers::xai::completion::CompletionModel<H>;
+        rig_core::providers::xai::AudioGenerationModel<H>;
+    pub type Client<H = super::DefaultHttp> = rig_core::providers::xai::Client<H>;
+    pub type CompletionModel<H = super::DefaultHttp> = rig_core::providers::xai::CompletionModel<H>;
     #[cfg(feature = "image")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
     pub type ImageGenerationModel<H = super::DefaultHttp> =
-        rig_core::providers::xai::image_generation::ImageGenerationModel<H>;
+        rig_core::providers::xai::ImageGenerationModel<H>;
 }
 
 pub mod xiaomimimo {

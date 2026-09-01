@@ -1,0 +1,13 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+publish = false
+description = "Workspace maintenance tasks for rig. Not published."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
