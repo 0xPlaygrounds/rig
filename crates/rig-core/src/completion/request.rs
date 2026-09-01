@@ -719,11 +719,6 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// Legacy preamble field preserved for backwards compatibility.
-    ///
-    /// New code should prefer a leading [`Message::System`]
-    /// in `chat_history` as the canonical representation of system instructions.
-    pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     /// The very last message is the prompt.
     ///
@@ -769,6 +764,16 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
+    /// The system instructions of this request: the content of the leading
+    /// [`Message::System`] in `chat_history`, which is where
+    /// [`CompletionRequestBuilder::preamble`] places it.
+    pub fn system_instructions(&self) -> Option<&str> {
+        match self.chat_history.first() {
+            Some(Message::System { content }) => Some(content.as_str()),
+            _ => None,
+        }
+    }
+
     /// Reject a request with no messages, or a message that carries no content.
     ///
     /// Removing the non-empty container removed two guarantees at once, and this
@@ -1059,9 +1064,9 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         }
     }
 
-    /// Sets the preamble for the completion request.
+    /// Sets the preamble for the completion request. It becomes the leading
+    /// [`Message::System`] of `chat_history` at build time.
     pub fn preamble(mut self, preamble: String) -> Self {
-        // Legacy public API: funnel preamble into canonical system messages at build-time.
         self.preamble = Some(preamble);
         self
     }
@@ -1075,11 +1080,6 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Overrides the model used for this request.
     pub fn model_opt(mut self, model: Option<String>) -> Self {
         self.request_model = model;
-        self
-    }
-
-    pub fn without_preamble(mut self) -> Self {
-        self.preamble = None;
         self
     }
 
@@ -1278,7 +1278,6 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
         let request = CompletionRequest {
             model: self.request_model,
-            preamble: None,
             chat_history,
             documents: self.documents,
             tools: self.tools,
@@ -1319,7 +1318,6 @@ mod tests {
         fn request(chat_history: Vec<Message>) -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history,
                 documents: Vec::new(),
                 tools: Vec::new(),
@@ -1803,7 +1801,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["What is the capital of France?".into()],
             documents: vec![doc1, doc2],
             tools: Vec::new(),
@@ -1835,7 +1832,6 @@ mod tests {
     fn test_normalize_documents_without_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["What is the capital of France?".into()],
             documents: Vec::new(),
             tools: Vec::new(),
@@ -1858,8 +1854,6 @@ mod tests {
                 .message(Message::user("History"))
                 .build();
 
-        assert_eq!(request.preamble, None);
-
         let history = request.chat_history.into_iter().collect::<Vec<_>>();
         assert_eq!(history.len(), 3);
         assert!(matches!(
@@ -1868,20 +1862,6 @@ mod tests {
         ));
         assert!(matches!(&history[1], Message::User { .. }));
         assert!(matches!(&history[2], Message::User { .. }));
-    }
-
-    #[test]
-    fn without_preamble_removes_legacy_preamble_injection() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-                .preamble("System prompt".to_string())
-                .without_preamble()
-                .build();
-
-        assert_eq!(request.preamble, None);
-        let history = request.chat_history.into_iter().collect::<Vec<_>>();
-        assert_eq!(history.len(), 1);
-        assert!(matches!(&history[0], Message::User { .. }));
     }
 
     #[test]
@@ -1955,7 +1935,6 @@ mod tests {
     fn chat_history_with_documents_places_documents_after_leading_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
@@ -1988,7 +1967,6 @@ mod tests {
     fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 Message::system("Leading system prompt"),
                 Message::assistant("Earlier assistant turn"),
@@ -2025,7 +2003,6 @@ mod tests {
     fn chat_history_with_documents_does_not_duplicate_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 Message::system("System prompt"),
                 Message::user("Earlier user turn"),

@@ -408,7 +408,7 @@ impl CompletionModel {
     ) -> Result<rig_core::streaming::RawStreamingResult<BedrockStreamingResponse>, CompletionError>
     {
         let request_model = resolve_request_model(&self.model, &completion_request);
-        let system_instructions = completion_request.preamble.clone();
+        let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = AwsCompletionRequest {
             inner: completion_request,

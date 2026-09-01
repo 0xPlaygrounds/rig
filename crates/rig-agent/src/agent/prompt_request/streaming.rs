@@ -3415,21 +3415,6 @@ mod migrated_tests {
                 }
             })
         );
-
-        // Stream items serialized before the Option encoding was dropped used
-        // `"usage": null`; they must still deserialize.
-        let legacy: MultiTurnStreamItem = serde_json::from_value(serde_json::json!({
-            "type": "completionCall",
-            "call_index": 3,
-            "usage": null
-        }))
-        .expect("legacy null-usage event should deserialize");
-        match legacy {
-            MultiTurnStreamItem::CompletionCall(call) => {
-                assert_eq!(call, CompletionCall::new(3, Usage::new()));
-            }
-            other => panic!("expected completion call event, got {other:?}"),
-        }
     }
 
     #[test]

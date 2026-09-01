@@ -269,8 +269,9 @@ impl CacheProbe {
     /// harness exists to catch.
     fn request(&self, chat_history: Vec<Message>) -> CompletionRequest {
         CompletionRequest {
-            preamble: Some(self.preamble.clone()),
-            chat_history,
+            chat_history: std::iter::once(Message::system(self.preamble.clone()))
+                .chain(chat_history)
+                .collect(),
             documents: vec![],
             tools: self.tools.clone(),
             temperature: Some(0.0),

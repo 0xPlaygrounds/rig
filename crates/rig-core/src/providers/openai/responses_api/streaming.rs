@@ -1484,7 +1484,7 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
+        let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let (request_model, request) = self.create_provider_request(completion_request, true)?;
 

@@ -2876,14 +2876,11 @@ mod tests {
     }
 
     #[test]
-    fn agent_run_deserializes_pre_monoid_suspended_state() {
-        // Pins `CompletionCall.usage`'s null tolerance on a suspended run:
-        // `"usage": null` (the pre-monoid Option encoding) must map to
-        // zero-valued usage and the run must resume. The tool calls use the
-        // current schema — the pre-provider-split `call_id` lift is gone
-        // (its ignore-the-key behavior is pinned in rig-core's message
-        // tests).
-        let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
+    fn agent_run_deserializes_suspended_state() {
+        // A suspended run persisted mid-`ExecutingTools` restores and resumes:
+        // the recorded call's usage loads, the pending tool call is re-issued,
+        // and the run advances to the next model call after results arrive.
+        let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
 
         let mut restored: AgentRun =
             serde_json::from_str(fixture).expect("old-format suspended run should deserialize");

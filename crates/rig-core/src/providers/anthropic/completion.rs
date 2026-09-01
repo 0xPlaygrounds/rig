@@ -1593,7 +1593,7 @@ where
             .unwrap_or_else(|| self.model.clone());
         let span = CompletionSpanBuilder::new(Ext::PROVIDER_NAME, &request_model, operation)
             .system_instructions(
-                completion_request.preamble.as_deref(),
+                completion_request.system_instructions(),
                 completion_request.record_telemetry_content,
             )
             .build();
@@ -2850,20 +2850,8 @@ impl AnthropicCompletionRequest {
         let mut tools =
             build_tool_definitions::<Ext>(req.tools, &mut additional_params_payload, strict_tools)?;
 
-        // Convert system prompt to array format for cache_control support
-        let mut system = if let Some(preamble) = req.preamble {
-            if preamble.is_empty() {
-                vec![]
-            } else {
-                vec![SystemContent::Text {
-                    text: preamble,
-                    cache_control: None,
-                }]
-            }
-        } else {
-            vec![]
-        };
-        system.extend(history_system);
+        // System prompt in array format for cache_control support
+        let mut system = history_system;
 
         apply_prompt_cache_control(
             &mut system,
@@ -3563,8 +3551,10 @@ mod tests {
     ) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("System prompt".to_string()),
-            chat_history: vec![message::Message::from("Hello")],
+            chat_history: vec![
+                message::Message::system("System prompt"),
+                message::Message::from("Hello"),
+            ],
             documents: Vec::new(),
             tools,
             temperature: None,
@@ -3582,8 +3572,11 @@ mod tests {
     ) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble,
-            chat_history,
+            chat_history: preamble
+                .map(message::Message::system)
+                .into_iter()
+                .chain(chat_history)
+                .collect(),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,

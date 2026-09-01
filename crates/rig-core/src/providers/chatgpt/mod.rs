@@ -785,8 +785,9 @@ data: [DONE]"#;
             .openai_model()
             .create_completion_request(completion::CompletionRequest {
                 model: Some("gpt-5.4".to_string()),
-                preamble: Some("System one".to_string()),
-                chat_history,
+                chat_history: std::iter::once(completion::Message::system("System one"))
+                    .chain(chat_history)
+                    .collect(),
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,
@@ -841,8 +842,10 @@ data: [DONE]"#;
             .create_request(completion::CompletionRequest {
                 record_telemetry_content: false,
                 model: None,
-                preamble: Some("Respond tersely.".to_string()),
-                chat_history: vec![completion::Message::user("hello")],
+                chat_history: vec![
+                    completion::Message::system("Respond tersely."),
+                    completion::Message::user("hello"),
+                ],
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,
@@ -869,7 +872,6 @@ data: [DONE]"#;
         let request = model
             .create_request(completion::CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: vec![completion::Message::user("hello")],
                 documents: Vec::new(),
                 tools: Vec::new(),

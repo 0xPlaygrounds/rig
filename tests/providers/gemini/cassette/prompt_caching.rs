@@ -363,7 +363,6 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                     "Say only the word beta, nothing else",
                 ] {
                     let request = rig::completion::CompletionRequest {
-                        preamble: None,
                         chat_history: vec![rig::message::Message::User {
                             content: vec![rig::message::UserContent::text(prompt)],
                         }],
@@ -474,8 +473,11 @@ fn mutation_request(
     temperature: f64,
 ) -> rig::completion::CompletionRequest {
     rig::completion::CompletionRequest {
-        preamble: system.map(str::to_owned),
-        chat_history: history,
+        chat_history: system
+            .map(rig::message::Message::system)
+            .into_iter()
+            .chain(history)
+            .collect(),
         documents: vec![],
         tools,
         temperature: Some(temperature),

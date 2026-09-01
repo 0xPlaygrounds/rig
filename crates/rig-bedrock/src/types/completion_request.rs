@@ -147,12 +147,6 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
         let mut system_blocks = Vec::new();
 
-        if let Some(system_prompt) = self.inner.preamble.clone()
-            && !system_prompt.is_empty()
-        {
-            system_blocks.push(SystemContentBlock::Text(system_prompt));
-        }
-
         for message in self.inner.chat_history.iter() {
             if let Message::System { content } = message
                 && !content.is_empty()
@@ -248,7 +242,6 @@ mod tests {
     fn minimal_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![Message::User {
                 content: vec![UserContent::Text(Text::new("test".to_string()))],
             }],
@@ -507,7 +500,6 @@ mod tests {
     fn test_system_prompt_includes_system_history() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
@@ -534,10 +526,10 @@ mod tests {
 
     #[test]
     fn test_system_prompt_appends_cache_point_when_prompt_caching_enabled() {
-        let request = CompletionRequest {
-            preamble: Some("System prompt".to_string()),
-            ..minimal_request()
-        };
+        let mut request = minimal_request();
+        request
+            .chat_history
+            .insert(0, Message::system("System prompt"));
 
         let aws_request = aws_request(request, true);
         let system_prompt = aws_request
@@ -562,7 +554,6 @@ mod tests {
     fn test_messages_exclude_system_history() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
