@@ -1,16 +1,16 @@
-//! The sans-IO run protocol at its 0.42 path: [`crate::run`] re-exported.
+//! The run protocol at its 0.42 path: [`crate::run`] re-exported.
 //!
-//! `AgentRun` and its step/turn types live at [`crate::run`]; the data and
-//! policy vocabulary they are built from lives in rig-core
-//! (`rig_core::{transcript, completion::{output, policy, prepare, spec,
-//! response}, streaming::assemble}`). Every path under `rig_agent::agent::run`
-//! resolves as before.
+//! `AgentRun`, its step/turn types, the run's response and error types, the
+//! invalid-call decision data and the streamed-turn assembler live at
+//! [`crate::run`]; the request vocabulary they are built from is rig-core's
+//! (`rig_core::{transcript, completion::{output, patch, prepare, spec}}`).
+//! Every path under `rig_agent::agent::run` resolves as before.
 
 pub use crate::run::*;
 
-/// Streamed-turn accumulation, re-exported from `rig_core::streaming::assemble`.
+/// Streamed-turn accumulation, re-exported from [`crate::run::streamed`].
 pub mod streamed {
-    pub use rig_core::streaming::assemble::*;
+    pub use crate::run::streamed::*;
 }
 
 /// Structured-output mode, re-exported from `rig_core::completion::output`.

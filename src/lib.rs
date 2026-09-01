@@ -85,35 +85,17 @@ pub mod core {
     pub use rig_core::*;
 }
 
-/// The run vocabulary — always available, no runtime needed — and, with the
-/// `agent` feature, the canonical `AgentRun` program that steps it.
-///
-/// The vocabulary is rig-core's: request preparation (`prepare_request`,
-/// `PreparedRequest`), the protocol-facing `RunSpec`, the decision data
-/// (`RequestPatch`, `InvalidToolCallAction`, …), `PromptResponse` /
-/// `PromptError`, the streamed-turn assembler and the transcript helpers. A
-/// host that drives runs itself (an ECS plugin, a job system) builds on those
-/// alone; `AgentRun` is rig-agent's sans-IO state machine over them.
+/// The sans-IO run protocol: `AgentRun`, its step/turn types, the run's
+/// response and error types, the invalid-call decision data and the
+/// streamed-turn assembler (`rig_agent::run`). The request vocabulary a run
+/// is built from — `prepare_request`, `RunSpec`, `OutputMode`, `RequestPatch`,
+/// the transcript helpers — is rig-core's and needs no feature:
+/// `rig::core::completion::{prepare, spec, output, patch}`,
+/// `rig::core::transcript`.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod run {
-    pub use rig_core::completion::output::OutputMode;
-    pub use rig_core::completion::policy::{
-        InvalidToolCallAction, InvalidToolCallContext, RequestPatch, RetryRequest,
-    };
-    pub use rig_core::completion::prepare::{PrepareError, PreparedRequest, prepare_request};
-    pub use rig_core::completion::response::{CompletionCall, PromptError, PromptResponse};
-    pub use rig_core::completion::spec::RunSpec;
-    pub use rig_core::id::RunId;
-    pub use rig_core::streaming::assemble::{
-        PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
-        StreamedTurnAssembler, StreamedTurnEvent,
-    };
-    pub use rig_core::transcript::{self, TranscriptError, validate_canonical};
-
-    #[cfg(feature = "agent")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-    pub use rig_agent::run::{
-        AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, RunEntry, TurnTools,
-    };
+    pub use rig_agent::run::*;
 }
 
 /// Classic agent orchestration and lifecycle APIs.

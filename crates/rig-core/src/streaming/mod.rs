@@ -5,7 +5,6 @@
 //! Provider implementations use these types to expose raw streamed completion
 //! events without depending on a runtime.
 
-pub mod assemble;
 mod identity;
 mod parts;
 

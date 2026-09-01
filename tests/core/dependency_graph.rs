@@ -70,12 +70,13 @@ fn run_vocabulary_sources_contain_no_async() {
     let sources = [
         "crates/rig-core/src/transcript.rs",
         "crates/rig-core/src/completion/output.rs",
-        "crates/rig-core/src/completion/policy.rs",
+        "crates/rig-core/src/completion/patch.rs",
         "crates/rig-core/src/completion/prepare.rs",
         "crates/rig-core/src/completion/spec.rs",
-        "crates/rig-core/src/completion/response.rs",
-        "crates/rig-core/src/streaming/assemble.rs",
-        "crates/rig-agent/src/run.rs",
+        "crates/rig-agent/src/run/mod.rs",
+        "crates/rig-agent/src/run/policy.rs",
+        "crates/rig-agent/src/run/response.rs",
+        "crates/rig-agent/src/run/streamed.rs",
     ];
     let mut offenders = Vec::new();
     for relative in sources {

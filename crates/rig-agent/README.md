@@ -35,7 +35,7 @@ The vocabulary the machine is built from is rig-core's and needs neither this
 crate nor a runtime: `rig_core::completion::prepare::prepare_request` (the pure
 `(RunSpec, capabilities, history, tools, patch) → PreparedRequest` step, so
 every driver sends the same bytes), `rig_core::completion::spec::RunSpec`,
-`rig_core::completion::{output, policy, response}` and
+`rig_core::completion::{output, patch}` and
 `rig_core::transcript`. A host that drives runs itself (an ECS schedule, a job
 system) builds on those alone — `tests/fixtures/core_run_driver` in the repo
 is exactly that, with no rig-agent in its graph.

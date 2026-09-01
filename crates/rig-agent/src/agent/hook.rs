@@ -546,9 +546,7 @@ impl HookContext {
     }
 }
 
-pub use rig_core::completion::policy::{
-    InvalidToolCallAction, InvalidToolCallContext, RetryRequest,
-};
+pub use crate::run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 
 /// Completion-call event.
 ///
@@ -942,7 +940,7 @@ pub struct RunSettled<'a> {
 #[derive(Clone, Copy)]
 pub enum SettledOutcome<'a> {
     /// The run completed with this final response.
-    Response(&'a rig_core::completion::response::PromptResponse),
+    Response(&'a crate::run::response::PromptResponse),
     /// The run terminated with an error, rendered via its `Display` form.
     Error(&'a str),
 }
@@ -964,7 +962,7 @@ pub enum StepEventKind {
     StreamResponseFinish,
 }
 
-pub use rig_core::completion::policy::RequestPatch;
+pub use rig_core::completion::patch::RequestPatch;
 
 /// Action for model-selection hooks.
 #[derive(Debug, Clone)]

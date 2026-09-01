@@ -1,7 +1,7 @@
 //! The protocol's outputs: per-call accounting and the final response.
 
-use crate::completion::{FinishReason, ResponseIdentity, Usage};
-use crate::message::{AssistantContent, Message};
+use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
+use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
 
 // No longer `Copy`: the identity fields carry owned strings. No longer `Eq`:
@@ -227,11 +227,11 @@ impl PromptResponse {
     }
 }
 
-// ---- errors of the run protocol ----
+// ---- errors of the run ----
 
 use thiserror::Error;
 
-use crate::{completion::CompletionError, memory::MemoryError};
+use rig_core::{completion::CompletionError, memory::MemoryError};
 
 /// Errors from classic agent prompting.
 #[derive(Debug, Error)]

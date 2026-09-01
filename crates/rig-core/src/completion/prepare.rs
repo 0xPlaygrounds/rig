@@ -18,7 +18,7 @@ use crate::completion::{
 use crate::message::ToolChoice;
 
 use crate::completion::output::OutputMode;
-use crate::completion::policy::RequestPatch;
+use crate::completion::patch::RequestPatch;
 use crate::completion::spec::RunSpec;
 
 /// Why a request could not be prepared. Every variant is a local, pre-IO

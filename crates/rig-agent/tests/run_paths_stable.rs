@@ -1,6 +1,7 @@
 //! Every run-protocol path that existed at 0.42.0 still resolves after the
-//! protocol crate was dissolved (vocabulary → rig-core, `AgentRun` →
-//! `rig_agent::run`). Compile-only: a missing path fails the build.
+//! protocol crate was dissolved (request vocabulary → rig-core, the run's
+//! program, response, error, decision data and assembler → `rig_agent::run`).
+//! Compile-only: a missing path fails the build.
 
 #![allow(unused_imports)]
 
@@ -22,15 +23,18 @@ use rig_agent::agent::{
     PendingToolCall, PromptResponse, RunSpec, TurnTools,
 };
 use rig_agent::completion::PromptError;
+use rig_agent::run::policy::InvalidToolCallAction as _ActionDirect;
+use rig_agent::run::response::{
+    CompletionCall as _CallDirect, PromptError as _ErrDirect, PromptResponse as _RespDirect,
+};
+use rig_agent::run::streamed::StreamedTurnAssembler as _AssemblerDirect;
 use rig_agent::run::{AgentRun as _AgentRunDirect, RunEntry as _EntryDirect};
 use rig_core::completion::{
     output::OutputMode as _CoreOutputMode,
-    policy::RequestPatch as _CorePatch,
+    patch::RequestPatch as _CorePatch,
     prepare::{PreparedRequest, prepare_request},
-    response::{CompletionCall as _CoreCall, PromptError as _CoreErr, PromptResponse as _CoreResp},
     spec::RunSpec as _CoreSpec,
 };
-use rig_core::streaming::assemble::StreamedTurnAssembler as _CoreAssembler;
 use rig_core::transcript::{TranscriptError, validate_canonical};
 
 #[test]
