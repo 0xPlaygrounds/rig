@@ -39,22 +39,42 @@ pub use reqwest;
 ///
 /// A newtype rather than `reqwest::Client` itself because the orphan rule
 /// forbids implementing rig-core's trait for reqwest's type from this crate.
-/// It derefs to the inner client, converts `From<reqwest::Client>`, and
-/// `Default` builds `reqwest::Client::default()`.
+/// That is the whole of its job, so its surface is deliberately small: convert
+/// in with [`From`] or [`Default`], borrow the inner client with [`AsRef`],
+/// take it back with [`into_inner`](Self::into_inner).
+///
+/// It used to expose the inner client three ways at once — a public field,
+/// `Deref`, and `From`. `Deref` on a type that is not a smart pointer makes
+/// reqwest's whole inherent API look like this type's own, which it is not;
+/// the two explicit accessors say the same thing without the illusion.
 #[derive(Clone, Debug, Default)]
-pub struct ReqwestClient(pub reqwest::Client);
+pub struct ReqwestClient(reqwest::Client);
+
+impl ReqwestClient {
+    /// Wrap an already-configured `reqwest::Client` — timeouts, proxies, a
+    /// connection pool shared with the rest of the host.
+    #[must_use]
+    pub fn new(client: reqwest::Client) -> Self {
+        Self(client)
+    }
+
+    /// Take the inner client back.
+    #[must_use]
+    pub fn into_inner(self) -> reqwest::Client {
+        self.0
+    }
+
+    /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold
+    /// one transport for many providers without naming it in their types.
+    #[must_use]
+    pub fn boxed(self) -> BoxedHttpClient {
+        BoxedHttpClient::new(self)
+    }
+}
 
 impl From<reqwest::Client> for ReqwestClient {
     fn from(client: reqwest::Client) -> Self {
         Self(client)
-    }
-}
-
-impl ReqwestClient {
-    /// Erase this transport behind [`BoxedHttpClient`], for hosts that hold
-    /// one transport for many providers without naming it in their types.
-    pub fn boxed(self) -> BoxedHttpClient {
-        BoxedHttpClient::new(self)
     }
 }
 
@@ -64,18 +84,45 @@ impl From<ReqwestClient> for BoxedHttpClient {
     }
 }
 
-impl std::ops::Deref for ReqwestClient {
-    type Target = reqwest::Client;
-    fn deref(&self) -> &reqwest::Client {
+impl AsRef<reqwest::Client> for ReqwestClient {
+    fn as_ref(&self) -> &reqwest::Client {
         &self.0
     }
 }
 
 /// [`HttpClientExt`] for a `reqwest_middleware::ClientWithMiddleware`.
+///
+/// The same shape as [`ReqwestClient`], minus `Default`: a middleware client
+/// with no middleware is just a `reqwest::Client` with extra indirection, so
+/// there is no default worth having — build one with
+/// `reqwest_middleware::ClientBuilder` and convert it in.
 #[cfg(feature = "reqwest-middleware")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
 #[derive(Clone, Debug)]
-pub struct ReqwestMiddlewareClient(pub reqwest_middleware::ClientWithMiddleware);
+pub struct ReqwestMiddlewareClient(reqwest_middleware::ClientWithMiddleware);
+
+#[cfg(feature = "reqwest-middleware")]
+impl ReqwestMiddlewareClient {
+    /// Wrap a built `ClientWithMiddleware`.
+    #[must_use]
+    pub fn new(client: reqwest_middleware::ClientWithMiddleware) -> Self {
+        Self(client)
+    }
+
+    /// Take the inner client back.
+    #[must_use]
+    pub fn into_inner(self) -> reqwest_middleware::ClientWithMiddleware {
+        self.0
+    }
+
+    /// Erase this transport behind [`BoxedHttpClient`], as
+    /// [`ReqwestClient::boxed`] does — a host that erases its transport should
+    /// not lose the option by having chosen middleware.
+    #[must_use]
+    pub fn boxed(self) -> BoxedHttpClient {
+        BoxedHttpClient::new(self)
+    }
+}
 
 #[cfg(feature = "reqwest-middleware")]
 impl From<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient {
@@ -85,9 +132,15 @@ impl From<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient 
 }
 
 #[cfg(feature = "reqwest-middleware")]
-impl std::ops::Deref for ReqwestMiddlewareClient {
-    type Target = reqwest_middleware::ClientWithMiddleware;
-    fn deref(&self) -> &reqwest_middleware::ClientWithMiddleware {
+impl From<ReqwestMiddlewareClient> for BoxedHttpClient {
+    fn from(client: ReqwestMiddlewareClient) -> Self {
+        client.boxed()
+    }
+}
+
+#[cfg(feature = "reqwest-middleware")]
+impl AsRef<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient {
+    fn as_ref(&self) -> &reqwest_middleware::ClientWithMiddleware {
         &self.0
     }
 }
@@ -134,10 +187,26 @@ async fn non_success_status_error(response: reqwest::Response) -> Error {
     Error::non_success_with_details(status, headers, body)
 }
 
-/// Build the transport-agnostic response whose body is read lazily (the
-/// caller awaits it later). Only valid when the caller can poll reqwest
-/// futures — i.e. inside a tokio runtime (or on wasm).
-async fn into_lazy_response<U>(response: reqwest::Response) -> Result<Response<LazyBody<U>>>
+/// When the body is read.
+///
+/// The two moments look alike and are not interchangeable: the caller decides
+/// which by whether it can still poll reqwest when it awaits the body.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum BodyTiming {
+    /// Hand back a body future the caller awaits later. Only valid where the
+    /// caller can poll reqwest futures — inside a tokio runtime, or on wasm.
+    Lazy,
+    /// Read the body now and hand back a ready future. This is the off-runtime
+    /// path: the future it returns may be polled by an executor that cannot
+    /// drive reqwest, so nothing reqwest-shaped may survive into it.
+    Eager,
+}
+
+/// Build the transport-agnostic response, reading the body at `timing`.
+async fn into_response<U>(
+    response: reqwest::Response,
+    timing: BodyTiming,
+) -> Result<Response<LazyBody<U>>>
 where
     U: From<Bytes>,
     U: WasmCompatSend + 'static,
@@ -151,36 +220,30 @@ where
         *headers = response.headers().clone();
     }
 
-    let body: LazyBody<U> = Box::pin(async {
-        let bytes = response.bytes().await.map_err(Error::instance)?;
-        Ok(U::from(bytes))
-    });
+    let body: LazyBody<U> = match timing {
+        BodyTiming::Lazy => Box::pin(async {
+            let bytes = response.bytes().await.map_err(Error::instance)?;
+            Ok(U::from(bytes))
+        }),
+        BodyTiming::Eager => {
+            let bytes = response.bytes().await.map_err(Error::instance)?;
+            Box::pin(std::future::ready(Ok(U::from(bytes))))
+        }
+    };
 
     res.body(body).map_err(Error::Protocol)
 }
 
-/// Like [`into_lazy_response`], but reads the body eagerly — for the
-/// off-runtime path, where the returned future may be polled by an executor
-/// that cannot drive reqwest.
-#[cfg(not(target_family = "wasm"))]
-async fn into_eager_response<U>(response: reqwest::Response) -> Result<Response<LazyBody<U>>>
-where
-    U: From<Bytes>,
-    U: WasmCompatSend + 'static,
-{
-    if !response.status().is_success() {
-        return Err(non_success_status_error(response).await);
-    }
-
-    let mut res = Response::builder().status(response.status());
-    if let Some(headers) = res.headers_mut() {
-        *headers = response.headers().clone();
-    }
-
-    let bytes = response.bytes().await.map_err(Error::instance)?;
-    let body: LazyBody<U> = Box::pin(std::future::ready(Ok(U::from(bytes))));
-    res.body(body).map_err(Error::Protocol)
-}
+/// The timing the off-runtime side of [`drive`] needs.
+///
+/// On wasm there is no fallback runtime and no off-runtime path, so the body
+/// stays lazy; natively the off-runtime side must not hand reqwest futures to
+/// an executor that cannot poll them.
+const OFF_RUNTIME_TIMING: BodyTiming = if cfg!(target_family = "wasm") {
+    BodyTiming::Lazy
+} else {
+    BodyTiming::Eager
+};
 
 fn streaming_head(response: &reqwest::Response) -> http::response::Builder {
     #[cfg(not(target_family = "wasm"))]
@@ -244,8 +307,24 @@ async fn into_forwarded_streaming_response(
     res.body(stream).map_err(Error::Protocol)
 }
 
+/// A part's content type was not a MIME type reqwest would accept.
+#[derive(Debug, thiserror::Error)]
+#[error("multipart part {part:?} has an unusable content type {content_type:?}: {source}")]
+struct InvalidPartContentType {
+    part: String,
+    content_type: String,
+    source: reqwest::Error,
+}
+
 /// Render a [`MultipartForm`] as a `reqwest::multipart::Form`.
-pub fn multipart_form(value: MultipartForm) -> reqwest::multipart::Form {
+///
+/// Fails when a part names a content type reqwest rejects. That used to be
+/// swallowed — the part was rebuilt without its content type and the request
+/// went out anyway — so a typo'd MIME reached the provider as a *missing* one
+/// and came back as an opaque provider error about the payload. A content type
+/// the caller asked for and did not get is a caller bug worth reporting at the
+/// call site.
+pub fn multipart_form(value: MultipartForm) -> Result<reqwest::multipart::Form> {
     let mut form = reqwest::multipart::Form::new();
 
     for part in value.into_parts() {
@@ -255,13 +334,16 @@ pub fn multipart_form(value: MultipartForm) -> reqwest::multipart::Form {
                 form = form.text(name, text);
             }
             PartContent::Binary(bytes) => {
-                let mut req_part = if let Some(content_type) = content_type.as_ref() {
-                    reqwest::multipart::Part::bytes(bytes.to_vec())
-                        .mime_str(content_type.as_ref())
-                        .unwrap_or_else(|_| reqwest::multipart::Part::bytes(bytes.to_vec()))
-                } else {
-                    reqwest::multipart::Part::bytes(bytes.to_vec())
-                };
+                let mut req_part = reqwest::multipart::Part::bytes(bytes.to_vec());
+                if let Some(content_type) = content_type.as_ref() {
+                    req_part = req_part.mime_str(content_type.as_ref()).map_err(|source| {
+                        Error::instance(InvalidPartContentType {
+                            part: name.clone(),
+                            content_type: content_type.as_ref().to_string(),
+                            source,
+                        })
+                    })?;
+                }
 
                 if let Some(filename) = filename {
                     req_part = req_part.file_name(filename);
@@ -272,7 +354,7 @@ pub fn multipart_form(value: MultipartForm) -> reqwest::multipart::Form {
         }
     }
 
-    form
+    Ok(form)
 }
 
 /// The one request-driving routine both reqwest-flavoured clients share:
@@ -383,11 +465,11 @@ where
         .with_headers(parts.headers)
         .with_body(body.into().into());
 
-    #[cfg(not(target_family = "wasm"))]
-    let off = into_eager_response::<U>;
-    #[cfg(target_family = "wasm")]
-    let off = into_lazy_response::<U>;
-    drive(req, into_lazy_response::<U>, off)
+    drive(
+        req,
+        |response| into_response::<U>(response, BodyTiming::Lazy),
+        |response| into_response::<U>(response, OFF_RUNTIME_TIMING),
+    )
 }
 
 fn send_multipart_via<C, U>(
@@ -399,16 +481,25 @@ where
     U: From<Bytes> + WasmCompatSend + 'static,
 {
     let (parts, body) = req.into_parts();
-    let req = client
-        .request_builder(parts.method, parts.uri.to_string())
-        .with_headers(parts.headers)
-        .with_multipart(multipart_form(body));
+    // The form is rendered before the request is driven, so an unusable
+    // content type fails here rather than reaching the provider as a silently
+    // missing one.
+    let form = multipart_form(body);
+    let req = form.map(|form| {
+        client
+            .request_builder(parts.method, parts.uri.to_string())
+            .with_headers(parts.headers)
+            .with_multipart(form)
+    });
 
-    #[cfg(not(target_family = "wasm"))]
-    let off = into_eager_response::<U>;
-    #[cfg(target_family = "wasm")]
-    let off = into_lazy_response::<U>;
-    drive(req, into_lazy_response::<U>, off)
+    async move {
+        drive(
+            req?,
+            |response| into_response::<U>(response, BodyTiming::Lazy),
+            |response| into_response::<U>(response, OFF_RUNTIME_TIMING),
+        )
+        .await
+    }
 }
 
 fn send_streaming_via<C, T>(

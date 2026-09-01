@@ -47,6 +47,22 @@ futures = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [features]
+# TLS: enable exactly one of `rustls` (the default) and `native-tls`. They are
+# additive, so enabling both compiles both stacks and reqwest — not rig — picks
+# which one a client uses. There is deliberately no `compile_error!` for the
+# pair: `--all-features` enables it, and that is the lane CI's clippy, test and
+# doc jobs run in, so the guard would break the build it is meant to protect.
+# The websocket axis in `rig-tungstenite` is documented the same way, for the
+# related reason that additive features cannot express "replace stack A with B".
+#
+# Unlike that axis, a single-stack build here is reachable for every selector:
+# `--no-default-features --features native-tls` and
+# `--no-default-features --features reqwest-middleware-native-tls` both resolve
+# to native-tls with no rustls in the tree.
+#
+# `reqwest-middleware` shares its name with the optional dependency it enables
+# (`dep:reqwest-middleware`). That is legal, and it is the name the `rig` facade
+# forwards, so it stays.
 default = ["rustls"]
 socks = ["reqwest/socks"]
 # Provider-aware conveniences need the same feature surface as rig-core's
