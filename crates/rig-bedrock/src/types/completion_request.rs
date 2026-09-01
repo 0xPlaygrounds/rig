@@ -193,14 +193,6 @@ impl AwsCompletionRequest {
             full_history.push(Message::User { content });
         }
 
-        // Compute before the history is moved below.
-        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
-            Message::Assistant { content, .. } => content
-                .iter()
-                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
-            _ => false,
-        });
-
         full_history.extend(
             self.inner
                 .chat_history
