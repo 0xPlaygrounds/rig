@@ -5,18 +5,18 @@
 //! which never contains reasoning content.
 
 use futures::StreamExt;
+use rig::OneOrMany;
 use rig::bedrock::completion::CompletionModel;
 use rig::client::CompletionClient;
 use rig::completion::{AssistantContent, CompletionModel as _, CompletionRequest, Message};
 use rig::message::{Text, ToolResult, ToolResultContent, UserContent};
 use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
-use rig::OneOrMany;
 use serde_json::json;
 
 use super::{
     anthropic_adaptive_model, client,
-    support::{AlphaSignal, ALPHA_SIGNAL_OUTPUT},
+    support::{ALPHA_SIGNAL_OUTPUT, AlphaSignal},
 };
 
 fn adaptive_thinking_params() -> serde_json::Value {
