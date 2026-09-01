@@ -806,6 +806,56 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### The bundled transport newtypes expose their inner client once, not three ways
+
+`ReqwestClient` and `ReqwestMiddlewareClient` each handed out the client they
+wrap through a public tuple field, a `Deref`, *and* `From`. `Deref` on a type
+that is not a smart pointer makes reqwest's whole inherent API look like the
+newtype's own, which it is not, and the public field made it redundant besides.
+Both now have a private field and two explicit accessors:
+
+```rust
+// Before
+let inner: &reqwest::Client = &client.0;
+let response = client.get(url).send().await?;   // via Deref
+
+// After
+let inner: &reqwest::Client = client.as_ref();
+let response = client.as_ref().get(url).send().await?;
+let owned: reqwest::Client = client.into_inner();
+```
+
+Construction is unchanged (`From`, `Default`, and now an explicit
+`ReqwestClient::new(..)`), so `ReqwestClient::default()`,
+`reqwest_client.into()` and `ClientBuilder::new(..).build().into()` all keep
+working.
+
+`ReqwestMiddlewareClient` gained the erasure `ReqwestClient` already had —
+`boxed()` and `impl From<ReqwestMiddlewareClient> for BoxedHttpClient` — so a
+host that erases its transport does not lose the option by having chosen
+middleware. It deliberately still has no `Default`: a middleware client with no
+middleware is a `reqwest::Client` with extra indirection.
+
+### `multipart_form` reports an unusable content type instead of dropping it
+
+`rig_reqwest::multipart_form` now returns
+`http_client::Result<reqwest::multipart::Form>`. It used to rebuild the part
+without its content type when reqwest rejected the MIME string and send the
+request anyway, so the provider saw a part with *no* content type and answered
+with something unrelated to the actual mistake.
+
+```rust
+// Before
+let form = rig_reqwest::multipart_form(parts);
+
+// After
+let form = rig_reqwest::multipart_form(parts)?;
+```
+
+Rig's own multipart parts carry a parsed `mime::Mime`, so in practice this
+fires only on a `mime`/`reqwest` version skew — the point is that it now fires
+at all rather than silently changing the request.
+
 ### Websockets are transport-agnostic: the protocol moved to `rig-core`, the socket to `rig-tungstenite`
 
 The OpenAI Responses websocket mode used to live in `rig-reqwest`, because

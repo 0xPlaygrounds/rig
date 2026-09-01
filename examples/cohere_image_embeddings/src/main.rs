@@ -3,13 +3,13 @@
 //! Set `COHERE_API_KEY`, then run:
 //!
 //! ```text
-//! cargo run -p rig-reqwest --example cohere_image_embeddings -- path/to/image.png
+//! cargo run -p cohere_image_embeddings -- path/to/image.png
 //! ```
 
 use anyhow::{Context, Result};
-use rig_core::embeddings::ImageEmbeddingModel;
-use rig_reqwest::prelude::*;
-use rig_reqwest::providers::cohere::Client;
+use rig::embeddings::ImageEmbeddingModel;
+use rig::prelude::*;
+use rig::providers::cohere::Client;
 
 #[tokio::main]
 async fn main() -> Result<()> {
