@@ -255,11 +255,9 @@ pub struct StreamedTurn {
     #[serde(default)]
     pub internal_call_ids: Vec<(String, InternalCallId)>,
     /// Why the provider stopped generating this turn, when it reported a
-    /// reason — the streamed analogue of [`ModelTurn::finish_reason`], so a
+    /// reason — the streamed analogue of `ModelTurn::finish_reason`, so a
     /// driver that feeds turns through `streamed_turn` records the same
     /// terminal reason the blocking surface does (rig#2322).
-    ///
-    /// [`ModelTurn::finish_reason`]: super::ModelTurn::finish_reason
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
 }
@@ -391,7 +389,7 @@ enum PendingInvalid {
 /// Sans-IO accumulator that assembles one streamed model turn. See the
 /// [module docs](self) for the driving protocol.
 ///
-/// `Clone + Serialize + Deserialize`, like [`AgentRun`](crate::AgentRun): a
+/// `Clone + Serialize + Deserialize`, like `AgentRun`: a
 /// mid-stream assembler can be persisted and resumed (same caveats — no
 /// cross-version format stability). Dropping one mid-turn is a normal
 /// cancellation path and is silent unless replayed assistant content was

@@ -19,6 +19,27 @@ let agent = client.agent(openai::GPT_5_2).build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 
+## The run protocol
+
+`rig_agent::run::AgentRun` is a steppable, serializable state machine: it owns
+every *decision* the agent loop makes — turn budget, tool-call validation and
+recovery, history threading, structured-output policy, usage accounting, final
+response — and performs no IO. A *driver* calls `next_step()` and acts on the
+returned `AgentRunStep` (`CallModel`, `CallTools`, `Done`), feeding results
+back with `model_response` / `tool_results`. This crate's futures loop is the
+driver; the machine itself never awaits (a source-level guard keeps it so) and
+is `Serialize + Deserialize`, so a run can be suspended between steps and
+resumed in another process.
+
+The vocabulary the machine is built from is rig-core's and needs neither this
+crate nor a runtime: `rig_core::completion::prepare::prepare_request` (the pure
+`(RunSpec, capabilities, history, tools, patch) → PreparedRequest` step, so
+every driver sends the same bytes), `rig_core::completion::spec::RunSpec`,
+`rig_core::completion::{output, policy, response}` and
+`rig_core::transcript`. A host that drives runs itself (an ECS schedule, a job
+system) builds on those alone — `tests/fixtures/core_run_driver` in the repo
+is exactly that, with no rig-agent in its graph.
+
 ## Runtime model routing
 
 High-level agents are concrete values: the provider model is erased once into

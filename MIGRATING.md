@@ -357,7 +357,7 @@ association.
 rig-agent's driver recorded the advertised tools *after* the per-turn request
 assembly had already moved the definitions out of the registry snapshot, so
 `AgentRun::advertised_tools()` (and the serialized run's `turn_tools`) always
-held an empty list. With request preparation in `rig_run::prepare_request`
+held an empty list. With request preparation in `rig_core::completion::prepare::prepare_request`
 the driver advertises `PreparedRequest::tools` — the executable tools after
 any `active_tools` allow-list plus, in Tool output mode, the synthetic output
 tool — i.e. exactly what the provider received. Nothing on the wire changes.
@@ -1000,8 +1000,8 @@ Two identifiers that were bare `String`s are now dedicated types in
   `StreamedAssistantContent::{ToolCall, ToolCallDelta}`,
   `StreamedUserContent::ToolResult`, `RawStreamingToolCall`,
   `MultiTurnStreamItem::ToolExecutionCommitted`,
-  `rig_run::PendingToolCall::internal_call_id`,
-  `rig_run::InvalidToolCallContext`, and the hook events
+  `rig_agent::run::PendingToolCall::internal_call_id`,
+  `rig_core::completion::policy::InvalidToolCallContext`, and the hook events
   (`ToolCall`/`ToolResultEvent`/`ToolCallDelta`, where it was `&'a str` and is
   now a by-value `InternalCallId`). Code that compared it to string literals
   should compare ids; code that displayed it still can (`Display` renders the
@@ -1026,7 +1026,7 @@ Two identifiers that were bare `String`s are now dedicated types in
 Groundwork for stepping `AgentRun` from a host scheduler (the upcoming Bevy
 plugin), all additive or derive-only:
 
-- `rig_run::ModelTurn::from_response(resp, &PreparedRequest)` (and
+- `rig_agent::run::ModelTurn::from_response(resp, &PreparedRequest)` (and
   `from_response_parts`) is now the one blessed `CompletionResponse →
   ModelTurn` conversion; rig-agent's runner uses it, and any external driver
   must too — it settles the two inputs hand-assembly gets wrong (tool-name
@@ -1080,7 +1080,7 @@ HTTP transport gained a middleware seam. What breaks:
   `BoxedHttpClient::with_middleware`). Behavior without middleware is
   unchanged. `BoxedHttpClient::ptr_eq` still compares the underlying transport
   only, so two handles differing only in middleware compare equal.
-- **`AgentRun` gained an append-only entry log** — `rig_run::RunEntry`
+- **`AgentRun` gained an append-only entry log** — `rig_agent::run::RunEntry`
   (`kind`/`turn`/`value`) with `append_entry`, `entries`, `entries_of`, and
   `last_entry_of` — plus `initial_prompt`, `rewrite_initial_prompt`, and
   `input_chat_history`. Runs serialized before this release deserialize
@@ -1101,31 +1101,44 @@ rides the record travels, rewinds, and forks with the record. Also new: the
 between two unreleased PRs and was replaced by the entry log before release;
 `Scratchpad` remains as the in-process, non-serialized cross-hook channel.)
 
-### The run protocol is its own crate: `rig-run` (`rig::run`)
+### The run protocol: its vocabulary is rig-core's, `AgentRun` is `rig_agent::run`
 
 `AgentRun` — the sans-IO, serializable state machine behind every agent run —
-and everything needed to step it now live in **`rig-run`**, which depends on
-`rig-core` only (no async runtime, no hooks, no tool registry; a guard test pins
-this). `rig-agent` is the futures driver over it; an ECS plugin can be another.
-Every old path still resolves through re-exports, so existing code compiles
-unchanged unless it names one of the items below:
+was briefly its own crate during this cycle (`rig-run`, never released). It is
+not: the *vocabulary* every driver needs is now plain rig-core, and the
+program that steps it lives with the one driver that steps it.
 
-- Moved (re-exported at the old paths `rig_agent::agent::run::*`,
+- **rig-core** (available with no runtime and no `agent` feature):
+  `rig_core::transcript` (canonical-transcript helpers and
+  `validate_canonical`), `rig_core::completion::output` (`OutputMode` and the
+  output-policy helpers `resolve_output_mode`, `pick_output_tool_name`,
+  `augment_preamble`, `allowed_tool_names_for_choice`, …),
+  `rig_core::completion::policy` (`RequestPatch`, `InvalidToolCallAction`,
+  `InvalidToolCallContext`, `RetryRequest`), `rig_core::completion::prepare`
+  (`prepare_request`, `PreparedRequest`, `PrepareError`),
+  `rig_core::completion::spec` (`RunSpec`, `RunSpec::DEFAULT_OUTPUT_RETRIES`),
+  `rig_core::completion::response` (`PromptResponse`, `CompletionCall`,
+  `PromptError`) and `rig_core::streaming::assemble` (the streamed-turn
+  assembler). All of it is re-exported from `rig_core::completion` and, on the
+  facade, from `rig::run` — without the `agent` feature.
+- **rig-agent**: `rig_agent::run` holds `AgentRun`, `AgentRunStep`,
+  `ModelTurn`, `ModelTurnOutcome`, `PendingToolCall`, `RunEntry`, `TurnTools`.
+  It stays sans-IO (a source-level guard covers it together with the rig-core
+  modules) and `Serialize + Deserialize + Clone`. `rig::run::AgentRun` needs
+  the `agent` feature.
+- Every 0.42 path resolves unchanged: `rig_agent::agent::run::*`,
   `rig_agent::agent::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome,
-  PendingToolCall, OutputMode, PromptResponse, CompletionCall}`,
-  `rig_agent::completion::PromptError`,
-  `rig_agent::agent::hook::{InvalidToolCallAction, InvalidToolCallContext,
-  RetryRequest}`): `AgentRun`, `AgentRunStep`, `ModelTurn`, `ModelTurnOutcome`,
-  `PendingToolCall`, the streamed-turn assembler types, `OutputMode`,
-  `PromptResponse`, `CompletionCall`, `PromptError`, the three invalid-call /
-  retry data types, and the transcript helpers (`rig_run::transcript`).
-  The facade exposes the crate as `rig::run` independent of the `agent` feature.
+  PendingToolCall, OutputMode, PromptResponse, CompletionCall, RunSpec,
+  TurnTools}`, `rig_agent::completion::PromptError`,
+  `rig_agent::agent::hook::{RunEntry, RequestPatch, InvalidToolCallAction,
+  InvalidToolCallContext, RetryRequest}` (pinned by
+  `crates/rig-agent/tests/run_paths_stable.rs`).
 - `PromptError::prompt_cancelled(..)`, `PromptResponse::{with_output_tool_calls,
   output_tool_calls}` and the `AgentRun` driver methods
   (`set_output_tool_name`, `output_tool_name`, `accepted_turn_choice`,
   `ignore_invalid_tool_call`, …) were crate-private to rig-agent and are now
-  public on rig-run: they are the protocol's driver API.
-- `RunId` (`rig_core::id::RunId`, re-exported from `rig_run` and
+  public: they are the protocol's driver API.
+- `RunId` (`rig_core::id::RunId`, re-exported from `rig::run` and
   `rig_agent::agent::hook`) is now a `NonZeroU64` counter id — `Copy + Hash +
   Ord + Serialize`, `to_raw()`/`from_raw()`, decimal `Display`/`FromStr`,
   `Option<RunId>` is `u64`-sized — instead of an opaque `String` newtype.
@@ -1134,30 +1147,30 @@ unchanged unless it names one of the items below:
 
 New, additive:
 
-- **`RunSpec`** (`rig_run::RunSpec`): the protocol-facing half of an agent
-  definition as plain `Serialize + Deserialize` data — preamble, static
-  context, sampling params, additional params, turn budget, tool choice,
-  structured-output policy. `AgentRun::from_spec(&spec, prompt, history)`;
-  `Agent::run_spec()` reads it off an agent; `AgentBuilder::apply_spec(&spec)`
-  layers one under imperative builder calls (model, tools, hooks, memory are
-  untouched).
+- **`RunSpec`** (`rig_core::completion::spec::RunSpec`): the protocol-facing
+  half of an agent definition as plain `Serialize + Deserialize` data —
+  preamble, static context, sampling params, additional params, turn budget,
+  tool choice, structured-output policy. `AgentRun::from_spec(&spec, prompt,
+  history)`; `Agent::run_spec()` reads it off an agent;
+  `AgentBuilder::apply_spec(&spec)` layers one under imperative builder calls
+  (model, tools, hooks, memory are untouched).
 - **`AgentRun::advertise_tools(turn, Vec<ToolDefinition>)` /
   `advertised_tools() -> Option<&TurnTools>`**: what the request offered the
   model, recorded as run data (serialized with the run) so a resumed run or a
   second driver can re-pair returned calls with the advertised set. rig-agent's
   driver records it before every model call.
-- **`rig_run::transcript::validate_canonical(&[Message])`** and
+- **`rig_core::transcript::validate_canonical(&[Message])`** and
   **`AgentRun::with_validated_history(..)`**: the canonical-transcript rules the
   protocol produces (no consecutive assistant messages; every assistant tool
   call answered in the next message; no orphan tool results), as a checkable
   function for histories that come from outside (memory, a resumed run).
   `with_history` stays unchecked.
 
-### The erased model and the erased tool set are rig-core; request preparation is rig-run
+### The erased model, the erased tool set and request preparation are rig-core
 
 The second step of "one protocol, two drivers". Everything a driver that does
-*not* depend on `rig-agent` needs is now in `rig-core` (handles, tools) and
-`rig-run` (the pure request step). Every old path still resolves through
+*not* depend on `rig-agent` needs is now in `rig-core`: the handles, the tool
+set, and the pure request step. Every old path still resolves through
 re-exports; behavior is unchanged (the recorded provider suites replay the same
 request bodies, and a golden test pins the driver's requests for a scripted
 tool turn). What moved, and what is new:
@@ -1197,7 +1210,7 @@ tool turn). What moved, and what is new:
   `move_to_end`, `catalog`. `ToolServer` / `ToolServerHandle` (retrieval
   indexes, managed remote tool sources, `get_tool_defs(prompt)`, the per-turn
   snapshot) stay in `rig-agent`, layered over these types.
-- **`rig_run::prepare_request`** (new): the pure `(RunSpec, ProviderCapabilities,
+- **`rig_core::completion::prepare::prepare_request`** (new): the pure `(RunSpec, ProviderCapabilities,
   history, tools, committed output tool, RequestPatch) -> PreparedRequest`
   step — preamble augmentation, static + extra context, output-mode resolution,
   synthetic output-tool synthesis and naming, `active_tools` narrowing,
@@ -1207,17 +1220,18 @@ tool turn). What moved, and what is new:
   `CompletionError::RequestError`. rig-agent's driver now does only the IO
   around it: retrieve the turn's tools, `prepare_request`, bind the selected
   model's builder.
-- **`RequestPatch`** (`rig_run::policy::RequestPatch`, was
+- **`RequestPatch`** (`rig_core::completion::policy::RequestPatch`, was
   `rig_agent::agent::hook::RequestPatch`; still at the old path and
   `rig_agent::agent::RequestPatch`): plain per-turn data, unchanged fields and
   builder methods; `is_empty()` and `merge(later)` are now public. The hook
   that produces it (`CompletionCallAction::patch`) stays in rig-agent.
 
-A driver over `rig-core` + `rig-run` alone can now erase a model, build a
-`ToolSet`/`ToolCatalog` from `PortableDynamicTool`s, construct an `AgentRun`
-from a `RunSpec`, `prepare_request`, and dispatch a tool by name — the guard
+A driver over `rig-core` alone can now erase a model, build a
+`ToolSet`/`ToolCatalog` from `PortableDynamicTool`s, describe a run with a
+`RunSpec`, `prepare_request`, dispatch a tool by name and thread the result
+back with the transcript helpers — no `AgentRun` required. The guard
 `tests/core/core_run_driver.rs` runs exactly that fixture and checks its
-dependency graph has no `rig-agent`.
+dependency graph is rig-core only.
 
 ### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
 
@@ -5119,7 +5133,7 @@ Renamed or relocated items, for searching.
 | `rig_agent::agent::model::ModelHandle` | `rig_core::completion::ModelHandle` (re-exported at `rig_agent::ModelHandle` / `rig_agent::agent::ModelHandle`) | next |
 | `rig_agent::tool::{Tool, ToolEmbedding, ErasedTool, DynamicTool, ToolSet, tool_definition}` | `rig_core::tool::{..}` (module `rig_core::tool::contextual`; re-exported at the old paths and at `rig::tool::*` without the `agent` feature) | next |
 | `rig_agent::tool::server::ToolRegistrySnapshot` (struct) | `pub type ToolRegistrySnapshot = rig_core::tool::ToolCatalog` | next |
-| `rig_agent::agent::hook::RequestPatch` | `rig_run::policy::RequestPatch` (re-exported at the old path) | next |
+| `rig_agent::agent::hook::RequestPatch` | `rig_core::completion::policy::RequestPatch` (re-exported at the old path) | next |
 | `#[rig_tool]` contextual-tool expansion target `rig_agent::tool::Tool` | `rig_core::tool::Tool` (the macro's "contextual tools require `rig`/`rig-agent`" error is gone) | next |
 | `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
 | `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |
