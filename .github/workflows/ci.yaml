@@ -240,6 +240,11 @@ jobs:
       - name: Check the alias tree is up to date
         run: cargo xtask generate-provider-aliases --check
 
+      # Test modules are sibling files (`mod tests;` + `foo/tests.rs`), never
+      # inline blocks; #2433 moved 214 of them out and this keeps them out.
+      - name: Check test modules are sibling files
+        run: cargo xtask check-test-layout
+
   clippy:
     name: stable / clippy
     runs-on: ubuntu-latest

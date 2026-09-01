@@ -11,3 +11,5 @@ workspace = true
 
 [dependencies]
 serde_json = { workspace = true }
+syn = { workspace = true, features = ["full"] }
+proc-macro2 = { workspace = true, features = ["span-locations"] }
