@@ -1,0 +1,56 @@
+use std::sync::Arc;
+
+use lancedb::arrow::arrow_schema::{DataType, Field, Schema};
+
+use super::FilterTableColumns;
+
+#[tokio::test]
+async fn test_column_filtering() {
+    let field_a = Field::new("id", DataType::Int64, false);
+    let field_b = Field::new("my_bool", DataType::Boolean, false);
+    let field_c = Field::new(
+        "my_embeddings",
+        DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), 10),
+        false,
+    );
+    let field_d = Field::new(
+        "my_list",
+        DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), 10),
+        false,
+    );
+
+    let schema = Schema::new(vec![field_a, field_b, field_c, field_d]);
+
+    let columns = Arc::new(schema).filter_embeddings();
+
+    assert_eq!(
+        columns,
+        vec![
+            "id".to_string(),
+            "my_bool".to_string(),
+            "my_list".to_string()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn test_column_filtering_2() {
+    let field_a = Field::new("id", DataType::Int64, false);
+    let field_b = Field::new("my_bool", DataType::Boolean, false);
+    let field_c = Field::new(
+        "my_embeddings",
+        DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), 10),
+        false,
+    );
+    let field_d = Field::new(
+        "my_other_embeddings",
+        DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float64, true)), 10),
+        false,
+    );
+
+    let schema = Schema::new(vec![field_a, field_b, field_c, field_d]);
+
+    let columns = Arc::new(schema).filter_embeddings();
+
+    assert_eq!(columns, vec!["id".to_string(), "my_bool".to_string()]);
+}
