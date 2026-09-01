@@ -470,12 +470,12 @@ pub(crate) fn build_agent_run(
     history: Option<Vec<Message>>,
     tool_choice: Option<ToolChoice>,
 ) -> AgentRun {
-    let spec = rig_run::RunSpec {
+    let spec = rig_core::completion::spec::RunSpec {
         max_turns: Some(max_turns),
         max_invalid_tool_call_retries,
         output_schema: output_schema.map(|schema| schema.as_value().clone()),
         tool_choice,
-        ..rig_run::RunSpec::new()
+        ..rig_core::completion::spec::RunSpec::new()
     };
     AgentRun::from_spec(&spec, prompt, history)
 }

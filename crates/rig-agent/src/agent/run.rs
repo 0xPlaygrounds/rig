@@ -1,17 +1,19 @@
-//! The sans-IO run protocol, re-exported from [`rig_run`].
+//! The sans-IO run protocol at its 0.42 path: [`crate::run`] re-exported.
 //!
-//! `AgentRun` and its step/turn types live in the `rig-run` crate so that any
-//! driver — this crate's futures loop or an ECS plugin — steps the same state
-//! machine. Every path under `rig_agent::agent::run` resolves as before.
+//! `AgentRun` and its step/turn types live at [`crate::run`]; the data and
+//! policy vocabulary they are built from lives in rig-core
+//! (`rig_core::{transcript, completion::{output, policy, prepare, spec,
+//! response}, streaming::assemble}`). Every path under `rig_agent::agent::run`
+//! resolves as before.
 
-pub use rig_run::run::*;
+pub use crate::run::*;
 
-/// Streamed-turn accumulation, re-exported from [`rig_run::streamed`].
+/// Streamed-turn accumulation, re-exported from `rig_core::streaming::assemble`.
 pub mod streamed {
-    pub use rig_run::streamed::*;
+    pub use rig_core::streaming::assemble::*;
 }
 
-/// Structured-output mode, re-exported from [`rig_run::output_mode`].
+/// Structured-output mode, re-exported from `rig_core::completion::output`.
 pub mod output_mode {
-    pub use rig_run::output_mode::*;
+    pub use rig_core::completion::output::*;
 }

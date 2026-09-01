@@ -1949,7 +1949,7 @@ mod migrated_tests {
         ToolChoice, ToolResultContent, UserContent,
     };
     use rig_core::providers::anthropic;
-    use rig_run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
+    use rig_core::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
     use serde::Deserialize;
     use std::collections::{BTreeSet, HashMap};
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

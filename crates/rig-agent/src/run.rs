@@ -38,7 +38,7 @@
 //! the same machine can be driven by hand for custom provider control flow:
 //!
 //! ```rust,no_run
-//! use rig_run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+//! use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut run = AgentRun::new("What is 2+2?").max_turns(3);
@@ -510,7 +510,7 @@ pub struct RunEntry {
     /// One-based model-call index current when the entry was appended
     /// (0 before the first call). Deliberately not a wall-clock timestamp:
     /// [`AgentRun`] is deterministic, serializable state — no clocks in
-    /// rig-run. A host that wants timestamps puts them in [`value`](Self::value).
+    /// the protocol. A host that wants timestamps puts them in [`value`](Self::value).
     pub turn: usize,
     /// The appended value, verbatim JSON. `Value::Null` marker entries are
     /// legitimate.
@@ -3618,7 +3618,6 @@ mod streamed_tests {
     use rig_core::id::InternalCallId;
     use rig_core::message::{Text, ToolFunction, ToolResultContent, UserContent};
     use rig_core::streaming::{StreamedAssistantContent, ToolCallDeltaContent};
-    use rig_core::test_utils::mock_final;
     use serde_json::json;
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {

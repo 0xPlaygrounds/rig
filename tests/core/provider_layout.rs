@@ -220,10 +220,6 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ),
     ("rig-derive", Exempt("proc-macro crate — no runtime wire")),
     (
-        "rig-run",
-        Exempt("sans-IO run protocol (AgentRun and its data) — performs no provider IO"),
-    ),
-    (
         "rig-fastembed",
         Exempt("local embedding models only — no completion model, no streaming wire"),
     ),

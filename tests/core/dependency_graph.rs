@@ -60,43 +60,39 @@ fn rig_agent_carries_no_runtime_or_mcp() {
     assert_absent("rig-agent", &[], &["tokio", "rmcp"]);
 }
 
-/// The protocol crate is data and transitions only: no runtime, no transport,
-/// no futures, no hooks (which live in rig-agent). A second driver — an ECS
-/// plugin — depends on it precisely because of this.
+/// The run vocabulary (rig-core) and the `AgentRun` program (rig-agent) never
+/// await: they are data and transitions only, so a futures loop and an ECS
+/// schedule can step the same code. Checked at the source level because both
+/// crates legitimately depend on `futures` elsewhere.
 #[test]
-fn rig_run_is_pure_protocol() {
-    assert_absent(
-        "rig-run",
-        &[],
-        // `futures`/`async-stream` are not listed: rig-core itself depends on
-        // them (stream and boxed-future vocabulary), so they are in every
-        // rig-run tree; the source-level check below is what keeps the
-        // protocol itself from awaiting.
-        &["tokio", "reqwest", "rig-agent"],
-    );
-}
-
-/// Same invariant from the inside: the protocol never awaits.
-#[test]
-fn rig_run_sources_contain_no_async() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-run/src");
+fn run_vocabulary_sources_contain_no_async() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let sources = [
+        "crates/rig-core/src/transcript.rs",
+        "crates/rig-core/src/completion/output.rs",
+        "crates/rig-core/src/completion/policy.rs",
+        "crates/rig-core/src/completion/prepare.rs",
+        "crates/rig-core/src/completion/spec.rs",
+        "crates/rig-core/src/completion/response.rs",
+        "crates/rig-core/src/streaming/assemble.rs",
+        "crates/rig-agent/src/run.rs",
+    ];
     let mut offenders = Vec::new();
-    for entry in std::fs::read_dir(&root).expect("rig-run/src is readable") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().is_some_and(|e| e == "rs") {
-            let text = std::fs::read_to_string(&path).expect("source is utf-8");
-            if text.contains("async fn")
-                || text.contains(".await")
-                || text.contains("async_stream")
-                || text.contains("futures::")
-            {
-                offenders.push(path.display().to_string());
-            }
+    for relative in sources {
+        let path = root.join(relative);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{relative} is readable: {err}"));
+        if text.contains("async fn")
+            || text.contains(".await")
+            || text.contains("async_stream")
+            || text.contains("futures::")
+        {
+            offenders.push(relative);
         }
     }
     assert!(
         offenders.is_empty(),
-        "rig-run must stay sans-IO (no `async fn`/`.await`/`async_stream`/`futures::`); found in: {offenders:?}"
+        "the run vocabulary and AgentRun must stay sans-IO (no `async fn`/`.await`/`async_stream`/`futures::`); found in: {offenders:?}"
     );
 }
 

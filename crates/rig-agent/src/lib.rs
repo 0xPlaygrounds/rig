@@ -69,6 +69,7 @@ pub mod integrations;
 // `json_utils::merge` / `json_utils::serialize_json_value`.
 pub(crate) use rig_core::json_utils;
 pub mod prelude;
+pub mod run;
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
