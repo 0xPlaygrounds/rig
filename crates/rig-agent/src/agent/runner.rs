@@ -735,38 +735,33 @@ pub(crate) async fn run_single_tool(
     // and stop hooks from leaking raw tool output through telemetry.
     record_tool_result(&tool_span, &exec);
 
-    match result_action {
-        ToolResultAction::Stop(reason) => Err(PromptError::prompt_cancelled(
-            error_history.to_vec(),
-            reason,
-        )),
+    let result_content = match result_action {
+        ToolResultAction::Stop(reason) => {
+            return Err(PromptError::prompt_cancelled(
+                error_history.to_vec(),
+                reason,
+            ));
+        }
         ToolResultAction::Rewrite(replacement) => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", replacement.render());
             }
-            Ok(ToolCallOutcome {
-                content: tool_result_output(
-                    tool_call.id.clone(),
-                    tool_call.provider.clone(),
-                    tool_call.function.name.clone(),
-                    replacement,
-                ),
-                execution,
-            })
+            replacement
         }
         ToolResultAction::Keep => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", exec.output().render());
             }
-            let content = tool_result_output(
-                tool_call.id.clone(),
-                tool_call.provider.clone(),
-                tool_call.function.name.clone(),
-                exec.output().clone(),
-            );
-            Ok(ToolCallOutcome { content, execution })
+            exec.output().clone()
         }
-    }
+    };
+    let content = tool_result_output(
+        tool_call.id.clone(),
+        tool_call.provider.clone(),
+        tool_call.function.name.clone(),
+        result_content,
+    );
+    Ok(ToolCallOutcome { content, execution })
 }
 
 fn record_tool_result(span: &tracing::Span, result: &ToolResult) {

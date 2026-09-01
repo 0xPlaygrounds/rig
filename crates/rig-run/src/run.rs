@@ -1722,7 +1722,7 @@ impl AgentRun {
                     call: invalid.tool_call.id.clone(),
                     provider: invalid.tool_call.provider.clone(),
                     name: invalid.tool_call.function.name.clone(),
-                    content: vec![ToolResultContent::text(reason.clone())],
+                    content: vec![ToolResultContent::text(reason.as_str())],
                 };
                 self.abandon_streamed_turn(
                     partial,
