@@ -1,4 +1,4 @@
-//! Streamed-turn assembly for [`AgentRun`](super::AgentRun).
+//! Streamed-turn assembly for a run state machine such as rig-agent's `AgentRun`.
 //!
 //! A streamed model turn arrives as incremental [`StreamedAssistantContent`]
 //! items. [`StreamedTurnAssembler`] is the sans-IO accumulator that turns that
@@ -8,45 +8,43 @@
 //! driver can stop paying for a doomed provider stream early.
 //!
 //! The protocol, paired with the streamed entry points on
-//! [`AgentRun`](super::AgentRun):
+//! `AgentRun`:
 //!
-//! 1. On [`AgentRunStep::CallModel`](super::AgentRunStep::CallModel), open a
+//! 1. On `AgentRunStep::CallModel`, open a
 //!    provider stream and create one assembler per turn with the tool names
 //!    advertised for that turn.
 //! 2. Feed every stream item to [`StreamedTurnAssembler::ingest`] and act on
 //!    the returned [`StreamedTurnEvent`]s: forward items to the consumer, and
 //!    on [`StreamedTurnEvent::InvalidToolCall`] consult
-//!    [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call) —
+//!    `AgentRun::resolve_streamed_invalid_tool_call` —
 //!    [`StreamedResolution::Repaired`] continues the same stream via
 //!    [`StreamedTurnAssembler::resolve_pending_invalid`];
 //!    [`StreamedResolution::TurnAbandoned`] means drain the provider stream
 //!    for usage and re-enter
-//!    [`AgentRun::next_step`](super::AgentRun::next_step).
+//!    `AgentRun::next_step`.
 //! 3. When the provider stream ends, call [`StreamedTurnAssembler::finish`]
 //!    and feed the result to
-//!    [`AgentRun::streamed_turn`](super::AgentRun::streamed_turn); the run
+//!    `AgentRun::streamed_turn`; the run
 //!    then proceeds exactly like a non-streamed one
-//!    ([`CallTools`](super::AgentRunStep::CallTools) /
-//!    [`Done`](super::AgentRunStep::Done)).
+//!    (`CallTools` /
+//!    `Done`).
 //!
 //! `StreamingPrompt::stream_prompt` drives this protocol
 //! internally; hand-driven runs can use it to stream any
-//! [`AgentRun`](super::AgentRun).
+//! `AgentRun`.
 
 use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::FinishReason;
-use rig_core::id::InternalCallId;
-use rig_core::message::{
-    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
-};
+use crate::completion::FinishReason;
+use crate::id::InternalCallId;
+use crate::message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty};
 
+use crate::completion::{CompletionError, Message, Usage};
+use crate::json_utils;
+use crate::streaming::{StreamedAssistantContent, ToolCallDeltaContent};
 use crate::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
-use rig_core::completion::{CompletionError, Message, Usage};
-use rig_core::json_utils;
-use rig_core::streaming::{StreamedAssistantContent, ToolCallDeltaContent};
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
 /// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
@@ -131,7 +129,7 @@ pub fn assistant_text_items_from_choice(choice: &[AssistantContent]) -> Vec<Assi
 }
 
 /// One invalid tool call surfaced mid-stream, awaiting a resolution from
-/// [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call).
+/// `AgentRun::resolve_streamed_invalid_tool_call`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedInvalidToolCall {
     /// The rejected tool call. For a name delta this is a diagnostic call
@@ -238,7 +236,7 @@ impl PartialStreamedTurn {
 }
 
 /// The assembled streamed turn, fed to
-/// [`AgentRun::streamed_turn`](super::AgentRun::streamed_turn).
+/// `AgentRun::streamed_turn`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedTurn {
     /// Provider-assigned assistant message ID, when available.
@@ -282,7 +280,7 @@ pub enum StreamedResolution {
     /// The turn was rolled back (retry) or the call skipped; corrective
     /// messages are already in the history. Drain the provider stream for
     /// usage, record the completion call, then call
-    /// [`AgentRun::next_step`](super::AgentRun::next_step).
+    /// `AgentRun::next_step`.
     TurnAbandoned {
         /// For a skipped call, the synthetic tool result to surface to the
         /// consumer stream. Boxed: the result dwarfs the other variant.
@@ -308,12 +306,12 @@ pub enum StreamedTurnEvent {
         content: ToolCallDeltaContent,
     },
     /// The model emitted an unknown or disallowed tool call. Resolve it via
-    /// [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call),
+    /// `AgentRun::resolve_streamed_invalid_tool_call`,
     /// then apply the outcome with
     /// [`StreamedTurnAssembler::resolve_pending_invalid`].
     InvalidToolCall(Box<StreamedInvalidToolCall>),
     /// The provider supplied its typed final payload. Record its usage (see
-    /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call));
+    /// `AgentRun::record_streamed_completion_call`);
     /// this does not establish that the provider stream reached EOF. When
     /// `emit_final` is set, the turn streamed text and the driver should buffer
     /// the final item until EOF finalizes the turn.
@@ -914,7 +912,7 @@ impl StreamedTurnAssembler {
         // faithfully observe that no provider id exists). The same minted
         // id correlates the retry transcript pair in `rollback_messages`.
         ToolCall::new(
-            rig_core::message::ToolCallId::mint(),
+            crate::message::ToolCallId::mint(),
             ToolFunction::new(name.to_string(), diagnostic_args),
         )
     }
@@ -941,11 +939,8 @@ impl StreamedTurnAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::PromptError;
-    use crate::policy::InvalidToolCallAction;
-    use crate::run::{AgentRun, AgentRunStep};
-    use rig_core::message::{Text, ToolResultContent, UserContent};
-    use rig_core::test_utils::mock_final;
+    use crate::message::Text;
+    use crate::test_utils::mock_final;
     use serde_json::json;
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {
@@ -1037,13 +1032,6 @@ mod tests {
         StreamedAssistantContent::ToolCallDelta {
             internal_call_id: iid_for(id),
             content: ToolCallDeltaContent::Delta(arguments.to_string()),
-        }
-    }
-
-    fn expect_invalid(events: Vec<StreamedTurnEvent>) -> StreamedInvalidToolCall {
-        match events.into_iter().next() {
-            Some(StreamedTurnEvent::InvalidToolCall(invalid)) => *invalid,
-            other => panic!("expected InvalidToolCall, got {other:?}"),
         }
     }
 
@@ -1253,7 +1241,7 @@ mod tests {
         // restored classification agree by type.
         let unannotated = AssistantContent::Text(Text {
             text: String::new(),
-            additional_params: rig_core::message::AdditionalParams::try_from_value(json!({}))
+            additional_params: crate::message::AdditionalParams::try_from_value(json!({}))
                 .expect("object params"),
         });
         assert!(assistant_text_items_from_choice(&[unannotated]).is_empty());
@@ -1261,7 +1249,7 @@ mod tests {
         // A genuinely annotated empty block is content and survives.
         let annotated = AssistantContent::Text(Text {
             text: String::new(),
-            additional_params: rig_core::message::AdditionalParams::try_from_value(
+            additional_params: crate::message::AdditionalParams::try_from_value(
                 json!({"citations": [1]}),
             )
             .expect("object params"),
@@ -1437,11 +1425,11 @@ mod tests {
         );
         assert!(matches!(
             reasoning[0].content.first(),
-            Some(rig_core::message::ReasoningContent::Text { text, .. }) if text == "first part"
+            Some(crate::message::ReasoningContent::Text { text, .. }) if text == "first part"
         ));
         assert!(matches!(
             reasoning[1].content.first(),
-            Some(rig_core::message::ReasoningContent::Text { text, .. }) if text == "second part"
+            Some(crate::message::ReasoningContent::Text { text, .. }) if text == "second part"
         ));
     }
 
@@ -1469,7 +1457,7 @@ mod tests {
         );
         assert!(matches!(
             reasoning[0].content.first(),
-            Some(rig_core::message::ReasoningContent::Text { text, .. })
+            Some(crate::message::ReasoningContent::Text { text, .. })
                 if text == "visible thoughts"
         ));
         assert_eq!(reasoning[0].id, None);
@@ -1497,7 +1485,7 @@ mod tests {
         );
         assert!(matches!(
             reasoning[0].content.first(),
-            Some(rig_core::message::ReasoningContent::Text { text, signature: Some(sig) })
+            Some(crate::message::ReasoningContent::Text { text, signature: Some(sig) })
                 if text == "think" && sig == "sig"
         ));
     }
@@ -1550,7 +1538,7 @@ mod tests {
         );
         assert!(matches!(
             reasoning[0].content.first(),
-            Some(rig_core::message::ReasoningContent::Text { text, signature: Some(sig) })
+            Some(crate::message::ReasoningContent::Text { text, signature: Some(sig) })
                 if text == "streamed text" && sig == "sig_1"
         ));
     }
@@ -1575,7 +1563,7 @@ mod tests {
         assert_eq!(reasoning.len(), 1, "{reasoning:?}");
         assert!(matches!(
             reasoning[0].content.first(),
-            Some(rig_core::message::ReasoningContent::Text { text, .. }) if text == "restated text"
+            Some(crate::message::ReasoningContent::Text { text, .. }) if text == "restated text"
         ));
     }
 
@@ -1675,453 +1663,5 @@ mod tests {
             serde_json::to_value(&turn.choice).expect("serialize"),
             serde_json::to_value(&final_choice).expect("serialize"),
         );
-    }
-
-    #[test]
-    fn streamed_run_completes_a_tool_roundtrip() {
-        let mut run = AgentRun::new("add things").max_turns(2);
-
-        // Turn 1: the model streams one tool call.
-        let AgentRunStep::CallModel { .. } = run.next_step().expect("next_step") else {
-            panic!("expected CallModel");
-        };
-        let mut asm = assembler();
-        assert!(
-            asm.ingest(&tool_call_item("tc_1", "add"))
-                .expect("ingest should succeed")
-                .is_empty()
-        );
-        let usage = Usage {
-            input_tokens: 5,
-            output_tokens: 7,
-            total_tokens: 12,
-            ..Usage::new()
-        };
-        run.record_streamed_completion_call(
-            usage,
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("record should succeed");
-        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
-        run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
-            .expect("streamed_turn should succeed");
-
-        let AgentRunStep::CallTools { calls } = run.next_step().expect("next_step") else {
-            panic!("expected CallTools");
-        };
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].internal_call_id, Some(iid_for("tc_1")));
-        run.tool_results(vec![UserContent::tool_result(
-            "tc_1",
-            "add",
-            vec![ToolResultContent::text("2")],
-        )])
-        .expect("tool_results should succeed");
-
-        // Turn 2: plain text finishes the run.
-        let AgentRunStep::CallModel { .. } = run.next_step().expect("next_step") else {
-            panic!("expected CallModel");
-        };
-        let asm = assembler();
-        run.record_streamed_completion_call(
-            Usage::new(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("record should succeed");
-        let final_choice = vec![AssistantContent::text("done")];
-        run.streamed_turn(asm.finish(None, &final_choice))
-            .expect("streamed_turn should succeed");
-
-        let AgentRunStep::Done(response) = run.next_step().expect("next_step") else {
-            panic!("expected Done");
-        };
-        assert_eq!(response.output, "done");
-        assert_eq!(response.usage, usage);
-        assert_eq!(response.completion_calls.len(), 2);
-        assert_eq!(response.completion_calls[0].usage, usage);
-        assert_eq!(response.completion_calls[1].usage, Usage::new());
-        // prompt, assistant tool call, tool result, final assistant text
-        assert_eq!(
-            response
-                .messages
-                .expect("messages should be recorded")
-                .len(),
-            4
-        );
-    }
-
-    #[test]
-    fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
-        let mut run = AgentRun::new("use the tool")
-            .max_turns(2)
-            .max_invalid_tool_call_retries(1);
-        run.next_step().expect("next_step");
-
-        let mut asm = assembler();
-        asm.ingest(&text_item("thinking ")).expect("ingest");
-        let invalid = expect_invalid(
-            asm.ingest(&tool_call_item("tc_1", "default_api"))
-                .expect("ingest should succeed"),
-        );
-        let partial = asm.partial_turn(Some("msg_1".to_string()));
-        assert_eq!(partial.text.as_deref(), Some("thinking "));
-
-        let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
-        assert!(context.is_streaming);
-        assert_eq!(context.tool_name, "default_api");
-        assert_eq!(context.internal_call_id, Some(iid_for("tc_1")));
-
-        let resolution = run
-            .resolve_streamed_invalid_tool_call(
-                &partial,
-                &invalid,
-                InvalidToolCallAction::retry("use add instead"),
-            )
-            .expect("retry should be accepted");
-        assert!(matches!(
-            resolution,
-            StreamedResolution::TurnAbandoned {
-                skipped_tool_result: None
-            }
-        ));
-        asm.resolve_pending_invalid(&resolution);
-
-        // Usage from the drained stream is recorded after the rollback.
-        run.record_streamed_completion_call(
-            Usage::new(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("record after rollback should succeed");
-
-        // The rollback appended the partial assistant turn and feedback.
-        assert_eq!(run.messages().len(), 3);
-        let AgentRunStep::CallModel { turn, .. } = run.next_step().expect("next_step") else {
-            panic!("expected CallModel retry");
-        };
-        assert_eq!(turn, 2);
-    }
-
-    #[test]
-    fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
-        let mut run = AgentRun::new("use the tool");
-        run.next_step().expect("next_step");
-
-        let mut asm = assembler();
-        let invalid = expect_invalid(
-            asm.ingest(&tool_call_item("tc_1", "default_api"))
-                .expect("ingest should succeed"),
-        );
-        let partial = asm.partial_turn(Some("msg_1".to_string()));
-
-        let err = run
-            .resolve_streamed_invalid_tool_call(
-                &partial,
-                &invalid,
-                InvalidToolCallAction::stop("operator stop"),
-            )
-            .expect_err("stop should cancel the run");
-        assert!(matches!(
-            err,
-            PromptError::PromptCancelled { reason, .. } if reason == "operator stop"
-        ));
-
-        let err = run
-            .next_step()
-            .expect_err("a stopped streamed run must remain terminal");
-        assert!(matches!(
-            err,
-            PromptError::PromptCancelled { reason, .. }
-                if reason.contains("next_step called after the run already failed")
-        ));
-    }
-
-    #[test]
-    fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
-        let mut run = AgentRun::new("use the tool")
-            .max_turns(1)
-            .max_invalid_tool_call_retries(1);
-        run.next_step().expect("initial model call");
-
-        let mut asm = assembler();
-        let invalid = expect_invalid(
-            asm.ingest(&tool_call_item("tc_1", "default_api"))
-                .expect("ingest should succeed"),
-        );
-        let partial = asm.partial_turn(Some("msg_1".to_string()));
-        let resolution = run
-            .resolve_streamed_invalid_tool_call(
-                &partial,
-                &invalid,
-                InvalidToolCallAction::retry("use add instead"),
-            )
-            .expect("retry resolution should be accepted");
-        assert!(matches!(
-            resolution,
-            StreamedResolution::TurnAbandoned {
-                skipped_tool_result: None
-            }
-        ));
-        run.record_streamed_completion_call(
-            Usage::new(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("completion call should be recorded");
-        assert_eq!(run.completion_calls().len(), 1);
-
-        let err = run
-            .next_step()
-            .expect_err("retry must not emit a second model call");
-        assert!(matches!(
-            err,
-            PromptError::MaxTurnsError { max_turns: 1, .. }
-        ));
-        assert_eq!(run.turn(), 1);
-    }
-
-    #[test]
-    fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
-        let mut run = AgentRun::new("use the tool").max_turns(2);
-        run.next_step().expect("next_step");
-
-        let mut asm = assembler();
-        let invalid = expect_invalid(
-            asm.ingest(&tool_call_item("tc_1", "default_api"))
-                .expect("ingest should succeed"),
-        );
-        let partial = asm.partial_turn(None);
-
-        let resolution = run
-            .resolve_streamed_invalid_tool_call(
-                &partial,
-                &invalid,
-                InvalidToolCallAction::skip("not available"),
-            )
-            .expect("skip should be accepted");
-        let StreamedResolution::TurnAbandoned {
-            skipped_tool_result: Some(tool_result),
-        } = &resolution
-        else {
-            panic!("expected skipped tool result");
-        };
-        assert_eq!(tool_result.call, "tc_1");
-    }
-
-    #[test]
-    fn streamed_invalid_name_delta_repair_replays_buffered_arguments() {
-        let mut run = AgentRun::new("use the tool").max_turns(2);
-        run.next_step().expect("next_step");
-
-        let mut asm = assembler();
-        asm.ingest(&args_delta("tc_1", "{\"x\":1}"))
-            .expect("ingest should succeed");
-        let invalid = expect_invalid(
-            asm.ingest(&name_delta("tc_1", "default_api"))
-                .expect("ingest should succeed"),
-        );
-        assert_eq!(invalid.args.as_deref(), Some("{\"x\":1}"));
-
-        let partial = asm.partial_turn(None);
-        let resolution = run
-            .resolve_streamed_invalid_tool_call(
-                &partial,
-                &invalid,
-                InvalidToolCallAction::repair("add"),
-            )
-            .expect("repair should be accepted");
-        assert!(matches!(
-            resolution,
-            StreamedResolution::Repaired { ref tool_name } if tool_name == "add"
-        ));
-
-        let events = asm.resolve_pending_invalid(&resolution);
-        let contents: Vec<_> = events
-            .iter()
-            .map(|event| match event {
-                StreamedTurnEvent::EmitToolCallDelta { content, .. } => content.clone(),
-                other => panic!("expected EmitToolCallDelta, got {other:?}"),
-            })
-            .collect();
-        assert_eq!(
-            contents,
-            vec![
-                ToolCallDeltaContent::Name("add".to_string()),
-                ToolCallDeltaContent::Delta("{\"x\":1}".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
-        let mut run = AgentRun::new("use the tool");
-        run.next_step().expect("next_step");
-
-        let turn = StreamedTurn {
-            message_id: None,
-            choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
-            executable_tool_names: tool_names(&["add"]),
-            allowed_tool_names: tool_names(&["add"]),
-            internal_call_ids: Vec::new(),
-            finish_reason: None,
-        };
-        let err = run
-            .streamed_turn(turn)
-            .expect_err("unknown tool should fail fast");
-        assert!(matches!(
-            err,
-            PromptError::UnknownToolCall { tool_name, .. } if tool_name == "unknown"
-        ));
-    }
-
-    #[test]
-    fn streamed_completion_call_record_requires_a_model_call() {
-        // A fresh run has emitted no CallModel: recording must be rejected
-        // even though the machine is in its initial PreparingRequest state.
-        let mut run = AgentRun::new("hello");
-        let err = run
-            .record_streamed_completion_call(
-                Usage::new(),
-                rig_core::completion::ResponseIdentity::default(),
-                None,
-                serde_json::Value::Null,
-            )
-            .expect_err("recording before any model call must be rejected");
-        assert!(matches!(err, PromptError::PromptCancelled { .. }));
-
-        // The run stays drivable.
-        run.next_step().expect("next_step should still succeed");
-        run.record_streamed_completion_call(
-            Usage::new(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("recording during a pending model call succeeds");
-    }
-
-    #[test]
-    fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
-        let mut run = AgentRun::new("do both").max_turns(2);
-        run.next_step().expect("next_step");
-
-        let mut asm = assembler();
-        asm.ingest(&StreamedAssistantContent::ToolCall {
-            tool_call: tool_call("tc_1", "add"),
-            internal_call_id: iid_for("a"),
-        })
-        .expect("ingest should succeed");
-        asm.ingest(&StreamedAssistantContent::ToolCall {
-            tool_call: tool_call("tc_1", "add"),
-            internal_call_id: iid_for("b"),
-        })
-        .expect("ingest should succeed");
-        run.record_streamed_completion_call(
-            Usage::new(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("record should succeed");
-
-        let final_choice = vec![
-            AssistantContent::ToolCall(tool_call("tc_1", "add")),
-            AssistantContent::ToolCall(tool_call("tc_1", "add")),
-        ];
-        run.streamed_turn(asm.finish(None, &final_choice))
-            .expect("streamed_turn should succeed");
-
-        // The internal IDs survive in the run state itself: a serde round
-        // trip must keep both calls distinguishable.
-        let serialized = serde_json::to_string(&run).expect("serialize");
-        let mut restored: AgentRun = serde_json::from_str(&serialized).expect("deserialize");
-        let AgentRunStep::CallTools { calls } = restored.next_step().expect("next_step") else {
-            panic!("expected CallTools");
-        };
-        assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0].internal_call_id, Some(iid_for("a")));
-        assert_eq!(calls[1].internal_call_id, Some(iid_for("b")));
-    }
-
-    #[test]
-    fn streamed_turn_records_the_completion_call_when_the_driver_did_not() {
-        let mut run = AgentRun::new("hello");
-        run.next_step().expect("next_step");
-
-        let asm = assembler();
-        let final_choice = vec![AssistantContent::text("done")];
-        run.streamed_turn(asm.finish(None, &final_choice))
-            .expect("streamed_turn should succeed");
-
-        // Exactly one CompletionCall per model call, even without an explicit
-        // record; usage is simply unreported.
-        assert_eq!(run.completion_calls().len(), 1);
-        assert_eq!(run.completion_calls()[0].usage, Usage::new());
-    }
-
-    #[test]
-    fn streamed_completion_call_is_recorded_once_per_turn() {
-        let mut run = AgentRun::new("hello");
-        run.next_step().expect("next_step");
-
-        run.record_streamed_completion_call(
-            Usage::new(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("first record succeeds");
-        let err = run
-            .record_streamed_completion_call(
-                Usage::new(),
-                rig_core::completion::ResponseIdentity::default(),
-                None,
-                serde_json::Value::Null,
-            )
-            .expect_err("second record for the same turn must be rejected");
-        assert!(matches!(err, PromptError::PromptCancelled { .. }));
-        assert_eq!(run.completion_calls().len(), 1);
-    }
-
-    #[test]
-    fn streamed_run_serde_round_trips_while_tools_pend() {
-        let mut run = AgentRun::new("add things").max_turns(2);
-        run.next_step().expect("next_step");
-
-        let mut asm = assembler();
-        asm.ingest(&tool_call_item("tc_1", "add"))
-            .expect("ingest should succeed");
-        run.record_streamed_completion_call(
-            Usage::new(),
-            rig_core::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("record should succeed");
-        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
-        run.streamed_turn(asm.finish(None, &final_choice))
-            .expect("streamed_turn should succeed");
-        run.next_step().expect("CallTools step");
-
-        let serialized = serde_json::to_string(&run).expect("serialize mid-run");
-        let mut restored: AgentRun =
-            serde_json::from_str(&serialized).expect("deserialize mid-run");
-        restored
-            .tool_results(vec![UserContent::tool_result(
-                "tc_1",
-                "add",
-                vec![ToolResultContent::text("2")],
-            )])
-            .expect("tool_results should succeed");
-        assert!(matches!(
-            restored.next_step().expect("next turn"),
-            AgentRunStep::CallModel { turn: 2, .. }
-        ));
     }
 }

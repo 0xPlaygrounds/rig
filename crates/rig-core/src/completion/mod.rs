@@ -29,8 +29,18 @@
 
 pub mod handle;
 pub mod message;
+pub mod output;
+pub mod policy;
+pub mod prepare;
 pub mod request;
+pub mod response;
+pub mod spec;
 
 pub use handle::{ModelHandle, ModelRef};
 pub use message::{AssistantContent, Message, MessageError};
+pub use output::OutputMode;
+pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RequestPatch, RetryRequest};
+pub use prepare::{PrepareError, PreparedRequest, prepare_request};
 pub use request::*;
+pub use response::{CompletionCall, PromptError, PromptResponse};
+pub use spec::RunSpec;

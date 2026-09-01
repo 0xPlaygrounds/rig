@@ -22,15 +22,40 @@
 )]
 #![forbid(unsafe_code)]
 
-pub mod error;
-pub mod output_mode;
-pub mod policy;
-pub mod prepare;
-pub mod response;
 pub mod run;
-pub mod spec;
-pub mod streamed;
-pub mod transcript;
+
+/// Errors of the run protocol (rig-core).
+pub mod error {
+    pub use rig_core::completion::response::PromptError;
+}
+/// Structured-output mode (rig-core).
+pub mod output_mode {
+    pub use rig_core::completion::output::*;
+}
+/// Decisions as data (rig-core).
+pub mod policy {
+    pub use rig_core::completion::policy::*;
+}
+/// Pure request preparation (rig-core).
+pub mod prepare {
+    pub use rig_core::completion::prepare::*;
+}
+/// Run outputs (rig-core).
+pub mod response {
+    pub use rig_core::completion::response::*;
+}
+/// Protocol-facing run configuration (rig-core).
+pub mod spec {
+    pub use rig_core::completion::spec::*;
+}
+/// Streamed-turn assembly (rig-core).
+pub mod streamed {
+    pub use rig_core::streaming::assemble::*;
+}
+/// Canonical-transcript helpers (rig-core).
+pub mod transcript {
+    pub use rig_core::transcript::*;
+}
 
 pub use error::PromptError;
 pub use output_mode::OutputMode;
@@ -39,8 +64,7 @@ pub use prepare::{PrepareError, PreparedRequest, prepare_request};
 pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::id::RunId;
 pub use run::{
-    AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall,
-    RunEntry, TurnTools,
+    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, RunEntry, TurnTools,
 };
 pub use spec::RunSpec;
 pub use streamed::{

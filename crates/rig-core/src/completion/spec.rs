@@ -5,14 +5,13 @@
 //! params), the turn budget, tool choice, structured-output policy. It carries
 //! no model, no tools, no hooks, no memory — those are a driver's. Being plain
 //! `Serialize + Deserialize` data it can be stored, diffed, loaded from a file,
-//! or kept as an ECS component; [`AgentRun::from_spec`] turns it into a run.
+//! or kept as an ECS component; `AgentRun::from_spec` (rig-agent) turns it into a run.
 
-use rig_core::completion::Document;
-use rig_core::message::{Message, ToolChoice};
+use crate::completion::Document;
+use crate::message::ToolChoice;
 use serde::{Deserialize, Serialize};
 
-use crate::output_mode::OutputMode;
-use crate::run::{AgentRun, DEFAULT_OUTPUT_RETRIES};
+use crate::completion::output::OutputMode;
 
 /// Protocol-facing run configuration. See the [module docs](self).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -66,32 +65,11 @@ impl RunSpec {
     }
 }
 
-impl AgentRun {
-    /// Build a run from a [`RunSpec`], a prompt and an optional prior history.
-    ///
-    /// Applies the spec's budget, invalid-call retries, output validation and
-    /// tool choice; everything else in the spec is request-shaping the driver
-    /// reads when it prepares each model call.
-    pub fn from_spec(
-        spec: &RunSpec,
-        prompt: impl Into<Message>,
-        history: Option<Vec<Message>>,
-    ) -> Self {
-        let mut run = AgentRun::new(prompt)
-            .max_turns(spec.effective_max_turns())
-            .max_invalid_tool_call_retries(spec.max_invalid_tool_call_retries)
-            .with_output_validation(spec.output_schema.clone(), DEFAULT_OUTPUT_RETRIES);
-        if let Some(history) = history {
-            run = run.with_history(history);
-        }
-        if let Some(tool_choice) = spec.tool_choice.clone() {
-            run = run.with_tool_choice(tool_choice);
-        }
-        if let Some(name) = spec.output_tool_name.clone() {
-            run = run.with_output_tool_name(name);
-        }
-        run
-    }
+impl RunSpec {
+    /// How many times a run re-prompts for structured output that failed
+    /// validation before giving up. The default a run built from a spec
+    /// carries; drivers that construct runs by hand pass it explicitly.
+    pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
 }
 
 #[cfg(test)]
@@ -117,25 +95,5 @@ mod tests {
         let spec: RunSpec = serde_json::from_str("{}").expect("deserialize");
         assert_eq!(spec.effective_max_turns(), 1);
         assert!(spec.output_schema.is_none());
-    }
-
-    #[test]
-    fn from_spec_matches_the_builder_chain() {
-        let spec = RunSpec {
-            max_turns: Some(4),
-            max_invalid_tool_call_retries: 2,
-            tool_choice: Some(ToolChoice::Auto),
-            ..RunSpec::new()
-        };
-        let via_spec = AgentRun::from_spec(&spec, "hi", None);
-        let via_chain = AgentRun::new("hi")
-            .max_turns(4)
-            .max_invalid_tool_call_retries(2)
-            .with_output_validation(None, DEFAULT_OUTPUT_RETRIES)
-            .with_tool_choice(ToolChoice::Auto);
-        assert_eq!(
-            serde_json::to_value(&via_spec).expect("serialize"),
-            serde_json::to_value(&via_chain).expect("serialize")
-        );
     }
 }

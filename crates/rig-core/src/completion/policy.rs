@@ -2,9 +2,9 @@
 //! to steer invalid-tool-call recovery, model-turn retries, and — through a
 //! [`RequestPatch`] — the shape of one turn's request.
 
-use rig_core::completion::Document;
-use rig_core::id::InternalCallId;
-use rig_core::message::{Message, ToolChoice};
+use crate::completion::Document;
+use crate::id::InternalCallId;
+use crate::message::{Message, ToolChoice};
 use serde::{Deserialize, Serialize};
 
 /// Diagnostics for an invalid model-emitted tool call.
@@ -246,7 +246,7 @@ impl RequestPatch {
         self.extra_context.extend(later.extra_context);
         self.additional_params = match (self.additional_params.take(), later.additional_params) {
             (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
-                Some(rig_core::json_utils::merge(base, patch))
+                Some(crate::json_utils::merge(base, patch))
             }
             (base, patch) => patch.or(base),
         };

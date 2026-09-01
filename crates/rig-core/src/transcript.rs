@@ -4,13 +4,11 @@
 
 use std::collections::BTreeSet;
 
-use rig_core::message::{
+use crate::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolResultContent, UserContent,
     non_empty,
 };
-use rig_core::tool::ToolOutput;
-
-use crate::run::AgentRun;
+use crate::tool::ToolOutput;
 
 /// Why a history is not a canonical transcript. See [`validate_canonical`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -106,18 +104,6 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
         });
     }
     Ok(())
-}
-
-impl AgentRun {
-    /// [`with_history`](AgentRun::with_history), rejecting a history that is
-    /// not a canonical transcript. Use this when the history comes from
-    /// outside the protocol (a memory backend, a resumed run from another
-    /// process); `with_history` stays unchecked for callers that built the
-    /// history themselves.
-    pub fn with_validated_history(self, history: Vec<Message>) -> Result<Self, TranscriptError> {
-        validate_canonical(&history)?;
-        Ok(self.with_history(history))
-    }
 }
 
 pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
@@ -226,7 +212,7 @@ pub fn invalid_tool_retry_user_message(
 ///   nothing, and the agent curates it out of history exactly as it curates
 ///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
 ///   empty text block carries data and must not read as empty. Annotation is
-///   a plain `is_some()`: [`rig_core::message::AdditionalParams`] is
+///   a plain `is_some()`: [`crate::message::AdditionalParams`] is
 ///   non-empty by construction, so `Some` always carries data, live and
 ///   restored alike (pinned by
 ///   `empty_turn_classification_survives_a_serde_round_trip`).
@@ -310,7 +296,7 @@ pub fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
 #[cfg(test)]
 mod validator_tests {
     use super::*;
-    use rig_core::message::{ToolCall, ToolFunction, ToolResult};
+    use crate::message::{ToolCall, ToolFunction, ToolResult};
 
     fn call(id: &str) -> AssistantContent {
         AssistantContent::ToolCall(ToolCall {
@@ -385,19 +371,5 @@ mod validator_tests {
             validate_canonical(&trailing),
             Err(TranscriptError::UnansweredToolCall { .. })
         ));
-    }
-
-    #[test]
-    fn with_validated_history_gates_construction() {
-        let bad = vec![
-            assistant(vec![AssistantContent::text("a")]),
-            assistant(vec![AssistantContent::text("b")]),
-        ];
-        assert!(AgentRun::new("x").with_validated_history(bad).is_err());
-        assert!(
-            AgentRun::new("x")
-                .with_validated_history(vec![Message::user("ok")])
-                .is_ok()
-        );
     }
 }
