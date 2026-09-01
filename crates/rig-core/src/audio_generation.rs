@@ -14,9 +14,15 @@ crate::provider_response::provider_error_enum!(
     /// returned with a 2xx status surfaces as [`Self::ProviderResponse`] (for
     /// example the Hyperbolic audio path). Both are read by the helpers.
     AudioGenerationError, "audio generation" {
+        #[cfg(not(target_family = "wasm"))]
         /// Error building the audio generation request
         #[error("RequestError: {0}")]
         RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
+
+        #[cfg(target_family = "wasm")]
+        /// Error building the audio generation request
+        #[error("RequestError: {0}")]
+        RequestError(#[from] Box<dyn std::error::Error + 'static>),
     }
 );
 

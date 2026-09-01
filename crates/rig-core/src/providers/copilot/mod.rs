@@ -303,7 +303,7 @@ impl<H> client::ClientBuilder<CopilotBuilder, crate::markers::Missing, H> {
 impl<H> ClientBuilder<H> {
     pub fn on_device_code<F>(self, handler: F) -> Self
     where
-        F: Fn(auth::DeviceCodePrompt) + Send + Sync + 'static,
+        F: Fn(auth::DeviceCodePrompt) + WasmCompatSend + WasmCompatSync + 'static,
     {
         self.over_ext(|mut ext| {
             ext.device_code_handler = auth::DeviceCodeHandler::new(handler);

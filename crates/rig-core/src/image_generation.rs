@@ -9,9 +9,15 @@ use std::sync::Arc;
 
 crate::provider_response::provider_error_enum!(
     ImageGenerationError, "image generation" {
+        #[cfg(not(target_family = "wasm"))]
         /// Error building the image generation request
         #[error("RequestError: {0}")]
         RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
+
+        #[cfg(target_family = "wasm")]
+        /// Error building the image generation request
+        #[error("RequestError: {0}")]
+        RequestError(#[from] Box<dyn std::error::Error + 'static>),
     }
 );
 
