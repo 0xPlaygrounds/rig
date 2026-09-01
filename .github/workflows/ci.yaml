@@ -170,6 +170,48 @@ jobs:
           fi
           echo "ok: rmcp on wasm fails with exactly one actionable error"
 
+  check-tungstenite-native-only:
+    name: stable / tungstenite rejected on wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          target: wasm32-unknown-unknown
+
+      # Same shape, and the same reasoning, as `check-rmcp-native-only` above:
+      # the crate's whole point is that `rig_core::ws_client` is where a wasm
+      # backend plugs in, so reaching for THIS crate on wasm must say that in
+      # one sentence rather than in a page of unresolved imports. Only a build
+      # asserts it — an item that drifts outside the `not(wasm)` gate leaks
+      # follow-on errors and nothing else would notice.
+      - name: Assert the native-only diagnostic is the only error
+        run: |
+          set +e
+          out=$(cargo check --package rig-tungstenite \
+                  --target wasm32-unknown-unknown 2>&1)
+          status=$?
+          set -e
+          echo "$out"
+          plain=$(printf '%s\n' "$out" | perl -pe 's/\e\[[0-9;]*[a-zA-Z]//g')
+          if [ $status -eq 0 ]; then
+            echo "::error::expected the tungstenite native-only compile_error, but the build succeeded — the gate is gone"
+            exit 1
+          fi
+          if ! printf '%s\n' "$plain" | grep -q 'rig-tungstenite is a native websocket backend'; then
+            echo "::error::build failed for the wrong reason; the native-only compile_error did not fire"
+            exit 1
+          fi
+          count=$(printf '%s\n' "$plain" | grep -E '^error(\[|:)' | grep -cv 'could not compile' || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly 1 error, got $count — an item outside rig-tungstenite's \`not(wasm)\` gate is leaking follow-on errors"
+            exit 1
+          fi
+          echo "ok: rig-tungstenite on wasm fails with exactly one actionable error"
+
   clippy:
     name: stable / clippy
     runs-on: ubuntu-latest

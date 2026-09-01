@@ -127,10 +127,17 @@ async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receive
                     Some(Err(error)) => Err(error),
                     None => Ok(None),
                 };
-                // A caller that cancelled its read must not cost us the frame:
-                // put it back for whoever reads next.
-                if let Err(Ok(Some(frame))) = reply.send(answer) {
-                    inbound.push_front(Ok(frame));
+                // A caller that cancelled its read must not cost us what we
+                // took off the socket — an error as much as a frame: a lost
+                // protocol failure resurfaces later as a bare "connection
+                // closed before the turn finished", hiding the real cause.
+                if let Err(answer) = reply.send(answer) {
+                    match answer {
+                        Ok(Some(frame)) => inbound.push_front(Ok(frame)),
+                        Err(error) => inbound.push_front(Err(error)),
+                        // End of stream: `stream_ended` already records it.
+                        Ok(None) => {}
+                    }
                 }
                 continue;
             }

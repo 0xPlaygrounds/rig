@@ -1016,6 +1016,23 @@ where
     }
 }
 
+/// Compile-time API contract: a session is `Send + Sync`, as it was before the
+/// connection became an erased trait object. Hosts embed sessions in types that
+/// carry those bounds, so losing one is a breaking change that no runtime test
+/// would catch.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    fn probe<H>()
+    where
+        H: HttpClientExt + Clone + Send + Sync + 'static,
+    {
+        assert_send_sync::<ResponsesWebSocketSession<H>>();
+        assert_send_sync::<ResponsesWebSocketSessionBuilder<H>>();
+    }
+    let _ = probe::<crate::http_client::BoxedHttpClient>;
+};
+
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 mod tests {
@@ -1121,9 +1138,14 @@ mod tests {
         assert_eq!(error.provider_response_body(), Some(""));
     }
 
+    /// Every status a refused upgrade can carry, **including 2xx and 3xx**:
+    /// tungstenite raises `Error::Http` for any non-101 response, and
+    /// `connect_async` does not follow redirects, so a `200` or a `302` reaches
+    /// this mapping exactly as a `401` does. Classification here follows the
+    /// call path, not the status class, so those two must survive too.
     #[test]
     fn websocket_provider_error_preserves_every_rejection_status() {
-        for status in [400u16, 401, 403, 404, 429, 500, 503] {
+        for status in [200u16, 302, 400, 401, 403, 404, 429, 500, 503] {
             let error = websocket_provider_error(rejection(status, None, Some("{}"), &[]));
             assert_eq!(
                 error.provider_response_status(),

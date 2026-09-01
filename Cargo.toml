@@ -241,7 +241,12 @@ workspace = true
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
 rig-run = { path = "crates/rig-run", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
-rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optional = true, default-features = false }
+# Not `default-features = false`, unlike the other optional companions: the
+# backend's own `default = ["rustls"]` is what guarantees that enabling
+# `websocket` always yields a socket that can do `wss://`. Turning defaults off
+# here would let `--no-default-features --features websocket` compile a TLS-less
+# backend that fails every handshake at runtime.
+rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optional = true }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0", optional = true }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.42.0", optional = true, default-features = false }
@@ -383,12 +388,18 @@ reqwest = ["dep:rig-reqwest"]
 # client, not for the socket.
 #
 # `websocket` is the API gate — it is what `pub use rig_tungstenite` and the
-# prelude re-export are cfg'd on — and it takes its TLS stack from the
-# workspace-wide `rustls` / `native-tls` features (`default` carries `rustls`),
-# exactly as the HTTP transport does. The two `websocket-*-tls` spellings are
-# therefore aliases that select both at once, so each of the three is usable on
-# its own: `--no-default-features --features websocket-native-tls` is a
-# native-tls-only websocket build.
+# prelude re-export are cfg'd on — and each of the three spellings is usable on
+# its own. `rig-tungstenite`'s own `default = ["rustls"]` applies (see its
+# dependency line), so `websocket` always has a working TLS stack; the
+# `websocket-*-tls` spellings add the workspace-wide TLS feature on top, which
+# is also what wires the backend up for `native-tls`.
+#
+# Additive features cannot express "replace rustls with native-tls": a
+# native-tls-ONLY socket means depending on `rig-tungstenite` directly with
+# `default-features = false, features = ["native-tls"]`. Through the facade,
+# `websocket-native-tls` gets you a working native-tls socket with rustls also
+# compiled in. That trade is deliberate — a build that silently cannot speak
+# `wss://` is worse than one that compiles a TLS stack it does not use.
 websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/websocket"]
 websocket-rustls = ["websocket", "rustls"]
 websocket-native-tls = ["websocket", "native-tls"]

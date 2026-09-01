@@ -34,13 +34,21 @@
 //! **Why this matrix is small, and where its coverage actually lives.** The
 //! input is not a request space but an error space: the only failure carrying
 //! a provider response is `tungstenite::Error::Http`, and every other variant
-//! has none. The unit cells beside the fix
-//! (`websocket_provider_error_*` in
-//! `crates/rig-core/src/providers/openai/responses_api/websocket.rs`) cover
-//! that space — body present/absent, request id present/absent/empty, the
-//! rejection's headers present/absent, nine status classes including 2xx and
-//! 3xx, and every non-`Http` variant except `Tls`, whose inner error cannot be
-//! constructed portably in a test.
+//! has none. That space is covered by unit cells on **both sides of the
+//! transport seam**, since the mapping is now split across it:
+//!
+//! - `from_tungstenite`'s cells in `crates/rig-tungstenite/src/lib.rs` cover
+//!   the tungstenite half — the rejection's status, headers and body, and
+//!   every non-`Http` variant except `Tls`, whose inner error cannot be
+//!   constructed portably in a test.
+//! - `websocket_provider_error_*` in
+//!   `crates/rig-core/src/providers/openai/responses_api/websocket.rs` covers
+//!   the provider half — body present/absent, request id present/absent/empty,
+//!   the rejection's headers present/absent, and nine status classes including
+//!   2xx and 3xx.
+//!
+//! `crates/rig-tungstenite/tests/handshake_rejection.rs` joins the two against
+//! a real socket.
 //!
 //! **These recorded cells do not run on the PR gate.** The module is behind
 //! `#[cfg(feature = "websocket")]`, which is not in the facade's default

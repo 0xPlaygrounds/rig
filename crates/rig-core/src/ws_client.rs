@@ -119,7 +119,12 @@ pub trait WebSocketClientExt: Clone + WasmCompatSend + WasmCompatSync + 'static 
 /// [`BoxedWebSocketConnection`]). The contract is sequential — a session drives
 /// one turn at a time and never polls `send` and `recv` concurrently — so
 /// `&mut self` is enough and no backend needs an internal split.
-pub trait WebSocketConnection: WasmCompatSend {
+///
+/// `WasmCompatSync` is required so that a session holding one erased stays
+/// `Sync`: every method takes `&mut self`, so a backend gains nothing from
+/// interior mutability that is not already `Sync`, and dropping the bound would
+/// silently un-`Sync` every provider session type that embeds a connection.
+pub trait WebSocketConnection: WasmCompatSend + WasmCompatSync {
     /// Write one frame.
     fn send(&mut self, frame: Frame) -> WasmBoxedFuture<'_, Result<()>>;
 

@@ -822,7 +822,7 @@ and owns the protocol; a backend-named crate supplies the socket:
 | `rig_reqwest::openai_websocket::*` (protocol + session) | `rig_core::providers::openai::responses_api::websocket::*` |
 | `rig_reqwest::openai_websocket::ResponsesWebSocketExt` | `rig_core::…::websocket::ResponsesWebSocketExt` (backend-taking) and `rig_tungstenite::DefaultWebSocketClient` (bundled backend) |
 | — | `rig_core::ws_client` — `WebSocketClientExt`, `WebSocketConnection`, `Frame` |
-| `rig-reqwest` features `websocket`, `websocket-rustls`, `websocket-native-tls` | `rig-tungstenite` features `rustls` / `native-tls`; the facade keeps all three spellings, with `websocket` now taking its TLS stack from the workspace-wide `rustls` / `native-tls` features and `websocket-rustls` / `websocket-native-tls` selecting both at once |
+| `rig-reqwest` features `websocket`, `websocket-rustls`, `websocket-native-tls` | `rig-tungstenite` features `rustls` / `native-tls`; the facade keeps all three spellings, each usable on its own. A native-tls-**only** socket means depending on `rig-tungstenite` directly with `default-features = false` — through the facade, `websocket-native-tls` compiles rustls as well |
 
 **Through the `rig` facade the common path is unchanged.** With the `websocket`
 feature and `use rig::prelude::*`, this keeps working verbatim:

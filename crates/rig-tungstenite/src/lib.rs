@@ -38,27 +38,38 @@ compile_error!(
      `connect_with(..)`."
 );
 
+#[cfg(not(target_family = "wasm"))]
 pub use tokio_tungstenite;
 
+#[cfg(not(target_family = "wasm"))]
 mod connection;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
+#[cfg(not(target_family = "wasm"))]
 mod session;
 
+#[cfg(not(target_family = "wasm"))]
 pub use session::{DefaultWebSocketBuilder, DefaultWebSocketClient};
 
+#[cfg(not(target_family = "wasm"))]
 use connection::{DirectConnection, ForwardedConnection};
+#[cfg(not(target_family = "wasm"))]
 use rig_core::http_client::{Error, NoBody, Request, Result};
+#[cfg(not(target_family = "wasm"))]
 use rig_core::ws_client::{BoxedWebSocketConnection, ConnectOptions, WebSocketClientExt};
+#[cfg(not(target_family = "wasm"))]
 use std::time::Duration;
+#[cfg(not(target_family = "wasm"))]
 use tokio_tungstenite::tungstenite::{self, client::IntoClientRequest};
 
 /// Bring the default-backend traits into scope.
+#[cfg(not(target_family = "wasm"))]
 pub mod prelude {
     pub use crate::session::{DefaultWebSocketBuilder, DefaultWebSocketClient};
     pub use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt;
 }
 
+#[cfg(not(target_family = "wasm"))]
 /// The bundled websocket backend.
 ///
 /// Cheap to clone and to construct: a handshake takes its configuration from
@@ -68,6 +79,7 @@ pub mod prelude {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TungsteniteClient;
 
+#[cfg(not(target_family = "wasm"))]
 impl TungsteniteClient {
     /// The bundled backend.
     #[must_use]
@@ -76,6 +88,7 @@ impl TungsteniteClient {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl WebSocketClientExt for TungsteniteClient {
     async fn connect(
         &self,
@@ -99,6 +112,7 @@ impl WebSocketClientExt for TungsteniteClient {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 /// Lower rig's transport-agnostic handshake request onto tungstenite's.
 ///
 /// `into_client_request` supplies the websocket handshake headers
@@ -117,11 +131,13 @@ fn client_request(request: Request<NoBody>) -> Result<tungstenite::handshake::cl
     Ok(request)
 }
 
+#[cfg(not(target_family = "wasm"))]
 /// A handshake that did not complete in time.
 #[derive(Debug, thiserror::Error)]
 #[error("timed out connecting the websocket after {0:?}")]
 struct ConnectTimeout(Duration);
 
+#[cfg(not(target_family = "wasm"))]
 async fn handshake(
     request: tungstenite::handshake::client::Request,
     timeout: Option<Duration>,
@@ -143,6 +159,7 @@ async fn handshake(
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 /// Map a tungstenite failure onto rig's transport error, **preserving a
 /// rejected upgrade's response**.
 ///
@@ -173,7 +190,7 @@ fn from_tungstenite(error: tungstenite::Error) -> Error {
     Error::non_success_with_details(parts.status, parts.headers, body)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
     use rig_core::http_client::StatusCode;
@@ -264,13 +281,50 @@ mod tests {
         }
     }
 
-    /// A failure that never reached the provider has no response to preserve.
+    /// A failure that never reached the provider has no response to preserve —
+    /// for **every** non-`Http` variant, not just the one that is easy to
+    /// construct. `Http` is the only variant carrying a provider response, so
+    /// this enumeration is what pins that boundary; a new variant mapped to a
+    /// non-success status by accident would invent a provider answer that
+    /// never existed.
+    ///
+    /// `Tls` is absent because it cannot be constructed without a TLS backend
+    /// in scope, and it is a connect-time failure like `Io`.
     #[test]
-    fn a_transport_failure_is_left_alone() {
-        let error = from_tungstenite(tungstenite::Error::ConnectionClosed);
+    fn every_transport_failure_is_left_alone() {
+        let cases: Vec<tungstenite::Error> = vec![
+            tungstenite::Error::ConnectionClosed,
+            tungstenite::Error::AlreadyClosed,
+            tungstenite::Error::Io(std::io::Error::other("connection reset")),
+            tungstenite::Error::Capacity(tungstenite::error::CapacityError::TooManyHeaders),
+            tungstenite::Error::Protocol(tungstenite::error::ProtocolError::HandshakeIncomplete),
+            tungstenite::Error::WriteBufferFull(Box::new(tungstenite::Message::Text(
+                "queued".into(),
+            ))),
+            tungstenite::Error::AttackAttempt,
+            tungstenite::Error::Url(tungstenite::error::UrlError::NoPathOrQuery),
+            tungstenite::Error::HttpFormat(
+                http::header::HeaderName::from_bytes(b"not a header")
+                    .expect_err("an invalid header name should not parse")
+                    .into(),
+            ),
+        ];
 
-        assert!(matches!(error, Error::Instance(_)));
-        assert_eq!(error.non_success_status(), None);
+        for error in cases {
+            let expected = error.to_string();
+            let mapped = from_tungstenite(error);
+
+            assert!(
+                matches!(mapped, Error::Instance(_)),
+                "a failure with no provider response must stay an Instance: {mapped:?}"
+            );
+            assert_eq!(mapped.non_success_status(), None);
+            assert_eq!(mapped.non_success_body(), None);
+            assert!(
+                mapped.to_string().contains(&expected),
+                "the transport's own message must survive: {mapped}"
+            );
+        }
     }
 
     /// The handshake request must carry the caller's auth headers onto the
