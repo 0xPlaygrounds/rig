@@ -120,18 +120,4 @@ where
     }
 }
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::cohere::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new() failed");
-        let _client_from_builder = crate::providers::cohere::Client::builder()
-            .api_key("dummy-key")
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("Client::builder() failed");
-    }
-}
+mod tests;

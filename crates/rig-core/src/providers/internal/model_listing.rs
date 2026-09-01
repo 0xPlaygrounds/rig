@@ -350,56 +350,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::ListModelEntry;
-    use crate::model::Model;
-
-    /// `id` is the one required field: an entry that carries nothing else
-    /// (some OpenAI-compatible gateways omit `created`/`owned_by`) still
-    /// decodes, mapping the absent fields to `None` on the `Model`.
-    #[test]
-    fn minimal_entry_decodes_with_id_alone() {
-        let entry: ListModelEntry =
-            serde_json::from_str(r#"{"id":"gpt-test"}"#).expect("minimal entry should decode");
-        let model = Model::from(entry);
-        assert_eq!(model.id, "gpt-test");
-        assert_eq!(model.name, None);
-        assert_eq!(model.created_at, None);
-        assert_eq!(model.owned_by, None);
-    }
-}
+mod tests;
 
 #[cfg(test)]
-mod transport_error_tests {
-    use super::*;
-
-    /// Regression (rig#2314 review): the header-preserving transport variant
-    /// must classify as an ApiError with provider/path context exactly like
-    /// the header-less one — the reqwest transport now emits it for every
-    /// non-2xx.
-    #[test]
-    fn details_variant_maps_to_api_error_with_context() {
-        let error = map_transport_error(
-            "test-provider",
-            "/models",
-            http_client::Error::InvalidStatusCodeWithDetails {
-                status: http::StatusCode::UNAUTHORIZED,
-                body: r#"{"error":"no"}"#.to_string(),
-                headers: Box::new(http::HeaderMap::new()),
-            },
-        );
-        let with_message = map_transport_error(
-            "test-provider",
-            "/models",
-            http_client::Error::InvalidStatusCodeWithMessage(
-                http::StatusCode::UNAUTHORIZED,
-                r#"{"error":"no"}"#.to_string(),
-            ),
-        );
-        assert_eq!(format!("{error}"), format!("{with_message}"));
-        assert!(
-            matches!(error, ModelListingError::ApiError { .. }),
-            "got {error:?}"
-        );
-    }
-}
+mod transport_error_tests;
