@@ -1,3 +1,13 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_used,
+        clippy::unreachable
+    )
+)]
 //! Workspace maintenance tasks for rig.
 //!
 //! Not part of the build and not published: this is the home for things that
@@ -7,11 +17,13 @@
 //! ```console
 //! cargo xtask generate-provider-aliases          # rewrite the file
 //! cargo xtask generate-provider-aliases --check  # fail if it would change
+//! cargo xtask check-test-layout                  # fail on inline `mod tests { }`
 //! ```
 
 mod aliases;
 mod reachable;
 mod rustdoc;
+mod test_layout;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -26,6 +38,7 @@ fn main() -> ExitCode {
 
     let result = match task.as_deref() {
         Some("generate-provider-aliases") => generate_provider_aliases(check),
+        Some("check-test-layout") => test_layout::check(&workspace_root()),
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
         None => Err(format!("no task given\n{USAGE}")),
     };
@@ -45,6 +58,8 @@ usage: cargo xtask <task> [--check]
 tasks:
   generate-provider-aliases   regenerate crates/rig-reqwest/src/providers.rs
                               from rig-core's rustdoc output
+  check-test-layout           fail if any crates/*/src file has an inline
+                              test-gated `mod x { }` instead of `mod x;`
 ";
 
 fn generate_provider_aliases(check: bool) -> Result<(), String> {

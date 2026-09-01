@@ -184,6 +184,10 @@ surfaces (`AgentRunner::stream` and `AgentRunner::run` share `drive_agent`).
 - Use full `where` clauses for complex trait bounds.
 - Comments should explain why, not restate what the code does.
 - Follow local naming, module layout, and test patterns.
+- Test modules are sibling files, never inline blocks: write
+  `#[cfg(test)] mod tests;` and put the body in `foo/tests.rs` (for `foo.rs`)
+  or `tests.rs` beside `mod.rs`/`lib.rs`. `cargo xtask check-test-layout`
+  enforces this in CI.
 - Avoid unrelated refactors.
 
 ## Cassette Regression Tests
