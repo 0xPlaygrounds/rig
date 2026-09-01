@@ -6,11 +6,10 @@ publish = false
 
 [workspace]
 
-# A driver over the protocol with NO rig-agent: rig-core (erased model, erased
-# tool set, catalog) + rig-run (spec, run state machine, request preparation).
-# `tests/core/core_run_driver.rs` runs this binary and checks its dependency
-# graph; keep rig-agent out of it.
+# A hand-rolled driver over the run vocabulary with NO rig-agent and NO
+# AgentRun: rig-core alone (erased model, erased tool set, catalog, RunSpec,
+# prepare_request, transcript helpers). `tests/core/core_run_driver.rs` runs
+# this binary and checks its dependency graph; keep everything else out of it.
 [dependencies]
 rig-core = { path = "../../../crates/rig-core", default-features = false }
-rig-run = { path = "../../../crates/rig-run" }
 serde_json = "1.0.150"

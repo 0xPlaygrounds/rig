@@ -1,10 +1,11 @@
-//! A complete agent turn driven with `rig-core` + `rig-run` only — no
-//! `rig-agent`, no async runtime.
+//! A complete agent turn driven with `rig-core` only — no `rig-agent`, no
+//! `AgentRun`, no async runtime.
 //!
-//! Exercises every seam a systems driver needs: an erased [`ModelHandle`] over a
-//! local model, a [`ToolSet`] of [`PortableDynamicTool`]s pinned into a
-//! [`ToolCatalog`], a run built from a [`RunSpec`], [`prepare_request`] for
-//! each `CallModel` step, and tool dispatch by name for each `CallTools` step.
+//! Proves that the run *vocabulary* alone supports a hand-rolled driver: an
+//! erased [`ModelHandle`] over a local model, a [`ToolSet`] of
+//! [`PortableDynamicTool`]s pinned into a [`ToolCatalog`], a [`RunSpec`],
+//! [`prepare_request`] for each model call, tool dispatch by name, and the
+//! transcript helpers to thread the tool result back and validate the result.
 //! Exits non-zero on any deviation; `tests/core/core_run_driver.rs` runs it.
 
 use std::{
@@ -16,13 +17,16 @@ use std::{
 
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-    ModelHandle, ModelRef, Usage,
+    ModelHandle, ModelRef, Usage, prepare::prepare_request, spec::RunSpec,
 };
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{PortableDynamicTool, ToolCatalog, ToolContext, ToolOutput, ToolSet};
+use rig_core::transcript::{
+    assistant_text_from_choice, build_full_history, build_history_for_request,
+    tool_result_output, validate_canonical,
+};
 use rig_core::wasm_compat::WasmCompatSend;
-use rig_run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request, transcript};
 
 /// Every future here is ready on first poll (a scripted model, in-process
 /// tools); a no-op waker is all the "runtime" this driver needs.
@@ -66,6 +70,12 @@ impl CompletionModel for ScriptedModel {
                 ToolFunction::new("add".to_string(), serde_json::json!({"x": 2, "y": 3})),
             ))]
         } else {
+            // The second call must see the whole threaded transcript.
+            assert_eq!(
+                request.chat_history.len(),
+                4,
+                "preamble, user prompt, assistant tool call, then the tool-result prompt"
+            );
             vec![AssistantContent::text("done")]
         };
         std::future::ready(Ok(CompletionResponse::new(choice, Usage::new(), "fixture")))
@@ -101,6 +111,35 @@ fn add_tool() -> PortableDynamicTool {
     )
 }
 
+/// One model call: prepare from the spec and the history so far, send, and
+/// return the assistant turn as a message plus its content.
+fn call_model(
+    model: &ModelHandle,
+    spec: &RunSpec,
+    catalog: &ToolCatalog,
+    history: &[Message],
+    prompt: Message,
+) -> Result<(Message, Vec<AssistantContent>), Box<dyn std::error::Error>> {
+    let prepared = prepare_request(
+        spec,
+        &model.capabilities(),
+        history,
+        catalog.definitions().to_vec(),
+        None,
+        None,
+    )?;
+    let request = prepared.apply(model.completion_request(prompt)).build();
+    let response = block_on(model.completion(request))?;
+    let choice = response.choice;
+    Ok((
+        Message::Assistant {
+            id: None,
+            content: choice.clone(),
+        },
+        choice,
+    ))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. An erased model with a serializable identity.
     let model = ModelHandle::named(ModelRef::new("fixture"), ScriptedModel::default());
@@ -112,77 +151,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let catalog: ToolCatalog = tools.catalog();
     assert_eq!(catalog.names().collect::<Vec<_>>(), ["add"]);
 
-    // 3. A run from a spec.
+    // 3. A spec — the protocol-facing configuration, as data.
     let spec = RunSpec {
         preamble: Some("be brief".into()),
         max_turns: Some(3),
         ..RunSpec::new()
     };
-    let mut run = AgentRun::from_spec(&spec, "add 2 and 3", None);
 
-    // 4. Drive it: prepare → model; dispatch by name → run.
-    let mut model_calls = 0;
-    let mut tool_calls = 0;
-    let output = loop {
-        match run.next_step()? {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
-                let prepared = prepare_request(
-                    &spec,
-                    &model.capabilities(),
-                    &history,
-                    catalog.definitions().to_vec(),
-                    run.output_tool_name(),
-                    None,
-                )?;
-                run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared.apply(model.completion_request(prompt)).build();
-                let response = block_on(model.completion(request))?;
-                model_calls += 1;
-                run.model_response(ModelTurn::new(
-                    None,
-                    response.choice,
-                    response.usage,
-                    executable,
-                    allowed,
-                ))?;
-            }
-            AgentRunStep::CallTools { calls } => {
-                let mut results = Vec::with_capacity(calls.len());
-                for call in calls {
-                    let name = call.tool_call.function.name.clone();
-                    let arguments = call.tool_call.function.arguments.to_string();
-                    let result =
-                        block_on(catalog.execute(&name, &arguments, &mut ToolContext::new()));
-                    assert!(result.is_success(), "dispatch by name through the catalog");
-                    tool_calls += 1;
-                    results.push(transcript::tool_result_output(
-                        call.tool_call.id.clone(),
-                        call.tool_call.provider.clone(),
-                        name,
-                        result.output().clone(),
-                    ));
-                }
-                run.tool_results(results)?;
-            }
-            AgentRunStep::Done(response) => break response.output,
-        }
-    };
+    // 4. First model call: the prompt alone.
+    let prompt = Message::user("add 2 and 3");
+    let (assistant_turn, choice) = call_model(&model, &spec, &catalog, &[], prompt.clone())?;
+    let calls: Vec<&ToolCall> = choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls.len(), 1, "the scripted model calls one tool");
 
-    assert_eq!(output, "done");
-    assert_eq!(model_calls, 2, "a tool turn then the final answer");
-    assert_eq!(tool_calls, 1, "the catalog dispatched `add` once");
-    assert_eq!(
-        run.advertised_tools()
-            .map(|advertised| advertised.definitions.len()),
-        Some(1),
-        "the run recorded the advertised tools"
-    );
+    // 5. Dispatch by name through the catalog and thread the result back as
+    //    the canonical tool-result user message.
+    let mut results = Vec::with_capacity(calls.len());
+    for call in calls {
+        let name = call.function.name.clone();
+        let arguments = call.function.arguments.to_string();
+        let result = block_on(catalog.execute(&name, &arguments, &mut ToolContext::new()));
+        assert!(result.is_success(), "dispatch by name through the catalog");
+        results.push(tool_result_output(
+            call.id.clone(),
+            call.provider.clone(),
+            name,
+            result.output().clone(),
+        ));
+    }
+    let tool_result_turn = Message::User { content: results };
+
+    // 6. Second model call: history is everything before the tool result.
+    let history = build_history_for_request(None, &[prompt, assistant_turn]);
+    let (final_turn, final_choice) =
+        call_model(&model, &spec, &catalog, &history, tool_result_turn.clone())?;
+
+    // 7. The full transcript is canonical and yields the answer.
+    let transcript = build_full_history(Some(&history), vec![tool_result_turn, final_turn]);
+    validate_canonical(&transcript)?;
+    assert_eq!(transcript.len(), 4, "prompt, tool call, tool result, answer");
+    assert_eq!(assistant_text_from_choice(&final_choice), "done");
     println!("core-run-driver: ok");
     Ok(())
 }

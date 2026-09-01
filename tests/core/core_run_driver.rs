@@ -1,8 +1,10 @@
-//! A downstream crate depending on `rig-core` + `rig-run` only can drive a
-//! full agent turn: erase a model into a `ModelHandle`, build a `ToolSet` /
-//! `ToolCatalog` from `PortableDynamicTool`s, construct an `AgentRun` from a
-//! `RunSpec`, call `prepare_request`, and dispatch a tool by name — the seams a
-//! systems driver (an ECS plugin) needs, with no `rig-agent` in its graph.
+//! A downstream crate depending on `rig-core` **only** can drive a full agent
+//! turn from the run vocabulary: erase a model into a `ModelHandle`, build a
+//! `ToolSet` / `ToolCatalog` from `PortableDynamicTool`s, describe the run
+//! with a `RunSpec`, call `prepare_request` for each model call, dispatch a
+//! tool by name, thread the result back with the transcript helpers and
+//! validate the transcript — the seams a systems driver (an ECS plugin) needs,
+//! with neither `rig-agent` nor `AgentRun` in its graph.
 //!
 //! The fixture at `tests/fixtures/core_run_driver` is *run*, not just checked,
 //! so the seams are exercised end to end; its dependency graph is read back
@@ -19,7 +21,7 @@ fn target_dir() -> PathBuf {
 }
 
 #[test]
-fn core_plus_run_drives_a_tool_turn_without_rig_agent() -> Result<(), Box<dyn std::error::Error>> {
+fn core_alone_drives_a_tool_turn_without_rig_agent() -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new(env!("CARGO"))
         .args(["run", "--quiet", "--manifest-path"])
         .arg(fixture_manifest())
@@ -28,7 +30,7 @@ fn core_plus_run_drives_a_tool_turn_without_rig_agent() -> Result<(), Box<dyn st
         .output()?;
     if !output.status.success() {
         return Err(format!(
-            "core+run driver fixture failed:\n{}\n{}",
+            "core driver fixture failed:\n{}\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         )
@@ -42,7 +44,7 @@ fn core_plus_run_drives_a_tool_turn_without_rig_agent() -> Result<(), Box<dyn st
 }
 
 #[test]
-fn core_run_driver_fixture_graph_has_no_rig_agent() -> Result<(), Box<dyn std::error::Error>> {
+fn core_run_driver_fixture_graph_is_rig_core_only() -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new(env!("CARGO"))
         .args(["metadata", "--format-version", "1", "--manifest-path"])
         .arg(fixture_manifest())
@@ -61,13 +63,13 @@ fn core_run_driver_fixture_graph_has_no_rig_agent() -> Result<(), Box<dyn std::e
         .flatten()
         .filter_map(|package| package["name"].as_str())
         .collect();
-    if !(names.contains(&"rig-core") && names.contains(&"rig-run")) {
-        return Err("fixture graph should contain rig-core and rig-run".into());
+    if !names.contains(&"rig-core") {
+        return Err("fixture graph should contain rig-core".into());
     }
-    for forbidden in ["rig-agent", "rig", "tokio", "reqwest"] {
+    for forbidden in ["rig-agent", "rig-run", "rig", "tokio", "reqwest"] {
         if names.contains(&forbidden) {
             return Err(format!(
-                "`{forbidden}` reached the core+run driver fixture's dependency graph"
+                "`{forbidden}` reached the core driver fixture's dependency graph"
             )
             .into());
         }
