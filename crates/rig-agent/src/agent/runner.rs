@@ -946,7 +946,6 @@ impl TurnSource for UnaryTurnSource {
                                             prompt: &current_prompt,
                                             content: &resp.choice,
                                             usage: resp.usage,
-                                            message_id: resp.message_id.as_deref(),
                                             identity: &identity,
                                             raw: attempt_raw,
                                         },

@@ -8,10 +8,10 @@ use rig_core::{
 use crate::{
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
-        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
-        ModelSelectionAction, ModelTurnFinished, ReasoningDelta, RunSettled, RunStart,
-        RunStartAction, SettledOutcome, StepEventKind, StreamResponseFinish, TextDelta,
-        ToolCallDelta,
+        AgentHook, CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
+        InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnFinished,
+        ReasoningDelta, RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind,
+        TextDelta, ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -1159,9 +1159,8 @@ impl TurnSource for StreamingTurnSource {
             let mut turn_abandoned = false;
             let mut provider_final_seen = false;
             let mut pending_final = None;
-            // Mirrors the blocking driver's `response_hook_suppressed`: a turn
-            // whose invalid tool call was repaired is a recovered turn, so its
-            // response-finish hook is suppressed.
+            // A turn whose invalid tool call was repaired is a recovered turn:
+            // neither the response hook nor `ModelTurnFinished` fires for it.
             let mut turn_recovered = false;
 
             // Emit the turn's single `CompletionCall` exactly once, recording its
@@ -1391,8 +1390,7 @@ impl TurnSource for StreamingTurnSource {
                             match resolution {
                                 StreamedResolution::Repaired { .. } => {
                                     // Replayed deltas flow through the same event
-                                    // handling above; the turn is now recovered, so
-                                    // its response-finish hook is suppressed.
+                                    // handling above; the turn is now recovered.
                                     turn_recovered = true;
                                     events.extend(assembler.resolve_pending_invalid(&resolution));
                                 }
@@ -1508,18 +1506,16 @@ impl TurnSource for StreamingTurnSource {
                 .response
                 .as_ref()
                 .map_or(&serde_json::Value::Null, |response| &response.raw);
-            if pending_final.is_some()
-                && !turn_recovered
+            if !turn_recovered
                 && let Some(reason) = observe_action(
                     runner
                         .config.hooks
-                        .on_stream_response_finish(
+                        .on_completion_response(
                             hook_ctx,
-                            StreamResponseFinish {
+                            CompletionResponseEvent {
                                 prompt: &current_prompt,
                                 content: &streamed_turn.choice,
                                 usage: last_usage,
-                                message_id: streamed_turn.message_id.as_deref(),
                                 identity: &identity,
                                 raw: attempt_raw,
                             },
@@ -1548,10 +1544,7 @@ impl TurnSource for StreamingTurnSource {
                 return;
             }
             // Normalized per-turn event, fired once the turn is parked for
-            // acceptance on the streaming surface — including tool-only /
-            // reasoning-only turns that fire no `StreamResponseFinish`.
-            // Suppressed for recovered turns, mirroring the blocking surface's
-            // `Continue` arm.
+            // acceptance. Suppressed for recovered turns.
             if !turn_recovered {
                 let action = runner
                     .config.hooks

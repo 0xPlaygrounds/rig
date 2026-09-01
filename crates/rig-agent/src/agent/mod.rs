@@ -122,8 +122,8 @@ pub use hook::{
     HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
     ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
     RetryRequest, RunEntry, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
-    SettledOutcome, StepEventKind, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction,
-    ToolCallDelta, ToolResultAction, ToolResultEvent,
+    SettledOutcome, StepEventKind, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
+    ToolResultAction, ToolResultEvent,
 };
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingPromptRequest,

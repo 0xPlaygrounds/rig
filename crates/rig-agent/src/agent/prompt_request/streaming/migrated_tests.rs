@@ -1,6 +1,6 @@
 use crate::agent::{
-    InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction, ModelTurnFinished,
-    ObservationAction, ReasoningDelta, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
+    CompletionResponseEvent, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction,
+    ModelTurnFinished, ObservationAction, ReasoningDelta, StepEventKind, TextDelta, ToolCall,
     ToolCallAction, ToolCallDelta,
 };
 
@@ -466,12 +466,12 @@ impl AgentHook for PanicOnUnknownToolHook {
     async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
         panic!("unknown tool call should fail before tool hooks run")
     }
-    async fn on_stream_response_finish(
+    async fn on_completion_response(
         &self,
         _: &HookContext,
-        _: StreamResponseFinish<'_>,
+        _: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
-        panic!("unknown tool call should fail before stream finish hooks run")
+        panic!("unknown tool call should fail before completion response hooks run")
     }
 }
 
@@ -1582,18 +1582,15 @@ fn streaming_final_only_model() -> MockCompletionModel {
 }
 
 #[derive(Clone)]
-struct TerminateOnStreamFinish;
+struct TerminateOnCompletionResponse;
 
-impl AgentHook for TerminateOnStreamFinish {
-    async fn on_stream_response_finish(
+impl AgentHook for TerminateOnCompletionResponse {
+    async fn on_completion_response(
         &self,
         _ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
+        _event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
-        match event {
-            StreamResponseFinish { .. } => ObservationAction::stop("stop after completion call"),
-            _ => ObservationAction::continue_run(),
-        }
+        ObservationAction::stop("stop after completion call")
     }
 }
 
@@ -4668,7 +4665,7 @@ async fn stream_prompt_emits_completion_call_before_finish_hook_termination() {
 
     let mut stream = agent
         .stream_prompt("say done")
-        .add_hook(TerminateOnStreamFinish)
+        .add_hook(TerminateOnCompletionResponse)
         .await;
     let mut completion_calls = Vec::new();
     let mut saw_error = false;

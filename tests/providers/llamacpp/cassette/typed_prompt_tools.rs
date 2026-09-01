@@ -82,7 +82,7 @@ impl AgentHook for StepLogger {
         println!("\n=== completion response #{call_no}: normalized choice ===");
         println!("{}", pretty_json(event.content));
         println!("usage: {:?}", event.usage);
-        println!("message_id: {:?}", event.message_id);
+        println!("message_id: {:?}", event.identity.message_id);
         ObservationAction::continue_run()
     }
 

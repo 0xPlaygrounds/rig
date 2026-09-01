@@ -5,8 +5,10 @@
 //!
 //! The agent erases the model, so a caller can only reach the provider's own
 //! response through the surfaces the agent exposes: the `raw` on the
-//! `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
-//! events; `CompletionCall::raw` on `PromptResponse::completion_calls`; and
+//! `CompletionResponse` and `ModelTurnFinished` hook events — both fire once
+//! per accepted model turn on both drivers, tool-only turns included, with
+//! `HookContext::is_streaming` telling the drivers apart; `CompletionCall::raw`
+//! on `PromptResponse::completion_calls`; and
 //! the streamed `StreamedAssistantContent::Final` terminal record. Capture is
 //! unconditional — there is no agent-, run- or request-level switch — so every
 //! one of those surfaces carries the payload on every attempt, and a
@@ -29,8 +31,8 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `chat_blocking_hooks_see_raw` | chat, blocking | `CompletionResponse`/`ModelTurnFinished` hooks see `raw` = call's raw | recorded |
-//! | 2 | `chat_streamed_hooks_see_raw` | chat, streamed | `StreamResponseFinish`/`ModelTurnFinished` hooks, `Final`, `CompletionCall` see raw | recorded |
-//! | 3 | `chat_blocking_tool_run_records_distinct_raw` | chat, blocking, tool run | two `completion_calls`, two payloads, ids in fixture order | recorded |
+//! | 2 | `chat_streamed_hooks_see_raw` | chat, streamed | `CompletionResponse`/`ModelTurnFinished` hooks, `Final`, `CompletionCall` see raw | recorded |
+//! | 3 | `chat_blocking_tool_run_records_distinct_raw` | chat, blocking, tool run | two `completion_calls`, two payloads, ids in fixture order; one `CompletionResponse` per call, the first a tool-call turn | recorded |
 //! | 4 | `chat_streamed_tool_run_records_distinct_raw` | chat, streamed, tool run | as 3, `Final` carries the final turn's raw | recorded |
 //! | 5 | `chat_retried_turn_records_retried_attempt_raw` | chat, retry hook | second record carries the retried attempt's raw | recorded |
 //! | 6 | `responses_blocking_hooks_see_raw` | Responses, blocking | as 1 | recorded |
@@ -51,7 +53,7 @@ use std::sync::{Arc, Mutex};
 use futures::StreamExt as _;
 use rig::agent::{
     AgentBuilder, AgentHook, CompletionResponseEvent, HookContext, ModelTurnAction,
-    ModelTurnFinished, MultiTurnStreamItem, ObservationAction, StreamResponseFinish,
+    ModelTurnFinished, MultiTurnStreamItem, ObservationAction,
 };
 use rig::completion::{Prompt, ResponseIdentity};
 use rig::message::AssistantContent;
@@ -145,21 +147,27 @@ impl Route {
 
 type Seen = Arc<Mutex<Vec<(ResponseIdentity, Value)>>>;
 
+/// One `CompletionResponse` observation: which driver fired it, whether the
+/// canonical content carried a tool call, the attempt's identity and `raw`.
+#[derive(Clone, Debug, PartialEq)]
+struct ResponseSeen {
+    streaming: bool,
+    tool_call: bool,
+    identity: ResponseIdentity,
+    raw: Value,
+}
+
 /// Captures each event's identity and `raw` payload so a cell can compare
 /// every observer surface against the run record.
 #[derive(Clone, Default)]
 struct RawProbe {
-    completion_responses: Seen,
-    stream_finishes: Seen,
+    completion_responses: Arc<Mutex<Vec<ResponseSeen>>>,
     turns: Seen,
 }
 
 impl RawProbe {
-    fn completion_responses(&self) -> Vec<(ResponseIdentity, Value)> {
+    fn completion_responses(&self) -> Vec<ResponseSeen> {
         self.completion_responses.lock().expect("probe").clone()
-    }
-    fn stream_finishes(&self) -> Vec<(ResponseIdentity, Value)> {
-        self.stream_finishes.lock().expect("probe").clone()
     }
     fn turns(&self) -> Vec<(ResponseIdentity, Value)> {
         self.turns.lock().expect("probe").clone()
@@ -169,25 +177,21 @@ impl RawProbe {
 impl AgentHook for RawProbe {
     async fn on_completion_response(
         &self,
-        _ctx: &HookContext,
+        ctx: &HookContext,
         event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
         self.completion_responses
             .lock()
             .expect("probe")
-            .push((event.identity.clone(), event.raw.clone()));
-        ObservationAction::continue_run()
-    }
-
-    async fn on_stream_response_finish(
-        &self,
-        _ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        self.stream_finishes
-            .lock()
-            .expect("probe")
-            .push((event.identity.clone(), event.raw.clone()));
+            .push(ResponseSeen {
+                streaming: ctx.is_streaming(),
+                tool_call: event
+                    .content
+                    .iter()
+                    .any(|content| matches!(content, AssistantContent::ToolCall(_))),
+                identity: event.identity.clone(),
+                raw: event.raw.clone(),
+            });
         ObservationAction::continue_run()
     }
 
@@ -430,9 +434,17 @@ fn assert_blocking_hooks_see_raw(
         1,
         "{scenario}: one CompletionResponse event"
     );
+    assert!(
+        !responses[0].streaming,
+        "{scenario}: the blocking driver fires it with is_streaming() == false"
+    );
     assert_eq!(
-        responses[0].1, call_raw,
+        responses[0].raw, call_raw,
         "{scenario}: CompletionResponse hook sees the call's raw"
+    );
+    assert_eq!(
+        responses[0].identity.response_id, observation.calls[0].response_id,
+        "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();
     assert_eq!(turns.len(), 1, "{scenario}: one ModelTurnFinished event");
@@ -443,10 +455,6 @@ fn assert_blocking_hooks_see_raw(
     assert_eq!(
         turns[0].0.response_id, observation.calls[0].response_id,
         "{scenario}: hook and record agree on the attempt"
-    );
-    assert!(
-        probe.stream_finishes().is_empty(),
-        "{scenario}: the blocking surface fires no StreamResponseFinish"
     );
 }
 
@@ -461,25 +469,29 @@ fn assert_streamed_hooks_see_raw(
     assert_calls_carry_recorded_raw(scenario, route, &observation.calls, &recorded);
     let call_raw = observation.calls[0].raw.clone();
 
-    let finishes = probe.stream_finishes();
+    let responses = probe.completion_responses();
     assert_eq!(
-        finishes.len(),
+        responses.len(),
         1,
-        "{scenario}: one StreamResponseFinish event"
+        "{scenario}: the streamed surface fires CompletionResponse once the stream is assembled"
+    );
+    assert!(
+        responses[0].streaming,
+        "{scenario}: the streaming driver fires it with is_streaming() == true"
     );
     assert_eq!(
-        finishes[0].1, call_raw,
-        "{scenario}: StreamResponseFinish hook sees the terminal's raw"
+        responses[0].raw, call_raw,
+        "{scenario}: CompletionResponse hook sees the terminal's raw"
+    );
+    assert_eq!(
+        responses[0].identity.response_id, observation.calls[0].response_id,
+        "{scenario}: CompletionResponse hook and record agree on the attempt"
     );
     let turns = probe.turns();
     assert_eq!(turns.len(), 1, "{scenario}: one ModelTurnFinished event");
     assert_eq!(
         turns[0].1, call_raw,
         "{scenario}: ModelTurnFinished hook sees the terminal's raw"
-    );
-    assert!(
-        probe.completion_responses().is_empty(),
-        "{scenario}: the streamed surface fires no CompletionResponse"
     );
     assert_eq!(
         observation.finals,
@@ -545,6 +557,33 @@ fn assert_tool_run_records_distinct_raw(
             "{scenario}: turn {index} hook sees that attempt's raw"
         );
     }
+    // CompletionResponse fires once per accepted call on both drivers — the
+    // tool-only turn included — and each firing sees its own attempt's
+    // payload: the first is the tool-call turn, the last the text answer's.
+    let responses = probe.completion_responses();
+    assert_eq!(
+        responses.len(),
+        raws.len(),
+        "{scenario}: one CompletionResponse per call"
+    );
+    for (index, (seen, raw)) in responses.iter().zip(&raws).enumerate() {
+        assert_eq!(
+            seen.raw, *raw,
+            "{scenario}: CompletionResponse {index} sees that attempt's raw"
+        );
+        assert_eq!(
+            seen.streaming, streamed,
+            "{scenario}: CompletionResponse {index} reports the driver it fired on"
+        );
+    }
+    assert!(
+        responses[0].tool_call,
+        "{scenario}: the first CompletionResponse's content is the tool-call turn"
+    );
+    assert!(
+        !responses.last().expect("at least two").tool_call,
+        "{scenario}: the last CompletionResponse's content is the text answer"
+    );
     if streamed {
         assert_eq!(
             observation.stream_calls, raws,
@@ -557,25 +596,6 @@ fn assert_tool_run_records_distinct_raw(
             Some(last),
             "{scenario}: the streamed Final carries the final turn's raw"
         );
-        let finishes = probe.stream_finishes();
-        assert_eq!(
-            finishes.last().map(|(_, raw)| raw),
-            Some(last),
-            "{scenario}: the last StreamResponseFinish sees the final turn's raw"
-        );
-    } else {
-        let responses = probe.completion_responses();
-        assert_eq!(
-            responses.len(),
-            raws.len(),
-            "{scenario}: one CompletionResponse per call"
-        );
-        for (index, ((_, seen), raw)) in responses.iter().zip(&raws).enumerate() {
-            assert_eq!(
-                seen, raw,
-                "{scenario}: CompletionResponse {index} sees that attempt's raw"
-            );
-        }
     }
 }
 

@@ -73,7 +73,7 @@ impl AgentHook for LoggingHook {
             "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
             ctx.run_id(),
             event.usage,
-            event.message_id,
+            event.identity.message_id,
             event.content
         );
         ObservationAction::continue_run()

@@ -622,7 +622,6 @@ fn unit_hook_observes_no_event_kind() {
         StepEventKind::TextDelta,
         StepEventKind::ReasoningDelta,
         StepEventKind::ToolCallDelta,
-        StepEventKind::StreamResponseFinish,
     ] {
         assert!(!<() as AgentHook>::observes(&(), kind));
     }

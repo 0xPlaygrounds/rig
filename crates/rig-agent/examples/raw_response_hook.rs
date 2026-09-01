@@ -10,15 +10,16 @@
 //!
 //! So every attempt's provider response — the value `raw_completion` /
 //! `raw_stream` would have returned, serialized — travels as `raw` on the
-//! `CompletionResponse` (blocking) and `StreamResponseFinish` (streamed) hook
-//! events, on the medium-neutral `ModelTurnFinished` event, and on each
-//! `CompletionCall` in the run's record. Nothing to switch on: it is the same
-//! parity the pre-normalization `raw_response` had.
+//! `CompletionResponse` hook event (fired on both the blocking and the
+//! streamed surface), on the medium-neutral `ModelTurnFinished` event, and on
+//! each `CompletionCall` in the run's record. Nothing to switch on: it is the
+//! same parity the pre-normalization `raw_response` had.
 //!
 //! The hook below runs unchanged on both surfaces. It recovers OpenAI's own
 //! response types from `raw` — the provider's types are `Deserialize`, so
 //! typed access is one `serde_json::from_value` away — and prints the fields
-//! Rig does not normalize.
+//! Rig does not normalize. Which type `raw` holds depends on the surface, and
+//! `HookContext::is_streaming` says which.
 //!
 //! ```not_rust
 //! OPENAI_API_KEY=... cargo run -p rig-agent --example raw_response_hook
@@ -27,7 +28,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig_agent::{
-    agent::{CompletionResponseEvent, ObservationAction, StreamResponseFinish},
+    agent::{CompletionResponseEvent, ObservationAction},
     prelude::*,
 };
 use rig_core::providers::openai;
@@ -39,48 +40,43 @@ use serde::Deserialize;
 struct PrintOpenAiFields;
 
 impl AgentHook for PrintOpenAiFields {
-    /// Blocking surface: `raw` is the Chat Completions response as OpenAI's
-    /// wire type parsed it, so it deserializes straight back into that type.
+    /// On the blocking surface `raw` is the Chat Completions response as
+    /// OpenAI's wire type parsed it. On the streamed surface it is the
+    /// stream's *terminal record* as OpenAI's wire type accumulated it — the
+    /// top-level chunk fields Rig does not normalize land in its
+    /// `additional_params`.
     async fn on_completion_response(
         &self,
-        _ctx: &HookContext,
+        ctx: &HookContext,
         event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
-        match openai::CompletionResponse::deserialize(event.raw) {
-            Ok(response) => println!(
-                "  id {} · system_fingerprint {:?} · service_tier {:?}",
-                response.id, response.system_fingerprint, response.service_tier
-            ),
-            Err(err) => println!("  raw is not an OpenAI response: {err}"),
-        }
-        ObservationAction::continue_run()
-    }
-
-    /// Streamed surface: `raw` is the stream's *terminal record* as OpenAI's
-    /// wire type accumulated it — the top-level chunk fields Rig does not
-    /// normalize land in its `additional_params`.
-    async fn on_stream_response_finish(
-        &self,
-        _ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        match openai::StreamingCompletionResponse::<openai::Usage>::deserialize(event.raw) {
-            Ok(terminal) => {
-                let extra = |key: &str| {
-                    terminal
-                        .additional_params
-                        .as_ref()
-                        .and_then(|params| params.get(key))
-                        .cloned()
-                };
-                println!(
-                    "  id {:?} · system_fingerprint {:?} · service_tier {:?}",
-                    terminal.response_id,
-                    extra("system_fingerprint"),
-                    extra("service_tier"),
-                );
+        if ctx.is_streaming() {
+            match openai::StreamingCompletionResponse::<openai::Usage>::deserialize(event.raw) {
+                Ok(terminal) => {
+                    let extra = |key: &str| {
+                        terminal
+                            .additional_params
+                            .as_ref()
+                            .and_then(|params| params.get(key))
+                            .cloned()
+                    };
+                    println!(
+                        "  id {:?} · system_fingerprint {:?} · service_tier {:?}",
+                        terminal.response_id,
+                        extra("system_fingerprint"),
+                        extra("service_tier"),
+                    );
+                }
+                Err(err) => println!("  raw is not an OpenAI terminal: {err}"),
             }
-            Err(err) => println!("  raw is not an OpenAI terminal: {err}"),
+        } else {
+            match openai::CompletionResponse::deserialize(event.raw) {
+                Ok(response) => println!(
+                    "  id {} · system_fingerprint {:?} · service_tier {:?}",
+                    response.id, response.system_fingerprint, response.service_tier
+                ),
+                Err(err) => println!("  raw is not an OpenAI response: {err}"),
+            }
         }
         ObservationAction::continue_run()
     }

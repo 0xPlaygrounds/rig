@@ -1414,7 +1414,7 @@ where
             event: CompletionResponseEvent<'_>,
         ) -> ObservationAction {
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                event.message_id.map(str::to_owned),
+                event.identity.message_id.clone(),
                 event.content.clone(),
                 event.usage,
                 BTreeSet::new(),

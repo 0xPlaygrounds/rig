@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex};
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
     InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
-    StreamResponseFinish, TextDelta, ToolCall as ToolCallEvent, ToolCallAction, ToolCallDelta,
-    ToolResultAction, ToolResultEvent,
+    TextDelta, ToolCall as ToolCallEvent, ToolCallAction, ToolCallDelta, ToolResultAction,
+    ToolResultEvent,
 };
 use rig::completion::Document;
 use rig::tool::Tool;
@@ -255,14 +255,6 @@ impl AgentHook for EventTap {
         _event: ToolCallDelta<'_>,
     ) -> ObservationAction {
         self.record(ctx, "ToolCallDelta");
-        ObservationAction::continue_run()
-    }
-    async fn on_stream_response_finish(
-        &self,
-        ctx: &HookContext,
-        _event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "StreamResponseFinish");
         ObservationAction::continue_run()
     }
 }
