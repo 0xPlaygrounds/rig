@@ -68,7 +68,16 @@
 //! # }
 //! ```
 
-pub use rig_core::completion::output::OutputMode;
+pub mod output;
+pub mod patch;
+pub mod prepare;
+pub mod spec;
+pub mod transcript;
+
+pub use output::OutputMode;
+pub use patch::RequestPatch;
+pub use prepare::{PrepareError, PreparedRequest, prepare_request};
+pub use spec::RunSpec;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -103,9 +112,8 @@ pub mod streamed;
 
 pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 pub use response::{CompletionCall, PromptError, PromptResponse};
-use rig_core::completion::spec::RunSpec;
 use rig_core::json_utils;
-use rig_core::transcript::{
+use transcript::{
     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
     build_full_history, build_history_for_request, invalid_tool_retry_user_message,
     is_empty_assistant_turn, tool_result_message, turn_delivered_no_answer, validate_canonical,
@@ -247,7 +255,7 @@ pub struct ModelTurn {
 
 impl ModelTurn {
     /// The one blessed conversion from a provider response to a protocol
-    /// turn, given the [`PreparedRequest`](rig_core::completion::prepare::PreparedRequest)
+    /// turn, given the [`PreparedRequest`]
     /// the call was prepared from.
     ///
     /// Every driver — rig-agent's futures runner and any external systems
@@ -259,10 +267,7 @@ impl ModelTurn {
     /// finish reason is the response's normalized
     /// [`finish_reason()`](CompletionResponse::finish_reason) accessor, never
     /// a raw provider field.
-    pub fn from_response(
-        resp: &CompletionResponse,
-        prepared: &rig_core::completion::prepare::PreparedRequest,
-    ) -> Self {
+    pub fn from_response(resp: &CompletionResponse, prepared: &prepare::PreparedRequest) -> Self {
         Self::from_response_parts(
             resp,
             prepared.executable_tool_names.clone(),

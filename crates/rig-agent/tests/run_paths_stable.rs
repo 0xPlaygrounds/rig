@@ -1,6 +1,8 @@
 //! Every run-protocol path that existed at 0.42.0 still resolves after the
-//! protocol crate was dissolved (request vocabulary → rig-core, the run's
-//! program, response, error, decision data and assembler → `rig_agent::run`).
+//! protocol crate was dissolved (everything an agent loop is — program, spec,
+//! request preparation, response, error, decision data, assembler, loop-side
+//! transcript helpers — is `rig_agent::run`; rig-core keeps the message-model
+//! invariants in `rig_core::transcript`).
 //! Compile-only: a missing path fails the build.
 
 #![allow(unused_imports)]
@@ -29,13 +31,16 @@ use rig_agent::run::response::{
 };
 use rig_agent::run::streamed::StreamedTurnAssembler as _AssemblerDirect;
 use rig_agent::run::{AgentRun as _AgentRunDirect, RunEntry as _EntryDirect};
-use rig_core::completion::{
-    output::OutputMode as _CoreOutputMode,
-    patch::RequestPatch as _CorePatch,
+use rig_agent::run::{
+    output::OutputMode as _OutputModeDirect,
+    patch::RequestPatch as _PatchDirect,
     prepare::{PreparedRequest, prepare_request},
-    spec::RunSpec as _CoreSpec,
+    spec::RunSpec as _SpecDirect,
+    transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER as _Peer, build_full_history as _Full},
 };
-use rig_core::transcript::{TranscriptError, validate_canonical};
+use rig_core::transcript::{
+    TranscriptError, tool_result_output as _ToolResult, validate_canonical,
+};
 
 #[test]
 fn run_protocol_paths_resolve() {

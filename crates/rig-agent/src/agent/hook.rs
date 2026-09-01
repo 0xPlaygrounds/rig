@@ -962,7 +962,7 @@ pub enum StepEventKind {
     StreamResponseFinish,
 }
 
-pub use rig_core::completion::patch::RequestPatch;
+pub use crate::run::patch::RequestPatch;
 
 /// Action for model-selection hooks.
 #[derive(Debug, Clone)]

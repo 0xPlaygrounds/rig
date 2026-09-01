@@ -67,23 +67,24 @@ fn rig_agent_carries_no_runtime_or_mcp() {
     );
 }
 
-/// The run vocabulary (rig-core) and the `AgentRun` program (rig-agent) never
-/// await: they are data and transitions only, so a futures loop and an ECS
-/// schedule can step the same code. Checked at the source level because both
-/// crates legitimately depend on `futures` elsewhere.
+/// rig-agent's `run` layer and rig-core's transcript invariants never await:
+/// they are data and transitions only, so a futures loop and an ECS schedule
+/// can step the same code. Checked at the source level because both crates
+/// legitimately depend on `futures` elsewhere.
 #[test]
 fn run_vocabulary_sources_contain_no_async() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let sources = [
         "crates/rig-core/src/transcript.rs",
-        "crates/rig-core/src/completion/output.rs",
-        "crates/rig-core/src/completion/patch.rs",
-        "crates/rig-core/src/completion/prepare.rs",
-        "crates/rig-core/src/completion/spec.rs",
         "crates/rig-agent/src/run/mod.rs",
+        "crates/rig-agent/src/run/output.rs",
+        "crates/rig-agent/src/run/patch.rs",
         "crates/rig-agent/src/run/policy.rs",
+        "crates/rig-agent/src/run/prepare.rs",
         "crates/rig-agent/src/run/response.rs",
+        "crates/rig-agent/src/run/spec.rs",
         "crates/rig-agent/src/run/streamed.rs",
+        "crates/rig-agent/src/run/transcript.rs",
     ];
     let mut offenders = Vec::new();
     for relative in sources {

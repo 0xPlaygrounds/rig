@@ -1,10 +1,10 @@
 //! A per-turn request patch: what a driver may change about one model call
-//! before [`prepare_request`](crate::completion::prepare::prepare_request)
+//! before [`prepare_request`](super::prepare::prepare_request)
 //! binds it — plain data, produced by hooks in rig-agent and by any other
 //! driver's equivalent.
 
-use crate::completion::Document;
-use crate::message::{Message, ToolChoice};
+use rig_core::completion::Document;
+use rig_core::message::{Message, ToolChoice};
 use serde::{Deserialize, Serialize};
 
 /// A non-sticky patch applied only to the current turn's completion request.
@@ -147,7 +147,7 @@ impl RequestPatch {
         self.extra_context.extend(later.extra_context);
         self.additional_params = match (self.additional_params.take(), later.additional_params) {
             (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
-                Some(crate::json_utils::merge(base, patch))
+                Some(rig_core::json_utils::merge(base, patch))
             }
             (base, patch) => patch.or(base),
         };

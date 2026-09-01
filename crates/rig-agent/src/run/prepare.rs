@@ -11,15 +11,15 @@
 
 use std::collections::BTreeSet;
 
-use crate::completion::{
+use rig_core::completion::{
     CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
     ProviderCapabilities, ToolDefinition,
 };
-use crate::message::ToolChoice;
+use rig_core::message::ToolChoice;
 
-use crate::completion::output::OutputMode;
-use crate::completion::patch::RequestPatch;
-use crate::completion::spec::RunSpec;
+use super::output::OutputMode;
+use super::patch::RequestPatch;
+use super::spec::RunSpec;
 
 /// Why a request could not be prepared. Every variant is a local, pre-IO
 /// error: the spec, patch and tool set cannot produce a request the model
@@ -72,7 +72,7 @@ pub struct PreparedRequest {
     pub tool_choice: Option<ToolChoice>,
     /// The provider-native structured-output constraint — set only when the
     /// resolved mode is [`OutputMode::Native`].
-    pub output_schema: Option<crate::schemars::Schema>,
+    pub output_schema: Option<rig_core::schemars::Schema>,
     /// The mode this turn actually runs in (never [`OutputMode::Auto`]).
     pub output_mode: OutputMode,
     /// Names of the real, dispatchable tools advertised this turn.
@@ -167,7 +167,7 @@ pub fn prepare_request(
         request_patch.and_then(|o| o.additional_params.as_ref()),
     ) {
         (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
-            Some(crate::json_utils::merge(base.clone(), patch.clone()))
+            Some(rig_core::json_utils::merge(base.clone(), patch.clone()))
         }
         (base, patch) => patch.or(base).cloned(),
     };
@@ -353,7 +353,7 @@ pub fn prepare_request(
     // Only Native mode sets the provider's native structured-output constraint.
     let native_schema = match (&resolved_mode, output_schema) {
         (OutputMode::Native, Some(schema)) => Some(
-            crate::schemars::Schema::try_from(schema.clone())
+            rig_core::schemars::Schema::try_from(schema.clone())
                 .map_err(PrepareError::InvalidOutputSchema)?,
         ),
         _ => None,

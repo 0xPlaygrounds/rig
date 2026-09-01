@@ -357,7 +357,7 @@ association.
 rig-agent's driver recorded the advertised tools *after* the per-turn request
 assembly had already moved the definitions out of the registry snapshot, so
 `AgentRun::advertised_tools()` (and the serialized run's `turn_tools`) always
-held an empty list. With request preparation in `rig_core::completion::prepare::prepare_request`
+held an empty list. With request preparation in `rig_agent::run::prepare::prepare_request`
 the driver advertises `PreparedRequest::tools` — the executable tools after
 any `active_tools` allow-list plus, in Tool output mode, the synthetic output
 tool — i.e. exactly what the provider received. Nothing on the wire changes.
@@ -1101,35 +1101,40 @@ rides the record travels, rewinds, and forks with the record. Also new: the
 between two unreleased PRs and was replaced by the entry log before release;
 `Scratchpad` remains as the in-process, non-serialized cross-hook channel.)
 
-### The run protocol: its vocabulary is rig-core's, `AgentRun` is `rig_agent::run`
+### The run protocol is rig-agent's `run` layer; rig-core keeps only the message-model invariants
 
 `AgentRun` — the sans-IO, serializable state machine behind every agent run —
 was briefly its own crate during this cycle (`rig-run`, never released). It is
-not: the *vocabulary* every driver needs is now plain rig-core, and the
-program that steps it lives with the one driver that steps it.
+not. rig-core is the provider, tool, transport and message contract and knows
+nothing about agents; everything an agent loop *is* lives in one sans-IO layer
+of rig-agent.
 
-- **rig-core** (available with no runtime and no `agent` feature):
-  `rig_core::transcript` (canonical-transcript helpers and
-  `validate_canonical`), `rig_core::completion::output` (`OutputMode` and the
+- **rig-core keeps two things**, because they are properties of the message
+  model rather than of any loop: `rig_core::transcript::validate_canonical`
+  (+ `TranscriptError` — every assistant tool call answered in the next user
+  message, no orphan results; the shape providers require) and the tool-result
+  constructors `tool_result_output` / `tool_result_message` (a `ToolOutput`
+  becoming user-message content). Nothing else moved into rig-core.
+- **`rig_agent::run`** is the sans-IO layer — data and transitions only, a
+  source-level guard covers every file, all of it `Serialize + Deserialize +
+  Clone`: `AgentRun`, `AgentRunStep`, `ModelTurn`, `ModelTurnOutcome`,
+  `PendingToolCall`, `RunEntry`, `TurnTools`; `run::spec` (`RunSpec`,
+  `RunSpec::DEFAULT_OUTPUT_RETRIES`); `run::prepare` (`prepare_request`,
+  `PreparedRequest`, `PrepareError`); `run::output` (`OutputMode` and the
   output-policy helpers `resolve_output_mode`, `pick_output_tool_name`,
-  `augment_preamble`, `allowed_tool_names_for_choice`, …),
-  `rig_core::completion::patch` (`RequestPatch`), `rig_core::completion::prepare`
-  (`prepare_request`, `PreparedRequest`, `PrepareError`) and
-  `rig_core::completion::spec` (`RunSpec`, `RunSpec::DEFAULT_OUTPUT_RETRIES`).
-  All of it is re-exported from `rig_core::completion` and reachable on the
-  facade as `rig::core::completion::…` / `rig::core::transcript` — without the
-  `agent` feature. rig-core has no run, so nothing that only means something
-  inside one lives there.
-- **rig-agent**: `rig_agent::run` holds `AgentRun`, `AgentRunStep`,
-  `ModelTurn`, `ModelTurnOutcome`, `PendingToolCall`, `RunEntry`, `TurnTools`,
-  and the run's own vocabulary: `run::response` (`PromptResponse`,
-  `CompletionCall`, `PromptError` — a run's result and its loop-level errors),
-  `run::policy` (`InvalidToolCallAction`, `InvalidToolCallContext`,
-  `RetryRequest` — the machine's recovery inputs) and `run::streamed` (the
-  streamed-turn assembler, whose resolutions are the machine's). All of it
-  stays sans-IO (a source-level guard covers these files together with the
-  rig-core modules) and `Serialize + Deserialize + Clone`. `rig::run` is this
-  module and needs the `agent` feature.
+  `augment_preamble`, `allowed_tool_names_for_choice`, …); `run::patch`
+  (`RequestPatch`); `run::response` (`PromptResponse`, `CompletionCall`,
+  `PromptError`); `run::policy` (`InvalidToolCallAction`,
+  `InvalidToolCallContext`, `RetryRequest`); `run::streamed` (the streamed-turn
+  assembler); `run::transcript` (history threading, invalid-call feedback,
+  turn classification, plus re-exports of the rig-core invariants). `rig::run`
+  is this module and needs the `agent` feature.
+- **A second driver** (an ECS schedule, a job system) that steps `AgentRun`
+  itself depends on `rig-agent` with default features off: that graph is
+  rig-core plus the futures vocabulary — no async runtime, transport or MCP
+  client, pinned by `rig_agent_carries_no_runtime_or_mcp` — and
+  `tests/fixtures/agent_run_stepper` is that host in miniature. Because there
+  is exactly one `prepare_request`, every such driver sends the same bytes.
 - Every 0.42 path resolves unchanged: `rig_agent::agent::run::*`,
   `rig_agent::agent::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome,
   PendingToolCall, OutputMode, PromptResponse, CompletionCall, RunSpec,
@@ -1151,7 +1156,7 @@ program that steps it lives with the one driver that steps it.
 
 New, additive:
 
-- **`RunSpec`** (`rig_core::completion::spec::RunSpec`): the protocol-facing
+- **`RunSpec`** (`rig_agent::run::spec::RunSpec`): the protocol-facing
   half of an agent definition as plain `Serialize + Deserialize` data —
   preamble, static context, sampling params, additional params, turn budget,
   tool choice, structured-output policy. `AgentRun::from_spec(&spec, prompt,
@@ -1170,11 +1175,11 @@ New, additive:
   function for histories that come from outside (memory, a resumed run).
   `with_history` stays unchecked.
 
-### The erased model, the erased tool set and request preparation are rig-core
+### The erased model and the erased tool set are rig-core; request preparation is rig-agent's `run` layer
 
-The second step of "one protocol, two drivers". Everything a driver that does
-*not* depend on `rig-agent` needs is now in `rig-core`: the handles, the tool
-set, and the pure request step. Every old path still resolves through
+The second step of "one protocol, two drivers". The erased handles and the
+tool set are rig-core's; the pure request step is rig-agent's sans-IO `run`
+layer (a driver steps it via runtime-free rig-agent). Every old path still resolves through
 re-exports; behavior is unchanged (the recorded provider suites replay the same
 request bodies, and a golden test pins the driver's requests for a scripted
 tool turn). What moved, and what is new:
@@ -1214,7 +1219,7 @@ tool turn). What moved, and what is new:
   `move_to_end`, `catalog`. `ToolServer` / `ToolServerHandle` (retrieval
   indexes, managed remote tool sources, `get_tool_defs(prompt)`, the per-turn
   snapshot) stay in `rig-agent`, layered over these types.
-- **`rig_core::completion::prepare::prepare_request`** (new): the pure `(RunSpec, ProviderCapabilities,
+- **`rig_agent::run::prepare::prepare_request`** (new): the pure `(RunSpec, ProviderCapabilities,
   history, tools, committed output tool, RequestPatch) -> PreparedRequest`
   step — preamble augmentation, static + extra context, output-mode resolution,
   synthetic output-tool synthesis and naming, `active_tools` narrowing,
@@ -1224,18 +1229,18 @@ tool turn). What moved, and what is new:
   `CompletionError::RequestError`. rig-agent's driver now does only the IO
   around it: retrieve the turn's tools, `prepare_request`, bind the selected
   model's builder.
-- **`RequestPatch`** (`rig_core::completion::patch::RequestPatch`, was
+- **`RequestPatch`** (`rig_agent::run::patch::RequestPatch`, was
   `rig_agent::agent::hook::RequestPatch`; still at the old path and
   `rig_agent::agent::RequestPatch`): plain per-turn data, unchanged fields and
   builder methods; `is_empty()` and `merge(later)` are now public. The hook
   that produces it (`CompletionCallAction::patch`) stays in rig-agent.
 
-A driver over `rig-core` alone can now erase a model, build a
-`ToolSet`/`ToolCatalog` from `PortableDynamicTool`s, describe a run with a
-`RunSpec`, `prepare_request`, dispatch a tool by name and thread the result
-back with the transcript helpers — no `AgentRun` required. The guard
-`tests/core/core_run_driver.rs` runs exactly that fixture and checks its
-dependency graph is rig-core only.
+A host that steps `AgentRun` itself can now erase a model, build a
+`ToolSet`/`ToolCatalog` from `PortableDynamicTool`s, construct a run from a
+`RunSpec`, `prepare_request`, and dispatch a tool by name with `rig-agent`
+(default features off) and `rig-core` alone — the guard
+`tests/core/agent_run_stepper.rs` runs exactly that fixture and checks its
+dependency graph carries no runtime, transport, MCP client or `rig` facade.
 
 ### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
 
@@ -5137,7 +5142,7 @@ Renamed or relocated items, for searching.
 | `rig_agent::agent::model::ModelHandle` | `rig_core::completion::ModelHandle` (re-exported at `rig_agent::ModelHandle` / `rig_agent::agent::ModelHandle`) | next |
 | `rig_agent::tool::{Tool, ToolEmbedding, ErasedTool, DynamicTool, ToolSet, tool_definition}` | `rig_core::tool::{..}` (module `rig_core::tool::contextual`; re-exported at the old paths and at `rig::tool::*` without the `agent` feature) | next |
 | `rig_agent::tool::server::ToolRegistrySnapshot` (struct) | `pub type ToolRegistrySnapshot = rig_core::tool::ToolCatalog` | next |
-| `rig_agent::agent::hook::RequestPatch` | `rig_core::completion::patch::RequestPatch` (re-exported at the old path) | next |
+| `rig_agent::agent::hook::RequestPatch` | `rig_agent::run::patch::RequestPatch` (re-exported at the old path) | next |
 | `#[rig_tool]` contextual-tool expansion target `rig_agent::tool::Tool` | `rig_core::tool::Tool` (the macro's "contextual tools require `rig`/`rig-agent`" error is gone) | next |
 | `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
 | `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |

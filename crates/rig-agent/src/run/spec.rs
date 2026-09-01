@@ -7,11 +7,11 @@
 //! `Serialize + Deserialize` data it can be stored, diffed, loaded from a file,
 //! or kept as an ECS component; `AgentRun::from_spec` (rig-agent) turns it into a run.
 
-use crate::completion::Document;
-use crate::message::ToolChoice;
+use rig_core::completion::Document;
+use rig_core::message::ToolChoice;
 use serde::{Deserialize, Serialize};
 
-use crate::completion::output::OutputMode;
+use super::output::OutputMode;
 
 /// Protocol-facing run configuration. See the [module docs](self).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

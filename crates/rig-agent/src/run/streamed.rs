@@ -43,10 +43,10 @@ use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
 
+use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
 use rig_core::completion::{CompletionError, Message, Usage};
 use rig_core::json_utils;
 use rig_core::streaming::{StreamedAssistantContent, ToolCallDeltaContent};
-use rig_core::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
 /// then text, then trailing items (tool calls, images). Maps its inputs 1:1,

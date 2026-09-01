@@ -58,7 +58,7 @@ pub(crate) struct PreparedCompletionRequest {
 ///
 /// The driver's share is the IO around the protocol: retrieve this turn's
 /// tools (the one `.await`), hand them with the spec and patch to
-/// [`rig_core::completion::prepare::prepare_request`], then bind the prepared data to the selected
+/// [`crate::run::prepare::prepare_request`], then bind the prepared data to the selected
 /// model's request builder and pin the snapshot to the executable set.
 pub(crate) async fn build_prepared_completion_request(
     runner: &crate::agent::AgentRunner,
@@ -90,7 +90,7 @@ pub(crate) async fn build_prepared_completion_request(
         .clone_from(&runner.output_tool_description);
     spec.augment_output_preamble = runner.augment_output_preamble;
 
-    let prepared = rig_core::completion::prepare::prepare_request(
+    let prepared = crate::run::prepare::prepare_request(
         &spec,
         &model.capabilities(),
         chat_history,
@@ -237,8 +237,8 @@ impl AgentConfig {
     /// The protocol-facing half of this configuration as plain data: what a
     /// driver needs to shape requests and budget a run, without the model,
     /// hooks, memory or identity this config also carries.
-    pub(crate) fn run_spec(&self) -> rig_core::completion::spec::RunSpec {
-        rig_core::completion::spec::RunSpec {
+    pub(crate) fn run_spec(&self) -> crate::run::spec::RunSpec {
+        crate::run::spec::RunSpec {
             preamble: self.preamble.clone(),
             static_context: self.static_context.clone(),
             additional_params: self.additional_params.clone(),
@@ -263,7 +263,7 @@ impl AgentConfig {
     /// not a valid JSON schema.
     pub(crate) fn apply_run_spec(
         &mut self,
-        spec: &rig_core::completion::spec::RunSpec,
+        spec: &crate::run::spec::RunSpec,
     ) -> Result<(), serde_json::Error> {
         self.preamble.clone_from(&spec.preamble);
         self.static_context.clone_from(&spec.static_context);
@@ -284,10 +284,10 @@ impl AgentConfig {
 
 impl Agent {
     /// The protocol-facing configuration of this agent as plain data
-    /// ([`RunSpec`](rig_core::completion::spec::RunSpec)): preamble, static context, sampling
+    /// ([`RunSpec`](crate::run::spec::RunSpec)): preamble, static context, sampling
     /// parameters, turn budget, tool choice and structured-output policy —
     /// everything a run needs that is not a model, a tool, a hook or a memory.
-    pub fn run_spec(&self) -> rig_core::completion::spec::RunSpec {
+    pub fn run_spec(&self) -> crate::run::spec::RunSpec {
         self.config.run_spec()
     }
 }
@@ -519,7 +519,7 @@ mod request_identity_tests {
     //! tool turn — preamble, static context, a `CompletionCall` patch
     //! (preamble/temperature/max_tokens/tool_choice/active_tools/
     //! additional_params/extra_context), an output schema in Tool mode — so
-    //! `rig_core::completion::prepare::prepare_request` cannot drift from what the agent sent before
+    //! `crate::run::prepare::prepare_request` cannot drift from what the agent sent before
     //! request preparation moved into the protocol crate. The golden values
     //! were captured from the pre-move driver; the cassette suites replay the
     //! same bodies against recorded provider traffic.

@@ -31,18 +31,17 @@ driver; the machine itself never awaits (a source-level guard keeps it so) and
 is `Serialize + Deserialize`, so a run can be suspended between steps and
 resumed in another process.
 
-The vocabulary the machine is built from is rig-core's and needs neither this
-crate nor a runtime: `rig_core::completion::prepare::prepare_request` (the pure
-`(RunSpec, capabilities, history, tools, patch) → PreparedRequest` step, so
-every driver sends the same bytes), `rig_core::completion::spec::RunSpec`,
-`rig_core::completion::{output, patch}` and
-`rig_core::transcript`. A host that drives runs itself (an ECS schedule, a job
-system) builds on those alone — `tests/fixtures/core_run_driver` in the repo
-is exactly that, with no rig-agent in its graph. A host that would rather keep
-`AgentRun` as its loop and only own the IO around it depends on this crate
-with default features off: that graph carries no async runtime, transport or
-MCP client (a dependency guard pins it), and
-`tests/fixtures/agent_run_stepper` is that host in miniature.
+Everything an agent loop *is* sits beside it in `rig_agent::run` — the
+`RunSpec` it is configured by, `prepare_request` (the pure `(RunSpec,
+capabilities, history, tools, patch) → PreparedRequest` step, so every driver
+sends the same bytes), the output policy, the per-turn `RequestPatch`, the
+run's response and error types, the invalid-call decisions, the streamed-turn
+assembler and the loop-side transcript helpers — all sans-IO and serializable.
+rig-core keeps only the message-model invariants (`validate_canonical`, the
+tool-result constructors). A host that drives runs itself (an ECS schedule, a
+job system) depends on this crate with default features off: that graph
+carries no async runtime, transport or MCP client (a dependency guard pins it),
+and `tests/fixtures/agent_run_stepper` is that host in miniature.
 
 ## Runtime model routing
 

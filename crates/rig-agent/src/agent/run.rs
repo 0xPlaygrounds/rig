@@ -2,8 +2,8 @@
 //!
 //! `AgentRun`, its step/turn types, the run's response and error types, the
 //! invalid-call decision data and the streamed-turn assembler live at
-//! [`crate::run`]; the request vocabulary they are built from is rig-core's
-//! (`rig_core::{transcript, completion::{output, patch, prepare, spec}}`).
+//! [`crate::run`], as do the request-assembly vocabulary (`spec`, `prepare`,
+//! `output`, `patch`) and the loop-side transcript helpers.
 //! Every path under `rig_agent::agent::run` resolves as before.
 
 pub use crate::run::*;
@@ -13,7 +13,7 @@ pub mod streamed {
     pub use crate::run::streamed::*;
 }
 
-/// Structured-output mode, re-exported from `rig_core::completion::output`.
+/// Structured-output mode, re-exported from [`crate::run::output`].
 pub mod output_mode {
-    pub use rig_core::completion::output::*;
+    pub use crate::run::output::*;
 }

@@ -251,7 +251,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// tool call, the default when the agent has tools), [`OutputMode::Native`]
     /// (provider structured output), or [`OutputMode::Prompted`] (see #1928).
     /// Has no effect unless `output_schema`/`output_schema_raw` is also set.
-    /// Apply a [`RunSpec`](rig_core::completion::spec::RunSpec) — the protocol-facing half of
+    /// Apply a [`RunSpec`](crate::run::spec::RunSpec) — the protocol-facing half of
     /// an agent definition as plain data (loaded from a file, built by a
     /// host) — over this builder's current values. Model, tools, hooks and
     /// memory are untouched; later builder calls override individual fields.
@@ -259,7 +259,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// Fails only if `spec.output_schema` is not a valid JSON schema.
     pub fn apply_spec(
         mut self,
-        spec: &rig_core::completion::spec::RunSpec,
+        spec: &crate::run::spec::RunSpec,
     ) -> Result<Self, serde_json::Error> {
         self.config.apply_run_spec(spec)?;
         Ok(self)

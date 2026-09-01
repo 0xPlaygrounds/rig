@@ -29,16 +29,8 @@
 
 pub mod handle;
 pub mod message;
-pub mod output;
-pub mod patch;
-pub mod prepare;
 pub mod request;
-pub mod spec;
 
 pub use handle::{ModelHandle, ModelRef};
 pub use message::{AssistantContent, Message, MessageError};
-pub use output::OutputMode;
-pub use patch::RequestPatch;
-pub use prepare::{PrepareError, PreparedRequest, prepare_request};
 pub use request::*;
-pub use spec::RunSpec;

@@ -18,10 +18,10 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn};
+use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-    ModelHandle, ModelRef, Usage, prepare::prepare_request, spec::RunSpec,
+    ModelHandle, ModelRef, Usage,
 };
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::streaming::StreamingCompletionResponse;

@@ -1,12 +1,14 @@
-//! Canonical-transcript helpers: how a turn's messages are threaded so that an
-//! assistant tool call is always paired with its results in the next user
-//! message, and how the recovery feedback for an invalid call is phrased.
+//! Canonical-transcript invariants of the message model: a valid conversation
+//! answers every assistant tool call in the next user message and carries no
+//! orphan results ([`validate_canonical`]), and a tool's output becomes that
+//! user-message content through one constructor ([`tool_result_output`]).
+//! How an agent loop *uses* these — history threading, recovery feedback,
+//! turn classification — lives with the loop (`rig_agent::run::transcript`).
 
 use std::collections::BTreeSet;
 
 use crate::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolResultContent, UserContent,
-    non_empty,
 };
 use crate::tool::ToolOutput;
 
@@ -43,9 +45,10 @@ pub enum TranscriptError {
 /// Check that `messages` is a canonical transcript: no two assistant messages
 /// in a row, every assistant tool call answered by a tool result in the very
 /// next message, and no tool result that answers no call from the preceding
-/// assistant message. This is the shape the protocol produces
-/// ([`build_full_history`], [`tool_result_message`]) and the shape it expects
-/// back when a driver resumes a run or loads history from memory.
+/// assistant message. This is the shape an agent loop produces (rig-agent's
+/// run threads history this way and answers calls with
+/// [`tool_result_message`]) and the shape it expects back when a driver
+/// resumes a run or loads history from memory.
 pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
     let mut prev_assistant_calls: Option<BTreeSet<String>> = None;
     let mut prev_was_assistant = false;
@@ -106,29 +109,6 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
     Ok(())
 }
 
-pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
-    "Tool not executed because another tool call in the same assistant turn was invalid.";
-
-/// Combine input history with new messages for building completion requests.
-pub fn build_history_for_request(
-    chat_history: Option<&[Message]>,
-    new_messages: &[Message],
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().chain(new_messages.iter()).cloned().collect()
-}
-
-/// Build the full history for error reporting (input + new messages).
-pub fn build_full_history(
-    chat_history: Option<&[Message]>,
-    new_messages: Vec<Message>,
-) -> Vec<Message> {
-    let input = chat_history.unwrap_or(&[]);
-    input.iter().cloned().chain(new_messages).collect()
-}
-
-/// Wrap already-shaped tool-result content for the model (see
-/// [`tool_result_output`] / [`tool_result_message`]).
 fn tool_result_with(
     call: ToolCallId,
     provider: Option<ProviderCallId>,
@@ -163,134 +143,6 @@ pub fn tool_result_message(
     message: String,
 ) -> UserContent {
     tool_result_with(call, provider, name, vec![ToolResultContent::text(message)])
-}
-
-pub fn invalid_tool_retry_user_message(
-    assistant_content: &[AssistantContent],
-    invalid_tool_call_id: &ToolCallId,
-    feedback: &str,
-) -> Option<Message> {
-    // Selecting the invalid call by id is correct by construction:
-    // `ToolCallId` is unique and non-empty (minted at the provider boundary
-    // when the wire issued none), so id-less wires can no longer collapse
-    // every peer onto the first match arm.
-    let retry_results = assistant_content
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) if tool_call.id == *invalid_tool_call_id => {
-                Some(tool_result_message(
-                    tool_call.id.clone(),
-                    tool_call.provider.clone(),
-                    tool_call.function.name.clone(),
-                    feedback.to_string(),
-                ))
-            }
-            AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
-                tool_call.id.clone(),
-                tool_call.provider.clone(),
-                tool_call.function.name.clone(),
-                TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-            )),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    Some(Message::User {
-        content: non_empty(retry_results)?,
-    })
-}
-
-/// Whether an assistant turn carried nothing the caller should see.
-///
-/// Two shapes mean the same thing, and both must be recognised:
-///
-/// - **Zero parts.** A turn that produced no text and no tool call is an
-///   empty list — the shape the streaming path produces (its assembler
-///   filters empty text deltas out of the canonical order).
-/// - **One empty, unannotated text block.** A blocking wire can deliver an
-///   assistant message whose only part is an empty text block; it carries
-///   nothing, and the agent curates it out of history exactly as it curates
-///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
-///   empty text block carries data and must not read as empty. Annotation is
-///   a plain `is_some()`: [`crate::message::AdditionalParams`] is
-///   non-empty by construction, so `Some` always carries data, live and
-///   restored alike (pinned by
-///   `empty_turn_classification_survives_a_serde_round_trip`).
-///
-/// This runs on turns flowing through the agent loop only. Caller-supplied
-/// `chat_history` is never filtered: an empty text block you replay goes to
-/// the wire as-is.
-pub fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
-    if choice.is_empty() {
-        return true;
-    }
-
-    choice.len() == 1
-        && matches!(
-            choice.first(),
-            Some(AssistantContent::Text(text))
-                if text.text.is_empty() && text.additional_params.is_none()
-        )
-}
-
-/// Whether a turn delivered **no answer**: no tool call, and no non-empty text
-/// block.
-///
-/// Deliberately *not* [`is_empty_assistant_turn`], which answers a different
-/// question — "does this turn belong in history". They diverge on the shapes
-/// that are **worth recording yet answer nothing**, of which there are two:
-///
-/// 1. a turn carrying only [`AssistantContent::Reasoning`] — the reasoning is
-///    real content worth replaying, but it is not an answer;
-/// 2. a turn carrying only an **empty text block with `additional_params`** —
-///    the annotation (citations, encrypted reasoning references, and other
-///    provider metadata some wires require on replay) is worth recording, but
-///    the caller still receives no text.
-///
-/// Metadata-only text therefore does **not** count as an answer. That follows
-/// from what the caller actually gets: [`assistant_text_from_choice`]
-/// concatenates `text.text` alone, so such a turn yields `""` — the annotation
-/// is metadata *about* an answer, never the answer itself.
-///
-/// Reasoning is not an answer. It is the model's scratch work, it is often not
-/// even replayable across turns, and a caller asked a question rather than for
-/// the thinking. Treating it as output is how a thinking model that burned its
-/// whole budget mid-thought used to report success with an empty string
-/// (rig#2322): Gemini counts thinking tokens against `maxOutputTokens`, so a
-/// truncated thinking turn *typically* carries reasoning and no text — the
-/// common case, not a corner one.
-///
-/// Tool calls count as delivered: they are an answer in progress, and a
-/// truncated tool-call turn must still route to execution. So do images —
-/// ten providers emit assistant images, and an image *is* the answer for an
-/// image-generation turn.
-///
-/// The match is **exhaustive on purpose**: no `_` arm. Every content variant
-/// must be classified explicitly, so adding one to [`AssistantContent`] breaks
-/// this build and forces a decision instead of silently inheriting a default.
-/// The first version of this predicate had a `_ => false` catch-all and so
-/// classified image-only turns as "no answer" — a truncated image-generation
-/// turn would have errored despite delivering an image, which matters because
-/// image tokens count against the same output budget.
-pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
-    !choice.iter().any(|content| match content {
-        // Real text is an answer; an empty block delivers nothing.
-        AssistantContent::Text(text) => !text.text.is_empty(),
-        AssistantContent::ToolCall(_) => true,
-        AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
-    })
-}
-
-pub fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 #[cfg(test)]
