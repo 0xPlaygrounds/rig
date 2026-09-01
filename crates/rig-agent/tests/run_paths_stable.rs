@@ -4,6 +4,9 @@
 
 #![allow(unused_imports)]
 
+use rig_agent::agent::hook::{
+    InvalidToolCallAction, InvalidToolCallContext, RequestPatch, RetryRequest, RunEntry,
+};
 use rig_agent::agent::run::output_mode::OutputMode as _OutputModeViaRun;
 use rig_agent::agent::run::streamed::{
     PartialStreamedTurn as _P, StreamedInvalidToolCall as _I, StreamedResolution as _R,
@@ -11,20 +14,18 @@ use rig_agent::agent::run::streamed::{
 };
 use rig_agent::agent::run::{
     AgentRun as _AgentRunViaRun, AgentRunStep as _StepViaRun, ModelTurn as _TurnViaRun,
-    ModelTurnOutcome as _OutcomeViaRun, PendingToolCall as _PendingViaRun, RunEntry as _EntryViaRun,
-    TurnTools as _ToolsViaRun,
+    ModelTurnOutcome as _OutcomeViaRun, PendingToolCall as _PendingViaRun,
+    RunEntry as _EntryViaRun, TurnTools as _ToolsViaRun,
 };
 use rig_agent::agent::{
     AgentRun, AgentRunStep, CompletionCall, ModelTurn, ModelTurnOutcome, OutputMode,
     PendingToolCall, PromptResponse, RunSpec, TurnTools,
 };
-use rig_agent::agent::hook::{
-    InvalidToolCallAction, InvalidToolCallContext, RequestPatch, RetryRequest, RunEntry,
-};
 use rig_agent::completion::PromptError;
 use rig_agent::run::{AgentRun as _AgentRunDirect, RunEntry as _EntryDirect};
 use rig_core::completion::{
-    output::OutputMode as _CoreOutputMode, policy::RequestPatch as _CorePatch,
+    output::OutputMode as _CoreOutputMode,
+    policy::RequestPatch as _CorePatch,
     prepare::{PreparedRequest, prepare_request},
     response::{CompletionCall as _CoreCall, PromptError as _CoreErr, PromptResponse as _CoreResp},
     spec::RunSpec as _CoreSpec,

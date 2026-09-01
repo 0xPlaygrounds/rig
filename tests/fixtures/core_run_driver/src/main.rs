@@ -23,8 +23,8 @@ use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{PortableDynamicTool, ToolCatalog, ToolContext, ToolOutput, ToolSet};
 use rig_core::transcript::{
-    assistant_text_from_choice, build_full_history, build_history_for_request,
-    tool_result_output, validate_canonical,
+    assistant_text_from_choice, build_full_history, build_history_for_request, tool_result_output,
+    validate_canonical,
 };
 use rig_core::wasm_compat::WasmCompatSend;
 
@@ -195,7 +195,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 7. The full transcript is canonical and yields the answer.
     let transcript = build_full_history(Some(&history), vec![tool_result_turn, final_turn]);
     validate_canonical(&transcript)?;
-    assert_eq!(transcript.len(), 4, "prompt, tool call, tool result, answer");
+    assert_eq!(
+        transcript.len(),
+        4,
+        "prompt, tool call, tool result, answer"
+    );
     assert_eq!(assistant_text_from_choice(&final_choice), "done");
     println!("core-run-driver: ok");
     Ok(())

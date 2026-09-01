@@ -257,7 +257,10 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// memory are untouched; later builder calls override individual fields.
     ///
     /// Fails only if `spec.output_schema` is not a valid JSON schema.
-    pub fn apply_spec(mut self, spec: &rig_core::completion::spec::RunSpec) -> Result<Self, serde_json::Error> {
+    pub fn apply_spec(
+        mut self,
+        spec: &rig_core::completion::spec::RunSpec,
+    ) -> Result<Self, serde_json::Error> {
         self.config.apply_run_spec(spec)?;
         Ok(self)
     }

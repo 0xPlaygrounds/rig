@@ -132,9 +132,9 @@ pub use prompt_request::{
     CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, ResponseIdentity,
     Standard, TypedPromptRequest, TypedPromptResponse,
 };
+pub use rig_core::completion::spec::RunSpec;
 pub use rig_core::completion::{ModelHandle, ModelRef};
 pub use rig_core::message::Text;
-pub use rig_core::completion::spec::RunSpec;
 pub use run::TurnTools;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;

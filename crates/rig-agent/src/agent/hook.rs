@@ -546,7 +546,9 @@ impl HookContext {
     }
 }
 
-pub use rig_core::completion::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
+pub use rig_core::completion::policy::{
+    InvalidToolCallAction, InvalidToolCallContext, RetryRequest,
+};
 
 /// Completion-call event.
 ///

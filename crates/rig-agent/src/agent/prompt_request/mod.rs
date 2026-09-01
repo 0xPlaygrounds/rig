@@ -318,11 +318,11 @@ impl PromptRequest<Standard> {
     }
 }
 
+/// Details for one successfully completed completion request made by an agent run.
+pub use rig_core::completion::response::{CompletionCall, PromptResponse};
 pub(crate) use rig_core::transcript::{
     assistant_text_from_choice, is_empty_assistant_turn, tool_result_output,
 };
-/// Details for one successfully completed completion request made by an agent run.
-pub use rig_core::completion::response::{CompletionCall, PromptResponse};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedPromptResponse<T> {
     pub output: T,
