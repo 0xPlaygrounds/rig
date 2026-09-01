@@ -193,14 +193,6 @@ impl AwsCompletionRequest {
             full_history.push(Message::User { content });
         }
 
-        // Compute before the history is moved below.
-        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
-            Message::Assistant { content, .. } => content
-                .iter()
-                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
-            _ => false,
-        });
-
         full_history.extend(
             self.inner
                 .chat_history
@@ -213,16 +205,7 @@ impl AwsCompletionRequest {
             .map(|message| RigMessage(message).try_into())
             .collect::<Result<Vec<aws_bedrock::Message>, _>>()?;
 
-        // Bedrock rejects cache points placed after reasoning blocks
-        // ("Cache point cannot be inserted after reasoning block"). When the
-        // request carries any reasoning content (round-tripped from a prior
-        // turn), Anthropic's backend treats the trailing cache point as
-        // following reasoning even when the literal previous block is a tool
-        // result. Skip the message-level checkpoint in that case; the
-        // system-prompt cache point still applies and captures the largest
-        // stable prefix.
         if self.prompt_caching
-            && !has_reasoning
             && let Some(last_msg) = messages.last_mut()
         {
             let mut content = std::mem::take(&mut last_msg.content);
@@ -591,49 +574,6 @@ mod tests {
             messages[0].content.last(),
             Some(aws_bedrock::ContentBlock::CachePoint(_))
         ));
-    }
-
-    #[test]
-    fn test_messages_skip_cache_point_when_history_contains_reasoning() {
-        // Bedrock's Anthropic backend rejects "Cache point cannot be inserted
-        // after reasoning block" whenever the chat history carries a prior
-        // reasoning turn, even if the literal trailing block is a tool result.
-        // Verify the message-level checkpoint is suppressed in that case.
-        let reasoning =
-            rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
-        let request = CompletionRequest {
-            chat_history: vec![
-                Message::User {
-                    content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
-                },
-                Message::Assistant {
-                    id: None,
-                    content: vec![rig_core::completion::AssistantContent::Reasoning(reasoning)],
-                },
-                Message::User {
-                    content: vec![UserContent::Text(Text::new("follow up".to_string()))],
-                },
-            ],
-            ..minimal_request()
-        };
-
-        let aws_request = aws_request(request, true);
-
-        // The system-prompt cache point path is independent and unaffected;
-        // read it before `messages()` consumes the request.
-        let system_only = aws_request.system_prompt().expect("system prompt builds");
-        assert!(system_only.is_none() || !system_only.unwrap().is_empty());
-
-        let messages = aws_request.messages().expect("messages should convert");
-
-        let last_message = messages.last().expect("messages should not be empty");
-        assert!(
-            !last_message
-                .content
-                .iter()
-                .any(|c| matches!(c, aws_bedrock::ContentBlock::CachePoint(_))),
-            "message-level cache point should be skipped when chat history contains reasoning"
-        );
     }
 
     #[test]
