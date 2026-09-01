@@ -95,6 +95,33 @@ jobs:
   #
   # `wasm32-unknown-unknown` (browser) is the only supported wasm target. See
   # crates/rig-agent/README.md for the matrix.
+  # CHANGELOG.md, crates/*/CHANGELOG.md, MIGRATING.md and docs/migrations/
+  # are written only on the release PR (from merged PR descriptions and the
+  # public API diff), never in an ordinary PR — see AGENTS.md "Release
+  # documents are generated". Release PRs are exempt: a `release-plz-*` head
+  # branch or the `release` label. On the cd.yaml `workflow_call` (a push,
+  # no head_ref) the condition is false and the job is skipped, which is
+  # the intended behavior — there is no PR to guard.
+  frozen-release-docs:
+    name: stable / release docs untouched
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      !startsWith(github.head_ref, 'release-plz-') &&
+      !contains(github.event.pull_request.labels.*.name, 'release')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check release docs are untouched
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          bash .github/scripts/check-frozen-release-docs.sh
+
   check-wasm-runtimes:
     name: stable / check ${{ matrix.package }} wasm target
     runs-on: ubuntu-latest

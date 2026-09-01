@@ -5,7 +5,7 @@ set -euo pipefail
 readonly guide="MIGRATING.md"
 readonly start_marker="<!-- MIGRATING-GUIDE-INSTRUCTIONS:START -->"
 readonly end_marker="<!-- MIGRATING-GUIDE-INSTRUCTIONS:END -->"
-readonly expected_hash="4ee35673f3dc6cd57d77814c9476b49ea63cfab1"
+readonly expected_hash="0806089e314287bafa8980eb2ae9b37a22d40b68"
 
 start_matches="$(grep -nFx "${start_marker}" "${guide}" || true)"
 end_matches="$(grep -nFx "${end_marker}" "${guide}" || true)"

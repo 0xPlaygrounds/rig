@@ -101,6 +101,12 @@ Box<dyn std::error::Error + 'static>
 - Do not document integrations, features, model constants, or crate paths without checking the code and manifests.
 - Keep root README, crate READMEs, and crate-level Rust docs consistent when changing public-facing behavior.
 
+## Release Documents Are Generated
+
+- Never edit `CHANGELOG.md`, `crates/*/CHANGELOG.md`, `MIGRATING.md`, or `docs/migrations/`. CI rejects the PR.
+- Put changelog bullets and migration notes in the PR description under `## Changelog` and `## Migration`, following the PR template. When the user asks to "update the changelog" or "add a migration note", that is what it means.
+- These files are regenerated on the release PR by `scripts/release-notes.sh` and the editorial pass in `scripts/release-notes-prompt.md`. Only touch them when the user explicitly says the branch is a release PR.
+
 ## Provider Changes
 
 Before implementing or modifying a provider, study the closest existing provider
