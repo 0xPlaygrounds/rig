@@ -214,7 +214,7 @@ use crate::{
 
 pub use rig_core::id::RunId;
 
-pub use rig_run::RunEntry;
+pub use crate::run::RunEntry;
 
 /// Run-scoped typed storage shared by hooks — the in-process cross-hook
 /// channel.
@@ -546,7 +546,7 @@ impl HookContext {
     }
 }
 
-pub use rig_run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
+pub use crate::run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 
 /// Completion-call event.
 ///
@@ -940,7 +940,7 @@ pub struct RunSettled<'a> {
 #[derive(Clone, Copy)]
 pub enum SettledOutcome<'a> {
     /// The run completed with this final response.
-    Response(&'a rig_run::PromptResponse),
+    Response(&'a crate::run::response::PromptResponse),
     /// The run terminated with an error, rendered via its `Display` form.
     Error(&'a str),
 }
@@ -962,7 +962,7 @@ pub enum StepEventKind {
     StreamResponseFinish,
 }
 
-pub use rig_run::policy::RequestPatch;
+pub use crate::run::patch::RequestPatch;
 
 /// Action for model-selection hooks.
 #[derive(Debug, Clone)]

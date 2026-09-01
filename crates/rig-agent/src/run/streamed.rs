@@ -8,30 +8,30 @@
 //! driver can stop paying for a doomed provider stream early.
 //!
 //! The protocol, paired with the streamed entry points on
-//! [`AgentRun`](super::AgentRun):
+//! `AgentRun`:
 //!
-//! 1. On [`AgentRunStep::CallModel`](super::AgentRunStep::CallModel), open a
+//! 1. On `AgentRunStep::CallModel`, open a
 //!    provider stream and create one assembler per turn with the tool names
 //!    advertised for that turn.
 //! 2. Feed every stream item to [`StreamedTurnAssembler::ingest`] and act on
 //!    the returned [`StreamedTurnEvent`]s: forward items to the consumer, and
 //!    on [`StreamedTurnEvent::InvalidToolCall`] consult
-//!    [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call) —
+//!    `AgentRun::resolve_streamed_invalid_tool_call` —
 //!    [`StreamedResolution::Repaired`] continues the same stream via
 //!    [`StreamedTurnAssembler::resolve_pending_invalid`];
 //!    [`StreamedResolution::TurnAbandoned`] means drain the provider stream
 //!    for usage and re-enter
-//!    [`AgentRun::next_step`](super::AgentRun::next_step).
+//!    `AgentRun::next_step`.
 //! 3. When the provider stream ends, call [`StreamedTurnAssembler::finish`]
 //!    and feed the result to
-//!    [`AgentRun::streamed_turn`](super::AgentRun::streamed_turn); the run
+//!    `AgentRun::streamed_turn`; the run
 //!    then proceeds exactly like a non-streamed one
-//!    ([`CallTools`](super::AgentRunStep::CallTools) /
-//!    [`Done`](super::AgentRunStep::Done)).
+//!    (`CallTools` /
+//!    `Done`).
 //!
 //! `StreamingPrompt::stream_prompt` drives this protocol
 //! internally; hand-driven runs can use it to stream any
-//! [`AgentRun`](super::AgentRun).
+//! `AgentRun`.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -43,7 +43,7 @@ use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
 
-use crate::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
+use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
 use rig_core::completion::{CompletionError, Message, Usage};
 use rig_core::json_utils;
 use rig_core::streaming::{StreamedAssistantContent, ToolCallDeltaContent};
@@ -131,7 +131,7 @@ pub fn assistant_text_items_from_choice(choice: &[AssistantContent]) -> Vec<Assi
 }
 
 /// One invalid tool call surfaced mid-stream, awaiting a resolution from
-/// [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call).
+/// `AgentRun::resolve_streamed_invalid_tool_call`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedInvalidToolCall {
     /// The rejected tool call. For a name delta this is a diagnostic call
@@ -238,7 +238,7 @@ impl PartialStreamedTurn {
 }
 
 /// The assembled streamed turn, fed to
-/// [`AgentRun::streamed_turn`](super::AgentRun::streamed_turn).
+/// `AgentRun::streamed_turn`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedTurn {
     /// Provider-assigned assistant message ID, when available.
@@ -257,11 +257,9 @@ pub struct StreamedTurn {
     #[serde(default)]
     pub internal_call_ids: Vec<(String, InternalCallId)>,
     /// Why the provider stopped generating this turn, when it reported a
-    /// reason — the streamed analogue of [`ModelTurn::finish_reason`], so a
+    /// reason — the streamed analogue of `ModelTurn::finish_reason`, so a
     /// driver that feeds turns through `streamed_turn` records the same
     /// terminal reason the blocking surface does (rig#2322).
-    ///
-    /// [`ModelTurn::finish_reason`]: super::ModelTurn::finish_reason
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
 }
@@ -282,7 +280,7 @@ pub enum StreamedResolution {
     /// The turn was rolled back (retry) or the call skipped; corrective
     /// messages are already in the history. Drain the provider stream for
     /// usage, record the completion call, then call
-    /// [`AgentRun::next_step`](super::AgentRun::next_step).
+    /// `AgentRun::next_step`.
     TurnAbandoned {
         /// For a skipped call, the synthetic tool result to surface to the
         /// consumer stream. Boxed: the result dwarfs the other variant.
@@ -308,12 +306,12 @@ pub enum StreamedTurnEvent {
         content: ToolCallDeltaContent,
     },
     /// The model emitted an unknown or disallowed tool call. Resolve it via
-    /// [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call),
+    /// `AgentRun::resolve_streamed_invalid_tool_call`,
     /// then apply the outcome with
     /// [`StreamedTurnAssembler::resolve_pending_invalid`].
     InvalidToolCall(Box<StreamedInvalidToolCall>),
     /// The provider supplied its typed final payload. Record its usage (see
-    /// [`AgentRun::record_streamed_completion_call`](super::AgentRun::record_streamed_completion_call));
+    /// `AgentRun::record_streamed_completion_call`);
     /// this does not establish that the provider stream reached EOF. When
     /// `emit_final` is set, the turn streamed text and the driver should buffer
     /// the final item until EOF finalizes the turn.
@@ -393,7 +391,7 @@ enum PendingInvalid {
 /// Sans-IO accumulator that assembles one streamed model turn. See the
 /// [module docs](self) for the driving protocol.
 ///
-/// `Clone + Serialize + Deserialize`, like [`AgentRun`](crate::AgentRun): a
+/// `Clone + Serialize + Deserialize`, like `AgentRun`: a
 /// mid-stream assembler can be persisted and resumed (same caveats — no
 /// cross-version format stability). Dropping one mid-turn is a normal
 /// cancellation path and is silent unless replayed assistant content was
@@ -940,10 +938,10 @@ impl StreamedTurnAssembler {
 
 #[cfg(test)]
 mod tests {
+    use super::super::policy::InvalidToolCallAction;
+    use super::super::response::PromptError;
+    use super::super::{AgentRun, AgentRunStep};
     use super::*;
-    use crate::error::PromptError;
-    use crate::policy::InvalidToolCallAction;
-    use crate::run::{AgentRun, AgentRunStep};
     use rig_core::message::{Text, ToolResultContent, UserContent};
     use rig_core::test_utils::mock_final;
     use serde_json::json;
@@ -1037,13 +1035,6 @@ mod tests {
         StreamedAssistantContent::ToolCallDelta {
             internal_call_id: iid_for(id),
             content: ToolCallDeltaContent::Delta(arguments.to_string()),
-        }
-    }
-
-    fn expect_invalid(events: Vec<StreamedTurnEvent>) -> StreamedInvalidToolCall {
-        match events.into_iter().next() {
-            Some(StreamedTurnEvent::InvalidToolCall(invalid)) => *invalid,
-            other => panic!("expected InvalidToolCall, got {other:?}"),
         }
     }
 
@@ -1675,6 +1666,13 @@ mod tests {
             serde_json::to_value(&turn.choice).expect("serialize"),
             serde_json::to_value(&final_choice).expect("serialize"),
         );
+    }
+
+    fn expect_invalid(events: Vec<StreamedTurnEvent>) -> StreamedInvalidToolCall {
+        match events.into_iter().next() {
+            Some(StreamedTurnEvent::InvalidToolCall(invalid)) => *invalid,
+            other => panic!("expected InvalidToolCall, got {other:?}"),
+        }
     }
 
     #[test]

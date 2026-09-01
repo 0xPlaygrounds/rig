@@ -35,10 +35,14 @@
 //!
 //! `Prompt::prompt` and
 //! `Agent::runner` drive this machine internally;
-//! the same machine can be driven by hand for custom provider control flow:
+//! the same machine can be driven by hand for custom provider control flow.
+//! A host that does so (an ECS schedule, a job system) depends on `rig-agent`
+//! with default features off — that graph carries no async runtime, transport
+//! or MCP client (guarded), only rig-core and the futures vocabulary — and
+//! `tests/fixtures/agent_run_stepper` is that host in miniature:
 //!
 //! ```rust,no_run
-//! use rig_run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+//! use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut run = AgentRun::new("What is 2+2?").max_turns(3);
@@ -64,7 +68,16 @@
 //! # }
 //! ```
 
-pub use crate::output_mode::OutputMode;
+pub mod output;
+pub mod patch;
+pub mod prepare;
+pub mod spec;
+pub mod transcript;
+
+pub use output::OutputMode;
+pub use patch::RequestPatch;
+pub use prepare::{PrepareError, PreparedRequest, prepare_request};
+pub use spec::RunSpec;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -92,20 +105,21 @@ use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 
-use crate::{
-    error::PromptError,
-    policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
-    response::{CompletionCall, PromptResponse},
-    transcript::{
-        TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, assistant_text_from_choice, build_full_history,
-        build_history_for_request, invalid_tool_retry_user_message, is_empty_assistant_turn,
-        tool_result_message, turn_delivered_no_answer,
-    },
-};
 use rig_core::completion::{Message, ResponseIdentity, Usage};
-use rig_core::json_utils;
+pub mod policy;
+pub mod response;
+pub mod streamed;
 
-pub use crate::streamed::{
+pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
+pub use response::{CompletionCall, PromptError, PromptResponse};
+use rig_core::json_utils;
+use transcript::{
+    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
+    build_full_history, build_history_for_request, invalid_tool_retry_user_message,
+    is_empty_assistant_turn, tool_result_message, turn_delivered_no_answer, validate_canonical,
+};
+
+pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
     StreamedTurnAssembler, StreamedTurnEvent,
 };
@@ -161,11 +175,6 @@ enum ValidatedInvalidToolCallAction {
     Repair { tool_name: String },
     Skip { reason: String },
 }
-
-/// Default number of times Tool output mode re-prompts the model for valid
-/// structured output before finalizing best-effort (see #1928). Mirrors
-/// pydantic-ai's default output-retry budget of 1.
-pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
 
 /// What a driver must do next to advance an [`AgentRun`].
 ///
@@ -246,7 +255,7 @@ pub struct ModelTurn {
 
 impl ModelTurn {
     /// The one blessed conversion from a provider response to a protocol
-    /// turn, given the [`PreparedRequest`](crate::prepare::PreparedRequest)
+    /// turn, given the [`PreparedRequest`]
     /// the call was prepared from.
     ///
     /// Every driver — rig-agent's futures runner and any external systems
@@ -258,10 +267,7 @@ impl ModelTurn {
     /// finish reason is the response's normalized
     /// [`finish_reason()`](CompletionResponse::finish_reason) accessor, never
     /// a raw provider field.
-    pub fn from_response(
-        resp: &CompletionResponse,
-        prepared: &crate::prepare::PreparedRequest,
-    ) -> Self {
+    pub fn from_response(resp: &CompletionResponse, prepared: &prepare::PreparedRequest) -> Self {
         Self::from_response_parts(
             resp,
             prepared.executable_tool_names.clone(),
@@ -515,7 +521,7 @@ pub struct RunEntry {
     /// One-based model-call index current when the entry was appended
     /// (0 before the first call). Deliberately not a wall-clock timestamp:
     /// [`AgentRun`] is deterministic, serializable state — no clocks in
-    /// rig-run. A host that wants timestamps puts them in [`value`](Self::value).
+    /// the protocol. A host that wants timestamps puts them in [`value`](Self::value).
     pub turn: usize,
     /// The appended value, verbatim JSON. `Value::Null` marker entries are
     /// legitimate.
@@ -1609,7 +1615,7 @@ impl AgentRun {
     }
 
     // ── Streamed-turn entry points ──────────────────────────────────────
-    // Paired with [`crate::streamed::StreamedTurnAssembler`]; see that module's
+    // Paired with [`streamed::StreamedTurnAssembler`]; see that module's
     // docs for the full driving protocol.
 
     /// Record one provider completion call for a streamed turn.
@@ -1651,7 +1657,7 @@ impl AgentRun {
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
-    /// mid-stream by a [`crate::streamed::StreamedTurnAssembler`].
+    /// mid-stream by a [`streamed::StreamedTurnAssembler`].
     pub fn streamed_invalid_tool_call_context(
         &self,
         partial: &PartialStreamedTurn,
@@ -1872,6 +1878,64 @@ impl AgentRun {
         )
     }
 }
+
+impl AgentRun {
+    /// Build a run from a [`RunSpec`], a prompt and an optional prior history.
+    ///
+    /// Applies the spec's budget, invalid-call retries, output validation and
+    /// tool choice; everything else in the spec is request-shaping the driver
+    /// reads when it prepares each model call.
+    pub fn from_spec(
+        spec: &RunSpec,
+        prompt: impl Into<Message>,
+        history: Option<Vec<Message>>,
+    ) -> Self {
+        let mut run = AgentRun::new(prompt)
+            .max_turns(spec.effective_max_turns())
+            .max_invalid_tool_call_retries(spec.max_invalid_tool_call_retries)
+            .with_output_validation(spec.output_schema.clone(), RunSpec::DEFAULT_OUTPUT_RETRIES);
+        if let Some(history) = history {
+            run = run.with_history(history);
+        }
+        if let Some(tool_choice) = spec.tool_choice.clone() {
+            run = run.with_tool_choice(tool_choice);
+        }
+        if let Some(name) = spec.output_tool_name.clone() {
+            run = run.with_output_tool_name(name);
+        }
+        run
+    }
+}
+
+impl AgentRun {
+    /// [`with_history`](AgentRun::with_history), rejecting a history that is
+    /// not a canonical transcript. Use this when the history comes from
+    /// outside the protocol (a memory backend, a resumed run from another
+    /// process); `with_history` stays unchecked for callers that built the
+    /// history themselves.
+    pub fn with_validated_history(self, history: Vec<Message>) -> Result<Self, TranscriptError> {
+        validate_canonical(&history)?;
+        Ok(self.with_history(history))
+    }
+}
+
+// Compile-time contract: run state is plain, owned data a host can keep in
+// shared state (worker pools, ECS components) on native targets.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<AgentRun>();
+    assert_send_sync_static::<AgentRunStep>();
+    assert_send_sync_static::<PendingToolCall>();
+    assert_send_sync_static::<ModelTurn>();
+    assert_send_sync_static::<StreamedTurn>();
+    assert_send_sync_static::<StreamedTurnAssembler>();
+    assert_send_sync_static::<PromptResponse>();
+    assert_send_sync_static::<CompletionCall>();
+    assert_send_sync_static::<PromptError>();
+    assert_send_sync_static::<TurnTools>();
+    assert_send_sync_static::<RunEntry>();
+};
 
 #[cfg(test)]
 mod tests {
@@ -3534,5 +3598,43 @@ mod tests {
         let legacy: CompletionCall =
             serde_json::from_value(unset).expect("a call without a raw key still loads");
         assert_eq!(legacy.raw, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn from_spec_matches_the_builder_chain() {
+        let spec = RunSpec {
+            max_turns: Some(4),
+            max_invalid_tool_call_retries: 2,
+            tool_choice: Some(ToolChoice::Auto),
+            ..RunSpec::new()
+        };
+        let via_spec = AgentRun::from_spec(&spec, "hi", None);
+        let via_chain = AgentRun::new("hi")
+            .max_turns(4)
+            .max_invalid_tool_call_retries(2)
+            .with_output_validation(None, RunSpec::DEFAULT_OUTPUT_RETRIES)
+            .with_tool_choice(ToolChoice::Auto);
+        assert_eq!(
+            serde_json::to_value(&via_spec).expect("serialize"),
+            serde_json::to_value(&via_chain).expect("serialize")
+        );
+    }
+
+    fn assistant(content: Vec<AssistantContent>) -> Message {
+        Message::Assistant { id: None, content }
+    }
+
+    #[test]
+    fn with_validated_history_gates_construction() {
+        let bad = vec![
+            assistant(vec![AssistantContent::text("a")]),
+            assistant(vec![AssistantContent::text("b")]),
+        ];
+        assert!(AgentRun::new("x").with_validated_history(bad).is_err());
+        assert!(
+            AgentRun::new("x")
+                .with_validated_history(vec![Message::user("ok")])
+                .is_ok()
+        );
     }
 }

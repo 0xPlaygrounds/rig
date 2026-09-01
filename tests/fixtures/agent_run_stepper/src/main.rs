@@ -1,11 +1,15 @@
-//! A complete agent turn driven with `rig-core` + `rig-run` only — no
-//! `rig-agent`, no async runtime.
+//! `AgentRun` stepped by a host that is not rig-agent's futures driver — no
+//! async runtime, no transport, no `rig` facade: `rig-agent` with default
+//! features off (which pulls only rig-core) plus rig-core.
 //!
-//! Exercises every seam a systems driver needs: an erased [`ModelHandle`] over a
-//! local model, a [`ToolSet`] of [`PortableDynamicTool`]s pinned into a
-//! [`ToolCatalog`], a run built from a [`RunSpec`], [`prepare_request`] for
-//! each `CallModel` step, and tool dispatch by name for each `CallTools` step.
-//! Exits non-zero on any deviation; `tests/core/core_run_driver.rs` runs it.
+//! This is the seam an ECS schedule or a job system uses when it keeps
+//! `AgentRun` as *the* loop and only owns the IO around it: an erased
+//! [`ModelHandle`] over a local model, a [`ToolSet`] of
+//! [`PortableDynamicTool`]s pinned into a [`ToolCatalog`], a run built from a
+//! [`RunSpec`], [`prepare_request`] for each `CallModel` step, and tool
+//! dispatch by name for each `CallTools` step. Exits non-zero on any
+//! deviation; `tests/core/agent_run_stepper.rs` runs it and checks its
+//! dependency graph.
 
 use std::{
     future::Future,
@@ -14,6 +18,7 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
+use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
     ModelHandle, ModelRef, Usage,
@@ -21,8 +26,8 @@ use rig_core::completion::{
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{PortableDynamicTool, ToolCatalog, ToolContext, ToolOutput, ToolSet};
+use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
-use rig_run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request, transcript};
 
 /// Every future here is ready on first poll (a scripted model, in-process
 /// tools); a no-op waker is all the "runtime" this driver needs.
@@ -183,6 +188,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(1),
         "the run recorded the advertised tools"
     );
-    println!("core-run-driver: ok");
+    println!("agent-run-stepper: ok");
     Ok(())
 }

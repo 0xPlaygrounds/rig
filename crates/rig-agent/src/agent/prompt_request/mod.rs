@@ -318,11 +318,11 @@ impl PromptRequest<Standard> {
     }
 }
 
-pub(crate) use rig_run::transcript::{
+/// Details for one successfully completed completion request made by an agent run.
+pub use crate::run::response::{CompletionCall, PromptResponse};
+pub(crate) use crate::run::transcript::{
     assistant_text_from_choice, is_empty_assistant_turn, tool_result_output,
 };
-/// Details for one successfully completed completion request made by an agent run.
-pub use rig_run::{CompletionCall, PromptResponse};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedPromptResponse<T> {
     pub output: T,
@@ -557,6 +557,7 @@ mod tests {
         CompletionCall, PromptResponse, TypedPromptResponse, assistant_text_from_choice,
         is_empty_assistant_turn,
     };
+    use crate::run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
     use crate::{
         agent::{
             AgentBuilder,
@@ -579,7 +580,6 @@ mod tests {
     };
     use rig_core::message::ProviderCallId;
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
-    use rig_run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
     use serde_json::json;

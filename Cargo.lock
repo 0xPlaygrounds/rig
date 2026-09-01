@@ -9822,7 +9822,6 @@ dependencies = [
  "rig-qdrant",
  "rig-reqwest",
  "rig-rmcp",
- "rig-run",
  "rig-s3vectors",
  "rig-scylladb",
  "rig-sqlite",
@@ -9865,7 +9864,6 @@ dependencies = [
  "rig-core",
  "rig-derive",
  "rig-reqwest",
- "rig-run",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -10196,18 +10194,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-test",
- "tracing",
-]
-
-[[package]]
-name = "rig-run"
-version = "0.42.0"
-dependencies = [
- "http 1.4.2",
- "rig-core",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
  "tracing",
 ]
 

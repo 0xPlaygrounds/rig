@@ -7,7 +7,7 @@ use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use rig_core::completion::*;
 
-pub use rig_run::PromptError;
+pub use crate::run::response::PromptError;
 
 /// Forwards the `provider_response_*` accessor trio through the variant that
 /// wraps an error which itself exposes them.

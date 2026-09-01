@@ -17,9 +17,9 @@ use rig_core::completion::{
 };
 use rig_core::message::ToolChoice;
 
-use crate::output_mode::OutputMode;
-use crate::policy::RequestPatch;
-use crate::spec::RunSpec;
+use super::output::OutputMode;
+use super::patch::RequestPatch;
+use super::spec::RunSpec;
 
 /// Why a request could not be prepared. Every variant is a local, pre-IO
 /// error: the spec, patch and tool set cannot produce a request the model

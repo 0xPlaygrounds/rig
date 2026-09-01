@@ -1936,6 +1936,7 @@ mod migrated_tests {
     use crate::completion::{
         CompletionRequest, FinishReason, Prompt, PromptError, ToolDefinition, Usage,
     };
+    use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
@@ -1949,7 +1950,6 @@ mod migrated_tests {
         ToolChoice, ToolResultContent, UserContent,
     };
     use rig_core::providers::anthropic;
-    use rig_run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
     use serde::Deserialize;
     use std::collections::{BTreeSet, HashMap};
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
