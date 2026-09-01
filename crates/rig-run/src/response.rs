@@ -15,7 +15,6 @@ pub struct CompletionCall {
     /// Zero-valued usage is [`Usage`]'s documented sentinel for missing
     /// provider usage metrics; rig does not distinguish "reported all zeros"
     /// from "unreported".
-    #[serde(default, deserialize_with = "usage_null_as_default")]
     pub usage: Usage,
     /// Provider-assigned assistant message ID for this call, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -106,19 +105,6 @@ impl CompletionCall {
             provider_request_id: self.provider_request_id.clone(),
         }
     }
-}
-
-/// Tolerate `null` usage from data serialized before rig dropped the
-/// `Option<Usage>` encoding of missing provider usage metrics.
-///
-/// This tolerance requires a self-describing format such as JSON; data
-/// serialized with non-self-describing formats (e.g. bincode) from before the
-/// change cannot round-trip.
-fn usage_null_as_default<'de, D>(deserializer: D) -> Result<Usage, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<Usage>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 /// The result of an agent run, returned by **both** the blocking

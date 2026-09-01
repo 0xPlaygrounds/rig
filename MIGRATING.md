@@ -806,6 +806,42 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Compatibility shims are gone: `CompletionRequest::preamble`, retired model constants, `rig-candle` aliases, tolerant decoders
+
+Every remaining backwards-compatibility shim was removed in one sweep. None
+of them had a live producer in the tree; each existed only so that an older
+caller or an older persisted record kept working.
+
+- **`CompletionRequest::preamble` is removed.** `CompletionRequestBuilder::preamble`
+  has always emitted the preamble as the leading `Message::System` of
+  `chat_history` and left the field `None`; the field was read by every
+  provider anyway, so a hand-built request could carry a second system prompt
+  through a path the builder never used. Put the system prompt in
+  `chat_history` — `chat_history: vec![Message::system("…"), …]` — and use the
+  new `CompletionRequest::system_instructions()` (the leading system message's
+  text, `Option<&str>`) where you read it. `CompletionRequestBuilder::without_preamble`
+  is removed with the field; the agent-level `AgentBuilder::without_preamble`
+  and `AgentRunner::without_preamble` are unchanged. Telemetry
+  `gen_ai.system_instructions` is now populated from the leading system
+  message, so spans that previously recorded nothing for the preamble record it.
+- **Retired model-name constants are removed** rather than `#[deprecated]`:
+  `deepseek::{DEEPSEEK_CHAT, DEEPSEEK_REASONER}` (use `DEEPSEEK_V4_FLASH`),
+  `cohere::{COMMAND_R_PLUS, COMMAND_R, COMMAND, COMMAND_NIGHTLY, COMMAND_LIGHT,
+  COMMAND_LIGHT_NIGHTLY}` (use the dated `COMMAND_*_08_2024` / `COMMAND_A_*`
+  constants), and `mistral::{PIXTRAL_LARGE, PIXTRAL_SMALL, MISTRAL_SABA,
+  MISTRAL_NEMO, CODESTRAL_MAMBA}` (use `MISTRAL_SMALL` / `MISTRAL_MEDIUM` /
+  `MINISTRAL_3B` / `CODESTRAL`). Pass the literal string to
+  `completion_model(..)` if you still need to address one of the retired ids.
+- **`rig_candle::{LlamaModel, ModelFamily}` aliases are removed.** Use
+  `CandleModel` and `ConversationProtocol`, which they aliased.
+- **Persisted-record tolerances are removed.** `CompletionCall::usage` no
+  longer accepts `null` (the pre-monoid `Option` encoding) — a record must
+  carry a `Usage` object; OpenAI `UserContent::Audio` no longer accepts the
+  never-on-the-wire `"type": "audio"` tag (only `"input_audio"`); and an OpenAI
+  `ToolResultContent` part must carry its `"type"` tag (`"text"` /
+  `"image_url"`). Records written by any released rig already have these
+  shapes; re-encode anything older before loading it.
+
 ### The bundled transport newtypes expose their inner client once, not three ways
 
 `ReqwestClient` and `ReqwestMiddlewareClient` each handed out the client they

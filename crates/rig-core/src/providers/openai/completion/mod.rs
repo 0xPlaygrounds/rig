@@ -305,9 +305,8 @@ pub enum UserContent {
     Image {
         image_url: ImageUrl,
     },
-    /// Audio content part. Serialized with OpenAI's `input_audio` wire tag;
-    /// the legacy `audio` tag is still accepted on deserialization.
-    #[serde(rename = "input_audio", alias = "audio")]
+    /// Audio content part, OpenAI's `input_audio` wire tag.
+    #[serde(rename = "input_audio")]
     Audio {
         input_audio: InputAudio,
     },
@@ -377,50 +376,13 @@ pub struct FileData {
 /// Some OpenAI-compatible servers do honour an image — llama.cpp delivers one to
 /// the model, measured — so the variant exists and emitting it is gated on
 /// [`super::completion::OpenAICompatibleProvider::SUPPORTS_IMAGE_TOOL_RESULTS`].
-#[derive(Debug, Serialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type")]
 pub enum ToolResultContent {
     #[serde(rename = "text")]
     Text { text: String },
     #[serde(rename = "image_url")]
     Image { image_url: ImageUrl },
-}
-
-/// Deserialization is deliberately hand-written rather than derived from the
-/// `tag = "type"` above.
-///
-/// The struct this replaced carried `#[serde(default)] r#type`, so a stored
-/// history whose tool-result parts omit `type` still loaded. A derived
-/// internally-tagged enum makes the tag mandatory, and because
-/// [`ToolResultContentValue`] is `#[serde(untagged)]` the real cause
-/// (`missing field \`type\``) is swallowed into "data did not match any
-/// variant". `Message` is public and derives `Deserialize`, so that tolerance is
-/// load-bearing for anyone replaying a persisted conversation.
-impl<'de> Deserialize<'de> for ToolResultContent {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Wire {
-            #[serde(default)]
-            r#type: Option<String>,
-            #[serde(default)]
-            text: Option<String>,
-            #[serde(default)]
-            image_url: Option<ImageUrl>,
-        }
-
-        let wire = Wire::deserialize(deserializer)?;
-        match (wire.r#type.as_deref(), wire.image_url, wire.text) {
-            (Some("image_url"), Some(image_url), _) => Ok(Self::Image { image_url }),
-            // An absent `type` is the tolerated legacy shape; so is an explicit
-            // `"text"`. Anything else with a `text` field is still text — the
-            // tag is advisory here, never a reason to fail a load.
-            (_, _, Some(text)) => Ok(Self::Text { text }),
-            (_, Some(image_url), None) => Ok(Self::Image { image_url }),
-            _ => Err(serde::de::Error::custom(
-                "tool result content part carried neither `text` nor `image_url`",
-            )),
-        }
-    }
 }
 
 impl ToolResultContent {
@@ -2159,7 +2121,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let CoreCompletionRequest {
             model: request_model,
-            preamble,
             chat_history: _,
             tools,
             temperature,
@@ -2173,9 +2134,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
 
-        let mut full_history: Vec<Message> =
-            preamble.map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
-
+        let mut full_history: Vec<Message> = Vec::new();
         full_history.extend(
             partial_history
                 .into_iter()
@@ -2440,7 +2399,7 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<(Ext::Response, Option<String>), CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
+        let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
@@ -2688,7 +2647,6 @@ mod tests {
 
         CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![message::Message::User {
                 content: vec![message::UserContent::ToolResult(tool_result)],
             }],
@@ -2945,7 +2903,6 @@ mod tests {
     fn test_openai_request_uses_request_model_override() {
         let request = crate::completion::CompletionRequest {
             model: Some("gpt-4.1".to_string()),
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -2977,7 +2934,6 @@ mod tests {
     fn test_openai_request_uses_default_model_when_override_unset() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -3059,7 +3015,6 @@ mod tests {
     fn openai_chat_direct_request_keeps_documents_after_system_messages() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 crate::completion::Message::system("System prompt"),
                 crate::completion::Message::assistant("Earlier assistant turn"),
@@ -3513,7 +3468,6 @@ mod tests {
     fn test_max_tokens_is_forwarded_to_request() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -3550,7 +3504,6 @@ mod tests {
             model: "gpt-4o-mini".to_string(),
             request: crate::completion::CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: vec!["Hello".into()],
                 documents: vec![],
                 tools: vec![],
@@ -3706,7 +3659,6 @@ mod tests {
     fn test_max_tokens_omitted_when_none() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -3745,7 +3697,6 @@ mod tests {
     fn additional_params_function_tools_merge_and_native_tools_stay() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![crate::completion::ToolDefinition {
@@ -3800,7 +3751,6 @@ mod tests {
     fn request_conversion_errors_when_all_messages_are_filtered() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![message::Message::Assistant {
                 id: None,
                 content: vec![message::AssistantContent::reasoning("hidden")],
@@ -3832,7 +3782,6 @@ mod tests {
     fn request_conversion_omits_response_format_on_initial_tool_turn() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![message::Message::user(
                 "Hello, whats the weather in London?",
             )],
@@ -3891,7 +3840,6 @@ mod tests {
     fn request_conversion_restores_response_format_after_tool_result() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![
                 message::Message::user("Hello, whats the weather in London?"),
                 message::Message::Assistant {
@@ -4741,7 +4689,6 @@ mod image_tool_result_gate_tests {
             model: "test-model".to_string(),
             request: crate::completion::CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: vec![message::Message::User {
                     content: vec![message::UserContent::ToolResult(message::ToolResult {
                         call: message::ToolCallId::new_or_mint("call_1"),
@@ -4852,23 +4799,6 @@ mod image_tool_result_gate_tests {
             error.to_string().contains("does not accept an image"),
             "{error}"
         );
-    }
-
-    /// The legacy wire shape — a content part with no `type` key — still
-    /// deserializes. The struct this enum replaced carried
-    /// `#[serde(default)] r#type`, and `ToolResultContentValue` is untagged, so
-    /// a derived tagged enum would swallow the real cause into "data did not
-    /// match any variant" and break replay of stored histories.
-    #[test]
-    fn a_content_part_without_a_type_key_still_deserializes() {
-        let parsed: Message = serde_json::from_str(
-            r#"{"role":"tool","tool_call_id":"c1","content":[{"text":"ok"}]}"#,
-        )
-        .expect("a type-less text part is the tolerated legacy shape");
-        let Message::ToolResult { content, .. } = parsed else {
-            panic!("expected a tool result");
-        };
-        assert_eq!(content.as_text(), "ok");
     }
 
     /// A wire tool result carrying an image converts back into rig's types with

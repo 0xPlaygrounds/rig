@@ -267,7 +267,7 @@ mod tests {
                     }
                 },
                 {
-                    "type": "audio",
+                    "type": "input_audio",
                     "input_audio": {
                         "data": "...",
                         "format": "mp3"

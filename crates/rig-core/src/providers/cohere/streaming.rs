@@ -338,7 +338,7 @@ where
         &self,
         request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let system_instructions = request.preamble.clone();
+        let system_instructions = request.system_instructions().map(str::to_owned);
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(

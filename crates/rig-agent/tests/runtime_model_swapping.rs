@@ -377,7 +377,6 @@ fn beta_static(text: &str) -> BetaModel {
 fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        preamble: None,
         chat_history: vec![Message::user(prompt)],
         documents: Vec::new(),
         tools: Vec::new(),

@@ -1202,31 +1202,6 @@ mod tests {
     }
 
     #[test]
-    fn prompt_response_deserializes_pre_monoid_null_usage_format() {
-        // Pins `CompletionCall.usage`'s null tolerance: `"usage": null` (the
-        // pre-monoid Option encoding) must map to zero-valued usage. The
-        // fixture otherwise uses the current shape — `content` is a required
-        // field since the missing-`content` reconstruction was dropped.
-        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}],"content":[{"type":"text","text":"ok"}]}"#;
-
-        let response: PromptResponse =
-            serde_json::from_str(fixture).expect("old-format response should deserialize");
-        assert_eq!(
-            response.completion_calls(),
-            &[
-                CompletionCall::new(0, Usage::new()),
-                CompletionCall::new(1, usage(3, 4))
-            ]
-        );
-        // `content` uses the tagged shape — assistant content is tagged like
-        // user content (see `the_type_key_is_the_tag_and_the_untagged_shape_does_not_load`).
-        let [AssistantContent::Text(text)] = response.content() else {
-            panic!("expected one text block, got {:?}", response.content());
-        };
-        assert_eq!(text.text, "ok");
-    }
-
-    #[test]
     fn the_type_key_is_the_tag_and_the_untagged_shape_does_not_load() {
         // Assistant content is tagged like user content: `"type"` is consumed
         // as the discriminant, never captured into `additional_params`. And

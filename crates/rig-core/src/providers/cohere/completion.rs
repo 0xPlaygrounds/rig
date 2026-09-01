@@ -659,9 +659,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         let mut partial_history = vec![];
         partial_history.extend(req.chat_history);
 
-        let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
-            vec![Message::System { content: preamble }]
-        });
+        let mut full_history: Vec<Message> = Vec::new();
 
         full_history.extend(
             partial_history
@@ -743,7 +741,7 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
+        let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 

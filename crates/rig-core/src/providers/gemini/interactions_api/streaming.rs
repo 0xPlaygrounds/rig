@@ -131,7 +131,7 @@ where
             CompletionOperation::InteractionsStreaming,
         )
         .system_instructions(
-            completion_request.preamble.as_deref(),
+            completion_request.system_instructions(),
             completion_request.record_telemetry_content,
         )
         .build();

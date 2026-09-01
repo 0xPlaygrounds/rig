@@ -974,7 +974,6 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     .with_cached_content(cache.name.clone());
 
                 let request = rig::completion::CompletionRequest {
-                    preamble: None,
                     chat_history: vec![rig::message::Message::User {
                         content: vec![rig::message::UserContent::text(
                             "Reply with exactly: streamed",

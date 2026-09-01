@@ -169,7 +169,7 @@ where
             CompletionOperation::GenerateContent,
         )
         .system_instructions(
-            completion_request.preamble.as_deref(),
+            completion_request.system_instructions(),
             completion_request.record_telemetry_content,
         )
         .build();
@@ -258,7 +258,6 @@ pub(crate) fn create_request_body(
 
     let CompletionRequest {
         model: _,
-        preamble,
         chat_history: _,
         documents: _,
         tools: function_tools,
@@ -369,9 +368,6 @@ pub(crate) fn create_request_body(
     }
 
     let mut system_parts: Vec<Part> = Vec::new();
-    if let Some(preamble) = preamble.filter(|preamble| !preamble.is_empty()) {
-        system_parts.push(preamble.into());
-    }
     for content in history_system {
         if !content.is_empty() {
             system_parts.push(content.into());
@@ -2762,7 +2758,6 @@ mod tests {
     fn test_resolve_request_model_uses_override() {
         let request = CompletionRequest {
             model: Some("gemini-2.5-flash".to_string()),
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -2790,7 +2785,6 @@ mod tests {
     fn test_resolve_request_model_uses_default_when_unset() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
@@ -4028,7 +4022,6 @@ mod tests {
         use crate::message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
 
         let request = CompletionRequest {
-            preamble: None,
             chat_history: vec![
                 message::Message::user("weather?"),
                 message::Message::Assistant {
@@ -4208,7 +4201,6 @@ mod tests {
         ];
 
         let documents_message = CompletionRequest {
-            preamble: None,
             chat_history: vec![Message::user("placeholder")],
             documents,
             tools: vec![],
@@ -4224,8 +4216,11 @@ mod tests {
         .unwrap();
 
         let completion_request = CompletionRequest {
-            preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: vec![documents_message, Message::user("What are my notes about?")],
+            chat_history: vec![
+                Message::system("You are a helpful assistant"),
+                documents_message,
+                Message::user("What are my notes about?"),
+            ],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -4290,8 +4285,10 @@ mod tests {
         use crate::message::Message;
 
         let completion_request = CompletionRequest {
-            preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: vec![Message::user("Hello")],
+            chat_history: vec![
+                Message::system("You are a helpful assistant"),
+                Message::user("Hello"),
+            ],
             documents: vec![], // No documents
             tools: vec![],
             temperature: None,
@@ -4368,10 +4365,13 @@ mod cached_content_request_tests {
             });
         }
         super::create_request_body(CompletionRequest {
-            preamble: preamble.map(str::to_owned),
-            chat_history: vec![Message::User {
-                content: vec![UserContent::text("hi")],
-            }],
+            chat_history: preamble
+                .map(Message::system)
+                .into_iter()
+                .chain([Message::User {
+                    content: vec![UserContent::text("hi")],
+                }])
+                .collect(),
             documents: vec![],
             tools: tool_defs,
             temperature: None,
@@ -4541,10 +4541,13 @@ mod cached_content_request_tests {
         additional: Option<serde_json::Value>,
     ) -> Result<GenerateContentRequest, CompletionError> {
         super::create_request_body(CompletionRequest {
-            preamble: preamble.map(str::to_owned),
-            chat_history: vec![Message::User {
-                content: vec![UserContent::text("hi")],
-            }],
+            chat_history: preamble
+                .map(Message::system)
+                .into_iter()
+                .chain([Message::User {
+                    content: vec![UserContent::text("hi")],
+                }])
+                .collect(),
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -4642,7 +4645,6 @@ mod cached_content_request_tests {
     #[test]
     fn unrelated_additional_params_coexist_with_the_typed_field() {
         let mut request = super::create_request_body(CompletionRequest {
-            preamble: None,
             chat_history: vec![Message::User {
                 content: vec![UserContent::text("hi")],
             }],
@@ -4729,7 +4731,6 @@ mod cached_content_request_tests {
         );
 
         let message = super::create_request_body(CompletionRequest {
-            preamble: None,
             chat_history: vec![Message::User {
                 content: vec![UserContent::text("hi")],
             }],
@@ -5012,10 +5013,13 @@ mod cached_content_conflict_matrix {
 
     fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest {
         super::create_request_body(CompletionRequest {
-            preamble: system.then(|| "you are terse".to_owned()),
-            chat_history: vec![Message::User {
-                content: vec![UserContent::text("hi")],
-            }],
+            chat_history: system
+                .then(|| Message::system("you are terse"))
+                .into_iter()
+                .chain([Message::User {
+                    content: vec![UserContent::text("hi")],
+                }])
+                .collect(),
             documents: vec![],
             tools: if tools {
                 vec![ToolDefinition {

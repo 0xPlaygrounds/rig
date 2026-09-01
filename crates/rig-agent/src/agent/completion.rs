@@ -649,7 +649,6 @@ mod request_identity_tests {
     "max_tokens": 512,
     "model": null,
     "output_schema": null,
-    "preamble": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -766,7 +765,6 @@ mod request_identity_tests {
     "max_tokens": 512,
     "model": null,
     "output_schema": null,
-    "preamble": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [
@@ -902,7 +900,6 @@ mod request_identity_tests {
     "max_tokens": 512,
     "model": null,
     "output_schema": null,
-    "preamble": null,
     "temperature": 0.25,
     "tool_choice": "required",
     "tools": [

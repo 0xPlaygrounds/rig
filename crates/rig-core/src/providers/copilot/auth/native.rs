@@ -498,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_api_key_record_without_fingerprint_forces_refresh_when_bootstrap_token_is_known() {
+    fn api_key_record_without_fingerprint_forces_refresh_when_bootstrap_token_is_known() {
         let record = ApiKeyRecord {
             token: Some("copilot-token".into()),
             expires_at: Some(i64::MAX),

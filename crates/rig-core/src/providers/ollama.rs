@@ -554,13 +554,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         // results arrive with an empty name and their call carries it.
         crate::providers::internal::resolve_empty_tool_result_names(&mut partial_history);
 
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = req
-            .preamble
-            .as_deref()
-            .map_or_else(Vec::new, |preamble| vec![Message::system(preamble)]);
-
-        // Convert and extend the rest of the history
+        let mut full_history: Vec<Message> = Vec::new();
         full_history.extend(
             partial_history
                 .into_iter()
@@ -778,7 +772,7 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
+        let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let span =
@@ -833,7 +827,7 @@ where
         &self,
         request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let system_instructions = request.preamble.clone();
+        let system_instructions = request.system_instructions().map(str::to_owned);
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
@@ -2176,10 +2170,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                CompletionMessage::system("You are a helpful assistant."),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2241,10 +2237,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                CompletionMessage::system("You are a helpful assistant."),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2306,10 +2304,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                CompletionMessage::system("You are a helpful assistant."),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2371,10 +2371,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                CompletionMessage::system("You are a helpful assistant."),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2436,10 +2438,12 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
+            chat_history: vec![
+                CompletionMessage::system("You are a helpful assistant."),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2470,10 +2474,12 @@ mod tests {
         // Create a CompletionRequest WITHOUT "think" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            }],
+            chat_history: vec![
+                CompletionMessage::system("You are a helpful assistant."),
+                CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+                },
+            ],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),
@@ -2525,7 +2531,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![CompletionMessage::User {
                 content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
             }],
@@ -2559,7 +2564,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![CompletionMessage::User {
                 content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
             }],
@@ -2597,7 +2601,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: vec![CompletionMessage::User {
                 content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
             }],
@@ -2636,7 +2639,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
-            preamble: None,
             chat_history: vec![CompletionMessage::User {
                 content: vec![UserContent::Text(Text::new(
                     "How old is Ollama?".to_string(),
@@ -2681,7 +2683,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
-            preamble: None,
             chat_history: vec![CompletionMessage::User {
                 content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
             }],

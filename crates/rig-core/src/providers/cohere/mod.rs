@@ -42,44 +42,6 @@ pub const COMMAND_R_PLUS_08_2024: &str = "command-r-plus-08-2024";
 /// `command-r-08-2024` completion model
 pub const COMMAND_R_08_2024: &str = "command-r-08-2024";
 
-/// `command-r-plus` completion model
-#[deprecated(
-    note = "Cohere removed `command-r-plus` on 2025-09-15; requests using it fail. \
-    Use `COMMAND_R_PLUS_08_2024`, `COMMAND_A_03_2025`, or `COMMAND_A_PLUS_05_2026` instead."
-)]
-pub const COMMAND_R_PLUS: &str = "command-r-plus";
-/// `command-r` completion model
-#[deprecated(
-    note = "Cohere removed `command-r` on 2025-09-15; requests using it fail. \
-    Use `COMMAND_R_08_2024`, `COMMAND_A_03_2025`, or `COMMAND_A_PLUS_05_2026` instead."
-)]
-pub const COMMAND_R: &str = "command-r";
-/// `command` completion model
-#[deprecated(
-    note = "Cohere removed `command` on 2025-09-15; requests using it fail. \
-    Use `COMMAND_R_08_2024`, `COMMAND_A_03_2025`, or `COMMAND_A_PLUS_05_2026` instead."
-)]
-pub const COMMAND: &str = "command";
-/// `command-nightly` completion model
-#[deprecated(
-    note = "`command-nightly` still resolves but is absent from Cohere's published model \
-    catalogue, so it carries no compatibility or availability guarantee. \
-    Use `COMMAND_A_03_2025` or `COMMAND_A_PLUS_05_2026` instead."
-)]
-pub const COMMAND_NIGHTLY: &str = "command-nightly";
-/// `command-light` completion model
-#[deprecated(
-    note = "Cohere removed `command-light` on 2025-09-15; requests using it fail. \
-    Use `COMMAND_R7B_12_2024` or `COMMAND_A_03_2025` instead."
-)]
-pub const COMMAND_LIGHT: &str = "command-light";
-/// `command-light-nightly` completion model
-#[deprecated(
-    note = "Cohere no longer serves `command-light-nightly`; requests using it return 404. \
-    Use `COMMAND_R7B_12_2024` or `COMMAND_A_03_2025` instead."
-)]
-pub const COMMAND_LIGHT_NIGHTLY: &str = "command-light-nightly";
-
 // ================================================================
 // Cohere Embedding Models
 // ================================================================

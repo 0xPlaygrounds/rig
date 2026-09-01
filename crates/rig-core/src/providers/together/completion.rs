@@ -176,7 +176,6 @@ mod tests {
     #[test]
     fn together_request_conversion_errors_when_all_messages_are_filtered() {
         let request = crate::completion::CompletionRequest {
-            preamble: None,
             chat_history: vec![message::Message::Assistant {
                 id: None,
                 content: vec![message::AssistantContent::reasoning("hidden")],
