@@ -35,7 +35,11 @@
 //!
 //! `Prompt::prompt` and
 //! `Agent::runner` drive this machine internally;
-//! the same machine can be driven by hand for custom provider control flow:
+//! the same machine can be driven by hand for custom provider control flow.
+//! A host that does so (an ECS schedule, a job system) depends on `rig-agent`
+//! with default features off — that graph carries no async runtime, transport
+//! or MCP client (guarded), only rig-core and the futures vocabulary — and
+//! `tests/fixtures/agent_run_stepper` is that host in miniature:
 //!
 //! ```rust,no_run
 //! use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};

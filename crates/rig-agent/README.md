@@ -38,7 +38,11 @@ every driver sends the same bytes), `rig_core::completion::spec::RunSpec`,
 `rig_core::completion::{output, patch}` and
 `rig_core::transcript`. A host that drives runs itself (an ECS schedule, a job
 system) builds on those alone — `tests/fixtures/core_run_driver` in the repo
-is exactly that, with no rig-agent in its graph.
+is exactly that, with no rig-agent in its graph. A host that would rather keep
+`AgentRun` as its loop and only own the IO around it depends on this crate
+with default features off: that graph carries no async runtime, transport or
+MCP client (a dependency guard pins it), and
+`tests/fixtures/agent_run_stepper` is that host in miniature.
 
 ## Runtime model routing
 

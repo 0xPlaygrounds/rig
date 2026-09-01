@@ -55,9 +55,16 @@ fn rig_core_is_runtime_and_transport_free() {
     assert_absent("rig-core", &["--all-features"], &["tokio", "reqwest"]);
 }
 
+/// With default features on, and — the shape a host that steps `AgentRun`
+/// itself depends on — with them off: rig-agent is a runtime-free crate.
 #[test]
 fn rig_agent_carries_no_runtime_or_mcp() {
     assert_absent("rig-agent", &[], &["tokio", "rmcp"]);
+    assert_absent(
+        "rig-agent",
+        &["--no-default-features"],
+        &["tokio", "rmcp", "reqwest"],
+    );
 }
 
 /// The run vocabulary (rig-core) and the `AgentRun` program (rig-agent) never
