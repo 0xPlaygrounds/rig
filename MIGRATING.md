@@ -10,8 +10,12 @@
 > the release material below the end marker. CI pins both its placement and its
 > contents.
 
+This file is edited only on the release PR (a `release-plz-*` branch or a PR
+labeled `release`). An ordinary PR puts its migration notes in the PR
+description under `## Migration`; CI rejects any other edit to this file.
+
 `MIGRATING.md` is an editorial synthesis, not the output of one generator. Use
-the public API diff as its exhaustive spine, the changelogs for release context,
+the public API diff as its exhaustive spine, the PR notes for release context,
 and the relevant pull requests for migration details. This is the process used
 to produce the guide in [#2216](https://github.com/0xPlaygrounds/rig/pull/2216).
 
@@ -48,11 +52,14 @@ to produce the guide in [#2216](https://github.com/0xPlaygrounds/rig/pull/2216).
    code. If a package exists at only one ref, inspect its complete public API and
    document the package-level addition or removal instead of expecting a range
    diff to work.
-3. Read the matching entries in the root and affected crate `CHANGELOG.md`
-   files. Use their breaking-change entries to explain intent and identify the
-   replacement API, but do not assume the changelogs are exhaustive.
+3. Run `scripts/release-notes.sh PREVIOUS_TAG` and read the `## Changelog` and
+   `## Migration` sections of every pull request merged since the previous tag
+   (`prs.md` in its output), together with the changelog section release-plz
+   generated for the release. Use their breaking-change entries to explain
+   intent and identify the replacement API, but do not assume they are
+   exhaustive.
 4. Inspect the pull request, commits, tests, and documentation for each change
-   found by the API diff or changelogs. Record the old form, the new form, and
+   found by the API diff or the PR notes. Record the old form, the new form, and
    the smallest useful migration example. Do not summarize every merged pull
    request; investigate the changes that affect downstream users.
 5. Review the release range for behavior changes that a public API diff cannot
@@ -70,7 +77,7 @@ to produce the guide in [#2216](https://github.com/0xPlaygrounds/rig/pull/2216).
    repeat the diffs for newly merged changes, and replace `next` with the final
    version number immediately before tagging.
 
-The public API diff finds compiler-visible changes; the changelogs and targeted
+The public API diff finds compiler-visible changes; the PR notes and targeted
 history explain why and how to migrate; the final behavior review catches the
 changes that still compile. All three inputs are required for each release.
 
