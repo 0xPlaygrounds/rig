@@ -6,15 +6,14 @@
 //! [`ForwardedConnection`] is for a caller with no tokio runtime. The socket
 //! moves onto the fallback runtime as a small actor and the connection becomes
 //! a pair of `futures` channels, so nothing the caller polls ever touches
-//! tokio. The actor is strictly request/response — one command at a time,
-//! answered on a oneshot — which is exactly the contract
-//! [`WebSocketConnection`] states, so no buffering or select loop is needed.
+//! tokio. It reads and serves commands concurrently rather than one at a time;
+//! [`run_actor`] documents why that is required and not merely faster.
 
-use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
 use rig_core::http_client::{Error, Result};
 use rig_core::wasm_compat::WasmBoxedFuture;
 use rig_core::ws_client::{CloseFrame, Frame, WebSocketConnection};
+use std::collections::VecDeque;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::protocol::CloseFrame as TungsteniteCloseFrame;
 use tokio_tungstenite::{
@@ -45,10 +44,17 @@ impl WebSocketConnection for DirectConnection {
 
     fn recv(&mut self) -> WasmBoxedFuture<'_, Result<Option<Frame>>> {
         Box::pin(async move {
-            match self.0.next().await {
-                Some(Ok(message)) => Ok(Some(from_message(message))),
-                Some(Err(error)) => Err(crate::from_tungstenite(error)),
-                None => Ok(None),
+            loop {
+                match self.0.next().await {
+                    // A raw frame carries no protocol payload; skip it rather
+                    // than hand a session bytes it will try to parse as JSON.
+                    Some(Ok(message)) => match from_message(message) {
+                        Some(frame) => return Ok(Some(frame)),
+                        None => continue,
+                    },
+                    Some(Err(error)) => return Err(crate::from_tungstenite(error)),
+                    None => return Ok(None),
+                }
             }
         })
     }
@@ -85,6 +91,111 @@ pub(crate) struct ForwardedConnection {
 #[error("the websocket connection task has stopped")]
 struct ConnectionTaskGone;
 
+/// The actor that owns the socket on the fallback runtime.
+///
+/// It reads and serves commands *concurrently*, over a split socket, rather
+/// than executing one command to completion at a time. That is not an
+/// optimization — a serial actor deadlocks:
+///
+/// - A read command would park the actor in `stream.next()`. When the session's
+///   event timeout fires it drops its `recv()` future, but the actor stays
+///   parked, so the `close()` that follows a timeout would wait forever for an
+///   actor that is waiting for a frame that is never coming.
+/// - A caller who cancels a read (their own `select!`, their own timeout) would
+///   lose the frame the actor had already taken off the socket, and the *next*
+///   read would hang waiting for a frame that had already arrived.
+///
+/// So inbound frames are buffered as they arrive and a read is answered from
+/// that buffer; a frame whose caller has gone away goes back on the front of it.
+/// Reading continuously also keeps tungstenite's automatic pong replies flowing,
+/// which only happen when the stream is polled.
+async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receiver<Command>) {
+    use futures::{FutureExt, select};
+
+    let (mut sink, mut stream) = socket.split();
+    let mut inbound: VecDeque<Result<Frame>> = VecDeque::new();
+    let mut pending_read: Option<futures::channel::oneshot::Sender<Result<Option<Frame>>>> = None;
+    let mut stream_ended = false;
+
+    loop {
+        // Answer an outstanding read as soon as the buffer (or the end of the
+        // stream) can answer it.
+        match pending_read.take() {
+            Some(reply) if !inbound.is_empty() || stream_ended => {
+                let answer = match inbound.pop_front() {
+                    Some(Ok(frame)) => Ok(Some(frame)),
+                    Some(Err(error)) => Err(error),
+                    None => Ok(None),
+                };
+                // A caller that cancelled its read must not cost us the frame:
+                // put it back for whoever reads next.
+                if let Err(Ok(Some(frame))) = reply.send(answer) {
+                    inbound.push_front(Ok(frame));
+                }
+                continue;
+            }
+            // Nothing to answer it with yet (or nothing outstanding): keep it.
+            still_pending => pending_read = still_pending,
+        }
+
+        let command = if stream_ended {
+            // No further frames can arrive, so only a command can make
+            // progress; selecting on the dead stream would spin.
+            requests.next().await
+        } else {
+            select! {
+                command = requests.next().fuse() => command,
+                message = stream.next().fuse() => {
+                    match message {
+                        Some(Ok(message)) => {
+                            // A raw frame carries no protocol payload; skip it
+                            // rather than hand a session bytes it will try to
+                            // parse as JSON.
+                            if let Some(frame) = from_message(message) {
+                                inbound.push_back(Ok(frame));
+                            }
+                        }
+                        Some(Err(error)) => inbound.push_back(Err(crate::from_tungstenite(error))),
+                        None => stream_ended = true,
+                    }
+                    continue;
+                }
+            }
+        };
+
+        // The connection handle was dropped: nothing can reach us again, so
+        // drop the socket rather than leaving the task (and the connection)
+        // alive for the life of the process.
+        let Some(command) = command else {
+            return;
+        };
+
+        match command {
+            Command::Send(frame, reply) => {
+                let result = sink
+                    .send(into_message(frame))
+                    .await
+                    .map_err(crate::from_tungstenite);
+                let _ = reply.send(result);
+            }
+            // The sequential contract means there is at most one outstanding
+            // read; a second one supersedes a caller that has gone away.
+            Command::Recv(reply) => pending_read = Some(reply),
+            Command::Close(frame, reply) => {
+                let mut result = sink
+                    .send(Message::Close(frame.map(into_close_frame)))
+                    .await
+                    .map_err(crate::from_tungstenite);
+                if let Err(error) = SinkExt::close(&mut sink).await {
+                    result = result.and(Err(crate::from_tungstenite(error)));
+                }
+                let _ = reply.send(result);
+                return;
+            }
+        }
+    }
+}
+
 impl ForwardedConnection {
     /// Move `socket` onto the fallback runtime and return the channel-backed
     /// connection.
@@ -93,41 +204,8 @@ impl ForwardedConnection {
         // A depth of one is enough: the contract is one outstanding command at
         // a time, and a bound keeps a runaway caller from queueing frames the
         // socket has not accepted.
-        let (commands, mut requests) = futures::channel::mpsc::channel::<Command>(1);
-
-        crate::runtime::spawn_off_runtime(async move {
-            let mut socket = socket;
-            while let Some(command) = requests.next().await {
-                match command {
-                    Command::Send(frame, reply) => {
-                        let result = socket
-                            .send(into_message(frame))
-                            .await
-                            .map_err(crate::from_tungstenite);
-                        // A dropped receiver means the caller lost interest;
-                        // the socket stays usable for the next command.
-                        let _ = reply.send(result);
-                    }
-                    Command::Recv(reply) => {
-                        let result = match socket.next().await {
-                            Some(Ok(message)) => Ok(Some(from_message(message))),
-                            Some(Err(error)) => Err(crate::from_tungstenite(error)),
-                            None => Ok(None),
-                        };
-                        let _ = reply.send(result);
-                    }
-                    Command::Close(frame, reply) => {
-                        let result = socket
-                            .close(frame.map(into_close_frame))
-                            .await
-                            .map_err(crate::from_tungstenite);
-                        let _ = reply.send(result);
-                        return;
-                    }
-                }
-            }
-        })?;
-
+        let (commands, requests) = futures::channel::mpsc::channel::<Command>(1);
+        crate::runtime::spawn_off_runtime(run_actor(socket, requests))?;
         Ok(Box::new(Self { commands }))
     }
 
@@ -171,8 +249,17 @@ fn into_message(frame: Frame) -> Message {
     }
 }
 
-fn from_message(message: Message) -> Frame {
-    match message {
+/// Lower one tungstenite message onto the transport-agnostic frame.
+///
+/// `None` is a message with no protocol payload, which the caller skips.
+/// Today that is only `Message::Frame`, which tungstenite produces on the write
+/// side and never from a read — but the contract has no variant for a raw frame
+/// (no session could act on one), and skipping it is what the pre-split code
+/// did. Mapping it onto `Binary` instead would hand a session bytes it would
+/// try to parse as JSON, turning an unexpected control frame into a fatal
+/// decode error.
+fn from_message(message: Message) -> Option<Frame> {
+    Some(match message {
         Message::Text(text) => Frame::Text(text.to_string()),
         Message::Binary(bytes) => Frame::Binary(bytes),
         Message::Ping(bytes) => Frame::Ping(bytes),
@@ -181,11 +268,8 @@ fn from_message(message: Message) -> Frame {
             code: frame.code.into(),
             reason: frame.reason.to_string(),
         })),
-        // A raw frame never surfaces from a read: tungstenite only produces it
-        // on the write side. Modeling it in `Frame` would put a variant in
-        // rig-core's contract that no session can act on.
-        Message::Frame(frame) => Frame::Binary(Bytes::from(frame.into_payload().to_vec())),
-    }
+        Message::Frame(_) => return None,
+    })
 }
 
 fn into_close_frame(frame: CloseFrame) -> TungsteniteCloseFrame {
@@ -198,6 +282,7 @@ fn into_close_frame(frame: CloseFrame) -> TungsteniteCloseFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
 
     /// Every frame the protocol carries must survive a round trip through
     /// tungstenite's own representation, or a session sees the wrong event.
@@ -218,9 +303,24 @@ mod tests {
         for frame in cases {
             assert_eq!(
                 from_message(into_message(frame.clone())),
-                frame,
+                Some(frame.clone()),
                 "frame should round-trip"
             );
         }
+    }
+
+    /// A raw frame is not protocol payload: it must be skipped, not handed on
+    /// as bytes a session would try to parse.
+    #[test]
+    fn a_raw_frame_carries_no_protocol_payload() {
+        let raw = Message::Frame(tungstenite::protocol::frame::Frame::message(
+            Bytes::from_static(b"raw"),
+            tungstenite::protocol::frame::coding::OpCode::Data(
+                tungstenite::protocol::frame::coding::Data::Binary,
+            ),
+            true,
+        ));
+
+        assert_eq!(from_message(raw), None);
     }
 }

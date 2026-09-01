@@ -381,9 +381,17 @@ reqwest = ["dep:rig-reqwest"]
 # sessions it drives. Independent of the HTTP transport axis: a session borrows
 # the provider client for its request mapping, so `reqwest` comes along for the
 # client, not for the socket.
-websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/websocket", "websocket-rustls"]
-websocket-rustls = ["dep:rig-tungstenite", "rig-tungstenite/rustls"]
-websocket-native-tls = ["dep:rig-tungstenite", "rig-tungstenite/native-tls"]
+#
+# `websocket` is the API gate — it is what `pub use rig_tungstenite` and the
+# prelude re-export are cfg'd on — and it takes its TLS stack from the
+# workspace-wide `rustls` / `native-tls` features (`default` carries `rustls`),
+# exactly as the HTTP transport does. The two `websocket-*-tls` spellings are
+# therefore aliases that select both at once, so each of the three is usable on
+# its own: `--no-default-features --features websocket-native-tls` is a
+# native-tls-only websocket build.
+websocket = ["reqwest", "dep:rig-tungstenite", "rig-core/websocket"]
+websocket-rustls = ["websocket", "rustls"]
+websocket-native-tls = ["websocket", "native-tls"]
 rustls = [
   "rig-reqwest?/rustls",
   "rig-tungstenite?/rustls",
