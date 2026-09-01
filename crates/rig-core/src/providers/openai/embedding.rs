@@ -233,9 +233,8 @@ pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize
 
 impl<Ext, H> GenericEmbeddingModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: OpenAIEmbeddingsCompatible + Clone,
 {
     /// Perform the request and return the provider's native wire response
     /// instead of the normalized [`embeddings::EmbeddingResponse`]. Same
@@ -357,9 +356,8 @@ where
 
 impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: OpenAIEmbeddingsCompatible + Clone,
 {
     fn max_documents(&self) -> usize {
         Ext::MAX_DOCUMENTS
@@ -443,9 +441,8 @@ where
 impl<Ext, H> crate::client::ConstructEmbeddingModel<crate::client::Client<Ext, H>>
     for GenericEmbeddingModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync,
+    Ext: OpenAIEmbeddingsCompatible + Clone,
 {
     fn construct(
         client: &crate::client::Client<Ext, H>,
