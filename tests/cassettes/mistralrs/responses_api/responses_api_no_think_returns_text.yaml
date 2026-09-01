@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"/no_think Explain token usage reporting in one sentence.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":128,"model":"Qwen/Qwen3-4B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"completed_at":0,"created_at":0,"id":"resp_REDACTED_1","max_output_tokens":128,"model":"Qwen/Qwen3-4B","object":"response","output":[{"content":[{"text":"\n\nToken usage reporting tracks the number of tokens consumed by AI models during interactions to help optimize costs and resource allocation.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"output_text":"\n\nToken usage reporting tracks the number of tokens consumed by AI models during interactions to help optimize costs and resource allocation.","reasoning":"\n\n","status":"completed","usage":{"input_tokens":37,"output_tokens":27,"total_tokens":64}}'

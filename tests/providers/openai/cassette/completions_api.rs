@@ -1,14 +1,12 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
-
-use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::Prompt;
-use rig::message::{AssistantContent, Message, ToolChoice};
+use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
-use rig::tool::Tool;
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::{
@@ -50,20 +48,28 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let response = client
-                .completion_model(openai::GPT_4O)
+            let model = client.completion_model(openai::GPT_4O);
+            let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-                .send()
+                .build();
+
+            // The cassette records exactly one interaction, so the raw wire
+            // response is fetched once and normalized through the provider's own
+            // conversion instead of issuing a second identical request.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("raw completions api request should succeed");
+            let raw_text = raw
+                .text_response()
+                .expect("raw completions api response should contain assistant text");
 
+            let response: rig::completion::CompletionResponse = raw
+                .normalize("openai")
+                .expect("raw completions api response should normalize");
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized completions api response should contain assistant text");
-            let raw_text = response
-                .raw_response
-                .get_text_response()
-                .expect("raw completions api response should contain assistant text");
 
             assert_nonempty_response(&normalized_text);
             assert_nonempty_response(&raw_text);
@@ -88,7 +94,7 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
 
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .multi_turn(8)
+                .max_turns(8)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -159,8 +165,8 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
-                .tool(BetaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&BetaSignal))
                 .build();
 
             let observation = collect_raw_stream_observation(
@@ -193,7 +199,7 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
 
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-                .multi_turn(5)
+                .max_turns(5)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -216,7 +222,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let first_turn = collect_raw_stream_observation(
@@ -237,10 +243,17 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
                 .expect("raw completions api stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message =
-                Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
+                Message::User {
+        content: vec![UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+        )],
+    };
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

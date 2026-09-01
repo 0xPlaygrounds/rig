@@ -1,7 +1,7 @@
 //! Cohere tools smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::cohere;
 
 use crate::support::{
@@ -13,7 +13,7 @@ use crate::support::{
 async fn tools_smoke() {
     let client = cohere::Client::from_env().expect("client should build");
     let agent = client
-        .agent(cohere::COMMAND_R)
+        .agent(cohere::COMMAND_A_03_2025)
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

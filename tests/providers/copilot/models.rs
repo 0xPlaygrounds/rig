@@ -21,22 +21,23 @@
 //! cargo test -p rig --test copilot list_models_smoke -- --ignored --nocapture
 //! ```
 
-use crate::copilot::live_client;
+use crate::copilot::with_copilot_cassette;
 use rig::client::ModelListingClient;
 
 #[tokio::test]
-#[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn list_models_smoke() {
-    let client = live_client();
-    let models = match client.list_models().await {
-        Ok(models) => models,
-        Err(error) => {
-            panic!("listing Copilot models should succeed\nDisplay: {error}\nDebug: {error:#?}")
-        }
-    };
+    with_copilot_cassette("models/list_models_smoke", |client| async move {
+        let models = match client.list_models().await {
+            Ok(models) => models,
+            Err(error) => {
+                panic!("listing Copilot models should succeed\nDisplay: {error}\nDebug: {error:#?}")
+            }
+        };
 
-    assert!(
-        !models.is_empty(),
-        "expected Copilot to return at least one model\nModel list: {models:#?}"
-    );
+        assert!(
+            !models.is_empty(),
+            "expected Copilot to return at least one model\nModel list: {models:#?}"
+        );
+    })
+    .await;
 }

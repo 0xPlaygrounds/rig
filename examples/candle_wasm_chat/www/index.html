@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Rig Candle · Local WASM chat</title>
+        <link rel="stylesheet" href="./style.css" />
+    </head>
+    <body>
+        <main class="shell">
+            <header>
+                <div>
+                    <p class="eyebrow">rig-candle · WebAssembly</p>
+                    <h1>Local model chat</h1>
+                    <p class="intro">
+                        Every token is generated in your browser. Nothing you type is sent to a server.
+                    </p>
+                </div>
+                <button id="clear" class="secondary" type="button" disabled>Clear</button>
+            </header>
+
+            <section id="transcript" aria-live="polite" aria-label="Conversation">
+                <article class="message assistant">
+                    <strong>Local model</strong>
+                    <p>
+                        Loading the embedded SmolLM2-360M-Instruct Q4_K_M model. Generation runs
+                        locally in a Web Worker and retains a bounded window of recent turns.
+                    </p>
+                </article>
+            </section>
+
+            <form id="chat-form">
+                <label for="message">Message</label>
+                <div class="composer">
+                    <input
+                        id="message"
+                        name="message"
+                        type="text"
+                        placeholder="Say hello…"
+                        autocomplete="off"
+                        maxlength="1024"
+                        disabled
+                    />
+                    <button id="send" type="submit" disabled>Send</button>
+                </div>
+                <p id="status" role="status">Loading embedded model…</p>
+            </form>
+        </main>
+        <script type="module" src="./app.js"></script>
+    </body>
+</html>

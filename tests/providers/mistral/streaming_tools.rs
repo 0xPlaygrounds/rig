@@ -1,7 +1,7 @@
 //! Mistral streaming tools coverage, including the migrated example path.
 
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Message;
+use rig::prelude::*;
 use rig::providers::mistral;
 use rig::streaming::{StreamingChat, StreamingPrompt};
 
@@ -70,7 +70,7 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
 
     let mut stream = agent
         .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-        .multi_turn(5)
+        .max_turns(5)
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
@@ -94,7 +94,7 @@ async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
 
     let mut stream = agent
         .stream_chat(ORDERED_TOOL_STREAM_PROMPT, Vec::<Message>::new())
-        .multi_turn(5)
+        .max_turns(5)
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 

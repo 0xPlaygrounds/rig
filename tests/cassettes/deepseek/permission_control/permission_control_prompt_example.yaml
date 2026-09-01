@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a helpful assistant that can read files using different methods.","role":"system"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user"}],"model":"deepseek-v4-flash","tools":[{"function":{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"}},"type":"function"},{"function":{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"I''ll read the file using both available tools.","reasoning_content":"The user wants to read test.txt. I have two tools available: one to read the first line and one to read the last line. Let me use both to get the content.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"read_file_head"},"id":"call_REDACTED_1","index":0,"type":"function"},{"function":{"arguments":"{}","name":"read_file_tail"},"id":"call_REDACTED_2","index":1,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":91,"completion_tokens_details":{"reasoning_tokens":37},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":343,"prompt_tokens":343,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":434}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a helpful assistant that can read files using different methods.","role":"system"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user"},{"content":"I''ll read the file using both available tools.","reasoning_content":"The user wants to read test.txt. I have two tools available: one to read the first line and one to read the last line. Let me use both to get the content.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"read_file_head"},"id":"call_REDACTED_1","index":0,"type":"function"},{"function":{"arguments":"{}","name":"read_file_tail"},"id":"call_REDACTED_2","index":0,"type":"function"}]},{"content":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"hello world","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"deepseek-v4-flash","tools":[{"function":{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"}},"type":"function"},{"function":{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The file **test.txt** contains the following content:\n\n```\nhello world\n```\n\n(Only the `tail` tool was available, and it returned this as the last line of the file.)","reasoning_content":"The first tool is unavailable, but the second tool worked. The tail command read the last line and it shows \"hello world\". Since this is a single-line file (probably), the last line is also the entire content.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":84,"completion_tokens_details":{"reasoning_tokens":45},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":95,"prompt_tokens":479,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":563}}'

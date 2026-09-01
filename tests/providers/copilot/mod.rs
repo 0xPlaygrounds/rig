@@ -5,7 +5,11 @@ mod extractor;
 mod extractor_usage;
 mod models;
 mod multi_extract;
+mod noninteractive_oauth_cassette;
 mod permission_control;
+mod raw_capture_matrix;
+mod raw_completion_parity_matrix;
+mod raw_stream_capture_matrix;
 mod reasoning_roundtrip;
 mod reasoning_tool_roundtrip;
 mod request_hook;
@@ -15,8 +19,15 @@ mod streaming_tools;
 mod structured_output;
 mod typed_prompt_tools;
 
+use assert_fs::TempDir;
+use rig::client::DefaultTransportBuilder as _;
 use rig::providers::copilot;
 use std::borrow::Cow;
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
+
+use crate::cassettes::{CassetteSpec, ProviderCassette};
+use futures::FutureExt;
 
 pub(crate) const LIVE_MODEL: &str = copilot::GPT_4O;
 pub(crate) const LIVE_LIGHT_MODEL: &str = copilot::GPT_4O_MINI;
@@ -39,18 +50,22 @@ pub(crate) fn copilot_github_access_token() -> Option<String> {
 
 pub(crate) fn live_responses_model() -> Cow<'static, str> {
     first_env_value(&["GITHUB_COPILOT_RESPONSES_MODEL", "COPILOT_RESPONSES_MODEL"])
-        .map(Cow::Owned)
-        .unwrap_or_else(|| Cow::Borrowed(copilot::GPT_5_3_CODEX))
+        .map_or_else(|| Cow::Borrowed(copilot::GPT_5_3_CODEX), Cow::Owned)
 }
 
 pub(crate) fn live_embedding_model() -> Cow<'static, str> {
-    first_env_value(&["GITHUB_COPILOT_EMBEDDING_MODEL", "COPILOT_EMBEDDING_MODEL"])
-        .map(Cow::Owned)
-        .unwrap_or_else(|| Cow::Borrowed(copilot::TEXT_EMBEDDING_3_SMALL))
+    first_env_value(&["GITHUB_COPILOT_EMBEDDING_MODEL", "COPILOT_EMBEDDING_MODEL"]).map_or_else(
+        || Cow::Borrowed(copilot::TEXT_EMBEDDING_3_SMALL),
+        Cow::Owned,
+    )
 }
 
 fn env_base_url() -> Option<String> {
     first_env_value(&["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"])
+}
+
+fn cassette_base_url() -> String {
+    env_base_url().unwrap_or_else(|| "https://api.githubcopilot.com".to_string())
 }
 
 fn with_base_url(mut builder: copilot::ClientBuilder) -> copilot::ClientBuilder {
@@ -87,4 +102,78 @@ pub(crate) fn live_builder() -> copilot::ClientBuilder {
 
 pub(crate) fn live_client() -> copilot::Client {
     live_builder().build().expect("Copilot client should build")
+}
+
+async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, copilot::Client) {
+    let cassette_base_url = cassette_base_url();
+    let cassette = ProviderCassette::start("copilot", spec, &cassette_base_url).await;
+    let client = copilot::Client::builder()
+        .api_key(cassette.api_key("GITHUB_COPILOT_API_KEY"))
+        .base_url(cassette.base_url())
+        .build()
+        .expect("Copilot cassette client should build");
+
+    (cassette, client)
+}
+
+async fn copilot_noninteractive_oauth_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, copilot::Client, TempDir) {
+    let cassette_base_url = cassette_base_url();
+    let cassette = ProviderCassette::start("copilot", spec, &cassette_base_url).await;
+    let temp = TempDir::new().expect("temp token directory should be created");
+    let api_key_record = serde_json::json!({
+        "token": cassette.api_key("GITHUB_COPILOT_API_KEY"),
+        "expires_at": i64::MAX,
+    });
+    std::fs::write(
+        temp.path().join("api-key.json"),
+        serde_json::to_vec_pretty(&api_key_record).expect("api key record should serialize"),
+    )
+    .expect("api key record should be written");
+
+    let client = copilot::Client::builder()
+        .oauth()
+        .allow_device_flow(false)
+        .token_dir(temp.path())
+        .base_url(cassette.base_url())
+        .build()
+        .expect("non-interactive Copilot OAuth cassette client should build");
+
+    (cassette, client, temp)
+}
+
+pub(crate) async fn with_copilot_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
+where
+    F: FnOnce(copilot::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = copilot_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
+pub(crate) async fn with_copilot_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(copilot::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let (cassette, client) = copilot_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
+pub(crate) async fn with_copilot_noninteractive_oauth_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(copilot::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client, _temp) = copilot_noninteractive_oauth_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
 }

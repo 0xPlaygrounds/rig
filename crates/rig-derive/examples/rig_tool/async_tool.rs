@@ -1,20 +1,19 @@
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::completion::Prompt;
+use rig_agent::completion::Prompt;
+use rig_agent::prelude::*;
 use rig_core::providers;
-use rig_core::tool::{Tool, ToolError};
+use rig_core::tool::ToolExecutionError;
 use rig_derive::rig_tool;
+use rig_reqwest::prelude::*;
 use std::time::Duration;
 
-// Example demonstrating async tool usage
-#[rig_tool(
-    description = "A tool that simulates an async operation",
-    params(
-        input = "Input value to process",
-        delay_ms = "Delay in milliseconds before returning result"
-    ),
-    required(input, delay_ms)
-)]
-async fn async_operation(input: String, delay_ms: u64) -> Result<String, ToolError> {
+/// A tool that simulates an async operation
+#[rig_tool]
+async fn async_operation(
+    /// Input value to process
+    input: String,
+    /// Delay in milliseconds before returning result
+    delay_ms: u64,
+) -> Result<String, ToolExecutionError> {
     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
     Ok(format!(
@@ -38,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "ASYNCOPERATION: {}",
-        serde_json::to_string_pretty(&AsyncOperation.definition(String::default()).await)?
+        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&AsyncOperation))?
     );
 
     for prompt in [

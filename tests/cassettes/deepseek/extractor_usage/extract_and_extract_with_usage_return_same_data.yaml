@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","role":"system"},{"content":"Bob Johnson is a 55 year old retired teacher.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"age":{"format":"uint8","maximum":255,"minimum":0,"type":["integer","null"]},"name":{"type":["string","null"]},"profession":{"type":["string","null"]}},"title":"Person","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"Let me extract the structured data from the provided text:\n\n- Name: Bob Johnson\n- Age: 55\n- Profession: retired teacher\n\nLet me submit this data.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}","name":"submit"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":114,"completion_tokens_details":{"reasoning_tokens":35},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":433,"prompt_tokens":433,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":547}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","role":"system"},{"content":"Bob Johnson is a 55 year old retired teacher.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"age":{"format":"uint8","maximum":255,"minimum":0,"type":["integer","null"]},"name":{"type":["string","null"]},"profession":{"type":["string","null"]}},"title":"Person","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"Let me extract the structured data from the text.\n\nName: Bob Johnson\nAge: 55\nProfession: retired teacher","role":"assistant","tool_calls":[{"function":{"arguments":"{\"name\": \"Bob Johnson\", \"age\": 55, \"profession\": \"retired teacher\"}","name":"submit"},"id":"call_REDACTED_2","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":104,"completion_tokens_details":{"reasoning_tokens":25},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":49,"prompt_tokens":433,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":537}}'

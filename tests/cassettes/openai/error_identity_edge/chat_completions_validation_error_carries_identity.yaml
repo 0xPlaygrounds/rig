@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Never validated","role":"user"}],"model":"gpt-4o","temperature":99.0}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"decimal_above_max_value","message":"Invalid ''temperature'': decimal above maximum value. Expected a value <= 2, but got 99.0 instead.","param":"temperature","type":"invalid_request_error"}}'

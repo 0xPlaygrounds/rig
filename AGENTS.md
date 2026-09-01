@@ -20,13 +20,19 @@ agents must follow while reading, editing, testing, and documenting code.
 - Root facade crate: `rig`
 - Core crate: `crates/rig-core`
 - Companion provider and vector-store crates: `crates/rig-*`
-- Root examples: `examples/`
+- Derive macros: `crates/rig-derive`
+- Workspace example packages: `examples/*`
 - Per-crate examples: `crates/<crate>/examples/`
-- Provider-backed tests: `tests/providers/` and provider-specific integration tests
+- Root integration test targets: `tests/*.rs`
+- Provider test modules: `tests/providers/<provider>/`
+- Provider cassette fixtures: `tests/cassettes/<provider>/`
+- External-service integration tests: `tests/integrations/`
 
 The root `rig` crate re-exports `rig-core` and exposes companion crates behind
-feature flags. Check `Cargo.toml` before documenting or changing exposed
-features, integrations, or module paths.
+feature flags. Check `Cargo.toml` and `src/lib.rs` before documenting or changing
+exposed features, integrations, or module paths. If adding or exposing a
+companion provider/vector-store crate, update the root dependency, feature,
+facade re-export, examples, README, and crate docs as applicable.
 
 ## Core Architecture
 
@@ -108,15 +114,25 @@ Provider implementations should include:
 - `Provider` implementation
 - `Capabilities` declaration
 - `ProviderBuilder` implementation
-- client type aliases
+- `ProviderClient::{from_env, from_val}`
+- public `Client` and `ClientBuilder` aliases; the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`
+- explicit API-key marker/auth types with redacted debug behavior for credential-bearing values
 - model constants where useful
 - request conversion from Rig request types
 - response conversion into Rig response types
 - streaming support when the provider supports streaming
-- telemetry spans following existing GenAI conventions
+- provider-response error preservation through the relevant Rig error helpers
+- `ProviderResponseExt` and telemetry spans following existing GenAI conventions
 - tests or examples appropriate to the provider
 
 Do not add request or response fields that do not exist in the provider's real API.
+
+For provider bug fixes or behavior changes, add or update regression coverage in
+one of these places, preferring the smallest reliable scope:
+
+- unit tests near the implementation in `crates/rig-core/src/providers/...`;
+- cassette-backed provider tests in `tests/providers/<provider>/cassette/`;
+- ignored live tests only when cassette replay is unsuitable.
 
 ## Vector Store Changes
 
@@ -134,19 +150,34 @@ Return `VectorStoreError` variants instead of ad hoc string errors.
 
 Use `WasmCompatSend` and `WasmCompatSync` bounds.
 
-## Prompt Hook Changes
+## Agent Hook Changes
 
-Prompt hooks are per-request lifecycle hooks.
+Agent hooks are per-run lifecycle observers and steerers. `AgentHook` exposes
+one method per lifecycle event, and every method receives the run-scoped
+`HookContext` (run id, turn, streaming flag, agent name, shared `Scratchpad`).
+Each method returns an event-specific action type, so unsupported combinations
+are rejected by the compiler.
 
-When modifying hook behavior, preserve the intended control flow:
+Composition through `HookStack` remains event-dependent:
 
-- `HookAction::Continue`
-- `HookAction::Terminate`
-- `ToolCallHookAction::Continue`
-- `ToolCallHookAction::Skip`
-- `ToolCallHookAction::Terminate`
+- **Completion calls accumulate and merge.** Every
+  `CompletionCallAction::Patch(RequestPatch)` is merged in registration order;
+  `Stop` short-circuits the stack.
+- **Tool calls and results chain.** `ToolCallAction::Rewrite` and
+  `ToolResultAction::Rewrite` are threaded into later hooks. A tool-call `Skip`
+  or either event's `Stop` is terminal.
+- **Invalid tool calls** return `InvalidToolCallAction` (`Fail`, `Retry`,
+  `Repair`, `Skip`, or `Stop`).
+- **Observe-only events** return `ObservationAction` (`Continue` or `Stop`).
 
-Check both streaming and non-streaming paths.
+Register observe-only hooks before steering hooks because stop actions
+short-circuit. Nested `HookStack`s must preserve merge and chaining semantics.
+`RequestPatch` remains per-turn and non-sticky; its documented merge rules are
+append `extra_context`, shallow-merge `additional_params`, intersect
+`active_tools`, and last-writer-wins scalars/history with a warning.
+
+Every hook semantic must behave identically on streaming and non-streaming
+surfaces (`AgentRunner::stream` and `AgentRunner::run` share `drive_agent`).
 
 ## Style
 
@@ -155,9 +186,42 @@ Check both streaming and non-streaming paths.
 - Follow local naming, module layout, and test patterns.
 - Avoid unrelated refactors.
 
+## Cassette Regression Tests
+
+Provider regressions should usually include cassette-backed tests. Read
+`tests/README.md` before adding, updating, or running provider tests.
+
+- Test code lives under `tests/providers/<provider>/cassette/`.
+- Fixtures live under `tests/cassettes/<provider>/...`.
+- Replay cassettes by default; this should not require provider API keys.
+- Record mode requires the relevant provider API key and overwrites fixtures.
+- Keep record runs targeted to the provider and test being changed.
+
+Replay examples:
+
+```bash
+cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
+cargo test -p rig --all-features --test anthropic anthropic::cassette -- --nocapture --test-threads=1
+cargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture --test-threads=1
+```
+
+Record example:
+
+```bash
+RIG_PROVIDER_TEST_MODE=record \
+  cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
+```
+
+Review cassette diffs carefully. They must not contain API keys, bearer tokens,
+cookies, provider account identifiers, or unrelated request/response churn. The
+repo includes cassette scrub/safety checks in `tests/common/cassette_safety.rs`,
+but agents are still responsible for inspecting generated fixtures before
+presenting changes.
+
 ## Verification
 
-Run the smallest useful checks first, then broaden as needed.
+Run the smallest useful checks first, then broaden as needed. For tests, prefer
+the targeted commands in `tests/README.md` before running broad workspace checks.
 
 Before considering code complete, run when feasible:
 

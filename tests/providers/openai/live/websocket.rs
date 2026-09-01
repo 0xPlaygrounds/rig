@@ -1,16 +1,16 @@
 //! Migrated from `examples/openai_websocket_mode.rs`.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 
 use crate::support::assert_nonempty_response;
 
-fn extract_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
+fn extract_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -59,7 +59,8 @@ async fn websocket_session_roundtrip() -> Result<()> {
                     break;
                 }
             }
-            ResponsesWebSocketEvent::Done(_) => {}
+            // Unknown frames are raw passthrough noise for this live assertion.
+            ResponsesWebSocketEvent::Done(_) | ResponsesWebSocketEvent::Unknown(_) => {}
             ResponsesWebSocketEvent::Error(error) => {
                 return Err(anyhow::anyhow!(error.to_string()));
             }

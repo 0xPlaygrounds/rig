@@ -1,12 +1,9 @@
 //! Groq streaming tools smoke test.
-
-use rig::OneOrMany;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
-use rig::message::{AssistantContent, Message, ToolChoice};
+use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
+use rig::prelude::*;
 use rig::providers::groq;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -45,8 +42,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     let request = model
         .completion_request(TWO_TOOL_STREAM_PROMPT)
         .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-        .tool(AlphaSignal.definition(String::new()).await)
-        .tool(BetaSignal.definition(String::new()).await)
+        .tool(rig::tool::tool_definition(&AlphaSignal))
+        .tool(rig::tool::tool_definition(&BetaSignal))
         .build();
 
     let observation = collect_raw_stream_observation(
@@ -76,7 +73,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 
     let mut stream = agent
         .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-        .multi_turn(8)
+        .max_turns(8)
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
@@ -99,7 +96,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
 
     let mut stream = agent
         .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-        .multi_turn(5)
+        .max_turns(5)
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
@@ -118,7 +115,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-        .tool(AlphaSignal.definition(String::new()).await)
+        .tool(rig::tool::tool_definition(&AlphaSignal))
         .build();
 
     let first_turn = collect_raw_stream_observation(
@@ -139,10 +136,16 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         .expect("raw stream should yield lookup_harbor_label");
     let assistant_message = Message::Assistant {
         id: None,
-        content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+        content: vec![AssistantContent::ToolCall(tool_call.clone())],
     };
-    let tool_result_message =
-        Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
+    let tool_result_message = Message::User {
+        content: vec![UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+        )],
+    };
     let followup_request = model
         .completion_request(
             "Now reply in one short sentence using the provided tool result. Do not call any tools.",

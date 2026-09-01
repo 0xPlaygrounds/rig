@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are concise and should rely on the provided chat history.","role":"system"},{"content":"My favorite color is teal. Please remember it.","role":"user"},{"content":"Noted: your favorite color is teal.","prefix":false,"role":"assistant"},{"content":"For this release, use the canary lane.","role":"user"},{"content":"Understood: the release lane is canary.","prefix":false,"role":"assistant"},{"content":"Look up the harbor label with the tool.","role":"user"},{"content":"","prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"The harbor label is crimson-harbor.","prefix":false,"role":"assistant"},{"content":"Answer in one short sentence: what is my favorite color, which label came from the tool, and which release lane did I choose? Do not call any tools.","role":"user"}],"model":"mistral-small-latest","tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Your favorite color is teal, the label is crimson-harbor, and the release lane is canary.","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":25,"prompt_tokens":148,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":173}}'

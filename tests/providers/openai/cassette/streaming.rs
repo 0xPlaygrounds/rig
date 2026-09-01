@@ -1,12 +1,13 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
+    collect_stream_final_response_and_provider_final,
 };
 
 #[tokio::test]
@@ -18,11 +19,17 @@ async fn streaming_smoke() {
             .build();
 
         let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
-        let response = collect_stream_final_response(&mut stream)
-            .await
-            .expect("streaming prompt should succeed");
+        let (response, provider_final) =
+            collect_stream_final_response_and_provider_final(&mut stream)
+                .await
+                .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
+        assert_eq!(
+            provider_final.provider, "openai",
+            "the terminal stream record should be attributed to the OpenAI provider"
+        );
+        assert!(provider_final.usage.total_tokens > 0);
     })
     .await;
 }

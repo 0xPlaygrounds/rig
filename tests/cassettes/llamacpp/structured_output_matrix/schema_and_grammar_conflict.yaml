@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"grammar":"root ::= \"yes\" | \"no\"","json_schema":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"max_tokens":128,"messages":[{"content":"/no_think Give a fact about Paris.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 500
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":500,"message":"Cannot use both json_schema and grammar","type":"server_error"}}'

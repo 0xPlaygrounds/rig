@@ -1,0 +1,5 @@
+error: `ToolContext` is host-only and cannot be listed in `params(...)` or `required(...)`
+ --> tests/ui/tool_context/fail_context_in_required.rs:6:21
+  |
+6 | #[rig_tool(required(context))]
+  |                     ^^^^^^^

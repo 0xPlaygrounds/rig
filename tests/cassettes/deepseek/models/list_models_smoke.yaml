@@ -1,0 +1,16 @@
+when:
+  path: /models
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"data":[{"id":"deepseek-v4-flash","object":"model","owned_by":"deepseek"},{"id":"deepseek-v4-pro","object":"model","owned_by":"deepseek"}],"object":"list"}'

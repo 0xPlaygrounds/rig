@@ -6,21 +6,20 @@
     clippy::unreachable
 )]
 
+use rig::client::DefaultTransportBuilder as _;
 use serde_json::json;
 
-use arrow_array::RecordBatchIterator;
-use fixture::{Word, as_record_batch, schema, words};
+use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
-    client::EmbeddingsClient,
+    client::{AgentModelExt, EmbeddingsClient},
     completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    prelude::CompletionClient,
+    prelude::*,
     providers::openai,
-    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
+    vector_store::VectorStoreIndex,
 };
-use std::sync::Arc;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
@@ -156,10 +155,7 @@ async fn vector_search_test() {
     } else {
         db.create_table(
             table_name,
-            RecordBatchIterator::new(
-                vec![as_record_batch(embeddings, model.ndims())],
-                Arc::new(schema(model.ndims())),
-            ),
+            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
         )
         .execute()
         .await
@@ -373,10 +369,7 @@ async fn agent_with_dynamic_context_test() {
     } else {
         db.create_table(
             table_name,
-            RecordBatchIterator::new(
-                vec![as_record_batch(embeddings, model.ndims())],
-                Arc::new(schema(model.ndims())),
-            ),
+            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
         )
         .execute()
         .await
@@ -401,7 +394,7 @@ async fn agent_with_dynamic_context_test() {
         .await
         .unwrap();
 
-    // Build RAG agent with dynamic context
+    // Build RAG agent with dynamic context.
     let agent = openai_client
         .completion_model(openai::GPT_4O)
         .completions_api()

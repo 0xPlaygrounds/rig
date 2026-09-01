@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.41.0...rig-lancedb-v0.42.0) - 2026-08-16
+
+### Other
+
+- workspace-wide LOC consolidation pass 8 (net −1,353 production lines) ([#2320](https://github.com/0xPlaygrounds/rig/pull/2320)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2320
+- workspace-wide LOC consolidation pass 7 (net −366 production lines) ([#2310](https://github.com/0xPlaygrounds/rig/pull/2310)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2310
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.40.0...rig-lancedb-v0.41.0) - 2026-07-28
+
+### Added
+
+- *(agent)* restore dynamic context helper ([#2219](https://github.com/0xPlaygrounds/rig/pull/2219)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] split rig-core and rig-agent behind the rig facade ([#2197](https://github.com/0xPlaygrounds/rig/pull/2197)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2197
+
+### Other
+
+- Make managed agent hooks provider-independent ([#2176](https://github.com/0xPlaygrounds/rig/pull/2176)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2176
+- Remove built-in agent dynamic context ([#2174](https://github.com/0xPlaygrounds/rig/pull/2174)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2174
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.7...rig-lancedb-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.4.7](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.6...rig-lancedb-v0.4.7) - 2026-06-02
+
+### Other
+
+- *(deps)* port dependency bumps and Rust 1.91 ([#1842](https://github.com/0xPlaygrounds/rig/pull/1842)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
 ## [0.4.6](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.4.5...rig-lancedb-v0.4.6) - 2026-05-13
 
 ### Other

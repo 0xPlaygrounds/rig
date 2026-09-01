@@ -1,6 +1,6 @@
-//! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::ToolEmbedding]
+//! The module defines the [ToolSchema] struct, which is used to embed an object that implements [crate::tool::PortableToolEmbedding]
 
-use crate::{Embed, tool::ToolEmbeddingDyn};
+use crate::{Embed, tool::PortableToolEmbedding};
 use serde::Serialize;
 
 use super::embed::EmbedError;
@@ -24,19 +24,17 @@ impl Embed for ToolSchema {
 }
 
 impl ToolSchema {
-    /// Convert item that implements [ToolEmbeddingDyn] to an [ToolSchema].
+    /// Convert an embedding-backed tool to a [`ToolSchema`].
     ///
     /// # Example
     /// ```rust
     /// use rig_core::{
-    ///     completion::ToolDefinition,
     ///     embeddings::ToolSchema,
-    ///     tool::{Tool, ToolEmbedding, ToolEmbeddingDyn},
+    ///     tool::{PortableTool, PortableToolEmbedding},
     /// };
-    /// use serde_json::json;
     ///
     /// #[derive(Debug, thiserror::Error)]
-    /// #[error("Math error")]
+    /// #[error("Nothing error")]
     /// struct NothingError;
     ///
     /// #[derive(Debug, thiserror::Error)]
@@ -44,28 +42,27 @@ impl ToolSchema {
     /// struct InitError;
     ///
     /// struct Nothing;
-    /// impl Tool for Nothing {
+    /// impl PortableTool for Nothing {
     ///     const NAME: &'static str = "nothing";
     ///
-    ///     type Error = NothingError;
     ///     type Args = ();
     ///     type Output = ();
+    ///     type Error = NothingError;
     ///
-    ///     async fn definition(&self, _prompt: String) -> ToolDefinition {
-    ///         serde_json::from_value(json!({
-    ///             "name": "nothing",
-    ///             "description": "nothing",
-    ///             "parameters": {}
-    ///         }))
-    ///         .expect("Tool Definition")
+    ///     fn description(&self) -> String {
+    ///         "nothing".to_string()
     ///     }
     ///
-    ///     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    ///     fn parameters(&self) -> serde_json::Value {
+    ///         serde_json::json!({})
+    ///     }
+    ///
+    ///     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
     ///         Ok(())
     ///     }
     /// }
     ///
-    /// impl ToolEmbedding for Nothing {
+    /// impl PortableToolEmbedding for Nothing {
     ///     type InitError = InitError;
     ///     type Context = ();
     ///     type State = ();
@@ -86,11 +83,68 @@ impl ToolSchema {
     /// assert_eq!(tool.name, "nothing".to_string());
     /// assert_eq!(tool.embedding_docs, vec!["Do nothing.".to_string()]);
     /// ```
-    pub fn try_from(tool: &dyn ToolEmbeddingDyn) -> Result<Self, EmbedError> {
+    pub fn try_from<T>(tool: &T) -> Result<Self, EmbedError>
+    where
+        T: PortableToolEmbedding,
+    {
         Ok(ToolSchema {
-            name: tool.name(),
-            context: tool.context().map_err(EmbedError::new)?,
+            name: T::NAME.to_string(),
+            context: serde_json::to_value(tool.context()).map_err(EmbedError::new)?,
             embedding_docs: tool.embedding_docs(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::Infallible;
+
+    use super::ToolSchema;
+    use crate::tool::{PortableTool, PortableToolEmbedding, ToolExecutionError};
+
+    struct NamedTool;
+
+    impl PortableTool for NamedTool {
+        const NAME: &'static str = "static_name";
+
+        type Error = rig::tool::ToolExecutionError;
+
+        type Args = ();
+        type Output = ();
+
+        fn description(&self) -> String {
+            "A statically named tool".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({})
+        }
+
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
+            Ok(())
+        }
+    }
+
+    impl PortableToolEmbedding for NamedTool {
+        type InitError = Infallible;
+        type Context = ();
+        type State = ();
+
+        fn embedding_docs(&self) -> Vec<String> {
+            vec!["named tool".to_string()]
+        }
+
+        fn context(&self) -> Self::Context {}
+
+        fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
+            Ok(Self)
+        }
+    }
+
+    #[test]
+    fn try_from_uses_canonical_tool_name() {
+        let schema = ToolSchema::try_from(&NamedTool).unwrap();
+
+        assert_eq!(schema.name, NamedTool::NAME);
     }
 }

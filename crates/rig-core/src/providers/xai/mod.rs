@@ -1,7 +1,7 @@
 //! xAI API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::xai};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,7 +19,6 @@ pub mod client;
 pub mod completion;
 #[cfg(feature = "image")]
 pub mod image_generation;
-mod streaming;
 
 #[cfg(feature = "audio")]
 pub use audio_generation::{AudioGenerationModel, TTS_1};

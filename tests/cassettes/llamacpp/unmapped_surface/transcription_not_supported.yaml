@@ -1,0 +1,16 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=rigboundary
+  body: "--rigboundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\nContent-Type: audio/wav\r\n\r\nRIFF\r\n--rigboundary--\r\n"
+then:
+  status: 501
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":501,"message":"The current model does not support audio input.","type":"not_supported_error"}}'

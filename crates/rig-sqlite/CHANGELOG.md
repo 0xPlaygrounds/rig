@@ -6,6 +6,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.41.0...rig-sqlite-v0.42.0) - 2026-08-16
+
+### Other
+
+- reconcile the changelogs and the migration guide with what actually merged ([#2353](https://github.com/0xPlaygrounds/rig/pull/2353)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2353
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Fixed
+
+- *(sqlite)* a filter built from `SqliteSearchFilter::default()` now composes instead of erroring. `default()` produced an internal `Raw { condition: "1 = 1" }` node that was special-cased only at the top level; nested under `or` it reached the document-table renderer and failed with `SQLite filter cannot be safely lowered; raw filters cannot be validated as document-table constraints` — so `SqliteSearchFilter::default().or(other)`, the natural way to fold filters, died on a message naming a concept the public API never exposed. The default is now a dedicated no-op node: it contributes no constraint at the top level and renders as the tautology `1 = 1` when it is composed under `and`/`or`/`not` on the document path, pinned by `default_filter_composes_under_or_as_a_tautology`
+
+### Changed
+
+- *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
+
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.39.0...rig-sqlite-v0.40.0) - 2026-07-10
+
+### Other
+
+- run doctests and stop rig-sqlite opting out of them ([#1939](https://github.com/0xPlaygrounds/rig/pull/1939)) (by @gold-silver-copper) - #1939
+
+### Contributors
+
+* @gold-silver-copper
+## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.38.2...rig-sqlite-v0.39.0) - 2026-06-19
+
+### Fixed
+
+- *(sqlite)* brute-force scan when KNN candidate count exceeds sqlite-vec's k cap ([#1920](https://github.com/0xPlaygrounds/rig/pull/1920)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.3.0...rig-sqlite-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.3.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.2.6...rig-sqlite-v0.3.0) - 2026-06-02
+
+### Fixed
+
+- *(sqlite)* deserialize JSON columns ([#1797](https://github.com/0xPlaygrounds/rig/pull/1797)) (by @gold-silver-copper)
+- *(sqlite)* support document metadata filters ([#1793](https://github.com/0xPlaygrounds/rig/pull/1793)) (by @gold-silver-copper)
+- fix sqlite threshold and null tool call streaming ([#1786](https://github.com/0xPlaygrounds/rig/pull/1786)) (by @gold-silver-copper) - #1786
+
+### Other
+
+- [codex] docs(sqlite): add JSON metadata ergonomics ([#1798](https://github.com/0xPlaygrounds/rig/pull/1798)) (by @gold-silver-copper) - #1798
+
+### Contributors
+
+* @gold-silver-copper
 ## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.2.5...rig-sqlite-v0.2.6) - 2026-05-13
 
 ### Other

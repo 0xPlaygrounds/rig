@@ -1,0 +1,56 @@
+when:
+  path: /v1beta/cachedContents
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"displayName":"rig-active-tools","model":"models/gemini-2.5-flash","systemInstruction":{"parts":[{"text":"This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior. This cache fixture paragraph is stable provider test padding about request routing, tool schemas, system instructions, and deterministic replay behavior.","thought":false}],"role":"model"},"ttl":"180.000000000s"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"createTime":"2026-08-19T01:32:55.422504Z","displayName":"rig-active-tools","expireTime":"2026-08-19T01:35:54.995577631Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-19T01:32:55.422504Z","usageMetadata":{"totalTokenCount":1081}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"cachedContent":"cachedContents/cached-REDACTED_1","contents":[{"parts":[{"text":"Reply with exactly: suppressed","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"suppressed"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":1081}],"cachedContentTokenCount":1081,"candidatesTokenCount":2,"promptTokenCount":1087,"promptTokensDetails":[{"modality":"TEXT","tokenCount":1087}],"serviceTier":"standard","thoughtsTokenCount":21,"totalTokenCount":1110}}'
+---
+when:
+  path: /v1beta/cachedContents/cached-REDACTED_1
+  method: DELETE
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{}'

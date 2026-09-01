@@ -1,6 +1,6 @@
 [package]
 name = "rig-qdrant"
-version = "0.2.6"
+version.workspace = true
 edition = { workspace = true }
 license = "MIT"
 readme = "README.md"
@@ -11,13 +11,14 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.37.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
 serde_json = { workspace = true }
 serde = { workspace = true }
 qdrant-client = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 anyhow = { workspace = true }
 testcontainers = { workspace = true }

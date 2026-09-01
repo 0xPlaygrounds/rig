@@ -6,7 +6,7 @@
 </picture>
 <br>
 <br>
-<a href="https://docs.rig.rs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
+<a href="https://rig.rs/docs"><img src="https://img.shields.io/badge/📖 docs-rig.rs-dca282.svg" /></a> &nbsp;
 <a href="https://docs.rs/rig/latest/rig/"><img src="https://img.shields.io/badge/docs-API Reference-dca282.svg" /></a> &nbsp;
 <a href="https://crates.io/crates/rig"><img src="https://img.shields.io/crates/v/rig.svg?color=dca282" /></a>
 &nbsp;
@@ -28,13 +28,15 @@
 
 <div align="center">
 
-[📑 Docs](https://docs.rig.rs)
+[📑 Docs](https://rig.rs/docs)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
 [🌐 Website](https://rig.rs)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
 [🤝 Contribute](https://github.com/0xPlaygrounds/rig/issues/new)
 <span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
-[✍🏽 Blogs](https://docs.rig.rs/guides)
+[✍🏽 Blogs](https://rig.rs/docs/guides)
+<span>&nbsp;&nbsp;•&nbsp;&nbsp;</span>
+<a href="https://ryzome.ai"><img src="img/ryzome-bg.png" height="32" align="absmiddle" alt="Ryzome" /></a>
 
 </div>
 
@@ -48,6 +50,7 @@
 - [Table of contents](#table-of-contents)
 - [What is Rig?](#what-is-rig)
 - [Features](#features)
+- [Runtime choices](#runtime-choices)
 - [Who's using Rig?](#who-is-using-rig)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
@@ -56,17 +59,33 @@
 ## What is Rig?
 Rig is a Rust library for building scalable, modular, and ergonomic **LLM-powered** applications.
 
-More information about this crate can be found in the [official](https://docs.rig.rs) and [crate](https://docs.rs/rig/latest/rig/) API reference documentation.
+More information about this crate can be found in the [official](https://rig.rs/docs) and [crate](https://docs.rs/rig/latest/rig/) API reference documentation.
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
+- A classic agent runtime enabled by default
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
-- Full WASM compatibility (core library only)
+- Browser-WASM (`wasm32-unknown-unknown`) support for the portable core and
+  classic runtime — see [target support](crates/rig-agent/README.md#target-support)
+  for the full matrix (WASI is not supported; `rig-rmcp`/MCP is native-only)
+
+## Runtime choices
+
+Rig separates portable provider/backend contracts from agent orchestration:
+
+- `rig-core` contains provider-neutral messages, completion models, portable tools,
+  memory and vector-store contracts, and built-in provider mappings.
+- `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
+  contextual tools, extraction, and the serializable `AgentRun` state machine. It
+  remains enabled by default.
+
+The root `rig` facade re-exports both at their familiar paths, so most code
+depends only on `rig`.
 
 ## Who is using Rig?
 Below is a non-exhaustive list of companies and people who are using Rig:
@@ -84,8 +103,9 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 - [Cortex Memory](https://github.com/sopaco/cortex-mem) - The production-ready memory system for intelligent agents. A complete solution for memory management, from extraction and vector search to automated optimization, with a REST API, MCP, CLI, and insights dashboard out-of-the-box.
 - [Ironclaw](https://github.com/nearai/ironclaw) - A secure personal AI assistant
 - [ilert](https://www.ilert.com/) - Incident management & alerting platform. Uses Rig as the multi-provider abstraction in its agentic LLM proxy powering ilert AI.
+- [Archestra](https://github.com/archestra-ai/archestra) - MCP-native secure AI platform. Uses Rig in its agentic benchmark.
 
-For a full list, check out our [ECOSYSTEM.md file.](https://www.github.com/0xPlaygrounds/rig/tree/main/ECOSYSTEM.md)
+For a curated list of Rig projects, libraries, tools, articles, and production users, check out [awesome-rig](https://github.com/0xPlaygrounds/awesome-rig).
 
 Are you also using Rig? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
 
@@ -100,8 +120,7 @@ cargo add rig
 
 ### Simple example
 ```rust
-use rig::client::{CompletionClient, ProviderClient};
-use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::openai;
 
 #[tokio::main]
@@ -126,7 +145,7 @@ async fn main() -> Result<(), anyhow::Error> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in each crate's `examples` directory (for example, [`examples`](./examples)). Provider-specific integration coverage lives under [`tests/providers`](./tests/providers), with cassette-backed tests that replay offline by default and live-only tests kept separate when real provider APIs are still required. See [`tests/README.md`](./tests/README.md) for test target, replay, record, and cassette safety commands. More detailed use case walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation at [docs.rig.rs](https://docs.rig.rs).
+You can find more examples in each crate's `examples` directory (for example, [`examples`](./examples)). Provider-specific integration coverage lives under [`tests/providers`](./tests/providers), with cassette-backed tests that replay offline by default and live-only tests kept separate when real provider APIs are still required. See [`tests/README.md`](./tests/README.md) for test target, replay, record, and cassette safety commands. More detailed use case walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation at [rig.rs/docs](https://rig.rs/docs).
 
 ## Supported Integrations
 
@@ -140,6 +159,7 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | --- | --- | --- | --- |
 | AWS Bedrock | [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock) | `bedrock` | `rig::bedrock` |
 | AWS S3Vectors | [`rig-s3vectors`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-s3vectors) | `s3vectors` | `rig::s3vectors` |
+| Candle (local Llama/SmolLM2/Qwen3 tools) | [`rig-candle`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-candle) | `candle` | `rig::candle` |
 | Cloudflare Vectorize | [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize) | `vectorize` | `rig::vectorize` |
 | FastEmbed | [`rig-fastembed`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-fastembed) | `fastembed` | `rig::fastembed` |
 | Google Gemini gRPC | [`rig-gemini-grpc`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-gemini-grpc) | `gemini-grpc` | `rig::gemini_grpc` |

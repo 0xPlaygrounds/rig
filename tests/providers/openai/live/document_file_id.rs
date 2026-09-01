@@ -4,12 +4,11 @@
 //! `cargo test -p rig --test openai openai::live::document_file_id -- --ignored --nocapture --test-threads=1`
 
 use futures::FutureExt;
-use rig::OneOrMany;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
+use rig::prelude::*;
 use rig::providers::openai::{self, FileData, UserContent as OpenAiUserContent};
 use serde::Deserialize;
 use std::future::Future;
@@ -129,13 +128,12 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
 
 fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
-        content: OneOrMany::many(vec![
+        content: vec![
             content,
             RigUserContent::Text(Text::new(format!(
                 "What exact visible text appears on page {page_number}? Reply with only that text."
             ))),
-        ])
-        .expect("content should be non-empty"),
+        ],
     }
 }
 

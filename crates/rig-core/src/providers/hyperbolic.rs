@@ -1,7 +1,7 @@
 //! Hyperbolic Inference API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::hyperbolic};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,21 +11,9 @@
 //! # Ok(())
 //! # }
 //! ```
-use super::openai::{AssistantContent, send_compatible_streaming_request};
 
-use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
-use crate::client::{BearerAuth, ProviderClient};
-use crate::http_client::{self, HttpClientExt};
-use crate::streaming::StreamingCompletionResponse;
-
-use crate::providers::openai;
-use crate::{
-    OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
-    json_utils,
-    providers::openai::Message,
-};
-use serde::{Deserialize, Serialize};
+use crate::client::BearerAuth;
+use crate::client::{self, DebugExt, Provider};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -45,91 +33,73 @@ impl Provider for HyperbolicExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for HyperbolicExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-}
+client::impl_capabilities!(
+    HyperbolicExt,
+    completion = CompletionModel<H>,
+    image_generation = ImageGenerationModel<H>,
+    audio_generation = AudioGenerationModel<H>,
+);
 
 impl DebugExt for HyperbolicExt {}
 
-impl ProviderBuilder for HyperbolicBuilder {
-    type Extension<H>
-        = HyperbolicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = HyperbolicApiKey;
+impl crate::providers::openai::completion::OpenAICompatibleProvider for HyperbolicExt {
+    const PROVIDER_NAME: &'static str = "hyperbolic";
 
-    const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
+    // Hyperbolic's structured-output support is unverified; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(HyperbolicExt)
+    // Hyperbolic does not support tool calling; `tools`/`tool_choice` are
+    // dropped with a warning during request conversion.
+    const SUPPORTS_TOOLS: bool = false;
+
+    type StreamingUsage = crate::providers::openai::Usage;
+
+    type Response = crate::providers::openai::CompletionResponse;
+
+    fn finalize_request_body(
+        &self,
+        body: &mut serde_json::Value,
+    ) -> Result<(), crate::completion::CompletionError> {
+        // Strip tool-exchange remnants that shared chat histories may carry;
+        // content-part arrays are kept as-is for Hyperbolic's vision models.
+        if let Some(messages) = body
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            crate::providers::openai::completion::sanitize_plain_text_history(
+                messages, None, false, false,
+            );
+        }
+
+        Ok(())
+    }
+
+    // The client base URL is the bare host; image/audio generation build
+    // their own v1 paths.
+    fn completion_path(&self, _model: &str) -> String {
+        "/v1/chat/completions".to_string()
     }
 }
 
-pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
+client::impl_default_provider_builder!(
+    HyperbolicBuilder => HyperbolicExt,
+    api_key = HyperbolicApiKey,
+    base_url = HYPERBOLIC_API_BASE_URL,
+);
+
+pub type Client<H> = client::Client<HyperbolicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<HyperbolicBuilder, String, H>;
+    client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
 
-impl ProviderClient for Client {
-    type Input = HyperbolicApiKey;
-    type Error = crate::client::ProviderClientError;
+client::impl_provider_from_env!(
+    HyperbolicExt,
+    input = HyperbolicApiKey,
+    api_key_env = "HYPERBOLIC_API_KEY",
+);
 
-    /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HYPERBOLIC_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingData {
-    pub object: String,
-    pub embedding: Vec<f64>,
-    pub index: usize,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
-    }
-}
+#[cfg(feature = "audio")]
+use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
 // Hyperbolic Completion API
@@ -160,322 +130,12 @@ pub const DEEPSEEK_R1_ZERO: &str = "deepseek-ai/DeepSeek-R1-Zero";
 /// Deepseek R1 model.
 pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
-/// A Hyperbolic completion object.
-///
-/// For more information, see this link: <https://docs.hyperbolic.xyz/reference/create_chat_completion_v1_chat_completions_post>
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CompletionResponse {
-    pub id: String,
-    pub object: String,
-    pub created: u64,
-    pub model: String,
-    pub choices: Vec<Choice>,
-    pub usage: Option<Usage>,
-}
+/// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H> =
+    crate::providers::openai::completion::GenericCompletionModel<HyperbolicExt, H>;
 
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
-
-        let content = match &choice.message {
-            Message::Assistant {
-                content,
-                tool_calls,
-                ..
-            } => {
-                let mut content = content
-                    .iter()
-                    .map(|c| match c {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                        AssistantContent::Refusal { refusal } => {
-                            completion::AssistantContent::text(refusal)
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
-
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
-
-        let usage = response
-            .usage
-            .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .unwrap_or_default();
-
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Choice {
-    pub index: usize,
-    pub message: Message,
-    pub finish_reason: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct HyperbolicCompletionRequest {
-    model: String,
-    pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-}
-
-impl TryFrom<(&str, CompletionRequest)> for HyperbolicCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Hyperbolic");
-        }
-
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        if req.tool_choice.is_some() {
-            tracing::warn!("WARNING: `tool_choice` not supported on Hyperbolic");
-        }
-
-        if !req.tools.is_empty() {
-            tracing::warn!("WARNING: `tools` not supported on Hyperbolic");
-        }
-
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            additional_params: req.additional_params,
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: deepseek-ai/DeepSeek-R1)
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = openai::StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "hyperbolic",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-        let request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Hyperbolic completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let async_block = async move {
-            let response = self.client.send::<_, bytes::Bytes>(req).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        if tracing::enabled!(tracing::Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "Hyperbolic completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-                }
-            } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        };
-
-        async_block.instrument(span).await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "hyperbolic",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-        let mut request =
-            HyperbolicCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
-        );
-
-        request.additional_params = Some(params);
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Hyperbolic streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/chat/completions")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        send_compatible_streaming_request(self.client.clone(), req)
-            .instrument(span)
-            .await
-    }
-}
+/// Raw completion payload, shared with the OpenAI Chat Completions path.
+pub type CompletionResponse = crate::providers::openai::CompletionResponse;
 
 // =======================================
 // Hyperbolic Image Generation API
@@ -487,14 +147,16 @@ pub use image_generation::*;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
-    use super::{ApiResponse, Client};
-    use crate::http_client::HttpClientExt;
+    use super::HyperbolicExt;
     use crate::image_generation;
-    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::image_generation::{
+        ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+    };
     use crate::json_utils::merge_inplace;
-    use base64::Engine;
-    use base64::prelude::BASE64_STANDARD;
-    use serde::Deserialize;
+    use crate::providers::internal::image_generation::{
+        GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
+    };
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
 
     pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
@@ -505,78 +167,47 @@ mod image_generation {
     pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
-    #[derive(Clone)]
-    pub struct ImageGenerationModel<T> {
-        client: Client<T>,
-        pub model: String,
-    }
+    /// Hyperbolic image generation model.
+    pub type ImageGenerationModel<T> = GenericImageGenerationModel<HyperbolicExt, T>;
 
-    impl<T> ImageGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-
-        pub fn with_model(client: Client<T>, model: &str) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-    }
-
-    #[derive(Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Image {
-        image: String,
+        pub image: String,
     }
 
-    #[derive(Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct ImageGenerationResponse {
-        images: Vec<Image>,
+        pub images: Vec<Image>,
     }
 
-    impl TryFrom<ImageGenerationResponse>
-        for image_generation::ImageGenerationResponse<ImageGenerationResponse>
-    {
-        type Error = ImageGenerationError;
-
-        fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-            let image = value
-                .images
-                .first()
-                .ok_or_else(|| ImageGenerationError::ResponseError("missing image data".into()))?;
-            let data = BASE64_STANDARD
-                .decode(&image.image)
-                .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
-
-            Ok(Self {
-                image: data,
-                response: value,
-            })
+    impl NormalizeImageGenerationResponse for ImageGenerationResponse {
+        fn normalize(
+            self,
+            provider: &str,
+        ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+            let image = decode_base64_image(
+                &self,
+                |response| response.images.first().map(|image| image.image.as_str()),
+                "missing image data",
+                None,
+            )?;
+            Ok(image_generation::ImageGenerationResponse::new(
+                image, provider,
+            ))
         }
     }
 
-    impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
+    impl JsonImageGenerationProvider for HyperbolicExt {
+        const IMAGE_GENERATION_PATH: &'static str = "/v1/image/generation";
+        const PROVIDER_NAME: &'static str = "hyperbolic";
         type Response = ImageGenerationResponse;
 
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-            Self::new(client.clone(), model)
-        }
-
-        async fn image_generation(
-            &self,
+        fn image_generation_request_body(
+            model: &str,
             generation_request: ImageGenerationRequest,
-        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-        {
+        ) -> Result<serde_json::Value, ImageGenerationError> {
             let mut request = json!({
-                "model_name": self.model,
+                "model_name": model,
                 "prompt": generation_request.prompt,
                 "height": generation_request.height,
                 "width": generation_request.width,
@@ -586,31 +217,7 @@ mod image_generation {
                 merge_inplace(&mut request, params);
             }
 
-            let body = serde_json::to_vec(&request)?;
-
-            let request = self
-                .client
-                .post("/v1/image/generation")?
-                .header("Content-Type", "application/json")
-                .body(body)
-                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, bytes::Bytes>(request).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(ImageGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
-            }
-
-            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(ImageGenerationError::ResponseError(err.message)),
-            }
+            Ok(request)
         }
     }
 }
@@ -620,19 +227,20 @@ mod image_generation {
 // ======================================
 #[cfg(feature = "audio")]
 pub use audio_generation::*;
-use tracing::{Instrument, info_span};
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod audio_generation {
     use super::{ApiResponse, Client};
     use crate::audio_generation;
-    use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+    use crate::audio_generation::{
+        AudioGenerationError, AudioGenerationRequest, NormalizeAudioGenerationResponse,
+    };
     use crate::http_client::{self, HttpClientExt};
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
     use bytes::Bytes;
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
 
     #[derive(Clone)]
@@ -641,47 +249,39 @@ mod audio_generation {
         pub language: String,
     }
 
-    #[derive(Clone, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct AudioGenerationResponse {
-        audio: String,
+        pub audio: String,
     }
 
-    impl TryFrom<AudioGenerationResponse>
-        for audio_generation::AudioGenerationResponse<AudioGenerationResponse>
-    {
-        type Error = AudioGenerationError;
-
-        fn try_from(value: AudioGenerationResponse) -> Result<Self, Self::Error> {
+    impl NormalizeAudioGenerationResponse for AudioGenerationResponse {
+        fn normalize(
+            self,
+            provider: &str,
+        ) -> Result<audio_generation::AudioGenerationResponse, AudioGenerationError> {
             let data = BASE64_STANDARD
-                .decode(&value.audio)
+                .decode(&self.audio)
                 .map_err(|err| AudioGenerationError::ResponseError(err.to_string()))?;
 
-            Ok(Self {
-                audio: data,
-                response: value,
-            })
+            Ok(audio_generation::AudioGenerationResponse::new(
+                data, provider,
+            ))
         }
     }
 
-    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
+    impl<T> AudioGenerationModel<T>
     where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+        T: HttpClientExt + Clone + Send + 'static,
     {
-        type Response = AudioGenerationResponse;
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, language: impl Into<String>) -> Self {
-            Self {
-                client: client.clone(),
-                language: language.into(),
-            }
-        }
-
-        async fn audio_generation(
+        /// Perform the generation and return Hyperbolic's native response
+        /// (base64 audio) instead of the normalized
+        /// [`audio_generation::AudioGenerationResponse`]. Same request,
+        /// transport, parser, and error path as
+        /// [`audio_generation::AudioGenerationModel::audio_generation`].
+        pub async fn raw_audio_generation(
             &self,
             request: AudioGenerationRequest,
-        ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
-        {
+        ) -> Result<AudioGenerationResponse, AudioGenerationError> {
             let request = json!({
                 "language": self.language,
                 "speaker": request.voice,
@@ -702,15 +302,55 @@ mod audio_generation {
             let response_body = response.into_body().into_future().await?.to_vec();
 
             if !status.is_success() {
-                return Err(AudioGenerationError::ProviderError(format!(
-                    "{status}: {}",
-                    String::from_utf8_lossy(&response_body)
-                )));
+                return Err(AudioGenerationError::from_http_response(
+                    status,
+                    String::from_utf8_lossy(&response_body),
+                ));
             }
 
             match serde_json::from_slice::<ApiResponse<AudioGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => Err(AudioGenerationError::ProviderError(err.message)),
+                ApiResponse::Ok(response) => Ok(response),
+                ApiResponse::Err(err) => {
+                    tracing::warn!(message = %err.message, "provider returned an error response");
+                    Err(AudioGenerationError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(&response_body),
+                    ))
+                }
+            }
+        }
+    }
+
+    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Send + 'static,
+    {
+        async fn audio_generation(
+            &self,
+            request: AudioGenerationRequest,
+        ) -> Result<audio_generation::AudioGenerationResponse, AudioGenerationError> {
+            crate::telemetry::instrument_modality(
+                "hyperbolic",
+                &self.language,
+                crate::telemetry::ModalityOperation::AudioGeneration,
+                async {
+                    let response = self.raw_audio_generation(request).await?;
+                    let captured = serde_json::to_value(&response)?;
+                    Ok(response.normalize("hyperbolic")?.with_raw(captured))
+                },
+            )
+            .await
+        }
+    }
+
+    impl<T> crate::client::ConstructAudioGenerationModel<Client<T>> for AudioGenerationModel<T>
+    where
+        T: HttpClientExt + Clone + Send + 'static,
+    {
+        fn construct(client: &Client<T>, language: String) -> Self {
+            Self {
+                client: client.clone(),
+                language,
             }
         }
     }
@@ -719,12 +359,273 @@ mod audio_generation {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn hyperbolic_prepare_request_drops_tools_and_tool_choice() {
+        use crate::providers::openai::completion::{
+            CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider,
+            OpenAIRequestParams,
+        };
+
+        let request = crate::completion::CompletionRequestBuilder::new(
+            crate::test_utils::MockCompletionModel::default(),
+            "hello",
+        )
+        .tool(crate::completion::ToolDefinition {
+            name: "lookup".to_string(),
+            description: "Lookup".to_string(),
+            parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+        })
+        .tool_choice(crate::message::ToolChoice::Required)
+        .output_schema(schemars::schema_for!(serde_json::Value))
+        .build();
+
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "meta-llama/Meta-Llama-3.1-8B-Instruct".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: super::HyperbolicExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_image_tool_results: false,
+            supports_tools: false,
+        })
+        .expect("request should convert");
+        super::HyperbolicExt
+            .prepare_request(&mut request)
+            .expect("prepare_request should succeed");
+
+        let body = serde_json::to_value(request).expect("request should serialize");
+        assert!(body.get("tools").is_none());
+        assert!(body.get("tool_choice").is_none());
+        assert!(body.get("response_format").is_none());
+    }
+
+    #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::hyperbolic::Client::builder()
-            .api_key("dummy-key")
+        let _client = crate::providers::hyperbolic::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
+        let builder: crate::providers::hyperbolic::ClientBuilder =
+            crate::providers::hyperbolic::Client::builder().api_key("dummy-key");
+        let _client_from_builder = builder
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn completion_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::LLAMA_3_1_8B);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        assert!(matches!(error, CompletionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn completion_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"boom"}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model(super::LLAMA_3_1_8B);
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "image")]
+    #[tokio::test]
+    async fn image_generation_non_success_preserves_status_and_body() {
+        use crate::client::image_generation::ImageGenerationClient;
+        use crate::image_generation::{
+            ImageGenerationError, ImageGenerationModel as _, ImageGenerationRequest,
+        };
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(super::SDXL1_0_BASE);
+
+        let request = ImageGenerationRequest {
+            prompt: "draw a cat".to_string(),
+            width: 256,
+            height: 256,
+            additional_params: None,
+        };
+
+        let error = model
+            .image_generation(request)
+            .await
+            .expect_err("image generation should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[cfg(feature = "image")]
+    #[tokio::test]
+    async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
+        use crate::client::image_generation::ImageGenerationClient;
+        use crate::image_generation::{
+            ImageGenerationError, ImageGenerationModel as _, ImageGenerationRequest,
+        };
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"boom"}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(super::SDXL1_0_BASE);
+
+        let request = ImageGenerationRequest {
+            prompt: "draw a cat".to_string(),
+            width: 256,
+            height: 256,
+            additional_params: None,
+        };
+
+        let error = model
+            .image_generation(request)
+            .await
+            .expect_err("image generation should fail with provider error envelope");
+
+        match &error {
+            ImageGenerationError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "audio")]
+    #[tokio::test]
+    async fn audio_generation_non_success_preserves_status_and_body() {
+        use crate::audio_generation::{
+            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
+        };
+        use crate::client::audio_generation::AudioGenerationClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.audio_generation_model("EN");
+
+        let request = AudioGenerationRequest {
+            text: "hello".to_string(),
+            voice: "default".to_string(),
+            speed: 1.0,
+            additional_params: None,
+        };
+
+        let error = model
+            .audio_generation(request)
+            .await
+            .expect_err("audio generation should fail with non-success status");
+
+        assert!(matches!(error, AudioGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[cfg(feature = "audio")]
+    #[tokio::test]
+    async fn audio_generation_2xx_error_envelope_preserves_status_and_body() {
+        use crate::audio_generation::{
+            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
+        };
+        use crate::client::audio_generation::AudioGenerationClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"boom"}"#;
+        let http_client = RecordingHttpClient::new(body); // 200 OK
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.audio_generation_model("EN");
+
+        let request = AudioGenerationRequest {
+            text: "hello".to_string(),
+            voice: "default".to_string(),
+            speed: 1.0,
+            additional_params: None,
+        };
+
+        let error = model
+            .audio_generation(request)
+            .await
+            .expect_err("audio generation should fail with provider error envelope");
+
+        match &error {
+            AudioGenerationError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::OK));
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
     }
 }

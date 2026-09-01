@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"text"}],"role":"system"},{"content":"/no_think Explain usage accounting in one sentence.","role":"user"}],"model":"Qwen/Qwen3-4B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"\n\nUsage accounting is a method of tracking and billing based on actual resource consumption by users or services.","reasoning_content":"\n\n","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"Qwen/Qwen3-4B","object":"chat.completion","system_fingerprint":"local","usage":{"avg_compl_tok_per_sec":17.130621,"avg_prompt_tok_per_sec":26.745914,"avg_tok_per_sec":21.826118,"completion_tokens":24,"prompt_tokens":36,"total_completion_time_sec":1.401,"total_prompt_time_sec":1.346,"total_time_sec":2.749,"total_tokens":60}}'

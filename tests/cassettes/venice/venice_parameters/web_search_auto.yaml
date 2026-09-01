@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"What is 2 + 2? Answer with the number only.","role":"user"}],"model":"qwen3-5-9b","venice_parameters":{"disable_thinking":true,"enable_web_search":"auto"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":null,"audio":null,"content":"4","function_call":null,"reasoning_content":null,"reasoning_encrypted":false,"refusal":null,"role":"assistant","tool_calls":[]},"stop_reason":null,"token_ids":null}],"cost":{"diem":0,"usd":0.0001585},"created":0,"id":"chatcmpl-REDACTED_1","kv_transfer_params":null,"model":"qwen3-5-9b","object":"chat.completion","prompt_logprobs":null,"prompt_token_ids":null,"service_tier":null,"usage":{"cache_read_input_tokens":1056,"completion_tokens":2,"prompt_tokens":1582,"prompt_tokens_details":{"cached_tokens":1056},"total_tokens":1584},"venice_parameters":{"disable_thinking":true,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"auto","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

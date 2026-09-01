@@ -9,9 +9,9 @@ use std::sync::{
 };
 
 use rig::{
-    client::CompletionClient,
     completion::{CompletionModel, Prompt, ToolDefinition},
     message::{AssistantContent, Message, UserContent},
+    prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
     tool::Tool,
 };
@@ -72,11 +72,19 @@ impl Tool for Notify {
     type Args = NotifyArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        notify_tool_definition()
+    fn description(&self) -> String {
+        "Send a short notification for a user status update.".to_string()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        notify_tool_definition().parameters
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!("sent: {}", args.msg))
     }
@@ -129,7 +137,7 @@ fn history_has_empty_assistant_text(messages: &[Message]) -> bool {
 }
 
 #[tokio::test]
-async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
+async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
         |client| async move {
@@ -154,11 +162,14 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 .expect("first Anthropic turn should emit a notify tool call");
 
             let followup = model
-                .completion_request(Message::tool_result_with_call_id(
+                .completion_request(Message::from(UserContent::tool_result_for(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    "sent: deploy finished",
-                ))
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
+                    vec![rig::message::ToolResultContent::text(
+                        "sent: deploy finished",
+                    )],
+                )))
                 .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
                 .max_tokens(1024)
                 .message(Message::Assistant {
@@ -169,21 +180,15 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");
 
-            assert_eq!(
-                followup.choice.len(),
-                1,
-                "expected normalized empty follow-up choice, got {:?}",
+            // The recorded provider response is unchanged; what changed is how
+            // rig spells it. An empty `end_turn` used to be normalized into one
+            // fabricated empty-text part because the content type could not be
+            // empty. It is now the empty list it always was.
+            assert!(
+                followup.choice.is_empty(),
+                "expected an empty follow-up choice, got {:?}",
                 followup.choice
             );
-
-            match followup.choice.first() {
-                AssistantContent::Text(text) => assert!(
-                    text.text.is_empty(),
-                    "expected empty follow-up text sentinel, got {:?}",
-                    text.text
-                ),
-                other => panic!("expected empty text sentinel, got {other:?}"),
-            }
         },
     )
     .await;
@@ -224,18 +229,15 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
                 .expect("extended details should include history");
             assert!(
                 messages.iter().any(assistant_message_has_notify_tool_call),
-                "expected notify tool call in history, got {:?}",
-                messages
+                "expected notify tool call in history, got {messages:?}"
             );
             assert!(
                 messages.iter().any(message_has_tool_result),
-                "expected tool result in history, got {:?}",
-                messages
+                "expected tool result in history, got {messages:?}"
             );
             assert!(
                 !history_has_empty_assistant_text(&messages),
-                "history should not contain the normalized empty assistant sentinel: {:?}",
-                messages
+                "history should not contain the normalized empty assistant sentinel: {messages:?}"
             );
         },
     )
@@ -277,18 +279,15 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
         messages
             .iter()
             .any(assistant_message_has_nonempty_text_and_notify_tool_call),
-        "expected an assistant message that preserved pre-tool text alongside the notify tool call, got {:?}",
-        messages
+        "expected an assistant message that preserved pre-tool text alongside the notify tool call, got {messages:?}"
     );
     assert!(
         messages.iter().any(message_has_tool_result),
-        "expected tool result in history, got {:?}",
-        messages
+        "expected tool result in history, got {messages:?}"
     );
     assert!(
         !history_has_empty_assistant_text(&messages),
-        "history should not contain the normalized empty assistant sentinel: {:?}",
-        messages
+        "history should not contain the normalized empty assistant sentinel: {messages:?}"
     );
 
     })

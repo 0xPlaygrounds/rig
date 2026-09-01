@@ -26,24 +26,24 @@
 //! ```ignore
 //! use rig_core::{
 //!     client::{CompletionClient, ProviderClient},
-//!     completion::Prompt,
+//!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create OpenAI client and agent.
+//!     // Create an OpenAI client and completion model.
 //!     // This requires the `OPENAI_API_KEY` environment variable to be set.
 //!     let openai_client = openai::Client::from_env()?;
+//!     let model = openai_client.completion_model(openai::GPT_5_2);
 //!
-//!     let agent = openai_client.agent(openai::GPT_5_2).build();
-//!
-//!     // Prompt the model and print its response
-//!     let response = agent
-//!         .prompt("Who are you?")
-//!         .await?;
-//!
-//!     println!("{response}");
+//!     let request = model.completion_request("Who are you?").build();
+//!     let response = model.completion(request).await?;
+//!     for item in response.choice {
+//!         if let AssistantContent::Text(text) = item {
+//!             println!("{}", text.text);
+//!         }
+//!     }
 //!
 //!     Ok(())
 //! }
@@ -59,25 +59,27 @@
 //! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
 //! low-level interface for creating completion and embedding requests and executing them.
 //!
-//! ## Agents
-//! Rig also provides high-level abstractions over LLMs in the form of the [Agent](crate::agent::Agent) type.
-//!
-//! The [Agent](crate::agent::Agent) type can be used to create anything from simple agents that use vanilla models to full blown
-//! RAG systems that can be used to answer questions using a knowledge base.
+//! ## Agent runtimes
+//! This crate owns the provider-agnostic model, message, tool, and storage
+//! contracts. The sibling `rig-agent` crate provides the classic builder and
+//! run-loop API.
 //!
 //! ## Vector stores and indexes
 //! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
 //! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
 //! trait, which can be implemented to define vector stores and indices respectively.
-//! Those can then be used as the knowledge base for a RAG enabled [Agent](crate::agent::Agent), or
-//! as a source of context documents in a custom architecture that use multiple LLMs or agents.
+//! Indexes can be queried directly by applications or runtimes. For active RAG,
+//! expose the index through its blanket [`PortableTool`](crate::tool::PortableTool)
+//! implementation, or through a custom tool, so the model decides when and how
+//! to retrieve. The classic `rig-agent` runtime can also query indexes from
+//! hooks and append the resulting documents to a turn's extra context.
+//!
+//! Indexes can also serve custom architectures that use multiple LLMs or agents.
 //!
 //! ## Conversation memory
-//! Rig can transparently load and persist per-conversation history through the
-//! [ConversationMemory](crate::memory::ConversationMemory) trait. Attach a backend
-//! with [`AgentBuilder::memory`](crate::agent::AgentBuilder::memory) and identify the
-//! conversation per-request via
-//! [`PromptRequest::conversation`](crate::agent::prompt_request::PromptRequest::conversation).
+//! Runtimes can load and persist per-conversation history through the
+//! [ConversationMemory](crate::memory::ConversationMemory) trait. The classic
+//! `rig-agent` runtime integrates this portable backend contract.
 //! The default in-process backend
 //! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
 //! for tests and single-process agents; reusable history-shaping policies (sliding
@@ -93,12 +95,11 @@
 //! - ChatGPT and GitHub Copilot auth-backed clients
 //! - Cohere
 //! - DeepSeek
-//! - Galadriel
 //! - Gemini
 //! - Groq
 //! - Hugging Face
 //! - Hyperbolic
-//! - Llamafile
+//! - llama.cpp (`llama-server`, and llamafile)
 //! - MiniMax
 //! - Mira
 //! - Mistral
@@ -143,51 +144,88 @@
 
 extern crate self as rig;
 
-pub mod agent;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
-
-#[cfg(feature = "experimental")]
-#[cfg_attr(docsrs, doc(cfg(feature = "experimental")))]
-pub mod evals;
-pub mod extractor;
 pub mod http_client;
+pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
-pub mod integrations;
-pub(crate) mod json_utils;
+/// Internal JSON helpers shared with sibling runtime crates (e.g. `rig-agent`).
+/// Not part of rig-core's stable public API.
+#[doc(hidden)]
+pub mod json_utils;
 pub mod loaders;
 pub mod markers;
 pub mod memory;
 pub mod model;
-pub mod one_or_many;
-pub mod pipeline;
 pub mod prelude;
+pub(crate) mod provider_response;
 pub mod providers;
+pub mod rerank;
 
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
-pub mod tools;
 pub mod transcription;
 pub mod vector_store;
 pub mod wasm_compat;
+#[cfg(feature = "websocket")]
+#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
+pub mod ws_client;
 
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
-pub use extractor::ExtractionResponse;
-pub use one_or_many::{EmptyListError, OneOrMany};
+pub use provider_response::ProviderResponseError;
+// `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
+// code (and downstream crates) can resolve them through Rig instead of
+// requiring a direct dependency on each.
+pub use schemars;
+pub use serde;
+pub use serde_json;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
-pub use rig_derive::{Embed, rig_tool as tool_macro};
+pub use rig_derive::Embed;
+
+// The portable `#[rig_tool]` macro produces context-free `PortableTool`s, which
+// are rig-core-owned, so direct `rig-core` dependents can reach it without
+// pulling in `rig-derive` themselves.
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use rig_derive::{rig_tool, rig_tool as tool_macro};
 
 pub mod telemetry;
+
+// Compile-time thread-safety contract. These types cross threads in host
+// runtimes (worker pools, ECS resources); on native they must stay
+// `Send + Sync + 'static`, and losing it is an API break that should fail the
+// build here rather than in a downstream crate.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    fn assert_send_static<T: Send + 'static>() {}
+    assert_send_sync_static::<tool::PortableDynamicTool>();
+    assert_send_sync_static::<tool::ManagedToolToken>();
+    assert_send_sync_static::<streaming::StreamedAssistantContent>();
+    // The erased model every driver (futures agent, systems runtime, registry)
+    // holds, and the serializable identity it is resolved from.
+    assert_send_sync_static::<completion::ModelHandle>();
+    assert_send_sync_static::<completion::ModelRef>();
+    // The erased tool set a driver forks and the per-turn catalog it pins.
+    assert_send_sync_static::<tool::ToolSet>();
+    assert_send_sync_static::<tool::ToolCatalog>();
+    assert_send_sync_static::<tool::DynamicTool>();
+    // One erased transport shared by every provider client a host builds.
+    assert_send_sync_static::<http_client::BoxedHttpClient>();
+    // A live stream is owned by one poller: `Send` so it can move to a worker,
+    // not `Sync`.
+    assert_send_static::<streaming::StreamingCompletionResponse>();
+};

@@ -4,10 +4,13 @@ use anyhow::{Result, anyhow};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{HookAction, PromptHook};
-use rig::client::CompletionClient;
-use rig::completion::{CompletionModel, CompletionResponse, Message, Prompt};
+use rig::agent::{
+    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
+    ObservationAction,
+};
+use rig::completion::{Message, Prompt};
 use rig::message::UserContent;
+use rig::prelude::*;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::assert_nonempty_response;
@@ -21,15 +24,15 @@ struct SessionIdHook<'a> {
     seen_response: Arc<Mutex<Option<String>>>,
 }
 
-impl<'a, M> PromptHook<M> for SessionIdHook<'a>
-where
-    M: CompletionModel,
-{
-    async fn on_completion_call(&self, prompt: &Message, _history: &[Message]) -> HookAction {
-        let Message::User { content } = prompt else {
-            return HookAction::terminate("expected a user message");
+impl AgentHook for SessionIdHook<'_> {
+    async fn on_completion_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let Message::User { content } = event.prompt else {
+            return CompletionCallAction::stop("expected a user message");
         };
-
         let prompt_text = content
             .iter()
             .filter_map(|content| match content {
@@ -38,29 +41,28 @@ where
             })
             .collect::<Vec<_>>()
             .join("\n");
-
         self.prompt_calls.fetch_add(1, Ordering::SeqCst);
         match self.seen_prompt.lock() {
             Ok(mut seen_prompt) => {
                 *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
-                HookAction::cont()
+                CompletionCallAction::continue_run()
             }
-            Err(_) => HookAction::terminate("prompt hook state unavailable"),
+            Err(_) => CompletionCallAction::stop("prompt hook state unavailable"),
         }
     }
 
     async fn on_completion_response(
         &self,
-        _prompt: &Message,
-        response: &CompletionResponse<M::Response>,
-    ) -> HookAction {
+        _ctx: &rig::agent::HookContext,
+        event: CompletionResponseEvent<'_>,
+    ) -> ObservationAction {
         self.response_calls.fetch_add(1, Ordering::SeqCst);
         match self.seen_response.lock() {
             Ok(mut seen_response) => {
-                *seen_response = Some(format!("{:?}", response.choice));
-                HookAction::cont()
+                *seen_response = Some(format!("{:?}", event.content));
+                ObservationAction::continue_run()
             }
-            Err(_) => HookAction::terminate("response hook state unavailable"),
+            Err(_) => ObservationAction::stop("response hook state unavailable"),
         }
     }
 }
@@ -81,10 +83,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         seen_response: Arc::new(Mutex::new(None)),
     };
 
-    let response = agent
-        .prompt("Entertain me!")
-        .with_hook(hook.clone())
-        .await?;
+    let response = agent.prompt("Entertain me!").add_hook(hook.clone()).await?;
 
     assert_nonempty_response(&response);
     anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);

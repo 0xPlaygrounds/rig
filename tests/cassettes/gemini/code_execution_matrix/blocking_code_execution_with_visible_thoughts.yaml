@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to compute the 20th Fibonacci number. State the number in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2500,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Defining Fibonacci Calculation**\n\nI''m now devising a Python script to determine the 20th Fibonacci number. I''ve opted for an iterative function, adopting the standard F(1)=1, F(2)=1 definition. I''m aiming for a concise and efficient implementation.\n\n\n","thought":true},{"text":"To compute the 20th Fibonacci number, I will use a Python script. The Fibonacci sequence is defined such that F(0) = 0, F(1) = 1, and F(n) = F(n-1) + F(n-2) for n > 1. If we consider the sequence starting with F(1)=1, F(2)=1, then the 20th Fibonacci number will be F(20) in this context.\n\n"},{"executableCode":{"code":"def fibonacci(n):\n    if n <= 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        a, b = 0, 1\n        for _ in range(2, n + 1):\n            a, b = b, a + b\n        return b\n\n# Calculate the 20th Fibonacci number\n# Assuming F(0)=0, F(1)=1, F(2)=1, ...\n# So, for the 20th number, we need to call fibonacci(20)\nfib_20 = fibonacci(20)\nprint(f''The 20th Fibonacci number is: {fib_20}'')\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"The 20th Fibonacci number is: 6765\n"}},{"text":"The 20th Fibonacci number is 6765."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":278,"promptTokenCount":23,"promptTokensDetails":[{"modality":"TEXT","tokenCount":23}],"serviceTier":"standard","thoughtsTokenCount":315,"toolUsePromptTokenCount":620,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":620}],"totalTokenCount":1236}}'

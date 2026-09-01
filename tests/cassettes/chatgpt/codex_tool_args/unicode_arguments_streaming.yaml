@@ -1,0 +1,89 @@
+when:
+  path: /backend-api/codex/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Call the echo tool exactly once with the message argument set to exactly this text: Grüße aus 東京, from the \"naïve café\"!","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You must call the echo tool with the exact text the user provides. Do not translate, reword, or drop any characters.","model":"gpt-5.4","store":false,"stream":true,"tools":[{"description":"Echo a message back to the user.","name":"echo","parameters":{"properties":{"message":{"type":"string"}},"required":["message"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header: []
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You must call the echo tool with the exact text the user provides. Do not translate, reword, or drop any characters.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.4","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":"id_REDACTED_1","prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"none","mode":"standard","summary":null},"safety_identifier":"id_REDACTED_2","service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Echo a message back to the user.","name":"echo","parameters":{"additionalProperties":false,"properties":{"message":{"type":"string"}},"required":["message"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You must call the echo tool with the exact text the user provides. Do not translate, reword, or drop any characters.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.4","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":"id_REDACTED_1","prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"none","mode":"standard","summary":null},"safety_identifier":"id_REDACTED_2","service_tier":"auto","status":"in_progress","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Echo a message back to the user.","name":"echo","parameters":{"additionalProperties":false,"properties":{"message":{"type":"string"}},"required":["message"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"echo","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"message","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_2","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Gr","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ü","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ße","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":8,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" aus","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" 東京","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":10,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":11,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" from","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":12,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":13,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" \\\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":14,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"na","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":15,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ï","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":16,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ve","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":17,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" café","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":18,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\\\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":19,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"!\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":20,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"}","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":21,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"message\":\"Grüße aus 東京, from the \\\"naïve café\\\"!\"}","item_id":"fc_REDACTED_1","output_index":0,"sequence_number":22,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"message\":\"Grüße aus 東京, from the \\\"naïve café\\\"!\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"echo","status":"completed","type":"function_call"},"output_index":0,"sequence_number":23,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You must call the echo tool with the exact text the user provides. Do not translate, reword, or drop any characters.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.4","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":"id_REDACTED_1","prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"none","mode":"standard","summary":null},"safety_identifier":"id_REDACTED_2","service_tier":"default","status":"completed","store":false,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Echo a message back to the user.","name":"echo","parameters":{"additionalProperties":false,"properties":{"message":{"type":"string"}},"required":["message"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":101,"input_tokens_details":{"cached_tokens":0},"output_tokens":31,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":132},"user":null},"sequence_number":24,"type":"response.completed"}
+

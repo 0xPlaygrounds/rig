@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Return only the requested structured object.","role":"system"},{"content":"Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.","role":"user"}],"model":"mistral-small-latest","response_format":{"json_schema":{"name":"StructuredReleasePlan","schema":{"$defs":{"StructuredChecks":{"additionalProperties":false,"properties":{"compile":{"type":"boolean"},"replay":{"type":"boolean"}},"required":["compile","replay"],"type":"object"}},"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"checks":{"$ref":"#/$defs/StructuredChecks"},"lane":{"type":"string"},"risk":{"type":"string"}},"required":["lane","checks","risk"],"title":"StructuredReleasePlan","type":"object"},"strict":true},"type":"json_schema"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"{\"lane\": \"canary\", \"checks\": {\"compile\": true, \"replay\": true}, \"risk\": \"low\"}","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":29,"prompt_tokens":32,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":61}}'

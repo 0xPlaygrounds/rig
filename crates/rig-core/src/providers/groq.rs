@@ -1,7 +1,7 @@
 //! Groq API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::groq};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,33 +11,14 @@
 //! # Ok(())
 //! # }
 //! ```
-use bytes::Bytes;
-use http::Request;
-use serde_json::{Map, Value};
-use tracing::info_span;
-
-use super::openai::{
-    CompletionResponse, Message as OpenAIMessage, StreamingToolCall, TranscriptionResponse, Usage,
-};
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::completion::GetTokenUsage;
-use crate::http_client::multipart::Part;
-use crate::http_client::{self, HttpClientExt, MultipartForm};
-use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-};
-
-use crate::{
-    completion::{self, CompletionError, CompletionRequest},
-    json_utils,
-    message::{self},
-    providers::openai::ToolDefinition,
-    transcription::{self, TranscriptionError},
-};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+use super::openai;
+use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::completion::CompletionError;
+use crate::http_client::HttpClientExt;
+use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 
 // ================================================================
 // Main Groq Client
@@ -56,224 +37,135 @@ impl Provider for GroqExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for GroqExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Capable<TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
+impl openai::completion::OpenAICompatibleProvider for GroqExt {
+    const PROVIDER_NAME: &'static str = "groq";
 
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
+    /// Groq reports its transport request id on the same `x-request-id`
+    /// header OpenAI uses (verified live; see the recorded
+    /// `response_identity_edge` fixture, where the header arrives scrubbed).
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
-impl DebugExt for GroqExt {}
+    type StreamingUsage = openai::Usage;
 
-impl ProviderBuilder for GroqBuilder {
-    type Extension<H>
-        = GroqExt
-    where
-        H: HttpClientExt;
-    type ApiKey = GroqApiKey;
+    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
 
-    const BASE_URL: &'static str = GROQ_API_BASE_URL;
+    type Response = openai::CompletionResponse;
 
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(GroqExt)
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<GroqBuilder, String, H>;
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("GROQ_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
-// ================================================================
-// Groq Completion API
-// ================================================================
-
-/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
-pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
-/// The `gemma2-9b-it` model. Used for chat completion.
-pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
-/// The `llama-3.1-8b-instant` model. Used for chat completion.
-pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
-/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
-/// The `llama-3.2-1b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
-/// The `llama-3.2-3b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
-/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
-/// The `llama-3.2-70b-specdec` model. Used for chat completion.
-pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
-/// The `llama-3.2-70b-versatile` model. Used for chat completion.
-pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
-/// The `llama-guard-3-8b` model. Used for chat completion.
-pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
-/// The `llama3-70b-8192` model. Used for chat completion.
-pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
-/// The `llama3-8b-8192` model. Used for chat completion.
-pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
-/// The `mixtral-8x7b-32768` model. Used for chat completion.
-pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ReasoningFormat {
-    Parsed,
-    Raw,
-    Hidden,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct GroqCompletionRequest {
-    model: String,
-    pub messages: Vec<OpenAIMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openai::completion::ToolChoice>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<GroqAdditionalParameters>,
-    pub(super) stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) stream_options: Option<StreamOptions>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub(super) struct StreamOptions {
-    pub(super) include_usage: bool,
-}
-
-impl TryFrom<(&str, CompletionRequest)> for GroqCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, mut req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for Groq");
-        }
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        // Build up the order of messages (context, chat_history, prompt)
-        let mut partial_history = vec![];
-        if let Some(docs) = req.normalized_documents() {
-            partial_history.push(docs);
-        }
-        partial_history.extend(req.chat_history);
-
-        // Add preamble to chat history (if available)
-        let mut full_history: Vec<OpenAIMessage> = match &req.preamble {
-            Some(preamble) => vec![OpenAIMessage::system(preamble)],
-            None => vec![],
+    fn prepare_request(
+        &self,
+        request: &mut openai::completion::CompletionRequest,
+    ) -> Result<(), CompletionError> {
+        // Groq's provider-native tools (`browser_search`, `code_interpreter`,
+        // ...) arrive via `additional_params.tools`. Left in place they would
+        // clobber the function-tool array on serialization, so fold them into
+        // `compound_custom.enabled_tools` (deduplicated by tool type).
+        let Some(map) = request
+            .additional_params
+            .as_mut()
+            .and_then(Value::as_object_mut)
+        else {
+            return Ok(());
         };
-
-        // Convert and extend the rest of the history
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<OpenAIMessage>>, _>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
-        );
-
-        let tool_choice = req
-            .tool_choice
-            .clone()
-            .map(crate::providers::openai::ToolChoice::try_from)
-            .transpose()?;
-
-        let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
-        let native_tools =
-            extract_native_tools_from_additional_params(&mut additional_params_payload)?;
-
-        let mut additional_params: Option<GroqAdditionalParameters> =
-            if additional_params_payload.is_null() {
-                None
-            } else {
-                Some(serde_json::from_value(additional_params_payload)?)
-            };
-        apply_native_tools_to_additional_params(&mut additional_params, native_tools);
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
-            tool_choice,
-            additional_params,
-            stream: false,
-            stream_options: None,
-        })
-    }
-}
-
-fn extract_native_tools_from_additional_params(
-    additional_params: &mut Value,
-) -> Result<Vec<Value>, CompletionError> {
-    if let Some(map) = additional_params.as_object_mut()
-        && let Some(raw_tools) = map.remove("tools")
-    {
-        return serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+        let Some(raw_tools) = map.remove("tools") else {
+            return Ok(());
+        };
+        let native_tools = serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
             CompletionError::RequestError(
                 format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
             )
-        });
-    }
+        })?;
+        apply_native_tools_to_additional_params(map, native_tools);
 
-    Ok(Vec::new())
+        Ok(())
+    }
 }
 
+client::impl_capabilities!(
+    GroqExt,
+    completion = CompletionModel<H>,
+    transcription = TranscriptionModel<H>,
+    model_listing = GroqModelLister<H>,
+);
+
+/// A Groq listing entry.
+///
+/// Groq reports its context window and output ceiling on every entry, and
+/// [`Model`](crate::model::Model) has fields for both — `max_output_tokens`
+/// exists precisely because rig used to drop a provider-reported output
+/// ceiling on the floor (rig#2322). The shared `ListModelEntry` decodes
+/// neither (Groq spells them `context_window` / `max_completion_tokens`, and
+/// the spellings differ across providers), so Groq keeps its own DTO rather
+/// than losing them.
+#[derive(Debug, serde::Deserialize)]
+struct GroqModelEntry {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    created: Option<u64>,
+    #[serde(default)]
+    owned_by: Option<String>,
+    #[serde(default)]
+    context_window: Option<u32>,
+    #[serde(default)]
+    max_completion_tokens: Option<u32>,
+}
+
+impl From<GroqModelEntry> for crate::model::Model {
+    fn from(value: GroqModelEntry) -> Self {
+        let mut model = crate::model::Model::from_id(value.id);
+        model.name = value.name;
+        model.created_at = value.created;
+        model.owned_by = value.owned_by;
+        model.context_length = value.context_window;
+        model.max_output_tokens = value.max_completion_tokens;
+        model
+    }
+}
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the Groq
+    /// API (`GET /models`), the same path [`GroqExt::VERIFY_PATH`] already
+    /// uses.
+    GroqModelLister,
+    Client<H>,
+    GroqModelEntry,
+    "Groq",
+    "/models"
+);
+
+impl DebugExt for GroqExt {}
+
+client::impl_default_provider_builder!(
+    GroqBuilder => GroqExt,
+    api_key = GroqApiKey,
+    base_url = GROQ_API_BASE_URL,
+);
+
+pub type Client<H> = client::Client<GroqExt, H>;
+pub type ClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<GroqBuilder, GroqApiKey, H>;
+
+/// Groq completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<GroqExt, H>;
+
+/// Groq's provider-native terminal streaming record: the value carried by the
+/// final item of the stream returned by `CompletionModel::raw_stream`. Shared
+/// with the OpenAI Chat Completions path, usage payload included.
+pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
+
+client::impl_provider_from_env!(GroqExt, input = String, api_key_env = "GROQ_API_KEY");
+
+#[cfg(test)]
+use crate::providers::openai::client::ApiResponse;
+
 fn apply_native_tools_to_additional_params(
-    additional_params: &mut Option<GroqAdditionalParameters>,
+    extra: &mut Map<String, Value>,
     native_tools: Vec<Value>,
 ) {
     if native_tools.is_empty() {
         return;
     }
-
-    let params = additional_params.get_or_insert_with(GroqAdditionalParameters::default);
-    let extra = params.extra.get_or_insert_with(Map::new);
 
     let mut compound_custom = match extra.remove("compound_custom") {
         Some(Value::Object(map)) => map,
@@ -317,7 +209,47 @@ fn native_tool_kind(value: &Value) -> Option<&str> {
     }
 }
 
-/// Additional parameters to send to the Groq API
+// ================================================================
+// Groq Completion API
+// ================================================================
+
+/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
+pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
+/// The `gemma2-9b-it` model. Used for chat completion.
+pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
+/// The `llama-3.1-8b-instant` model. Used for chat completion.
+pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
+/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
+/// The `llama-3.2-1b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
+/// The `llama-3.2-3b-preview` model. Used for chat completion.
+pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
+/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
+pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
+/// The `llama-3.2-70b-specdec` model. Used for chat completion.
+pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
+/// The `llama-3.2-70b-versatile` model. Used for chat completion.
+pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
+/// The `llama-guard-3-8b` model. Used for chat completion.
+pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
+/// The `llama3-70b-8192` model. Used for chat completion.
+pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
+/// The `llama3-8b-8192` model. Used for chat completion.
+pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
+/// The `mixtral-8x7b-32768` model. Used for chat completion.
+pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningFormat {
+    Parsed,
+    Raw,
+    Hidden,
+}
+
+/// Additional parameters to send to the Groq API. Serialize this into the
+/// request's `additional_params` to set Groq's reasoning options.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GroqAdditionalParameters {
     /// The reasoning format. See Groq's API docs for more details.
@@ -331,179 +263,6 @@ pub struct GroqAdditionalParameters {
     pub extra: Option<Map<String, serde_json::Value>>,
 }
 
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: deepseek-r1-distill-llama-70b)
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "groq",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        let request = GroqCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Groq completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(|e| http_client::Error::Instance(e.into()))?;
-
-        let async_block = async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", response.id.clone());
-                        span.record("gen_ai.response.model", response.model.clone());
-                        if let Some(ref usage) = response.usage {
-                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-                            span.record(
-                                "gen_ai.usage.output_tokens",
-                                usage.total_tokens - usage.prompt_tokens,
-                            );
-                            span.record(
-                                "gen_ai.usage.cache_read.input_tokens",
-                                usage
-                                    .prompt_tokens_details
-                                    .as_ref()
-                                    .map(|d| d.cached_tokens)
-                                    .unwrap_or(0),
-                            );
-                        }
-
-                        if tracing::enabled!(tracing::Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "Groq completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-                }
-            } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        };
-
-        tracing::Instrument::instrument(async_block, span).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "groq",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &request.preamble);
-
-        let mut request = GroqCompletionRequest::try_from((self.model.as_ref(), request))?;
-
-        request.stream = true;
-        request.stream_options = Some(StreamOptions {
-            include_usage: true,
-        });
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Groq streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(|e| http_client::Error::Instance(e.into()))?;
-
-        tracing::Instrument::instrument(
-            send_compatible_streaming_request(self.client.clone(), req),
-            span,
-        )
-        .await
-    }
-}
-
 // ================================================================
 // Groq Transcription API
 // ================================================================
@@ -512,279 +271,341 @@ pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
 pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
 pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
-    pub model: String,
-}
+/// Groq transcription model using the shared OpenAI-style implementation.
+pub type TranscriptionModel<T> =
+    crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + Send + std::fmt::Debug + Default + 'static,
-{
-    type Response = TranscriptionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        let data = request.data;
-
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(prompt) = request.prompt {
-            body = body.text("prompt", prompt.clone());
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-
-            for (key, value) in params {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
-
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send_multipart::<Bytes>(req).await?;
-
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => Err(TranscriptionError::ProviderError(
-                    api_error_response.message,
-                )),
-            }
-        } else {
-            Err(TranscriptionError::ProviderError(
-                String::from_utf8_lossy(&response_body).to_string(),
-            ))
-        }
-    }
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum StreamingDelta {
-    Reasoning {
-        reasoning: String,
-    },
-    MessageContent {
-        #[serde(default)]
-        content: Option<String>,
-        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
-        tool_calls: Vec<StreamingToolCall>,
-    },
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamingChoice {
-    delta: StreamingDelta,
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamingCompletionChunk {
-    id: Option<String>,
-    model: Option<String>,
-    choices: Vec<StreamingChoice>,
-    usage: Option<Usage>,
-}
-
-#[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct StreamingCompletionResponse {
-    pub usage: Usage,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        self.usage.token_usage()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct GroqCompatibleProfile;
-
-impl CompatibleStreamProfile for GroqCompatibleProfile {
-    type Usage = Usage;
-    type Detail = ();
-    type FinalResponse = StreamingCompletionResponse;
-
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
-            Ok(data) => data,
-            Err(error) => {
-                tracing::debug!(
-                    "Couldn't parse SSE payload as StreamingCompletionChunk: {:?}",
-                    error
-                );
-                return Ok(None);
-            }
-        };
-
-        Ok(Some(
-            openai_chat_completions_compatible::normalize_first_choice_chunk(
-                data.id,
-                data.model,
-                data.usage,
-                &data.choices,
-                |choice| match &choice.delta {
-                    StreamingDelta::Reasoning { reasoning } => CompatibleChoiceData {
-                        finish_reason: CompatibleFinishReason::Other,
-                        text: None,
-                        reasoning: Some(reasoning.clone()),
-                        tool_calls: Vec::new(),
-                        details: Vec::new(),
-                    },
-                    StreamingDelta::MessageContent {
-                        content,
-                        tool_calls,
-                    } => CompatibleChoiceData {
-                        finish_reason: CompatibleFinishReason::Other,
-                        text: content.clone(),
-                        reasoning: None,
-                        tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                            tool_calls,
-                        ),
-                        details: Vec::new(),
-                    },
-                },
-            ),
-        ))
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
-    }
-
-    fn uses_distinct_tool_call_eviction(&self) -> bool {
-        true
-    }
-
-    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
-        true
-    }
-}
-
-pub async fn send_compatible_streaming_request<T>(
-    client: T,
-    req: Request<Vec<u8>>,
-) -> Result<
-    crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
-    CompletionError,
->
+impl<T> OpenAiTranscriptionClient for Client<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    openai_chat_completions_compatible::send_compatible_streaming_request(
-        client,
-        req,
-        GroqCompatibleProfile,
-    )
-    .await
+    const MODEL_IN_FORM: bool = true;
+    const PROVIDER_NAME: &'static str = "groq";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
+
+    fn transcription_request(
+        &self,
+        _model: &str,
+    ) -> crate::http_client::Result<crate::http_client::Builder> {
+        self.post("/audio/transcriptions")
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        OneOrMany,
-        providers::{
-            groq::{GroqAdditionalParameters, GroqCompletionRequest},
-            openai::{Message, UserContent},
-        },
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
+    use crate::{completion::CompletionRequestBuilder, test_utils::MockCompletionModel};
+
+    /// An OpenAI-style nested error body (`{"error": {"message": ...}}`) on a
+    /// 2xx status must classify as the error envelope — not fail both untagged
+    /// arms and surface as a serde error that loses the provider body.
+    #[test]
+    fn nested_error_object_parses_as_the_error_envelope() {
+        #[derive(serde::Deserialize)]
+        struct Success {
+            #[allow(dead_code)]
+            choices: Vec<serde_json::Value>,
+        }
+
+        let nested = r#"{"error":{"message":"model not found","type":"invalid_request_error"}}"#;
+        match serde_json::from_str::<super::ApiResponse<Success>>(nested)
+            .expect("nested error envelope should deserialize")
+        {
+            super::ApiResponse::Err(err) => assert!(err.message.contains("model not found")),
+            super::ApiResponse::Ok(_) => panic!("error body must classify as the error envelope"),
+        }
+
+        let plain = r#"{"error":"over capacity"}"#;
+        match serde_json::from_str::<super::ApiResponse<Success>>(plain)
+            .expect("string error envelope should deserialize")
+        {
+            super::ApiResponse::Err(err) => assert_eq!(err.message, "over capacity"),
+            super::ApiResponse::Ok(_) => panic!("error body must classify as the error envelope"),
+        }
+    }
 
     #[test]
-    fn serialize_groq_request() {
-        let additional_params = GroqAdditionalParameters {
-            include_reasoning: Some(true),
-            reasoning_format: Some(super::ReasoningFormat::Parsed),
-            ..Default::default()
-        };
-
-        let groq = GroqCompletionRequest {
-            model: "openai/gpt-120b-oss".to_string(),
-            temperature: None,
-            tool_choice: None,
-            stream_options: None,
-            tools: Vec::new(),
-            messages: vec![Message::User {
-                content: OneOrMany::one(UserContent::Text {
-                    text: "Hello world!".to_string(),
-                }),
-                name: None,
-            }],
-            stream: false,
-            additional_params: Some(additional_params),
-        };
-
-        let json = serde_json::to_value(&groq).unwrap();
-
-        assert_eq!(
-            json,
-            serde_json::json!({
-                "model": "openai/gpt-120b-oss",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "Hello world!"
-                    }
-                ],
-                "stream": false,
-                "include_reasoning": true,
-                "reasoning_format": "parsed"
+    fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
+            .max_tokens(64)
+            .tool(crate::completion::ToolDefinition {
+                name: "choose_beta".to_string(),
+                description: "Choose beta".to_string(),
+                parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
             })
-        )
+            .tool_choice(crate::message::ToolChoice::Specific {
+                function_names: vec!["choose_beta".to_string()],
+            })
+            .output_schema(schemars::schema_for!(serde_json::Value))
+            .build();
+
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_image_tool_results: false,
+            supports_tools: true,
+        })
+        .expect("Groq request should convert");
+        let json = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(json["max_tokens"], 64);
+        assert_eq!(
+            json["tool_choice"],
+            serde_json::json!({"type":"function","function":{"name":"choose_beta"}})
+        );
+        // The shared path defers `response_format` while tools are present and
+        // no tool result exists yet (see `should_apply_response_format`).
+        assert_eq!(json["response_format"], serde_json::Value::Null);
+
+        let no_tools_request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
+                .output_schema(schemars::schema_for!(serde_json::Value))
+                .build();
+        let no_tools_request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request: no_tools_request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_image_tool_results: false,
+            supports_tools: true,
+        })
+        .expect("request should convert");
+        let json = serde_json::to_value(no_tools_request).expect("request should serialize");
+        assert_eq!(json["response_format"]["type"], "json_schema");
+        assert_eq!(json["response_format"]["json_schema"]["strict"], true);
     }
+
+    #[tokio::test]
+    async fn transcription_routes_model_in_multipart_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let http_client = RecordingHttpClient::new(r#"{"text":"transcribed"}"#);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(super::WHISPER_LARGE_V3);
+
+        let response = model
+            .transcription_request()
+            .data(vec![1, 2, 3])
+            .filename(Some("audio.mp3".to_owned()))
+            .send()
+            .await
+            .expect("transcription should succeed");
+
+        assert_eq!(response.text, "transcribed");
+        let request = http_client
+            .requests()
+            .into_iter()
+            .next()
+            .expect("request should be captured");
+        assert_eq!(
+            request.uri,
+            "https://api.groq.com/openai/v1/audio/transcriptions"
+        );
+        let body = String::from_utf8_lossy(&request.body);
+        assert!(
+            body.contains("name=\"model\"\r\n\r\nwhisper-large-v3\r\n"),
+            "{body}"
+        );
+        assert!(
+            body.contains("name=\"file\"; filename=\"audio.mp3\""),
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn groq_prepare_request_merges_native_tools_into_compound_custom() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "search")
+            .tool(crate::completion::ToolDefinition {
+                name: "local_tool".to_string(),
+                description: "A local function tool".to_string(),
+                parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+            })
+            .additional_params(serde_json::json!({
+                "tools": [{"type": "browser_search"}, {"type": "browser_search"}],
+            }))
+            .build();
+
+        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_image_tool_results: false,
+            supports_tools: true,
+        })
+        .expect("request should convert");
+
+        super::GroqExt
+            .prepare_request(&mut request)
+            .expect("prepare_request should succeed");
+
+        let json = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(
+            json["compound_custom"]["enabled_tools"],
+            serde_json::json!([{"type": "browser_search"}])
+        );
+        // The rig-level function tool array must survive the native-tool merge.
+        assert_eq!(json["tools"][0]["function"]["name"], "local_tool");
+    }
+
+    #[test]
+    fn groq_reasoning_params_flatten_into_request_body() {
+        let additional_params = serde_json::to_value(super::GroqAdditionalParameters {
+            reasoning_format: Some(super::ReasoningFormat::Parsed),
+            include_reasoning: Some(true),
+            extra: None,
+        })
+        .expect("params should serialize");
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "Think about it")
+                .additional_params(additional_params)
+                .build();
+
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "llama-3.3-70b-versatile".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_image_tool_results: false,
+            supports_tools: true,
+        })
+        .expect("request should convert");
+        let json = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(json["reasoning_format"], "parsed");
+        assert_eq!(json["include_reasoning"], true);
+    }
+
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::groq::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::groq::Client::builder()
-            .api_key("dummy-key")
+        let _client = crate::providers::groq::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
+        let builder: crate::providers::groq::ClientBuilder =
+            crate::providers::groq::Client::builder().api_key("dummy-key");
+        let _client_from_builder = builder
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[tokio::test]
+    async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"message":"model overloaded","type":"server_error","code":"503"}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("llama-3.3-70b-versatile");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with provider error envelope");
+
+        match &error {
+            CompletionError::ProviderResponse(stored) => {
+                assert_eq!(stored.body, body);
+                assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
+                assert_eq!(error.provider_response_body(), Some(body));
+                let json = error
+                    .provider_response_json()
+                    .expect("raw body should be valid JSON")
+                    .expect("parsed JSON should be present");
+                assert_eq!(json["code"], "503");
+            }
+            other => panic!("expected ProviderResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn completion_http_non_success_preserves_status_and_body() {
+        use crate::client::CompletionClient;
+        use crate::completion::{CompletionError, CompletionModel};
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{"error":{"message":"service unavailable","code":"503"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("llama-3.3-70b-versatile");
+        let request = model.completion_request("hello").build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("completion should fail with non-success status");
+
+        // rig#2314: a provider with a request-id contract preserves its
+        // non-success responses as ProviderResponse, so the transport id has
+        // a home on the error; this mock sent no header, so the id is None.
+        assert!(matches!(error, CompletionError::ProviderResponse(_)));
+        assert_eq!(error.provider_request_id(), None);
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn transcription_http_non_success_preserves_status_and_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+
+        let body = r#"{"error":{"message":"bad audio","code":"400"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model("whisper-large-v3");
+
+        let Err(error) = model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+        else {
+            panic!("transcription should fail with non-success status")
+        };
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

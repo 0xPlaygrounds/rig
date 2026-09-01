@@ -2,8 +2,8 @@
 
 use futures::StreamExt;
 use rig::agent::AgentBuilder;
-use rig::client::CompletionClient;
-use rig::completion::{CompletionModel as _, Prompt};
+use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::streaming::StreamedAssistantContent;
 use serde_json::json;
 
@@ -65,7 +65,7 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
 
     while let Some(item) = stream.next().await {
         match item.expect("adaptive-thinking Bedrock stream item should succeed") {
-            StreamedAssistantContent::Reasoning(reasoning) => {
+            StreamedAssistantContent::Reasoning { reasoning, .. } => {
                 reasoning_chunks += 1;
                 if reasoning.first_signature().is_some() {
                     signature_chunks += 1;

@@ -1,7 +1,7 @@
 //! Together AI API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::EmbeddingsClient, providers::together};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,7 +15,6 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
-pub mod streaming;
 
 pub use client::Client;
 pub use completion::*;

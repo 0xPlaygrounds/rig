@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Return a concise event object for a local Rust meetup in Seattle.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","response_format":{"json_schema":{"name":"SmokeStructuredOutput","schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","type":"object"},"strict":true},"type":"json_schema"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"tech\",\n  \"summary\": \"A gathering for Rust enthusiasts in Seattle to share knowledge and network. Topics include Rust programming, best practices, and project showcases. All experience levels welcome. Food and drinks provided. RSVP required. Occurs monthly on the second Tuesday. Next event: August 13, 2026, 6:30 PM at The Rusty Nail. Featured speaker: Jane Doe on ''Advanced Rust Patterns''.\"\n}","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[]}}],"cost":{"diem":0,"usd":0.0001791875},"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":116,"prompt_tokens":1602,"total_tokens":1718},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

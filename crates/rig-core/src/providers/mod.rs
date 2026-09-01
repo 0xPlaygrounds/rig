@@ -5,12 +5,11 @@
 //! - ChatGPT and GitHub Copilot auth-backed clients
 //! - Cohere
 //! - DeepSeek
-//! - Galadriel
 //! - Gemini
 //! - Groq
 //! - Hugging Face
 //! - Hyperbolic
-//! - Llamafile
+//! - llama.cpp (`llama-server`, and llamafile)
 //! - MiniMax
 //! - Mira
 //! - Mistral
@@ -20,6 +19,7 @@
 //! - OpenRouter
 //! - Perplexity
 //! - Together
+//! - Venice
 //! - Voyage AI
 //! - xAI
 //! - Xiaomi MiMo
@@ -31,35 +31,79 @@
 //! [`EmbeddingsClient`](crate::client::EmbeddingsClient) are implemented only
 //! when the provider declares that capability.
 //!
+//! # Provider implementation checklist
+//!
+//! When adding or changing a provider, verify that the integration includes:
+//!
+//! - for OpenAI-chat-compatible APIs: completions driven by
+//!   [`GenericCompletionModel`](crate::providers::openai::completion::GenericCompletionModel)
+//!   via an
+//!   [`OpenAICompatibleProvider`](crate::providers::openai::completion::OpenAICompatibleProvider)
+//!   impl on the provider extension (never a hand-rolled completion model,
+//!   request struct, or message conversion — dialect differences go in the
+//!   trait's hooks);
+//! - public `Client` and `ClientBuilder` aliases with the correct generics,
+//!   including a `ClientBuilder` API-key generic matching `ProviderBuilder::ApiKey`;
+//! - the `Provider`, `ProviderBuilder`, `Capabilities`, and `ProviderClient`
+//!   implementations;
+//! - explicit API-key marker/auth types with redacted debug behavior for
+//!   credential-bearing values;
+//! - model constants where they are useful and current;
+//! - request conversion from Rig request types, such as
+//!   [`CompletionRequest`](crate::completion::CompletionRequest), without
+//!   inventing unsupported provider API fields;
+//! - response conversion into Rig response types, including usage and tool or
+//!   multimodal content where applicable, built through the
+//!   [`CompletionResponse`](crate::completion::CompletionResponse) `new`/`with_*`
+//!   builders rather than a struct literal — the `with_*_finish_reason` setters
+//!   are what apply
+//!   [`FinishReason::reconcile_with_output`](crate::completion::FinishReason::reconcile_with_output);
+//! - a finish-reason mapping covering every value the provider can report,
+//!   with anything unrecognized preserved verbatim in
+//!   [`FinishReason::Other`](crate::completion::FinishReason::Other) rather
+//!   than guessed at;
+//! - a shared conversion (one used by several OpenAI-compatible providers)
+//!   that takes the provider descriptor name as an input instead of hardcoding
+//!   one, so a reused wire type cannot mislabel its provider;
+//! - `raw_completion` and `raw_stream` inherent methods returning the
+//!   provider's own wire types, with the normalized
+//!   [`CompletionModel`](crate::completion::CompletionModel) methods delegating
+//!   to them so there is exactly one request path either way;
+//! - streaming support when the provider supports streaming;
+//! - provider-response error preservation plus `ProviderResponseExt` and
+//!   telemetry fields consistent with nearby providers where applicable;
+//! - unit, cassette, or live-test coverage appropriate to the changed behavior;
+//! - root facade feature/docs updates for companion provider crates; and
+//! - examples and documentation that match the actual API, feature flags, and
+//!   credential requirements.
+//!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{
-//!     agent::AgentBuilder,
 //!     client::{CompletionClient, ProviderClient},
+//!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // Initialize the OpenAI client
 //! let openai = openai::Client::from_env()?;
 //!
-//! // Create a model and initialize an agent
+//! // Create a model and send a low-level completion request.
 //! let model = openai.completion_model(openai::GPT_5_2);
-//!
-//! let agent = AgentBuilder::new(model)
+//! let request = model
+//!     .completion_request("Discuss the fate of Middle Earth.")
 //!     .preamble("\
 //!         You are Gandalf the white and you will be conversing with other \
 //!         powerful beings to discuss the fate of Middle Earth.\
-//!     ")
+//!     ".to_string())
 //!     .build();
-//!
-//! // Alternatively, you can initialize an agent directly
-//! let agent = openai.agent(openai::GPT_5_2)
-//!     .preamble("\
-//!         You are Gandalf the white and you will be conversing with other \
-//!         powerful beings to discuss the fate of Middle Earth.\
-//!     ")
-//!     .build();
+//! let response = model.completion(request).await?;
+//! for item in response.choice {
+//!     if let AssistantContent::Text(text) = item {
+//!         println!("{}", text.text);
+//!     }
+//! }
 //! # Ok(())
 //! # }
 //! ```
@@ -69,13 +113,13 @@ pub mod chatgpt;
 pub mod cohere;
 pub mod copilot;
 pub mod deepseek;
-pub mod galadriel;
+pub mod doubleword;
 pub mod gemini;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
-pub(crate) mod internal;
-pub mod llamafile;
+pub mod internal;
+pub mod llamacpp;
 pub mod minimax;
 pub mod mira;
 pub mod mistral;
@@ -85,6 +129,7 @@ pub mod openai;
 pub mod openrouter;
 pub mod perplexity;
 pub mod together;
+pub mod venice;
 pub mod voyageai;
 pub mod xai;
 pub mod xiaomimimo;

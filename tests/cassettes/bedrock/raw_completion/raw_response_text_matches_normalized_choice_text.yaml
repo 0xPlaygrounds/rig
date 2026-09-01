@@ -1,0 +1,14 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"temperature":0.0},"messages":[{"content":[{"text":"Reply with exactly two short lines and nothing else. First line: cedar. Second line: maple."}],"role":"user"}],"system":[{"text":"Return exactly the requested text as plain text with no bullets, quotes, or extra commentary."}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":332},"output":{"message":{"content":[{"text":"cedar\nmaple"}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":38,"outputTokens":5,"serverToolUsage":{},"totalTokens":43}}'

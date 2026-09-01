@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"/no_think Calculate 2 - 5.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"auto","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":218,"predicted_ms":763.75,"predicted_n":29,"predicted_per_second":36.66121112929624,"predicted_per_token_ms":27.276785714285715,"prompt_ms":283.534,"prompt_n":62,"prompt_per_second":218.66866054864673,"prompt_per_token_ms":4.573129032258064},"usage":{"completion_tokens":29,"prompt_tokens":280,"prompt_tokens_details":{"cached_tokens":218},"total_tokens":309}}'

@@ -1,0 +1,26 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Reply with the single word: pong","role":"user"}],"model":"qwen3-5-9b","stream":true,"stream_options":{"include_usage":true},"venice_parameters":{"disable_thinking":true}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"reasoning_encrypted":false,"role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk","prompt_token_ids":null}
+
+    data: {"choices":[{"delta":{"content":"pong","reasoning_content":null,"reasoning_encrypted":false},"finish_reason":null,"index":0,"logprobs":null,"token_ids":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"reasoning_encrypted":false},"finish_reason":"stop","index":0,"logprobs":null,"stop_reason":null,"token_ids":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk"}
+
+    data: {"choices":[],"cost":{"diem":0,"usd":0.00015780000000000001},"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-5-9b","object":"chat.completion.chunk","usage":{"cache_read_input_tokens":1056,"completion_tokens":2,"prompt_tokens":1575,"prompt_tokens_details":{"cached_tokens":1056},"total_tokens":1577}}
+
+    data: [DONE]
+

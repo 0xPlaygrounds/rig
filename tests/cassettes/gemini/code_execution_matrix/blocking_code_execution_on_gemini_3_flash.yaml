@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to compute 17 squared. State the number in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"print(17**2)\n","id":"call_195851","language":"PYTHON"},"thoughtSignature":"signature_REDACTED_1"},{"codeExecutionResult":{"id":"call_195851","outcome":"OUTCOME_OK","output":"289\n"}},{"text":"17 squared is 289.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":30,"promptTokenCount":89,"promptTokensDetails":[{"modality":"TEXT","tokenCount":89}],"serviceTier":"standard","thoughtsTokenCount":85,"toolUsePromptTokenCount":112,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":112}],"totalTokenCount":316}}'

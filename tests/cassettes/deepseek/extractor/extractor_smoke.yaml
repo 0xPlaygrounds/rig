@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","role":"system"},{"content":"Hello, my name is Ada Lovelace and I work as a mathematician.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"first_name":{"type":"string"},"job":{"type":"string"},"last_name":{"type":"string"}},"required":["first_name","last_name","job"],"title":"SmokePerson","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"Let me extract the structured data from the text provided.\n\nFirst name: Ada\nLast name: Lovelace\nJob: mathematician\n\nLet me submit this.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}","name":"submit"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":113,"completion_tokens_details":{"reasoning_tokens":32},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":426,"prompt_tokens":426,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":539}}'

@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":1024,"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"pong","reasoning_content":"Okay, the user wants me to reply with exactly the single word \"pong\". Let me make sure I understand the context. They mentioned \"Reply with exactly the single word: pong\", so they''re probably testing if I can just output that word without any extra text. I need to confirm that I''m not adding anything else. Let me check my response again. Yep, it''s just \"pong\". No explanations or extra words. Got it. Alright, that''s straightforward.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":0,"predicted_ms":865.214,"predicted_n":102,"predicted_per_second":116.73412589255375,"predicted_per_token_ms":8.566475247524753,"prompt_ms":27.469,"prompt_n":16,"prompt_per_second":582.4747897630056,"prompt_per_token_ms":1.7168125},"usage":{"completion_tokens":102,"prompt_tokens":16,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":118}}'

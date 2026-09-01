@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"qwen3:4b","options":{"num_predict":24},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":24,"eval_duration":318697665,"load_duration":4220408500,"message":{"content":"Hmm, the user wants a concise explanation of Rust and why memory safety matters. They specifically asked for one or two sentences","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":42,"prompt_eval_duration":2035633750,"total_duration":6668117083}'

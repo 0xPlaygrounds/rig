@@ -6,6 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.41.0...rig-memory-v0.42.0) - 2026-08-16
+
+### Other
+
+- workspace-wide LOC consolidation pass 8 (net −1,353 production lines) ([#2320](https://github.com/0xPlaygrounds/rig/pull/2320)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2320
+- workspace-wide LOC consolidation pass 7 (net −366 production lines) ([#2310](https://github.com/0xPlaygrounds/rig/pull/2310)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2310
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+- Stream parts become entities: lifecycle grammar, opaque keys, and tool names as data (the 84a43e9e C→B→A program) ([#2262](https://github.com/0xPlaygrounds/rig/pull/2262)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2262
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Changed
+
+- *(memory)* message content handled by the `MemoryPolicy` implementations is `Vec<T>` instead of `OneOrMany<T>`, transitively through rig-core's message-content change; behavior is unchanged
+
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.40.0...rig-memory-v0.41.0) - 2026-07-28
+
+### Added
+
+- [**breaking**] split rig-core and rig-agent behind the rig facade ([#2197](https://github.com/0xPlaygrounds/rig/pull/2197)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2197
+
+### Other
+
+- *(client)* [**breaking**] single canonical CompletionClient + AgentClientExt ([#2205](https://github.com/0xPlaygrounds/rig/pull/2205)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- Simplify tool execution and hook APIs ([#2132](https://github.com/0xPlaygrounds/rig/pull/2132)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2132
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.1.2...rig-memory-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.1.1...rig-memory-v0.1.2) - 2026-06-02
+
+### Other
+
+- update Cargo.toml dependencies
 ## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.1.0...rig-memory-v0.1.1) - 2026-05-13
 
 ### Added

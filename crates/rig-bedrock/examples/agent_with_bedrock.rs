@@ -1,6 +1,6 @@
+use rig_agent::{agent::AgentBuilder, completion::Prompt, prelude::*};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::{agent::AgentBuilder, completion::Prompt, loaders::FileLoader};
+use rig_core::{client::ProviderClient, loaders::FileLoader};
 use tracing::info;
 
 mod common;
@@ -33,8 +33,7 @@ fn client() -> Result<Client, anyhow::Error> {
     Ok(Client::from_env()?)
 }
 
-fn partial_agent() -> Result<AgentBuilder<rig_bedrock::completion::CompletionModel>, anyhow::Error>
-{
+fn partial_agent() -> Result<AgentBuilder, anyhow::Error> {
     Ok(client()?.agent(AMAZON_NOVA_LITE))
 }
 

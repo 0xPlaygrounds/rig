@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.","type":"text"}],"role":"system"},{"content":"Call the add tool exactly once with x=2 and y=3. Do not call sum.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tool_choice":"required","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Add x and y together (alias of add)","name":"sum","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to call the add tool exactly once with x=2 and y=3. They specifically said not to call sum. I need to use the add function with these parameters.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to call the add tool exactly once with x=2 and y=3. They specifically said not to call sum. I need to use the add function with these parameters.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 3}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":76,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":42},"prompt_tokens":464,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":540}}'

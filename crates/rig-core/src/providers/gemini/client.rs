@@ -1,14 +1,9 @@
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Provider, ProviderBuilder, ProviderClient,
-    Transport,
-};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, Transport};
 use crate::http_client::{self};
+use crate::providers::gemini::cached_content::CachedContentClient;
 use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, GeminiModelLister};
 use serde::Deserialize;
 use std::fmt::Debug;
-
-#[cfg(any(feature = "image", feature = "audio"))]
-use crate::client::Nothing;
 
 // ================================================================
 // Google Gemini Client
@@ -48,12 +43,12 @@ where
 }
 
 /// Gemini GenerateContent client.
-pub type Client<H = reqwest::Client> = client::Client<GeminiExt, H>;
+pub type Client<H> = client::Client<GeminiExt, H>;
 /// Builder for the Gemini GenerateContent client.
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<GeminiBuilder, GeminiApiKey, H>;
 /// Gemini Interactions API client.
-pub type InteractionsClient<H = reqwest::Client> = client::Client<GeminiInteractionsExt, H>;
+pub type InteractionsClient<H> = client::Client<GeminiInteractionsExt, H>;
 
 impl ApiKey for GeminiApiKey {}
 
@@ -98,12 +93,12 @@ impl Provider for GeminiInteractionsExt {
         match transport {
             Transport::Sse => {
                 if trimmed.contains('?') {
-                    format!("{}/{}&alt=sse", base_url, trimmed)
+                    format!("{base_url}/{trimmed}&alt=sse")
                 } else {
-                    format!("{}/{}?alt=sse", base_url, trimmed)
+                    format!("{base_url}/{trimmed}?alt=sse")
                 }
             }
-            _ => format!("{}/{}", base_url, trimmed),
+            _ => format!("{base_url}/{trimmed}"),
         }
     }
 
@@ -112,29 +107,22 @@ impl Provider for GeminiInteractionsExt {
     }
 }
 
-impl<H> Capabilities<H> for GeminiExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<GeminiModelLister<H>>;
+client::impl_capabilities!(
+    GeminiExt,
+    completion = super::completion::CompletionModel<H>,
+    embeddings = super::embedding::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = GeminiModelLister<H>,
+    image_generation = super::image_generation::ImageGenerationModel<H>,
+);
 
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
-
-impl<H> Capabilities<H> for GeminiInteractionsExt {
-    type Completion = Capable<super::interactions_api::InteractionsCompletionModel<H>>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<GeminiInteractionsModelLister<H>>;
-
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
+client::impl_capabilities!(
+    GeminiInteractionsExt,
+    completion = super::interactions_api::InteractionsCompletionModel<H>,
+    embeddings = super::embedding::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = GeminiInteractionsModelLister<H>,
+);
 
 impl ProviderBuilder for GeminiBuilder {
     type Extension<H>
@@ -178,37 +166,31 @@ impl ProviderBuilder for GeminiInteractionsBuilder {
     }
 }
 
-impl ProviderClient for Client {
-    type Input = GeminiApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("GEMINI_API_KEY")?;
-        Self::new(api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for InteractionsClient {
-    type Input = GeminiApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Google Gemini interactions client from the `GEMINI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("GEMINI_API_KEY")?;
-        Self::new(api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_from_env!(
+    GeminiExt,
+    input = GeminiApiKey,
+    api_key_env = "GEMINI_API_KEY",
+);
+client::impl_provider_from_env!(
+    GeminiInteractionsExt,
+    input = GeminiApiKey,
+    api_key_env = "GEMINI_API_KEY",
+);
 
 impl<H> Client<H> {
+    /// Client for Gemini's explicit context cache (`cachedContents`).
+    ///
+    /// Explicit caching is a different feature from the implicit prefix caching
+    /// that happens automatically: it hits on the first request and across
+    /// unrelated conversations, at the cost of billing storage per token-hour.
+    /// See [`crate::providers::gemini::cached_content`] for when each pays.
+    pub fn cached_contents(&self) -> CachedContentClient<H>
+    where
+        H: Clone,
+    {
+        CachedContentClient::new(self.clone())
+    }
+
     /// Create an Interactions API client from this GenerateContent client.
     pub fn interactions_api(self) -> InteractionsClient<H> {
         let api_key = self.ext().api_key.clone();
@@ -227,6 +209,14 @@ impl<H> InteractionsClient<H> {
 /// Error response payload returned by Gemini.
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
+    /// Structured error details.
+    pub error: ApiError,
+}
+
+/// Error details returned in a Gemini API error response.
+#[derive(Debug, Deserialize)]
+pub struct ApiError {
+    /// Human-readable description of the error.
     pub message: String,
 }
 
@@ -234,8 +224,10 @@ pub struct ApiErrorResponse {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum ApiResponse<T> {
-    Ok(T),
+    // Untagged variants are tried in order, and some Gemini success response
+    // types contain only defaulted or optional fields that accept error objects.
     Err(ApiErrorResponse),
+    Ok(T),
 }
 
 // ================================================================
@@ -247,10 +239,52 @@ mod tests {
     use super::*;
 
     #[test]
+    fn api_response_detects_nested_error_before_permissive_success() {
+        #[derive(Debug, Deserialize)]
+        struct PermissiveResponse {
+            #[serde(default)]
+            candidates: Vec<serde_json::Value>,
+        }
+
+        let response: ApiResponse<PermissiveResponse> = serde_json::from_str(
+            r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#,
+        )
+        .expect("nested Gemini error should deserialize");
+
+        match response {
+            ApiResponse::Err(err) => assert_eq!(err.error.message, "boom"),
+            ApiResponse::Ok(response) => panic!(
+                "expected nested error, got success with {} candidates",
+                response.candidates.len()
+            ),
+        }
+    }
+
+    #[test]
+    fn api_response_allows_top_level_message_in_success() {
+        #[derive(Debug, Deserialize)]
+        struct MessageResponse {
+            message: String,
+        }
+
+        let response: ApiResponse<MessageResponse> =
+            serde_json::from_str(r#"{"message":"success"}"#)
+                .expect("success response should deserialize");
+
+        match response {
+            ApiResponse::Ok(response) => assert_eq!(response.message, "success"),
+            ApiResponse::Err(err) => panic!("expected success, got error: {err:?}"),
+        }
+    }
+
+    #[test]
     fn test_client_initialization() {
-        let _client: Client = Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder: Client = Client::builder()
+        let _client: Client<_> =
+            Client::new_with("dummy-key", crate::test_utils::RecordingHttpClient::new(""))
+                .expect("Client::new() failed");
+        let _client_from_builder: Client<_> = Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

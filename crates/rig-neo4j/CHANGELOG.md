@@ -6,6 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.41.0...rig-neo4j-v0.42.0) - 2026-08-16
+
+### Other
+
+- reconcile the changelogs and the migration guide with what actually merged ([#2353](https://github.com/0xPlaygrounds/rig/pull/2353)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2353
+- workspace-wide LOC consolidation pass 7 (net −366 production lines) ([#2310](https://github.com/0xPlaygrounds/rig/pull/2310)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2310
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- Fix Neo4j rustdoc link warning ([#2287](https://github.com/0xPlaygrounds/rig/pull/2287)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2287
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Changed
+
+- *(neo4j)* [**breaking**] `vector_index::SearchParams` is removed. It was public and constructible — `SearchParams::new(Option<String>)`, `SearchParams::filter(String)` and a `Default` impl — but nothing in the crate ever consumed it: `Neo4jVectorIndex::new` takes `(Graph, M, IndexConfig)`, and the post-vector-search `WHERE` clause is built from the `VectorSearchRequest`'s own `threshold()` and `filter()`. Downstream code naming the type stops compiling; express the same post-filter through the search request's filter instead
+
+- *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
+
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.39.0...rig-neo4j-v0.40.0) - 2026-07-10
+
+### Added
+
+- *(neo4j)* implement InsertDocuments for Neo4jVectorIndex ([#1960](https://github.com/0xPlaygrounds/rig/pull/1960)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
+
+### Added
+
+- *(neo4j)* implement `InsertDocuments` for `Neo4jVectorIndex` — bulk-insert documents with precomputed embeddings via a single `UNWIND` Cypher write (one node per embedding, document fields flattened onto the node alongside `embedded_text` and the configured embedding property). Nodes are written under the index's label, which `get_index` now resolves from the index's `labelsOrTypes` (default `Document`); `IndexConfig` gains a `node_label` field + builder. (closes [#1636](https://github.com/0xPlaygrounds/rig/issues/1636))
+
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.5.7...rig-neo4j-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.5.7](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.5.6...rig-neo4j-v0.5.7) - 2026-06-02
+
+### Other
+
+- update Cargo.toml dependencies
 ## [0.5.6](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.5.5...rig-neo4j-v0.5.6) - 2026-05-13
 
 ### Other

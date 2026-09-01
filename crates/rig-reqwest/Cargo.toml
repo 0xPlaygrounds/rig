@@ -1,0 +1,70 @@
+[package]
+name = "rig-reqwest"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "The bundled reqwest HTTP transport for Rig, plus the default-transport conveniences the `rig` facade re-exports."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+reqwest-middleware = { workspace = true, optional = true, features = [
+  "json",
+  "multipart",
+  "charset",
+  "http2",
+] }
+bytes = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+
+# The bundled transport needs a tokio reactor on native. When the caller has
+# none (Bevy task pools, smol, futures::executor), `runtime` lazily starts a
+# single-threaded fallback runtime and drives reqwest futures there.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time"] }
+
+[dev-dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = ["test-utils"] }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-test = { workspace = true }
+futures = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[features]
+default = ["rustls"]
+socks = ["reqwest/socks"]
+# Provider-aware conveniences need the same feature surface as rig-core's
+# optional modalities.
+audio = ["rig-core/audio"]
+image = ["rig-core/image"]
+rustls = [
+  "reqwest/rustls",
+  "reqwest/charset",
+  "reqwest/http2",
+  "reqwest/system-proxy",
+]
+native-tls = [
+  "reqwest/native-tls",
+  "reqwest/charset",
+  "reqwest/http2",
+  "reqwest/system-proxy",
+]
+reqwest-middleware = ["reqwest-middleware-rustls"]
+reqwest-middleware-rustls = ["dep:reqwest-middleware", "rustls", "reqwest-middleware/rustls"]
+reqwest-middleware-native-tls = ["dep:reqwest-middleware", "native-tls"]

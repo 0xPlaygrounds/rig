@@ -10,13 +10,15 @@ use futures::StreamExt;
 use mongodb::bson::{self, Bson, Document, doc, to_bson};
 
 use rig_core::{
-    Embed, OneOrMany,
-    embeddings::embedding::{Embedding, EmbeddingModel},
-    vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter, SearchFilter, VectorSearchRequest},
+    Embed,
+    embeddings::{
+        EmbeddingModelHandle,
+        embedding::{Embedding, EmbeddingModel},
     },
-    wasm_compat::WasmBoxedFuture,
+    vector_store::{
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -41,13 +43,13 @@ impl SearchIndex {
             .list_search_indexes()
             .name(index_name)
             .await
-            .map_err(mongodb_to_rig_error)?
+            .map_err(VectorStoreError::datastore)?
             .with_type::<SearchIndex>()
             .next()
             .await
             .transpose()
-            .map_err(mongodb_to_rig_error)?
-            .ok_or(VectorStoreError::DatastoreError("Index not found".into()))
+            .map_err(VectorStoreError::datastore)?
+            .ok_or_else(|| VectorStoreError::DatastoreError("Index not found".into()))
     }
 }
 
@@ -66,15 +68,12 @@ struct Field {
     similarity: String,
 }
 
-fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
-    VectorStoreError::DatastoreError(Box::new(e))
-}
-
 /// A vector index for a MongoDB collection.
 /// # Example
 /// ```no_run
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig_core::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::{ProviderClient, EmbeddingsClient}};
+/// use rig_core::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::EmbeddingsClient};
+/// use rig_reqwest::prelude::*;
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -112,22 +111,24 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// # }
 /// # let _ = example();
 /// ```
-pub struct MongoDbVectorIndex<C, M>
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an index
+/// populated under one model is only meaningful under that same model).
+pub struct MongoDbVectorIndex<C>
 where
     C: Send + Sync,
-    M: EmbeddingModel,
 {
     collection: mongodb::Collection<C>,
-    model: M,
+    model: EmbeddingModelHandle,
     index_name: String,
     embedded_field: String,
     search_params: SearchParams,
 }
 
-impl<C, M> MongoDbVectorIndex<C, M>
+impl<C> MongoDbVectorIndex<C>
 where
     C: Send + Sync,
-    M: EmbeddingModel,
 {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
@@ -145,7 +146,7 @@ where
 
         let thresh = req
             .threshold()
-            .map(|thresh| MongoDbSearchFilter::gte("score".into(), thresh.into()));
+            .map(|thresh| MongoDbSearchFilter::gte("score", thresh.into()));
 
         let filter = match (thresh, req.filter()) {
             (Some(thresh), Some(filt)) => thresh.and(filt.clone()).into_inner(),
@@ -167,6 +168,61 @@ where
         }
     }
 
+    /// Embeds the query, runs the vector-search aggregation pipeline with the
+    /// given `$project` stage, and extracts `(score, id, document)` per row.
+    async fn run_search_pipeline(
+        &self,
+        req: &VectorSearchRequest<MongoDbSearchFilter>,
+        project_stage: bson::Document,
+    ) -> Result<Vec<(f64, String, serde_json::Value)>, VectorStoreError> {
+        let prompt_embedding = self.model.embed_text(req.query()).await?;
+
+        let pipeline = vec![
+            self.pipeline_search_stage(&prompt_embedding, req),
+            self.pipeline_score_stage(),
+            project_stage,
+        ];
+
+        let mut cursor = self
+            .collection
+            .aggregate(pipeline)
+            .await
+            .map_err(VectorStoreError::datastore)?
+            .with_type::<serde_json::Value>();
+
+        let mut results = Vec::new();
+        while let Some(doc) = cursor.next().await {
+            let doc = doc.map_err(VectorStoreError::datastore)?;
+            let score = doc
+                .get("score")
+                .and_then(serde_json::Value::as_f64)
+                .ok_or_else(|| {
+                    VectorStoreError::DatastoreError(
+                        "MongoDB vector search result missing numeric score".into(),
+                    )
+                })?;
+            let id = doc
+                .get("_id")
+                .ok_or_else(|| {
+                    VectorStoreError::DatastoreError(
+                        "MongoDB vector search result missing _id".into(),
+                    )
+                })?
+                .to_string();
+            results.push((score, id, doc));
+        }
+
+        tracing::info!(target: "rig",
+            "Selected documents: {}",
+            results.iter()
+                .map(|(distance, id, _)| format!("{id} ({distance})"))
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
+
+        Ok(results)
+    }
+
     /// Score declaration stage of aggregation pipeline of mongoDB collection.
     /// /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
     fn pipeline_score_stage(&self) -> bson::Document {
@@ -178,9 +234,8 @@ where
     }
 }
 
-impl<C, M> MongoDbVectorIndex<C, M>
+impl<C> MongoDbVectorIndex<C>
 where
-    M: EmbeddingModel,
     C: Send + Sync,
 {
     /// Create a new `MongoDbVectorIndex`.
@@ -189,7 +244,7 @@ where
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
     pub async fn new(
         collection: mongodb::Collection<C>,
-        model: M,
+        model: impl EmbeddingModel + 'static,
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
@@ -214,7 +269,7 @@ where
 
         Ok(Self {
             collection,
-            model,
+            model: EmbeddingModelHandle::new(model),
             index_name: index_name.to_string(),
             embedded_field,
             search_params,
@@ -293,11 +348,13 @@ impl MongoDbSearchFilter {
         self.0
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$gte": value } })
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$lte": value } })
     }
 
@@ -307,53 +364,43 @@ impl MongoDbSearchFilter {
     }
 
     /// Tests whether the value at `key` is the BSON type `typ`
-    pub fn is_type(key: String, typ: &'static str) -> Self {
+    pub fn is_type(key: impl Into<String>, typ: &'static str) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$type": typ } })
     }
 
-    pub fn size(key: String, size: i32) -> Self {
+    pub fn size(key: impl Into<String>, size: i32) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$size": size } })
     }
 
     // Array ops
-    pub fn all(key: String, values: Vec<Bson>) -> Self {
+    pub fn all(key: impl Into<String>, values: Vec<Bson>) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$all": values } })
     }
 
-    pub fn any(key: String, condition: Document) -> Self {
+    pub fn any(key: impl Into<String>, condition: Document) -> Self {
+        let key = key.into();
         Self(doc! { key: { "$elemMatch": condition } })
     }
 }
 
 impl From<Filter<serde_json::Value>> for MongoDbSearchFilter {
     fn from(value: Filter<serde_json::Value>) -> Self {
-        fn serde_json_value_to_bson(v: &serde_json::Value) -> Bson {
-            to_bson(v).unwrap_or(Bson::Null)
-        }
-
-        match value {
-            Filter::Eq(k, val) => {
-                let bson_val = serde_json_value_to_bson(&val);
-                MongoDbSearchFilter::eq(k, bson_val)
-            }
-            Filter::Gt(k, val) => {
-                let bson_val = serde_json_value_to_bson(&val);
-                MongoDbSearchFilter::gt(k, bson_val)
-            }
-            Filter::Lt(k, val) => {
-                let bson_val = serde_json_value_to_bson(&val);
-                MongoDbSearchFilter::lt(k, bson_val)
-            }
-            Filter::And(l, r) => Self::from(*l).and(Self::from(*r)),
-            Filter::Or(l, r) => Self::from(*l).or(Self::from(*r)),
-        }
+        value.interpret_with(|v| to_bson(&v).unwrap_or(Bson::Null))
     }
 }
 
-impl<C, M> VectorStoreIndex for MongoDbVectorIndex<C, M>
+impl DynamicSearchFilter for MongoDbSearchFilter {
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+        Ok(filter.into())
+    }
+}
+
+impl<C> VectorStoreIndex for MongoDbVectorIndex<C>
 where
     C: Sync + Send,
-    M: EmbeddingModel + Sync + Send,
 {
     type Filter = MongoDbSearchFilter;
 
@@ -364,55 +411,20 @@ where
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
+        let project_stage = doc! {
+            "$project": {
+                self.embedded_field.clone(): 0
+            }
+        };
 
-        let pipeline = vec![
-            self.pipeline_search_stage(&prompt_embedding, &req),
-            self.pipeline_score_stage(),
-            doc! {
-                "$project": {
-                    self.embedded_field.clone(): 0
-                }
-            },
-        ];
-
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(mongodb_to_rig_error)?
-            .with_type::<serde_json::Value>();
-
-        let mut results = Vec::new();
-        while let Some(doc) = cursor.next().await {
-            let doc = doc.map_err(mongodb_to_rig_error)?;
-            let score = doc
-                .get("score")
-                .and_then(serde_json::Value::as_f64)
-                .ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "MongoDB vector search result missing numeric score",
-                    )))
-                })?;
-            let id = doc.get("_id").ok_or_else(|| {
-                VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                    "MongoDB vector search result missing _id",
-                )))
-            })?;
-            let id = id.to_string();
-            let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
-            results.push((score, id, doc_t));
-        }
-
-        tracing::info!(target: "rig",
-            "Selected documents: {}",
-            results.iter()
-                .map(|(distance, id, _)| format!("{id} ({distance})"))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-
-        Ok(results)
+        self.run_search_pipeline(&req, project_stage)
+            .await?
+            .into_iter()
+            .map(|(score, id, doc)| {
+                let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
+                Ok((score, id, doc_t))
+            })
+            .collect()
     }
 
     /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
@@ -420,123 +432,47 @@ where
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
-
-        let pipeline = vec![
-            self.pipeline_search_stage(&prompt_embedding, &req),
-            self.pipeline_score_stage(),
-            doc! {
-                "$project": {
-                    "_id": 1,
-                    "score": 1
-                },
+        let project_stage = doc! {
+            "$project": {
+                "_id": 1,
+                "score": 1
             },
-        ];
+        };
 
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(mongodb_to_rig_error)?
-            .with_type::<serde_json::Value>();
-
-        let mut results = Vec::new();
-        while let Some(doc) = cursor.next().await {
-            let doc = doc.map_err(mongodb_to_rig_error)?;
-            let score = doc
-                .get("score")
-                .and_then(serde_json::Value::as_f64)
-                .ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "MongoDB vector search result missing numeric score",
-                    )))
-                })?;
-            let id = doc.get("_id").ok_or_else(|| {
-                VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                    "MongoDB vector search result missing _id",
-                )))
-            })?;
-            let id = id.to_string();
-            results.push((score, id));
-        }
-
-        tracing::info!(target: "rig",
-            "Selected documents: {}",
-            results.iter()
-                .map(|(distance, id)| format!("{id} ({distance})"))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-
-        Ok(results)
+        Ok(self
+            .run_search_pipeline(&req, project_stage)
+            .await?
+            .into_iter()
+            .map(|(score, id, _)| (score, id))
+            .collect())
     }
 }
 
-impl<C, M> VectorStoreIndexDyn for MongoDbVectorIndex<C, M>
-where
-    C: Sync + Send,
-    M: EmbeddingModel + Sync + Send,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        let req = req.map_filter(MongoDbSearchFilter::from);
-
-        Box::pin(async move {
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-
-            Ok(results)
-        })
-    }
-
-    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        let req = req.map_filter(MongoDbSearchFilter::from);
-        Box::pin(async move {
-            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-
-            Ok(results)
-        })
-    }
-}
-
-impl<C, M> InsertDocuments for MongoDbVectorIndex<C, M>
+impl<C> InsertDocuments for MongoDbVectorIndex<C>
 where
     C: Send + Sync,
-    M: EmbeddingModel + Send + Sync,
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
-        let mongo_documents = documents
-            .into_iter()
-            .map(|(document, embeddings)| -> Result<Vec<mongodb::bson::Document>, VectorStoreError> {
-                let json_doc = serde_json::to_value(&document)?;
-
-                embeddings.into_iter().map(|embedding| -> Result<mongodb::bson::Document, VectorStoreError> {
-                    Ok(doc! {
-                        "document": mongodb::bson::to_bson(&json_doc).map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?,
-                        "embedding": embedding.vec,
-                        "embedded_text": embedding.document,
-                    })
-                }).collect::<Result<Vec<_>, _>>()
-            })
-            .collect::<Result<Vec<Vec<_>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let mongo_documents = rig_core::vector_store::flatten_embedded(
+            documents,
+            |json_doc, embedding| {
+                Ok(doc! {
+                    "document": mongodb::bson::to_bson(json_doc).map_err(VectorStoreError::datastore)?,
+                    "embedding": embedding.vec,
+                    "embedded_text": embedding.document,
+                })
+            },
+        )?;
 
         let collection = self.collection.clone_with_type::<mongodb::bson::Document>();
 
         collection
             .insert_many(mongo_documents)
             .await
-            .map_err(mongodb_to_rig_error)?;
+            .map_err(VectorStoreError::datastore)?;
 
         Ok(())
     }

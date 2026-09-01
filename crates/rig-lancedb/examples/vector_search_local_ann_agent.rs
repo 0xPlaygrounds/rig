@@ -1,17 +1,14 @@
-use std::sync::Arc;
-
-use arrow_array::RecordBatchIterator;
-use fixture::{Word, as_record_batch, schema, words};
+use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_core::client::{EmbeddingsClient, ProviderClient};
-use rig_core::completion::Prompt;
-use rig_core::prelude::CompletionClient;
+use rig_agent::{client::AgentModelExt, completion::Prompt};
+use rig_core::client::{CompletionClient, EmbeddingsClient};
 use rig_core::providers::openai;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai::Client,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
+use rig_reqwest::prelude::*;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
@@ -53,10 +50,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         db.create_table(
             "definitions",
-            RecordBatchIterator::new(
-                vec![as_record_batch(embeddings, model.ndims())],
-                Arc::new(schema(model.ndims())),
-            ),
+            vec![as_record_batch(embeddings, model.ndims())?],
         )
         .execute()
         .await?
@@ -77,7 +71,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let search_params = SearchParams::default();
     let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 
-    // Build RAG agent with dynamic context
+    // Build RAG agent with dynamic context.
     // Use OpenAI-compatible API interface to build agent
     let agent = openai_client
         .completion_model(openai::GPT_4O)
@@ -92,7 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let response = agent.prompt(query).await?;
 
-    println!("Response: {}", response);
+    println!("Response: {response}");
 
     Ok(())
 }

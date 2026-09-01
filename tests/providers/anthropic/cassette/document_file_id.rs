@@ -1,12 +1,11 @@
 //! Cassette-backed Anthropic coverage for provider file IDs in generic document messages.
 
 use futures::FutureExt;
-use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{
     ANTHROPIC_VERSION_2023_06_01, Content as AnthropicContent,
@@ -149,7 +148,7 @@ fn file_id_document(file_id: &str) -> Document {
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
     let provider_message = AnthropicMessage {
         role: AnthropicRole::User,
-        content: OneOrMany::one(AnthropicContent::Document {
+        content: vec![AnthropicContent::Document {
             source: AnthropicDocumentSource::File {
                 file_id: file_id.to_string(),
             },
@@ -157,7 +156,7 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
             context: None,
             citations: None,
             cache_control: None,
-        }),
+        }],
     };
     let generic_message: Message = provider_message
         .try_into()
@@ -176,13 +175,12 @@ fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
 
 fn document_question(content: RigUserContent, page_number: u8) -> Message {
     Message::User {
-        content: OneOrMany::many(vec![
+        content: vec![
             content,
             RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
             ))),
-        ])
-        .expect("content should be non-empty"),
+        ],
     }
 }
 

@@ -1,0 +1,32 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","type":"text"}],"role":"system"},{"content":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","role":"user"}],"model":"gpt-4o","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[],"created":0,"id":"","model":"gpt-4o-2024-11-20","prompt_filter_results":[{"content_filter_results":{"hate":{"filtered":false,"severity":"safe"},"self_harm":{"filtered":false,"severity":"safe"},"sexual":{"filtered":false,"severity":"safe"},"violence":{"filtered":false,"severity":"safe"}},"prompt_index":0}]}
+
+    data: {"choices":[{"content_filter_results":{},"delta":{"content":null,"role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-11-20","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"content_filter_results":{},"delta":{"content":null,"tool_calls":[{"function":{"arguments":"","name":"lookup_harbor_label"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-11-20","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"content_filter_results":{},"delta":{"content":null,"tool_calls":[{"function":{"arguments":"{}"},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-11-20","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"content_filter_results":{},"delta":{"content":null,"tool_calls":[{"function":{"arguments":"","name":"lookup_orchard_label"},"id":"call_REDACTED_2","index":1,"type":"function"}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-11-20","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"content_filter_results":{},"delta":{"content":null,"tool_calls":[{"function":{"arguments":"{}"},"index":1}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-11-20","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"content_filter_results":{},"delta":{"content":null},"finish_reason":"tool_calls","index":0}],"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":0,"token_count":157,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":0,"token_count":0,"token_type":"cache_write"},{"batch_size":1000000,"cost_per_batch":0,"token_count":46,"token_type":"output"}],"total_nano_aiu":0},"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-11-20","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":46,"completion_tokens_details":{"accepted_prediction_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":157,"prompt_tokens_details":{"cached_tokens":0},"reasoning_tokens":0,"total_tokens":203}}
+
+    data: [DONE]
+

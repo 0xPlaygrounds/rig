@@ -1,7 +1,9 @@
 use super::client::Client;
 use crate::http_client::HttpClientExt;
 use crate::image_generation;
-use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+use crate::image_generation::{
+    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+};
 use serde_json::json;
 
 #[allow(non_upper_case_globals)]
@@ -12,26 +14,26 @@ pub mod image_generation_models {
 }
 pub use image_generation_models::*;
 
-#[derive(Debug)]
+/// Hugging Face's image endpoint answers with the image bytes directly — no
+/// JSON envelope — so the provider's native response *is* the bytes.
+#[derive(Debug, Clone)]
 pub struct ImageGenerationResponse {
-    data: Vec<u8>,
+    pub data: Vec<u8>,
 }
 
-impl TryFrom<ImageGenerationResponse>
-    for image_generation::ImageGenerationResponse<ImageGenerationResponse>
-{
-    type Error = ImageGenerationError;
-
-    fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        Ok(image_generation::ImageGenerationResponse {
-            image: value.data.clone(),
-            response: value,
-        })
+impl NormalizeImageGenerationResponse for ImageGenerationResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        Ok(image_generation::ImageGenerationResponse::new(
+            self.data, provider,
+        ))
     }
 }
 
 #[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
+pub struct ImageGenerationModel<T> {
     client: Client<T>,
     pub model: String,
 }
@@ -45,23 +47,19 @@ impl<T> ImageGenerationModel<T> {
     }
 }
 
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+impl<T> ImageGenerationModel<T>
 where
     T: HttpClientExt + Send + Clone + 'static,
 {
-    type Response = ImageGenerationResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn image_generation(
+    /// Perform the generation and return the provider's native response (the
+    /// image bytes) instead of the normalized
+    /// [`image_generation::ImageGenerationResponse`]. Same request, transport,
+    /// and error path as
+    /// [`image_generation::ImageGenerationModel::image_generation`].
+    pub async fn raw_image_generation(
         &self,
         request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
+    ) -> Result<ImageGenerationResponse, ImageGenerationError> {
         let request = json!({
             "inputs": request.prompt,
             "parameters": {
@@ -89,16 +87,86 @@ where
         if !response.status().is_success() {
             let status = response.status();
             let text: Vec<u8> = response.into_body().await?;
-            let text: String = String::from_utf8_lossy(&text).into();
 
-            return Err(ImageGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text
-            )));
+            return Err(ImageGenerationError::from_http_response(
+                status,
+                String::from_utf8_lossy(&text),
+            ));
         }
 
         let data: Vec<u8> = response.into_body().await?;
 
-        ImageGenerationResponse { data }.try_into()
+        Ok(ImageGenerationResponse { data })
+    }
+}
+
+impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+where
+    T: HttpClientExt + Send + Clone + 'static,
+{
+    async fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        crate::telemetry::instrument_modality(
+            "huggingface",
+            &self.model,
+            crate::telemetry::ModalityOperation::ImageGeneration,
+            async {
+                // The native response is bytes, not JSON: `raw` stays `Null` and the
+                // typed route is `raw_image_generation`.
+                self.raw_image_generation(request)
+                    .await?
+                    .normalize("huggingface")
+            },
+        )
+        .await
+    }
+}
+
+impl<T> crate::client::ConstructImageGenerationModel<Client<T>> for ImageGenerationModel<T>
+where
+    T: HttpClientExt + Send + Clone + 'static,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::image_generation::ImageGenerationClient;
+    use crate::image_generation::ImageGenerationModel as _;
+    use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn image_generation_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.image_generation_model(Flux1);
+
+        let request = model
+            .image_generation_request()
+            .prompt("draw a cat")
+            .build();
+
+        let error = model
+            .image_generation(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, ImageGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

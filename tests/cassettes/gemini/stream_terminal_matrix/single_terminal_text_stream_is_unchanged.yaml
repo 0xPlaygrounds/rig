@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Reply with exactly the word PONG.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":400,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"PONG\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":9,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":9}],\"serviceTier\":\"standard\",\"totalTokenCount\":11}}\r\n\r\n"

@@ -1,0 +1,846 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.","role":"system","type":"message"},{"content":"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.","role":"user","type":"message"}],"model":"grok-4.3","parallel_tool_calls":false,"stream":true,"tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_REDACTED_1","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" task","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" is","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":":","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" \"","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"Run","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" production","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"-read","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"iness","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" scenario","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" The","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" manifest","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" note","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" is","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" `","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"line","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" one","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":";","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" line","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" two","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" says","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" \"","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"hello","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"\"","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":29,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" path","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":31,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" C","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":32,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":":\\","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":33,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"rig","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":34,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"\\x","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":35,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"ai","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":36,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"`.","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":37,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" The","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":38,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" escaped","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":39,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" text","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":40,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" is","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":41,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" `","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":42,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"Line","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":43,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":44,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"1","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":45,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"sequence_number":46,"summary_index":0,"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"summary_text"},"sequence_number":47,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":48,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"ping_empty","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":49,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{}","item_id":"fc_REDACTED_1","output_index":1,"sequence_number":50,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{}","item_id":"fc_REDACTED_1","output_index":1,"sequence_number":51,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"ping_empty","status":"completed","type":"function_call"},"output_index":1,"sequence_number":52,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"ping_empty","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":698,"output_tokens":476},"cost_in_usd_ticks":13905000,"input_tokens":698,"input_tokens_details":{"cached_tokens":640},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":476,"output_tokens_details":{"reasoning_tokens":471},"total_tokens":1174},"user":null},"sequence_number":53,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.","role":"system","type":"message"},{"content":"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.","role":"user","type":"message"},{"id":"rs_REDACTED_1","summary":[{"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"ping_empty","type":"function_call"},{"call_id":"call_REDACTED_1","output":"EMPTY-OK","type":"function_call_output"}],"model":"grok-4.3","parallel_tool_calls":false,"stream":true,"tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_REDACTED_2","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_2","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" instructions","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" say","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":":","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" For","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" production","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"-read","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"iness","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" scenario","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" call","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" exactly","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" one","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" tool","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" at","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" a","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" time","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" in","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" this","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" order","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":":","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"1","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ping","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":29,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"_empty","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" with","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":31,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" an","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":32,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" empty","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":33,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" JSON","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":34,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" object","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":35,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":36,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":37,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"2","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":38,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":39,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" inspect","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":40,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"_manifest","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":41,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" with","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":42,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" project","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":43,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" rig","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":44,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"-x","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":45,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"ai","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":46,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":47,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" flags","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":48,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" cri...","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":49,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_2","output_index":0,"sequence_number":50,"summary_index":0,"text":"The instructions say: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags cri...","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_2","output_index":0,"part":{"text":"The instructions say: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags cri...","type":"summary_text"},"sequence_number":51,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"The instructions say: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags cri...","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":52,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"inspect_manifest","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":53,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","item_id":"fc_REDACTED_2","output_index":1,"sequence_number":54,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","item_id":"fc_REDACTED_2","output_index":1,"sequence_number":55,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"inspect_manifest","status":"completed","type":"function_call"},"output_index":1,"sequence_number":56,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"The instructions say: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags cri...","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"inspect_manifest","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":712,"output_tokens":379},"cost_in_usd_ticks":17031000,"input_tokens":712,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":379,"output_tokens_details":{"reasoning_tokens":301},"total_tokens":1091},"user":null},"sequence_number":57,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.","role":"system","type":"message"},{"content":"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.","role":"user","type":"message"},{"id":"rs_REDACTED_1","summary":[{"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"ping_empty","type":"function_call"},{"call_id":"call_REDACTED_1","output":"EMPTY-OK","type":"function_call_output"},{"id":"rs_REDACTED_2","summary":[{"text":"The instructions say: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags cri...","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","call_id":"call_REDACTED_2","name":"inspect_manifest","type":"function_call"},{"call_id":"call_REDACTED_2","output":"MANIFEST-OK project=rig-xai steps=2 retries=2","type":"function_call_output"}],"model":"grok-4.3","parallel_tool_calls":false,"stream":true,"tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_REDACTED_3","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_3","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" next","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" tool","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" is","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" join","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"_labels","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" with","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" labels","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" [","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"north","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" beta","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" gamma","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" quote","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":":\"","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"delta","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"\",","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" slash","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"\\","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"path","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"]","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" separator","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" |.","item_id":"rs_REDACTED_3","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_3","output_index":0,"sequence_number":29,"summary_index":0,"text":"The next tool is join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |.","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_3","output_index":0,"part":{"text":"The next tool is join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |.","type":"summary_text"},"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_REDACTED_3","status":"completed","summary":[{"text":"The next tool is join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":31,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"join_labels","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":32,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}","item_id":"fc_REDACTED_3","output_index":1,"sequence_number":33,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}","item_id":"fc_REDACTED_3","output_index":1,"sequence_number":34,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"join_labels","status":"completed","type":"function_call"},"output_index":1,"sequence_number":35,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_3","status":"completed","summary":[{"text":"The next tool is join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"join_labels","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":796,"output_tokens":57},"cost_in_usd_ticks":3311000,"input_tokens":796,"input_tokens_details":{"cached_tokens":768},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":57,"output_tokens_details":{"reasoning_tokens":25},"total_tokens":853},"user":null},"sequence_number":36,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.","role":"system","type":"message"},{"content":"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.","role":"user","type":"message"},{"id":"rs_REDACTED_1","summary":[{"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"ping_empty","type":"function_call"},{"call_id":"call_REDACTED_1","output":"EMPTY-OK","type":"function_call_output"},{"id":"rs_REDACTED_2","summary":[{"text":"The instructions say: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags cri...","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","call_id":"call_REDACTED_2","name":"inspect_manifest","type":"function_call"},{"call_id":"call_REDACTED_2","output":"MANIFEST-OK project=rig-xai steps=2 retries=2","type":"function_call_output"},{"id":"rs_REDACTED_3","summary":[{"text":"The next tool is join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}","call_id":"call_REDACTED_3","name":"join_labels","type":"function_call"},{"call_id":"call_REDACTED_3","output":"LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path","type":"function_call_output"}],"model":"grok-4.3","parallel_tool_calls":false,"stream":true,"tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_REDACTED_4","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_4","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" final","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" tool","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" call","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" needed","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" is","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" escape","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"_echo","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" with","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" exact","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" escaped","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" text","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_4","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_4","output_index":0,"sequence_number":18,"summary_index":0,"text":"The final tool call needed is escape_echo with the exact escaped text.","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_4","output_index":0,"part":{"text":"The final tool call needed is escape_echo with the exact escaped text.","type":"summary_text"},"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_REDACTED_4","status":"completed","summary":[{"text":"The final tool call needed is escape_echo with the exact escaped text.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":20,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"escape_echo","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":21,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}","item_id":"fc_REDACTED_4","output_index":1,"sequence_number":22,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}","item_id":"fc_REDACTED_4","output_index":1,"sequence_number":23,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"escape_echo","status":"completed","type":"function_call"},"output_index":1,"sequence_number":24,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_4","status":"completed","summary":[{"text":"The final tool call needed is escape_echo with the exact escaped text.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"escape_echo","status":"completed","type":"function_call"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":845,"output_tokens":42},"cost_in_usd_ticks":2876500,"input_tokens":845,"input_tokens_details":{"cached_tokens":832},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":42,"output_tokens_details":{"reasoning_tokens":14},"total_tokens":887},"user":null},"sequence_number":25,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags critical=true and retries=2, steps plan weight=1 and verify weight=2, and the exact note from the user. 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. 4. escape_echo with the exact escaped text from the user. After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.","role":"system","type":"message"},{"content":"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.","role":"user","type":"message"},{"id":"rs_REDACTED_1","summary":[{"text":"The task is: \"Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. The escaped text is `Line 1","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"ping_empty","type":"function_call"},{"call_id":"call_REDACTED_1","output":"EMPTY-OK","type":"function_call_output"},{"id":"rs_REDACTED_2","summary":[{"text":"The instructions say: For the production-readiness scenario, call exactly one tool at a time in this order: 1. ping_empty with an empty JSON object. 2. inspect_manifest with project rig-xai, flags cri...","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"project\":\"rig-xai\",\"flags\":{\"critical\":true,\"retries\":2},\"steps\":[{\"name\":\"plan\",\"weight\":1},{\"name\":\"verify\",\"weight\":2}],\"note\":\"line one; line two says \\\"hello\\\" and path C:\\\\rig\\\\xai\"}","call_id":"call_REDACTED_2","name":"inspect_manifest","type":"function_call"},{"call_id":"call_REDACTED_2","output":"MANIFEST-OK project=rig-xai steps=2 retries=2","type":"function_call_output"},{"id":"rs_REDACTED_3","summary":[{"text":"The next tool is join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"labels\":[\"north\",\"beta gamma\",\"quote:\\\"delta\\\"\",\"slash\\\\path\"],\"separator\":\"|\"}","call_id":"call_REDACTED_3","name":"join_labels","type":"function_call"},{"call_id":"call_REDACTED_3","output":"LABELS-OK north|beta gamma|quote:\"delta\"|slash\\path","type":"function_call_output"},{"id":"rs_REDACTED_4","summary":[{"text":"The final tool call needed is escape_echo with the exact escaped text.","type":"summary_text"}],"type":"reasoning"},{"arguments":"{\"text\":\"Line 1\\nLine \\\"2\\\" with backslash \\\\ and unicode snowman ☃\"}","call_id":"call_REDACTED_4","name":"escape_echo","type":"function_call"},{"call_id":"call_REDACTED_4","output":"ESCAPE-OK Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃","type":"function_call_output"}],"model":"grok-4.3","parallel_tool_calls":false,"stream":true,"tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_REDACTED_5","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_5","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" production","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"-read","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"iness","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" scenario","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" has","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" been","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" completed","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" with","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" all","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" tools","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" called","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" in","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" exact","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" order","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" specified","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" The","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" final","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" answer","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" must","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" be","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" one","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" short","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" sentence","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":29,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" that","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" includes","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":31,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" EMPTY","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":32,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"-","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":33,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"OK","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":34,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":35,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" MAN","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":36,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"IFEST","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":37,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"-","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":38,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"OK","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":39,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":40,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" LABEL","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":41,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"S","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":42,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"-","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":43,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"OK","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":44,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":45,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and...","item_id":"rs_REDACTED_5","output_index":0,"sequence_number":46,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_5","output_index":0,"sequence_number":47,"summary_index":0,"text":"The production-readiness scenario has been completed with all tools called in the exact order specified. The final answer must be one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and...","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_5","output_index":0,"part":{"text":"The production-readiness scenario has been completed with all tools called in the exact order specified. The final answer must be one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and...","type":"summary_text"},"sequence_number":48,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_REDACTED_5","status":"completed","summary":[{"text":"The production-readiness scenario has been completed with all tools called in the exact order specified. The final answer must be one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and...","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":49,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_REDACTED_1","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":50,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":51,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"All","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":52,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" checks","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":53,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" passed","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":54,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":":","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":55,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" EMPTY","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":56,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":57,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"OK","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":58,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":59,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" MAN","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":60,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"IFEST","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":61,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":62,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"OK","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":63,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":64,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" LABEL","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":65,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"S","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":66,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":67,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"OK","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":68,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":69,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ESC","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":70,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"APE","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":71,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":72,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"OK","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":73,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":74,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":75,"text":"All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.","type":"output_text"},"sequence_number":76,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":77,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_5","status":"completed","summary":[{"text":"The production-readiness scenario has been completed with all tools called in the exact order specified. The final answer must be one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and...","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"All checks passed: EMPTY-OK, MANIFEST-OK, LABELS-OK, ESCAPE-OK.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":false,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Return EMPTY-OK. This tool takes no arguments.","name":"ping_empty","parameters":{"properties":{},"required":[],"type":"object"},"strict":null,"type":"function"},{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"},"strict":null,"type":"function"},{"description":"Join label strings with the requested separator.","name":"join_labels","parameters":{"properties":{"labels":{"items":{"type":"string"},"type":"array"},"separator":{"type":"string"}},"required":["labels","separator"],"type":"object"},"strict":null,"type":"function"},{"description":"Echo a string containing escaping-sensitive characters.","name":"escape_echo","parameters":{"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"strict":null,"type":"function"}],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":899,"output_tokens":71},"cost_in_usd_ticks":3604500,"input_tokens":899,"input_tokens_details":{"cached_tokens":896},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":71,"output_tokens_details":{"reasoning_tokens":48},"total_tokens":970},"user":null},"sequence_number":78,"type":"response.completed"}
+

@@ -12,6 +12,7 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
+use rig::client::DefaultTransportBuilder as _;
 use rig::mongodb::{MongoDbVectorIndex, SearchParams};
 use rig::{
     Embed,
@@ -38,10 +39,22 @@ struct Word {
 
 const VECTOR_SEARCH_INDEX_NAME: &str = "vector_index";
 const MONGODB_PORT: u16 = 27017;
+// Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+// layer caching and lets a rerun silently test a different database version.
+const MONGODB_IMAGE: &str = "mongodb/mongodb-atlas-local";
+const MONGODB_TAG: &str = "8.0.5";
 const COLLECTION_NAME: &str = "words";
 const DATABASE_NAME: &str = "rig";
 const USERNAME: &str = "riguser";
 const PASSWORD: &str = "rigpassword";
+const EMBEDDING_DIMENSIONS: usize = 1536;
+const VECTOR_SEARCH_MAX_ATTEMPTS: usize = 5;
+
+fn axis_embedding(axis: usize) -> Vec<f64> {
+    let mut embedding = vec![0.0; EMBEDDING_DIMENSIONS];
+    embedding[axis] = 1.0;
+    embedding
+}
 
 fn skip_if_docker_unavailable(test_name: &str) -> bool {
     let docker_socket = std::path::Path::new("/var/run/docker.sock");
@@ -81,17 +94,17 @@ async fn vector_search_test() {
                 "data": [
                   {
                     "object": "embedding",
-                    "embedding": vec![0.1; 1536],
+                    "embedding": axis_embedding(0),
                     "index": 0
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.2; 1536],
+                    "embedding": axis_embedding(1),
                     "index": 1
                   },
                   {
                     "object": "embedding",
-                    "embedding": vec![0.0023064255; 1536],
+                    "embedding": axis_embedding(2),
                     "index": 2
                   }
                 ],
@@ -120,7 +133,7 @@ async fn vector_search_test() {
                     "data": [
                       {
                         "object": "embedding",
-                        "embedding": vec![0.0023064254; 1536],
+                        "embedding": axis_embedding(2),
                         "index": 0
                       }
                     ],
@@ -144,7 +157,7 @@ async fn vector_search_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+    let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
         .with_exposed_port(MONGODB_PORT.tcp())
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
@@ -164,9 +177,6 @@ async fn vector_search_test() {
 
     collection.insert_many(embeddings).await.unwrap();
 
-    // Wait for the new documents to be indexed
-    sleep(Duration::from_secs(5)).await;
-
     // Create a vector index on our vector store.
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
@@ -185,7 +195,38 @@ async fn vector_search_test() {
         .samples(1)
         .build();
 
-    let results = index.top_n::<serde_json::Value>(req).await.unwrap();
+    let mut observed_results = Vec::new();
+    let mut results = Vec::new();
+    for attempt in 1..=VECTOR_SEARCH_MAX_ATTEMPTS {
+        match index.top_n::<serde_json::Value>(req.clone()).await {
+            Ok(search_results) => {
+                observed_results = search_results
+                    .iter()
+                    .map(|(_, _, value)| value.clone())
+                    .collect();
+
+                if search_results
+                    .first()
+                    .and_then(|(_, _, value)| value.get("_id"))
+                    == Some(&json!("doc2"))
+                {
+                    results = search_results;
+                    break;
+                }
+            }
+            Err(error) if attempt < VECTOR_SEARCH_MAX_ATTEMPTS => {
+                eprintln!("Waiting for MongoDB vector search results: {error}");
+            }
+            Err(error) => panic!("MongoDB vector search failed after {attempt} attempts: {error}"),
+        }
+
+        sleep(Duration::from_secs(2)).await;
+    }
+
+    assert!(
+        !results.is_empty(),
+        "expected doc2 to be the top vector search result after {VECTOR_SEARCH_MAX_ATTEMPTS} attempts; observed results: {observed_results:?}"
+    );
 
     let (score, _, value) = &results.first().unwrap();
 
@@ -196,7 +237,7 @@ async fn vector_search_test() {
             "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
             "score": score
         })
-    )
+    );
 }
 
 #[tokio::test]
@@ -253,7 +294,7 @@ async fn insert_documents_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Setup MongoDB container
-    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+    let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
         .with_exposed_port(MONGODB_PORT.tcp())
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
@@ -280,7 +321,7 @@ async fn insert_documents_test() {
         },
     ];
 
-    // Generate embeddings using EmbeddingsBuilder (returns Vec<(Word, OneOrMany<Embedding>)>)
+    // Generate embeddings using EmbeddingsBuilder (returns Vec<(Word, Vec<Embedding>)>)
     let documents_with_embeddings = EmbeddingsBuilder::new(model.clone())
         .documents(test_words)
         .unwrap()
@@ -382,16 +423,13 @@ async fn create_search_index(collection: &Collection<bson::Document>) {
                         .await;
 
                     if indexes.iter().any(|idx| {
-                        idx.as_ref()
-                            .ok()
-                            .map(|i| {
-                                // Check both name and status
-                                let name_matches =
-                                    i.get_str("name").ok() == Some(VECTOR_SEARCH_INDEX_NAME);
-                                let status_ready = i.get_str("status").ok() == Some("READY");
-                                name_matches && status_ready
-                            })
-                            .unwrap_or(false)
+                        idx.as_ref().ok().is_some_and(|i| {
+                            // Check both name and status
+                            let name_matches =
+                                i.get_str("name").ok() == Some(VECTOR_SEARCH_INDEX_NAME);
+                            let status_ready = i.get_str("status").ok() == Some("READY");
+                            name_matches && status_ready
+                        })
                     }) {
                         return;
                     }
@@ -466,11 +504,12 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
 
     embeddings
         .iter()
-        .map(|(Word { id, definition, .. }, embedding)| {
+        .map(|(Word { id, definition, .. }, embeddings)| {
+            let embedding = embeddings.first().expect("expected at least one embedding");
             doc! {
                 "_id": id.clone(),
                 "definition": definition.clone(),
-                "embedding": embedding.first().vec.clone(),
+                "embedding": embedding.vec.clone(),
             }
         })
         .collect()

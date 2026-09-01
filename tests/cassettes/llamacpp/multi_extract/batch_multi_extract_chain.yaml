@@ -1,0 +1,152 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"text"}],"role":"system"},{"content":"I''m going to the store to buy some milk.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user is going to the store to buy milk. I need to extract topics from this text. The main topic here is the purpose of the trip, which is buying milk. So the topic would be \"Buying Milk\". Are there any other topics? Maybe the location (store) or the item (milk), but the primary topic is the action of buying. Since the submit function requires an array of topics, I should include \"Buying Milk\" as the only topic. Let me make sure there are no other elements. The user isn''t mentioning any other items or reasons, so yeah, that''s the main topic.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"Buying Milk\"]}","name":"submit"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":285,"predicted_ms":3016.961,"predicted_n":157,"predicted_per_second":51.707662114293164,"predicted_per_token_ms":19.33949358974359,"prompt_ms":217.929,"prompt_n":1,"prompt_per_second":4.5886504320214385,"prompt_per_token_ms":217.929},"usage":{"completion_tokens":157,"prompt_tokens":286,"prompt_tokens_details":{"cached_tokens":285},"total_tokens":443}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"text"}],"role":"system"},{"content":"I''m going to the store to buy some milk.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user said, \"I''m going to the store to buy some milk.\" I need to extract names from this text. Hmm, the sentence mentions \"the store,\" but there''s no name mentioned. The user is going to the store, but there''s no personal name like \"John\" or \"Alice\" here. The only possible name could be \"the store\" itself, but that''s a place name, not a person. Wait, maybe the user is referring to themselves, but the sentence doesn''t use a name. So, there are no names in the text. The submit function requires an array of names, so I should return an empty array. Let me make sure I didn''t miss any possible names. No, the sentence is straightforward. The answer is that there are no names.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": []}","name":"submit"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":271,"predicted_ms":3639.774,"predicted_n":190,"predicted_per_second":51.92630091868342,"predicted_per_token_ms":19.258063492063492,"prompt_ms":217.908,"prompt_n":15,"prompt_per_second":68.83638966903465,"prompt_per_token_ms":14.527199999999999},"usage":{"completion_tokens":190,"prompt_tokens":286,"prompt_tokens_details":{"cached_tokens":271},"total_tokens":476}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"text"}],"role":"system"},{"content":"Screw you Putin!","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user provided the text \"Screw you Putin!\" and wants me to extract names. Hmm, the task is to find names in the text. But the sentence is just a short phrase. There''s no name mentioned here. The words are \"Screw\" and \"you\" and \"Putin\". \"Putin\" is a name, but \"Screw\" and \"you\" are not names. So the only possible name here is \"Putin\". But I need to check if the function requires all fields. The submit function has a ''names'' array, which is required. So even if there''s only one name, I should include it. Let me make sure there''s no other names. No, \"Screw\" and \"you\" aren''t names. So the array should have [\"Putin\"]. That''s all. I''ll call the submit function with that.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": [\"Putin\"]}","name":"submit"},"id":"call_REDACTED_3","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":279,"predicted_ms":3986.086,"predicted_n":206,"predicted_per_second":51.42889541269306,"predicted_per_token_ms":19.44432195121951,"prompt_ms":217.906,"prompt_n":1,"prompt_per_second":4.5891347645314955,"prompt_per_token_ms":217.906},"usage":{"completion_tokens":206,"prompt_tokens":280,"prompt_tokens_details":{"cached_tokens":279},"total_tokens":486}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"text"}],"role":"system"},{"content":"Screw you Putin!","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, the user wrote \"Screw you Putin!\", which is a strong statement. I need to extract topics from this text. The task is to identify the main themes or subjects discussed. The phrase is a protest or a statement of dissent. The relevant topics here would be \"protest\" and \"dissent\". I should make sure to use the submit function to provide the structured data. The topics array must include both words. Let me check if there are any other possible topics, but \"protest\" and \"dissent\" seem accurate. I''ll call the submit function with these topics.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"protest\", \"dissent\"]}","name":"submit"},"id":"call_REDACTED_4","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":270,"predicted_ms":2953.137,"predicted_n":150,"predicted_per_second":50.45482143226,"predicted_per_token_ms":19.819711409395975,"prompt_ms":41.792,"prompt_n":10,"prompt_per_second":239.2802450229709,"prompt_per_token_ms":4.1792},"usage":{"completion_tokens":150,"prompt_tokens":280,"prompt_tokens_details":{"cached_tokens":270},"total_tokens":430}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"text"}],"role":"system"},{"content":"I love my dog, but I hate my cat.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user wrote, \"I love my dog, but I hate my cat.\" They want me to extract topics from this text. The task is to identify the main topics here.\n\nFirst, I need to understand the content. The sentence talks about two animals: a dog and a cat. The user has positive feelings towards the dog and negative towards the cat. So the topics would be the animals mentioned. \n\nBut wait, the user might be looking for more than just the animals. Maybe the emotions involved? But the instructions say to extract topics from the given text. The text is straightforward, mentioning the animals and their respective feelings. \n\nSo the topics should be the animals mentioned. The dog and the cat. The emotions are part of the sentiment, but the topics are the subjects. The user might not want the emotions as topics, just the subjects. \n\nTherefore, the structured data would have an array of topics: [\"dog\", \"cat\"]. That''s it. No other topics are present in the text. I need to make sure to call the submit function with those topics.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\": [\"dog\", \"cat\"]}","name":"submit"},"id":"call_REDACTED_5","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_5","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":285,"predicted_ms":5048.955,"predicted_n":251,"predicted_per_second":49.515196709021964,"predicted_per_token_ms":20.19582,"prompt_ms":19.27,"prompt_n":1,"prompt_per_second":51.89413596263622,"prompt_per_token_ms":19.27},"usage":{"completion_tokens":251,"prompt_tokens":286,"prompt_tokens_details":{"cached_tokens":285},"total_tokens":537}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"text"}],"role":"system"},{"content":"Screw you Putin!","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user provided the text \"Screw you Putin!\" and wants me to extract sentiment and confidence. First, I need to determine the sentiment of this statement. The phrase \"Screw you Putin!\" is a strong expression of dislike. It''s likely negative. \n\nNow, confidence. Since it''s a direct expression of anger or frustration, the confidence might be high. But I need to assign numbers. The sentiment should be a negative value, maybe -1.0 or something. Confidence could be 0.95 as it''s a clear expression.\n\nWait, the function requires sentiment and confidence as numbers. So I''ll map the sentiment to a negative value, and confidence to a high number. Let me check the schema again. The sentiment is a double, so -1.0 is acceptable. Confidence is also a double, so 0.95 would work. \n\nI need to make sure both fields are filled. The submit function requires both, so I''ll call it with those values.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": -1.0, \"confidence\": 0.95}","name":"submit"},"id":"call_REDACTED_6","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_6","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":290,"predicted_ms":5066.832,"predicted_n":244,"predicted_per_second":47.958961339156296,"predicted_per_token_ms":20.851160493827162,"prompt_ms":41.267,"prompt_n":10,"prompt_per_second":242.32437540892235,"prompt_per_token_ms":4.1267000000000005},"usage":{"completion_tokens":244,"prompt_tokens":300,"prompt_tokens_details":{"cached_tokens":290},"total_tokens":544}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"text"}],"role":"system"},{"content":"I love my dog, but I hate my cat.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user provided a sentence: \"I love my dog, but I hate my cat.\" The task is to extract names from this text. \n\nFirst, I need to identify any names in the sentence. The sentence mentions \"my dog\" and \"my cat\". The word \"dog\" is a common noun, but is it a name? Similarly, \"cat\" is a common noun. However, sometimes people use common nouns as names, especially if they''re referring to a specific animal. But in this context, the user is talking about their own pets. \n\nWait, the user is saying they love their dog but hate their cat. So the names here would be \"dog\" and \"cat\". But are these names or common nouns? The instruction says to extract names, which are typically proper nouns. But in this case, \"dog\" and \"cat\" are common nouns. However, maybe the user is using them as names. \n\nBut according to the tools provided, the submit function expects an array of strings for names. The user''s sentence doesn''t have any proper nouns. So maybe the answer is that there are no names, but the user might expect \"dog\" and \"cat\" as names. But I need to follow the instructions. \n\nWait, the function''s description says to extract names from the text. If the text doesn''t contain any proper nouns, then the names array would be empty. But maybe the user expects \"dog\" and \"cat\" as names. However, in standard practice, names are proper nouns. So perhaps the correct answer is that there are no names, but the user might have intended them as names. \n\nBut the user''s sentence is straightforward. The only nouns are \"dog\" and \"cat\". If the task is to extract names, and the user is referring to their pets, then \"dog\" and \"cat\" are names. So the submit function would have an array with [\"dog\", \"cat\"]. \n\nBut I need to check if the function allows that. The function''s parameters are an array of strings, which can be any words. So even if they are common nouns, they can be included. Therefore, the correct answer is to submit [\"dog\", \"cat\"] as the names.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\": [\"dog\", \"cat\"]}","name":"submit"},"id":"call_REDACTED_7","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_7","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":0,"predicted_ms":9898.176,"predicted_n":490,"predicted_per_second":49.403041530075846,"predicted_per_token_ms":20.24166871165644,"prompt_ms":217.969,"prompt_n":286,"prompt_per_second":1312.1131904078102,"prompt_per_token_ms":0.7621293706293706},"usage":{"completion_tokens":490,"prompt_tokens":286,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":776}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"text"}],"role":"system"},{"content":"I''m going to the store to buy some milk.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user said, \"I''m going to the store to buy some milk.\" I need to extract sentiment and confidence from this text. But wait, the text is a simple statement about going to the store to buy milk. There''s no obvious sentiment here. It''s neutral. The sentiment might be 0.0 or something, and confidence could be 0.5 since it''s a straightforward statement with no positive or negative words. But the function requires both sentiment and confidence as numbers. I should call the submit function with those values. Let me check the parameters again. The function requires sentiment and confidence as numbers in double format. So I''ll set sentiment to 0.0 and confidence to 0.5. That should be it.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.0, \"confidence\": 0.5}","name":"submit"},"id":"call_REDACTED_8","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_8","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":291,"predicted_ms":3965.831,"predicted_n":191,"predicted_per_second":47.90925281485771,"predicted_per_token_ms":20.872794736842106,"prompt_ms":42.979,"prompt_n":15,"prompt_per_second":349.00765490123086,"prompt_per_token_ms":2.8652666666666664},"usage":{"completion_tokens":191,"prompt_tokens":306,"prompt_tokens_details":{"cached_tokens":291},"total_tokens":497}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"text"}],"role":"system"},{"content":"I love my dog, but I hate my cat.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user provided a sentence: \"I love my dog, but I hate my cat.\" They want me to extract sentiment and confidence. \n\nFirst, I need to determine the sentiment. The sentence has two parts. \"I love my dog\" is positive, and \"I hate my cat\" is negative. But since the user is asking for the overall sentiment, maybe I should consider the overall tone. However, the sentence is a bit mixed. But maybe the sentiment is neutral because there''s both love and hate. Wait, but the user might expect the overall sentiment to be negative because there''s a hate part. Or maybe the sentiment is mixed. But the function requires sentiment and confidence. \n\nWait, the function''s parameters are sentiment (number) and confidence (number). The user hasn''t provided any specific confidence levels, so I need to infer them. But how? Maybe the sentiment is negative, and confidence is 0.5? Or maybe the sentiment is neutral. But the sentence has both positive and negative aspects. \n\nHmm, but the user might expect the overall sentiment to be negative because of the \"hate my cat\" part. But I''m not sure. Alternatively, maybe the sentiment is mixed, but the function requires a single value. \n\nAlternatively, maybe the sentiment is positive because the user loves their dog, but the hate part is a contrast. But that''s not clear. \n\nWait, the function''s parameters are sentiment and confidence. The user hasn''t provided any specific confidence values, so I need to make an educated guess. Maybe the sentiment is negative, and confidence is 0.5. Or maybe the sentiment is neutral. \n\nBut the sentence is a bit conflicting. However, the user might expect the sentiment to be negative because of the \"hate my cat\" part. So I''ll go with sentiment as -1.0 (negative) and confidence as 0.5. \n\nSo the final answer would be sentiment: -1.0, confidence: 0.5.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": -1.0, \"confidence\": 0.5}","name":"submit"},"id":"call_REDACTED_9","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_9","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":87,"predicted_ms":4767.969,"predicted_n":449,"predicted_per_second":93.96034244350163,"predicted_per_token_ms":10.642787946428571,"prompt_ms":190.551,"prompt_n":219,"prompt_per_second":1149.2986129697563,"prompt_per_token_ms":0.8700958904109588},"usage":{"completion_tokens":449,"prompt_tokens":306,"prompt_tokens_details":{"cached_tokens":87},"total_tokens":755}}'

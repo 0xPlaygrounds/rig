@@ -23,11 +23,11 @@
 //! cargo test --package rig-vectorize --test integration_tests
 //! ```
 
+use rig::Embed;
 use rig::embeddings::{EmbedError, Embedding, EmbeddingModel, TextEmbedder};
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
-use rig::{Embed, OneOrMany};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -63,10 +63,10 @@ async fn test_insert_documents() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -97,10 +97,8 @@ async fn test_insert_and_query() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings = vec![(
-        doc.clone(),
-        OneOrMany::one(embeddings.into_iter().next().unwrap()),
-    )];
+    let documents_with_embeddings =
+        vec![(doc.clone(), vec![embeddings.into_iter().next().unwrap()])];
 
     vector_store
         .insert_documents(documents_with_embeddings)
@@ -147,7 +145,7 @@ async fn test_top_n_returns_full_documents() {
     vector_store
         .insert_documents(vec![(
             doc.clone(),
-            OneOrMany::one(embeddings.into_iter().next().unwrap()),
+            vec![embeddings.into_iter().next().unwrap()],
         )])
         .await
         .expect("Failed to insert document");
@@ -205,10 +203,10 @@ async fn test_top_n_with_multiple_documents() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -264,10 +262,10 @@ async fn test_query_with_eq_filter() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -302,7 +300,7 @@ async fn test_query_with_eq_filter() {
             }
         }
         Err(e) => {
-            eprintln!("Filter test skipped - metadata may not be indexed: {:?}", e);
+            eprintln!("Filter test skipped - metadata may not be indexed: {e:?}");
         }
     }
 }
@@ -340,10 +338,10 @@ async fn test_query_with_combined_filters() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -356,7 +354,7 @@ async fn test_query_with_combined_filters() {
 
     // category = "programming" AND id != "doc-rust"
     let filter = VectorizeFilter::eq("category", serde_json::json!("programming"))
-        .and(VectorizeFilter::ne("id", serde_json::json!("doc-rust")));
+        .and(VectorizeFilter::ne("id", &serde_json::json!("doc-rust")));
 
     let request = VectorSearchRequest::builder()
         .query("programming")
@@ -381,7 +379,7 @@ async fn test_query_with_combined_filters() {
             }
         }
         Err(e) => {
-            eprintln!("Filter test skipped - metadata may not be indexed: {:?}", e);
+            eprintln!("Filter test skipped - metadata may not be indexed: {e:?}");
         }
     }
 }
@@ -419,10 +417,10 @@ async fn test_query_with_in_filter() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -435,7 +433,7 @@ async fn test_query_with_in_filter() {
 
     let filter = VectorizeFilter::in_values(
         "category",
-        vec![
+        &[
             serde_json::json!("programming"),
             serde_json::json!("database"),
         ],
@@ -464,7 +462,7 @@ async fn test_query_with_in_filter() {
             }
         }
         Err(e) => {
-            eprintln!("Filter test skipped - metadata may not be indexed: {:?}", e);
+            eprintln!("Filter test skipped - metadata may not be indexed: {e:?}");
         }
     }
 }
@@ -495,27 +493,19 @@ impl MockEmbeddingModel {
     }
 }
 
-struct MockClient;
-
 impl EmbeddingModel for MockEmbeddingModel {
-    const MAX_DOCUMENTS: usize = 100;
-
-    type Client = MockClient;
-
-    fn make(_client: &Self::Client, _model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self {
-            dimensions: dims.unwrap_or(1536),
-        }
+    fn max_documents(&self) -> usize {
+        100
     }
 
     fn ndims(&self) -> usize {
         self.dimensions
     }
 
-    async fn embed_texts(
+    async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<Vec<rig::embeddings::Embedding>, rig::embeddings::EmbeddingError> {
+    ) -> Result<rig::embeddings::EmbeddingResponse, rig::embeddings::EmbeddingError> {
         let texts: Vec<String> = texts.into_iter().collect();
         let embeddings = texts
             .into_iter()
@@ -533,7 +523,7 @@ impl EmbeddingModel for MockEmbeddingModel {
                 }
             })
             .collect();
-        Ok(embeddings)
+        Ok(rig::embeddings::EmbeddingResponse::new(embeddings, "mock"))
     }
 }
 
@@ -549,7 +539,7 @@ fn get_env_or_skip(var: &str) -> Option<String> {
     std::env::var(var).ok()
 }
 
-fn create_vector_store() -> Option<VectorizeVectorStore<MockEmbeddingModel>> {
+fn create_vector_store() -> Option<VectorizeVectorStore> {
     let account_id = get_env_or_skip("CLOUDFLARE_ACCOUNT_ID")?;
     let api_token = get_env_or_skip("CLOUDFLARE_API_TOKEN")?;
     let index_name = get_env_or_skip("VECTORIZE_INDEX_NAME")?;
@@ -579,7 +569,7 @@ async fn clear_test_index() {
         let result = match client.list_vectors(Some(1000), cursor.as_deref()).await {
             Ok(r) => r,
             Err(e) => {
-                eprintln!("Warning: Failed to list vectors: {:?}", e);
+                eprintln!("Warning: Failed to list vectors: {e:?}");
                 return;
             }
         };
@@ -590,7 +580,7 @@ async fn clear_test_index() {
 
         let ids: Vec<String> = result.vectors.into_iter().map(|v| v.id).collect();
         if let Err(e) = client.delete_by_ids(ids).await {
-            eprintln!("Warning: Failed to delete vectors: {:?}", e);
+            eprintln!("Warning: Failed to delete vectors: {e:?}");
             return;
         }
 

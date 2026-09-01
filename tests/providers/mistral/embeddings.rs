@@ -1,7 +1,8 @@
 //! Migrated from `examples/mistral_embeddings.rs`.
 
 use rig::Embed;
-use rig::client::{EmbeddingsClient, ProviderClient};
+use rig::client::DefaultTransportClient as _;
+use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::mistral;
 use rig::vector_store::VectorStoreIndex;

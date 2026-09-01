@@ -1,11 +1,12 @@
+use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
+use crate::providers::internal::transcription::send_json_transcription;
 use crate::providers::openrouter::Client;
 use crate::transcription;
-use crate::transcription::TranscriptionError;
+use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
 use crate::wasm_compat::WasmCompatSend;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 // ================================================================
@@ -29,32 +30,14 @@ pub const CHIRP_3: &str = "google/chirp-3";
 // Request/Response types
 // ================================================================
 
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct InputAudio {
-    data: String,
-    format: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct TranscriptionRequestInput {
-    model: String,
-    input_audio: InputAudio,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    language: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionResponse {
     pub text: String,
     #[serde(default)]
     pub usage: Option<TranscriptionUsage>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TranscriptionUsage {
     #[serde(default)]
     pub seconds: Option<f64>,
@@ -68,37 +51,30 @@ pub struct TranscriptionUsage {
     pub cost: Option<f64>,
 }
 
-impl TryFrom<TranscriptionResponse>
-    for transcription::TranscriptionResponse<TranscriptionResponse>
-{
-    type Error = TranscriptionError;
-
-    fn try_from(value: TranscriptionResponse) -> Result<Self, Self::Error> {
-        Ok(transcription::TranscriptionResponse {
-            text: value.text.clone(),
-            response: value,
-        })
+impl NormalizeTranscriptionResponse for TranscriptionResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        let usage = self
+            .usage
+            .as_ref()
+            .map(|usage| Usage {
+                input_tokens: usage.input_tokens.unwrap_or(0) as u64,
+                output_tokens: usage.output_tokens.unwrap_or(0) as u64,
+                total_tokens: usage.total_tokens.unwrap_or(0) as u64,
+                ..Usage::new()
+            })
+            .unwrap_or_default();
+        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
     }
 }
 
-// ================================================================
-// Model
-// ================================================================
-
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
+pub type TranscriptionModel<T> =
+    crate::providers::internal::transcription::GenericTranscriptionModel<
+        crate::providers::openrouter::client::OpenRouterExt,
+        T,
+    >;
 
 fn infer_format_from_filename(filename: &str) -> String {
     std::path::Path::new(filename)
@@ -118,21 +94,29 @@ fn infer_format_from_filename(filename: &str) -> String {
         .to_string()
 }
 
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> TranscriptionModel<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
-    type Response = TranscriptionResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    /// Perform the transcription and return OpenRouter's native response
+    /// instead of the normalized [`transcription::TranscriptionResponse`].
+    /// Same request, transport, parser, and error path as
+    /// [`transcription::TranscriptionModel::transcription`].
+    pub async fn raw_transcription(
         &self,
         request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
+    ) -> Result<TranscriptionResponse, TranscriptionError> {
+        self.raw_transcription_with_request_id(request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// [`Self::raw_transcription`] plus the transport request id, when the
+    /// response carried one.
+    pub async fn raw_transcription_with_request_id(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<(TranscriptionResponse, Option<String>), TranscriptionError> {
         if let Some(_prompt) = request.prompt {
             return Err(TranscriptionError::RequestError(Box::new(
                 std::io::Error::new(
@@ -181,24 +165,51 @@ where
 
         let body = serde_json::to_vec(&serde_json::Value::Object(body_map))?;
 
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
+        send_json_transcription(
+            &self.client,
+            self.client
+                .post("/audio/transcriptions")?
+                .header("Content-Type", "application/json"),
+            body,
+            <super::client::OpenRouterExt as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+            |_, body_bytes| Ok(serde_json::from_slice::<TranscriptionResponse>(body_bytes)?),
+        )
+        .await
+    }
+}
 
-        let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
-        let body_bytes = response.into_body().await?;
+impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
+{
+    async fn transcription(
+        &self,
+        request: transcription::TranscriptionRequest,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        crate::telemetry::instrument_modality(
+            super::completion::PROVIDER_NAME,
+            &self.model,
+            crate::telemetry::ModalityOperation::Transcription,
+            async {
+                let (response, provider_request_id) =
+                    self.raw_transcription_with_request_id(request).await?;
+                let captured = serde_json::to_value(&response)?;
+                Ok(response
+                    .normalize(super::completion::PROVIDER_NAME)?
+                    .with_optional_provider_request_id(provider_request_id)
+                    .with_raw(captured))
+            },
+        )
+        .await
+    }
+}
 
-        if status.is_success() {
-            let resp: TranscriptionResponse = serde_json::from_slice(&body_bytes)?;
-            resp.try_into()
-        } else {
-            let text = String::from_utf8_lossy(&body_bytes).to_string();
-            Err(TranscriptionError::ProviderError(text))
-        }
+impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -224,24 +235,6 @@ mod tests {
     }
 
     #[test]
-    fn test_transcription_request_serialization() {
-        let audio_b64 = STANDARD.encode(b"test audio data");
-        let req = TranscriptionRequestInput {
-            model: "openai/whisper-1".to_string(),
-            input_audio: InputAudio {
-                data: audio_b64,
-                format: "mp3".to_string(),
-            },
-            language: Some("en".to_string()),
-            temperature: None,
-        };
-        let json = serde_json::to_string(&req).unwrap();
-        assert!(json.contains("\"model\":\"openai/whisper-1\""));
-        assert!(json.contains("\"input_audio\""));
-        assert!(json.contains("\"language\":\"en\""));
-    }
-
-    #[test]
     fn test_transcription_response_deserialization() {
         let json = r#"{"text": "Hello world", "usage": {"seconds": 1.5, "cost": 0.001}}"#;
         let resp: TranscriptionResponse = serde_json::from_str(json).unwrap();
@@ -256,5 +249,36 @@ mod tests {
         let resp: TranscriptionResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.text, "Hello world");
         assert!(resp.usage.is_none());
+    }
+
+    #[tokio::test]
+    async fn transcription_non_success_preserves_status_and_body() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(WHISPER_1);
+
+        let request = model.transcription_request().data(vec![0u8; 16]).build();
+
+        let error = model
+            .transcription(request)
+            .await
+            .expect_err("should fail with non-success status");
+
+        assert!(matches!(error, TranscriptionError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

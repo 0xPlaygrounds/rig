@@ -1,0 +1,16 @@
+when:
+  path: /v1/embed
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input_type":"search_document","model":"no-such-embedding-model","texts":["Rust values memory safety and predictable performance.","Streaming responses arrive incrementally instead of all at once.","Embeddings turn text into numeric vectors for similarity search."]}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"id":"06c34015-9a69-4dd5-814b-70325f25151c","message":"model ''no-such-embedding-model'' not found, make sure the correct model ID was used and that you have access to the model."}'

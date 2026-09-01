@@ -166,58 +166,72 @@ impl EmbeddingModel {
         Ok(Self {
             embedder: Some(embedder),
             init_error: None,
-            model: model_info.model.to_owned(),
+            model: model_info.model.clone(),
             ndims,
         })
     }
 }
 
 impl embeddings::EmbeddingModel for EmbeddingModel {
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client;
-
-    fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
-        Self {
-            embedder: None,
-            init_error: Some(FastembedError::UnsupportedMake),
-            model: FastembedModel::AllMiniLML6V2Q,
-            ndims: 0,
-        }
+    fn max_documents(&self) -> usize {
+        1024
     }
 
     fn ndims(&self) -> usize {
         self.ndims
     }
 
-    async fn embed_texts(
+    async fn embed_texts_response(
         &self,
         documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let Some(embedder) = &self.embedder else {
-            let message = self
-                .init_error
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "FastEmbed model initialization failed".to_string());
-            return Err(EmbeddingError::ProviderError(message));
-        };
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        rig_core::telemetry::instrument_modality(
+            "fastembed",
+            &format!("{:?}", self.model),
+            rig_core::telemetry::ModalityOperation::Embeddings,
+            async {
+                let Some(embedder) = &self.embedder else {
+                    let message = self.init_error.as_ref().map_or_else(
+                        || "FastEmbed model initialization failed".to_string(),
+                        ToString::to_string,
+                    );
+                    return Err(EmbeddingError::ProviderError(message));
+                };
 
-        let documents_as_strings: Vec<String> = documents.into_iter().collect();
+                let documents_as_strings: Vec<String> = documents.into_iter().collect();
 
-        let documents_as_vec = embedder
-            .embed(documents_as_strings.clone(), None)
-            .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
+                let documents_as_vec = embedder
+                    .embed(
+                        documents_as_strings.iter().map(String::as_str).collect(),
+                        None,
+                    )
+                    .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
-        let docs = documents_as_strings
-            .into_iter()
-            .zip(documents_as_vec)
-            .map(|(document, embedding)| embeddings::Embedding {
-                document,
-                vec: embedding.into_iter().map(|f| f as f64).collect(),
-            })
-            .collect::<Vec<embeddings::Embedding>>();
+                let docs = documents_as_strings
+                    .into_iter()
+                    .zip(documents_as_vec)
+                    .map(|(document, embedding)| embeddings::Embedding {
+                        document,
+                        vec: embedding.into_iter().map(|f| f as f64).collect(),
+                    })
+                    .collect::<Vec<embeddings::Embedding>>();
 
-        Ok(docs)
+                // FastEmbed runs in-process: there is no provider payload, no usage,
+                // and no request id. `raw` stays `Null`.
+                Ok(embeddings::EmbeddingResponse::new(docs, "fastembed"))
+            },
+        )
+        .await
+    }
+}
+
+impl rig_core::client::ConstructEmbeddingModel<Client> for EmbeddingModel {
+    fn construct(_: &Client, _: String, _: Option<usize>) -> Self {
+        Self {
+            embedder: None,
+            init_error: Some(FastembedError::UnsupportedMake),
+            model: FastembedModel::AllMiniLML6V2Q,
+            ndims: 0,
+        }
     }
 }

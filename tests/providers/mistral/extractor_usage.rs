@@ -1,9 +1,9 @@
 //! Integration tests for Mistral extractor usage tracking.
 
 use anyhow::Result;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::extractor::ExtractionResponse;
 use rig::message::Message;
+use rig::prelude::*;
 use rig::providers::mistral;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

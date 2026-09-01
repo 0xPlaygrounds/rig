@@ -1,4 +1,3 @@
-use rig::OneOrMany;
 use rig::completion::{CompletionError, Message as CompletionMessage};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::providers::openai::responses_api::{
@@ -9,9 +8,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 #[test]
 fn test_input_item_serialization_avoids_duplicate_role() {
     let message = Message::User {
-        content: OneOrMany::one(UserContent::InputText {
+        content: vec![UserContent::InputText {
             text: "hello".to_string(),
-        }),
+        }],
         name: None,
     };
     let item: InputItem = message.into();
@@ -25,18 +24,16 @@ fn test_input_item_serialization_avoids_duplicate_role() {
 }
 
 #[test]
-fn assistant_reasoning_without_id_returns_error() {
+fn assistant_reasoning_without_id_is_omitted() {
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thought"))),
+        content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
     };
 
-    let items: Result<Vec<InputItem>, CompletionError> = message.try_into();
-    assert!(matches!(
-        items,
-        Err(CompletionError::ProviderError(message))
-            if message.contains("OpenAI-generated ID is required")
-    ));
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("idless reasoning should be omitted without an error");
+    assert!(items.is_empty());
 }
 
 #[test]
@@ -44,7 +41,7 @@ fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
     let reasoning = Reasoning::encrypted("encrypted_blob").with_id("rs_1".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
     let items: Vec<InputItem> = message
@@ -78,7 +75,7 @@ fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
 }
 
 #[test]
-fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
+fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
     let mut reasoning =
         Reasoning::new_with_signature("step-1", Some("sig-1".to_string())).with_id("rs_2".into());
     reasoning
@@ -93,7 +90,7 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
     let items: Vec<InputItem> = message
@@ -102,6 +99,15 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
     assert_eq!(items.len(), 1);
 
     let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    let content = item_json
+        .get("content")
+        .and_then(|value| value.as_array())
+        .expect("reasoning item should include reasoning content array");
+    let content_texts: Vec<&str> = content
+        .iter()
+        .filter(|entry| entry.get("type").and_then(|kind| kind.as_str()) == Some("reasoning_text"))
+        .filter_map(|entry| entry.get("text").and_then(|text| text.as_str()))
+        .collect();
     let summary = item_json
         .get("summary")
         .and_then(|value| value.as_array())
@@ -111,7 +117,8 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
         .filter_map(|entry| entry.get("text").and_then(|text| text.as_str()))
         .collect();
 
-    assert_eq!(summary_texts, vec!["step-1", "summary-2"]);
+    assert_eq!(content_texts, vec!["step-1"]);
+    assert_eq!(summary_texts, vec!["summary-2"]);
     assert_eq!(
         item_json
             .get("encrypted_content")
@@ -124,7 +131,7 @@ fn assistant_reasoning_mixed_content_serializes_only_text_like_summaries() {
 fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
     let core_request = rig::completion::CompletionRequest {
         preamble: None,
-        chat_history: OneOrMany::one(CompletionMessage::user("hello")),
+        chat_history: vec![CompletionMessage::user("hello")],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -135,6 +142,7 @@ fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
         })),
         model: None,
         output_schema: None,
+        record_telemetry_content: false,
     };
 
     let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), core_request))
@@ -180,6 +188,31 @@ fn openai_responses_reasoning_output_preserves_encrypted_content() {
 }
 
 #[test]
+fn openai_responses_reasoning_output_preserves_reasoning_text_content() {
+    let output: Output = serde_json::from_value(serde_json::json!({
+        "type": "reasoning",
+        "id": "rs_text_1",
+        "summary": [],
+        "content": [
+            { "type": "reasoning_text", "text": "visible reasoning" }
+        ],
+        "status": "completed"
+    }))
+    .expect("deserialize reasoning output");
+
+    let content: Vec<AssistantContent> = output.into();
+    assert_eq!(content.len(), 1);
+    let Some(AssistantContent::Reasoning(reasoning)) = content.first() else {
+        panic!("expected reasoning output content");
+    };
+    assert_eq!(reasoning.id.as_deref(), Some("rs_text_1"));
+    assert!(matches!(
+        reasoning.content.first(),
+        Some(ReasoningContent::Text { text, signature: None }) if text == "visible reasoning"
+    ));
+}
+
+#[test]
 fn openai_responses_reasoning_output_without_summary_is_not_dropped() {
     let output: Output = serde_json::from_value(serde_json::json!({
         "type": "reasoning",
@@ -212,7 +245,7 @@ fn openai_empty_reasoning_content_roundtrips_to_request_item() {
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
     let items: Vec<InputItem> = message
         .try_into()
@@ -243,7 +276,7 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
     let reasoning = Reasoning::redacted("opaque-redacted").with_id("rs_redacted".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
     let items: Vec<InputItem> = message
@@ -268,14 +301,14 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
 }
 
 #[test]
-fn openai_responses_request_reasoning_without_id_returns_error_without_panicking() {
+fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::Assistant {
+            chat_history: vec![CompletionMessage::Assistant {
                 id: Some("assistant_message_id".to_string()),
-                content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thought"))),
-            }),
+                content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -284,6 +317,7 @@ fn openai_responses_request_reasoning_without_id_returns_error_without_panicking
             additional_params: None,
             model: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
         OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
     }));
@@ -291,44 +325,146 @@ fn openai_responses_request_reasoning_without_id_returns_error_without_panicking
     let conversion = panic_result.expect("request conversion should not panic");
     assert!(matches!(
         conversion,
-        Err(CompletionError::ProviderError(message))
-            if message.contains("OpenAI-generated ID is required")
+        Err(CompletionError::RequestError(error))
+            if error
+                .to_string()
+                .contains("OpenAI Responses request input must contain at least one item")
     ));
 }
 
 #[test]
-fn assistant_tool_call_without_call_id_returns_request_error() {
+fn assistant_tool_call_with_local_id_omits_function_call_item_id() {
     let message = CompletionMessage::Assistant {
-        id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::tool_call(
-            "tool_1",
+        id: None,
+        content: vec![AssistantContent::tool_call_with_call_id(
+            "history_tool_1",
+            "call_local_1".to_string(),
             "my_tool",
-            serde_json::json!({"arg":"value"}),
-        )),
+            serde_json::json!({}),
+        )],
     };
 
-    let items: Result<Vec<InputItem>, CompletionError> = message.try_into();
-    assert!(matches!(
-        items,
-        Err(CompletionError::RequestError(error))
-            if error
-                .to_string()
-                .contains("Assistant tool call `call_id` is required")
-    ));
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("tool call with call_id should convert");
+    assert_eq!(items.len(), 1);
+
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert_eq!(
+        item_json.get("type").and_then(|value| value.as_str()),
+        Some("function_call")
+    );
+    assert!(
+        item_json.get("id").is_none(),
+        "non-`fc_` tool-call IDs must be omitted so the API pairs by call_id: {item_json}"
+    );
+    assert_eq!(
+        item_json.get("call_id").and_then(|value| value.as_str()),
+        Some("call_local_1")
+    );
 }
 
 #[test]
-fn user_tool_result_without_call_id_returns_request_error() {
-    let message = CompletionMessage::tool_result("tool_1", "result payload");
+fn assistant_tool_call_with_local_fc_prefix_without_separator_omits_function_call_item_id() {
+    let message = CompletionMessage::Assistant {
+        id: None,
+        content: vec![AssistantContent::tool_call_with_call_id(
+            "fclocal_1",
+            "call_local_1".to_string(),
+            "my_tool",
+            serde_json::json!({}),
+        )],
+    };
 
-    let items: Result<Vec<InputItem>, CompletionError> = message.try_into();
-    assert!(matches!(
-        items,
-        Err(CompletionError::RequestError(error))
-            if error
-                .to_string()
-                .contains("Tool result `call_id` is required")
-    ));
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("tool call with call_id should convert");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert!(
+        item_json.get("id").is_none(),
+        "only provider-native `fc_` item IDs should round-trip: {item_json}"
+    );
+}
+
+#[test]
+fn assistant_tool_call_with_provider_item_id_keeps_it() {
+    let message = CompletionMessage::Assistant {
+        id: None,
+        content: vec![AssistantContent::tool_call_with_call_id(
+            "fc_native_1",
+            "call_native_1".to_string(),
+            "my_tool",
+            serde_json::json!({}),
+        )],
+    };
+
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("tool call with call_id should convert");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert_eq!(
+        item_json.get("id").and_then(|value| value.as_str()),
+        Some("fc_native_1"),
+        "provider-native fc item IDs must round-trip"
+    );
+}
+
+#[test]
+fn assistant_tool_call_without_provider_id_serializes_the_minted_call_id() {
+    // An empty wire id records no provider id and mints rig's correlation
+    // handle; the Responses wire requires a `call_id`, so the minted id is
+    // sent instead of the old "`call_id` is required" request error.
+    let message = CompletionMessage::Assistant {
+        id: Some("assistant_message_id".to_string()),
+        content: vec![AssistantContent::tool_call(
+            "",
+            "my_tool",
+            serde_json::json!({"arg":"value"}),
+        )],
+    };
+
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("id-less tool call should serialize with the minted call_id");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    let call_id = item_json
+        .get("call_id")
+        .and_then(|value| value.as_str())
+        .expect("function_call should carry a call_id");
+    assert!(
+        !call_id.is_empty(),
+        "minted call_id must be non-empty: {item_json}"
+    );
+    assert!(
+        item_json.get("id").is_none(),
+        "no provider-native `fc_` item id exists to round-trip: {item_json}"
+    );
+}
+
+#[test]
+fn user_tool_result_without_provider_id_serializes_the_minted_call_id() {
+    // An empty provider call id mints rig's correlation handle; the
+    // Responses wire requires a `call_id`, so the minted id is sent instead
+    // of the old "`call_id` is required" request error.
+    let message = CompletionMessage::tool_result("", "my_tool", "result payload");
+
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("id-less tool result should serialize with the minted call_id");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert_eq!(
+        item_json.get("type").and_then(|value| value.as_str()),
+        Some("function_call_output"),
+        "tool result should serialize as a function_call_output: {item_json}"
+    );
+    let call_id = item_json
+        .get("call_id")
+        .and_then(|value| value.as_str())
+        .expect("function_call_output should carry a call_id");
+    assert!(
+        !call_id.is_empty(),
+        "minted call_id must be non-empty: {item_json}"
+    );
 }
 
 #[test]
@@ -336,7 +472,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::user("hello")),
+            chat_history: vec![CompletionMessage::user("hello")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -345,6 +481,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
             additional_params: Some(serde_json::json!("not_a_valid_object")),
             model: None,
             output_schema: None,
+            record_telemetry_content: false,
         };
         OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
     }));
@@ -357,4 +494,41 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
                 .to_string()
                 .contains("Invalid OpenAI Responses additional_params payload")
     ));
+}
+
+#[test]
+fn openai_responses_request_preserves_prompt_cache_parameters() {
+    let request = rig::completion::CompletionRequest {
+        preamble: None,
+        chat_history: vec![CompletionMessage::user("hello")],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: Some(serde_json::json!({
+            "prompt_cache_key": "tenant-agent-scaffold",
+            "prompt_cache_retention": "24h"
+        })),
+        model: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
+        .expect("convert request");
+    let request_json = serde_json::to_value(request).expect("serialize request");
+
+    assert_eq!(
+        request_json
+            .get("prompt_cache_key")
+            .and_then(|value| value.as_str()),
+        Some("tenant-agent-scaffold")
+    );
+    assert_eq!(
+        request_json
+            .get("prompt_cache_retention")
+            .and_then(|value| value.as_str()),
+        Some("24h")
+    );
 }

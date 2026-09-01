@@ -1,0 +1,110 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Be precise and concise.","type":"text"}],"role":"system"},{"content":"When and where and what type is the next solar eclipse?","role":"user"}],"model":"openai/gpt-4o-mini","stream":true,"temperature":0.5}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"The","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" next","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" solar","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" eclipse","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" will","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" occur","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" on","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" April","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" ","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"8","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":",","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" ","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"202","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"4","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":".","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" It","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" will","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" be","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" a","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" total","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" solar","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" eclipse","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":",","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" and","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" its","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" path","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" of","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" total","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"ity","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" will","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" cross","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" parts","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" of","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" Mexico","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":",","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" the","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" United","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" States","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":",","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" and","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" Canada","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":".","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"Azure","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":43,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003,"cost_details":{"upstream_inference_completions_cost":0.0000258,"upstream_inference_cost":0.00003,"upstream_inference_prompt_cost":4.2e-6},"is_byok":false,"prompt_tokens":28,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":71}}
+
+    data: [DONE]
+

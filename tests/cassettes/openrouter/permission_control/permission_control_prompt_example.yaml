@@ -1,0 +1,33 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant that can read files using different methods.","type":"text"}],"role":"system"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user"}],"model":"openai/gpt-4o","tools":[{"function":{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"}},"type":"function"},{"function":{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"read_file_head"},"id":"call_REDACTED_1","index":0,"type":"function"},{"function":{"arguments":"{}","name":"read_file_tail"},"id":"call_REDACTED_2","index":1,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o","object":"chat.completion","provider":"Azure","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":42,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.0006825,"cost_details":{"upstream_inference_completions_cost":0.00042,"upstream_inference_cost":0.0006825,"upstream_inference_prompt_cost":0.0002625},"is_byok":false,"prompt_tokens":105,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":147}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant that can read files using different methods.","type":"text"}],"role":"system"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"read_file_head"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"read_file_tail"},"id":"call_REDACTED_2","type":"function"}]},{"content":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"hello world","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"openai/gpt-4o","tools":[{"function":{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"}},"type":"function"},{"function":{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The last line of the file `test.txt` is \"hello world\". The `read_file_head` tool is currently unavailable, so I couldn''t read the first line.","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"openai/gpt-4o","object":"chat.completion","provider":"Azure","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":36,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00082,"cost_details":{"upstream_inference_completions_cost":0.00036,"upstream_inference_cost":0.00082,"upstream_inference_prompt_cost":0.00046},"is_byok":false,"prompt_tokens":184,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":220}}'

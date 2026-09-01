@@ -1,11 +1,11 @@
 //! Dedicated GPT-5.5 live smoke tests.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::message::Image;
 use rig::completion::{Chat, Message};
 use rig::completion::{Prompt, TypedPrompt};
 use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{StreamingChat, StreamingPrompt};
 use schemars::JsonSchema;
@@ -104,7 +104,7 @@ async fn responses_streaming_tools_smoke() {
 
     let mut stream = agent
         .stream_prompt(STREAMING_TOOLS_PROMPT)
-        .multi_turn(3)
+        .max_turns(3)
         .await;
     let response = collect_stream_final_response(&mut stream)
         .await
@@ -252,7 +252,7 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
 
     let stream = agent
         .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
-        .multi_turn(3)
+        .max_turns(3)
         .await;
 
     let stats = reasoning::collect_stream_stats(stream, "openai").await;
@@ -450,7 +450,8 @@ async fn responses_websocket_smoke() -> anyhow::Result<()> {
                     break;
                 }
             }
-            ResponsesWebSocketEvent::Done(_) => {}
+            // Unknown frames are raw passthrough noise for this live assertion.
+            ResponsesWebSocketEvent::Done(_) | ResponsesWebSocketEvent::Unknown(_) => {}
             ResponsesWebSocketEvent::Error(error) => return Err(anyhow::anyhow!(error.to_string())),
         }
     }

@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"source":{"data":"<file id: sky-note>\nA clear daytime sky is blue.\n</file>\n","media_type":"text/plain","type":"text"},"type":"document"}],"role":"user"},{"content":[{"text":"Entendido.","type":"text"}],"role":"assistant"},{"content":[{"text":"According to the document, what color is the clear daytime sky?","type":"text"}],"role":"user"}],"model":"claude-opus-4-8","system":[{"text":"Answer in Spanish only. Use one short sentence.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"El cielo es azul.","type":"text"}],"id":"msg_REDACTED_1","model":"claude-opus-4-8","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":116,"output_tokens":10,"output_tokens_details":{"thinking_tokens":0},"service_tier":"standard"}}'

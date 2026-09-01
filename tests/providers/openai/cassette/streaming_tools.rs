@@ -1,12 +1,12 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
-
-use rig::OneOrMany;
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
-use rig::message::{AssistantContent, Message};
+use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig::prelude::*;
 use rig::providers::openai;
+use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 use rig::streaming::StreamingPrompt;
-use rig::tool::Tool;
+
+use serde::Deserialize;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
@@ -16,6 +16,72 @@ use crate::support::{
     assert_raw_stream_tool_call_precedes_text, assert_tool_call_precedes_later_text,
     collect_raw_stream_observation, collect_stream_final_response, collect_stream_observation,
 };
+
+#[derive(Debug, Deserialize)]
+struct CassetteInteraction {
+    then: CassetteResponse,
+}
+
+#[derive(Debug, Deserialize)]
+struct CassetteResponse {
+    body: Option<String>,
+}
+
+#[test]
+fn streaming_tools_smoke_cassette_sse_events_parse() {
+    let contents = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/cassettes/openai/streaming_tools/streaming_tools_smoke.yaml"
+    ))
+    .expect("streaming tools cassette should be readable");
+
+    let mut event_count = 0;
+    let mut function_call_delta_count = 0;
+    let mut failures = Vec::new();
+
+    for (interaction_index, document) in serde_yaml::Deserializer::from_str(&contents).enumerate() {
+        let interaction = CassetteInteraction::deserialize(document)
+            .expect("streaming tools cassette interaction should deserialize");
+        let Some(body) = interaction.then.body else {
+            continue;
+        };
+
+        for (line_index, line) in body.lines().enumerate() {
+            let Some(data) = line.trim_start().strip_prefix("data:").map(str::trim) else {
+                continue;
+            };
+
+            if data.is_empty() || data == "[DONE]" {
+                continue;
+            }
+
+            event_count += 1;
+            if data.contains(r#""type":"response.function_call_arguments.delta""#) {
+                function_call_delta_count += 1;
+            }
+
+            if let Err(error) = serde_json::from_str::<StreamingCompletionChunk>(data) {
+                failures.push(format!(
+                    "interaction {interaction_index}, body line {line_index}: {error}\n{data}"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        event_count > 0,
+        "expected cassette to contain SSE data events"
+    );
+    assert!(
+        function_call_delta_count > 0,
+        "expected cassette to cover function-call argument delta events"
+    );
+    assert!(
+        failures.is_empty(),
+        "all cassette SSE data events should parse as StreamingCompletionChunk; failures:\n{}",
+        failures.join("\n\n")
+    );
+}
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
@@ -27,6 +93,7 @@ async fn streaming_tools_smoke() {
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
+                .default_max_turns(2)
                 .build();
 
             let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
@@ -52,6 +119,7 @@ async fn example_streaming_with_tools() {
             .max_tokens(1024)
             .tool(Adder)
             .tool(Subtract)
+            .default_max_turns(2)
             .build();
 
         let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
@@ -76,7 +144,7 @@ async fn responses_stream_preserves_tool_result_flow() {
 
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-                .multi_turn(5)
+                .max_turns(5)
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -99,7 +167,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(AlphaSignal.definition(String::new()).await)
+                .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
 
             let first_turn = collect_raw_stream_observation(
@@ -120,10 +188,17 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .expect("raw responses stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message =
-                Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
+                Message::User {
+        content: vec![UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+        )],
+    };
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

@@ -1,8 +1,8 @@
 //! Migrated from `examples/ollama_streaming_pause_control.rs`.
 
 use futures::StreamExt;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
+use rig::prelude::*;
 use rig::providers::ollama;
 use rig::streaming::StreamedAssistantContent;
 use tokio::time::{Duration, sleep};
@@ -27,9 +27,8 @@ async fn streaming_pause_and_resume() {
             StreamedAssistantContent::Text(text) => {
                 chunk_count += usize::from(!text.text.is_empty());
             }
-            StreamedAssistantContent::ToolCall { .. } | StreamedAssistantContent::Reasoning(_) => {
-                chunk_count += 1
-            }
+            StreamedAssistantContent::ToolCall { .. }
+            | StreamedAssistantContent::Reasoning { .. } => chunk_count += 1,
             StreamedAssistantContent::Final(_) => break,
             _ => {}
         }

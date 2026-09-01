@@ -13,13 +13,13 @@ use qdrant_client::{
 };
 use rig_core::{
     Embed,
-    client::ProviderClient,
     embeddings::EmbeddingsBuilder,
     providers::openai::{self, Client},
     vector_store::{InsertDocuments, VectorStoreIndex, request::SearchFilter},
 };
 use rig_core::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use rig_qdrant::{QdrantFilter, QdrantVectorStore};
+use rig_reqwest::prelude::*;
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
 struct Word {

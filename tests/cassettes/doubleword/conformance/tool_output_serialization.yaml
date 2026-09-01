@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You must use the provided tools before answering.","type":"text"}],"role":"system"},{"content":"Call fetch_motto and fetch_config, then summarize both outputs in one sentence.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tools":[{"function":{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Fetch the service configuration object.","name":"fetch_config","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to call both fetch_motto and fetch_config functions, then summarize both outputs in one sentence. I need to make both function calls first.\n\nLet me call both functions:","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to call both fetch_motto and fetch_config functions, then summarize both outputs in one sentence. I need to make both function calls first.\n\nLet me call both functions:","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"fetch_motto"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"fetch_config"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":74,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":39},"prompt_tokens":329,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":403}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You must use the provided tools before answering.","type":"text"}],"role":"system"},{"content":"Call fetch_motto and fetch_config, then summarize both outputs in one sentence.","role":"user"},{"reasoning_content":"The user wants me to call both fetch_motto and fetch_config functions, then summarize both outputs in one sentence. I need to make both function calls first.\n\nLet me call both functions:","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"fetch_motto"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"fetch_config"},"id":"call_REDACTED_2","type":"function"}]},{"content":"steady hands\ncalm waters","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"{\"service\":\"cassette-lab\",\"max_retries\":3}","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tools":[{"function":{"description":"Fetch the two-line workshop motto.","name":"fetch_motto","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Fetch the service configuration object.","name":"fetch_config","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The workshop motto emphasizes \"steady hands, calm waters\" while the service configuration shows the cassette-lab service is set with a maximum of 3 retries.","reasoning":"Now I have both outputs:\n- fetch_motto returned: \"steady hands\\ncalm waters\" (a two-line workshop motto)\n- fetch_config returned: {\"service\":\"cassette-lab\",\"max_retries\":3} (a service configuration object)\n\nI need to summarize both outputs in one sentence.","reasoning_details":[{"format":"unknown","index":0,"text":"Now I have both outputs:\n- fetch_motto returned: \"steady hands\\ncalm waters\" (a two-line workshop motto)\n- fetch_config returned: {\"service\":\"cassette-lab\",\"max_retries\":3} (a service configuration object)\n\nI need to summarize both outputs in one sentence.","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":102,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":66},"prompt_tokens":439,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":541}}'

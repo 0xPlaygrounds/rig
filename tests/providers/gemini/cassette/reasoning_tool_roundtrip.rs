@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::*;
 use rig::streaming::StreamingChat;
 
 use crate::reasoning::{self, WeatherTool};
@@ -32,7 +32,7 @@ async fn streaming() {
 
             let stream = agent
                 .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
-                .multi_turn(3)
+                .max_turns(3)
                 .await;
 
             let stats = reasoning::collect_stream_stats(stream, "gemini").await;
@@ -58,6 +58,7 @@ async fn nonstreaming() {
                         "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
                     }
                 }))
+                .default_max_turns(2)
                 .build();
 
             let result = agent

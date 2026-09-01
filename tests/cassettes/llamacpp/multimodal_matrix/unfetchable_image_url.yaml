@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"What colour is this?","type":"text"},{"image_url":{"detail":"auto","url":"http://127.0.0.1:1/nope.png"},"type":"image_url"}],"role":"user"}],"model":"Qwen3-VL-2B-Instruct-Q8_0"}'
+then:
+  status: 500
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":500,"message":"error: cannot make GET request","type":"server_error"}}'

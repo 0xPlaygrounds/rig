@@ -1,11 +1,12 @@
 use rig_core::{
     Embed,
-    client::{EmbeddingsClient, ProviderClient},
+    client::EmbeddingsClient,
     embeddings::EmbeddingsBuilder,
     providers::openai,
     vector_store::{InsertDocuments, VectorSearchRequest, VectorStoreIndex},
 };
 use rig_helixdb::{HelixDB, HelixDBVectorStore};
+use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -68,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
             id = doc.1,
             score = doc.0,
             doc = doc.2
-        )
+        );
     }
 
     Ok(())

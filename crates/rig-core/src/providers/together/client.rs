@@ -1,9 +1,4 @@
-use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, Nothing, Provider, ProviderBuilder, ProviderClient,
-    },
-    http_client,
-};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 
 // ================================================================
 // Together AI Client
@@ -17,7 +12,7 @@ pub struct TogetherExtBuilder;
 
 type TogetherApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<TogetherExt, H>;
+pub type Client<H> = client::Client<TogetherExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<TogetherExtBuilder, TogetherApiKey, H>;
 
@@ -27,82 +22,55 @@ impl Provider for TogetherExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for TogetherExt {
-    type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
+impl DebugExt for TogetherExt {}
 
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
+impl crate::providers::openai::completion::OpenAICompatibleProvider for TogetherExt {
+    const PROVIDER_NAME: &'static str = "together";
 
-impl ProviderBuilder for TogetherExtBuilder {
-    type Extension<H>
-        = TogetherExt
-    where
-        H: http_client::HttpClientExt;
-    type ApiKey = TogetherApiKey;
+    type StreamingUsage = crate::providers::openai::Usage;
 
-    const BASE_URL: &'static str = TOGETHER_AI_BASE_URL;
+    // Together's structured-output support is model-dependent; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: http_client::HttpClientExt,
-    {
-        Ok(TogetherExt)
+    type Response = crate::providers::openai::CompletionResponse;
+
+    // The client base URL is the bare host; embeddings build their own v1 path.
+    fn completion_path(&self, _model: &str) -> String {
+        "/v1/chat/completions".to_string()
     }
 }
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
+client::impl_capabilities!(
+    TogetherExt,
+    completion = super::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+);
 
-    /// Create a new Together AI client from the `TOGETHER_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("TOGETHER_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
+client::impl_default_provider_builder!(
+    TogetherExtBuilder => TogetherExt,
+    api_key = TogetherApiKey,
+    base_url = TOGETHER_AI_BASE_URL,
+);
 
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_from_env!(
+    TogetherExt,
+    input = String,
+    api_key_env = "TOGETHER_API_KEY"
+);
 
-pub mod together_ai_api_types {
-    use serde::Deserialize;
-
-    impl ApiErrorResponse {
-        pub fn message(&self) -> String {
-            format!("Code `{}`: {}", self.code, self.error)
-        }
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ApiErrorResponse {
-        pub error: String,
-        pub code: String,
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(untagged)]
-    pub enum ApiResponse<T> {
-        Ok(T),
-        Error(ApiErrorResponse),
-    }
-}
 #[cfg(test)]
 mod tests {
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::together::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::together::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::together::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }

@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant.","type":"text"}],"role":"system"},{"content":"Hello world!","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello! How can I assist you today? 😊","reasoning_content":"Okay, the user said \"Hello world!\" which is a common greeting. I need to respond appropriately. Since they''re probably testing if I can handle basic greetings, I should acknowledge their message. Maybe say \"Hello!\" back to them. Keep it simple and friendly. No need for any extra information here. Just a straightforward reply.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":9,"predicted_ms":468.161,"predicted_n":83,"predicted_per_second":175.15341944331118,"predicted_per_token_ms":5.709280487804878,"prompt_ms":36.036,"prompt_n":13,"prompt_per_second":360.7503607503607,"prompt_per_token_ms":2.7720000000000002},"usage":{"completion_tokens":83,"prompt_tokens":22,"prompt_tokens_details":{"cached_tokens":9},"total_tokens":105}}'

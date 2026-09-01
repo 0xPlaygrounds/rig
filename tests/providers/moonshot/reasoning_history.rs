@@ -1,14 +1,12 @@
 //! Moonshot reasoning-history roundtrip smoke test.
-
-use rig::OneOrMany;
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, Reasoning};
+use rig::prelude::*;
 use rig::providers::moonshot;
 
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
 
-fn response_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
+fn response_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -26,11 +24,10 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
         .completion_model(moonshot::KIMI_K2_5);
     let assistant = Message::Assistant {
         id: None,
-        content: OneOrMany::many(vec![
+        content: vec![
             AssistantContent::Reasoning(Reasoning::new("Remember the chosen color.")),
             AssistantContent::text("Understood. I will remember teal."),
-        ])
-        .expect("assistant content"),
+        ],
     };
 
     let response = model

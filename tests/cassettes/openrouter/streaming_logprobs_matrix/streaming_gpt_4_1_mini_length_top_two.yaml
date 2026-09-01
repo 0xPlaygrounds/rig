@@ -1,0 +1,56 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"logprobs":true,"max_tokens":1,"messages":[{"content":"Write the word cobalt exactly 100 times, separated by spaces.","role":"user"}],"model":"openai/gpt-4.1-mini","provider":{"allow_fallbacks":false,"order":["OpenAI"]},"stream":true,"top_logprobs":2}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"c","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[99],"logprob":-1.9361264946837764e-7,"token":"c","top_logprobs":[{"bytes":[99],"logprob":-1.9361264946837764e-7,"token":"c"},{"bytes":[83,117,114,101],"logprob":-16.125,"token":"Sure"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":"obalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[111,98,97,108,116],"logprob":0,"token":"obalt","top_logprobs":[{"bytes":[111,98,97,108,116],"logprob":0,"token":"obalt"},{"bytes":[111,98,97,108],"logprob":-17.625,"token":"obal"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-19.125,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-18.375,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-20,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-19.625,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-17.875,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-18.25,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":-1.9361264946837764e-7,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":-1.9361264946837764e-7,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-16.625,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-18.5,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-17.875,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":-3.128163257315464e-7,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":-3.128163257315464e-7,"token":" cobalt"},{"bytes":[32,10],"logprob":-15.75,"token":" \n"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-18.25,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-17.25,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-17.125,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":" cobalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt","top_logprobs":[{"bytes":[32,99,111,98,97,108,116],"logprob":0,"token":" cobalt"},{"bytes":[111,98,97,108,116],"logprob":-17.375,"token":"obalt"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"length","index":0,"native_finish_reason":"max_output_tokens"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"length","index":0,"native_finish_reason":"max_output_tokens"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion.chunk","provider":"OpenAI","service_tier":"default","usage":{"completion_tokens":16,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.0000336,"cost_details":{"upstream_inference_completions_cost":0.0000256,"upstream_inference_cost":0.0000336,"upstream_inference_prompt_cost":8e-6},"is_byok":false,"prompt_tokens":20,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":36}}
+
+    data: [DONE]
+

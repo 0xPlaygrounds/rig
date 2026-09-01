@@ -1,0 +1,33 @@
+when:
+  path: /responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Hello, what''s the weather in London?","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-5.3-codex","text":{"format":{"name":"WeatherResponse","schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","type":"object"},"strict":true,"type":"json_schema"}},"tools":[{"description":"Get the current weather for a city.","name":"weather","parameters":{"additionalProperties":false,"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":175000000000,"token_count":138,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":17500000000,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":1400000000000,"token_count":42,"token_type":"output"}],"total_nano_aiu":82950000},"created_at":0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.3-codex","object":"response","output":[{"content":[],"id":"id_REDACTED_1","summary":[],"type":"reasoning"},{"arguments":"{\"city\":\"London\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"weather","status":"completed","type":"function_call"}],"output_text":null,"parallel_tool_calls":true,"previous_response_id":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"medium","summary":null},"safety_identifier":"id_REDACTED_2","service_tier":"default","status":"completed","temperature":1,"text":{"format":{"description":null,"name":"WeatherResponse","schema":{"additionalProperties":false,"properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","type":"object"},"strict":true,"type":"json_schema"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city.","name":"weather","parameters":{"additionalProperties":false,"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}],"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":138,"input_tokens_details":{"cached_tokens":0},"output_tokens":42,"output_tokens_details":{"reasoning_tokens":23},"total_tokens":180}}'
+---
+when:
+  path: /responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Hello, what''s the weather in London?","type":"input_text"}],"role":"user","type":"message"},{"id":"id_REDACTED_1","summary":[],"type":"reasoning"},{"arguments":"{\"city\":\"London\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"weather","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"The weather in London is all fire and brimstone","status":"completed","type":"function_call_output"}],"model":"gpt-5.3-codex","text":{"format":{"name":"WeatherResponse","schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","type":"object"},"strict":true,"type":"json_schema"}},"tools":[{"description":"Get the current weather for a city.","name":"weather","parameters":{"additionalProperties":false,"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"copilot_usage":{"token_details":[{"batch_size":1000000,"cost_per_batch":175000000000,"token_count":175,"token_type":"input"},{"batch_size":1000000,"cost_per_batch":17500000000,"token_count":0,"token_type":"cache_read"},{"batch_size":1000000,"cost_per_batch":1400000000000,"token_count":21,"token_type":"output"}],"total_nano_aiu":60025000},"created_at":0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.3-codex","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"{\"city\":\"London\",\"weather\":\"all fire and brimstone\"}","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"output_text":null,"parallel_tool_calls":true,"previous_response_id":null,"prompt_cache_retention":"24h","reasoning":{"context":"current_turn","effort":"medium","summary":null},"safety_identifier":"id_REDACTED_2","service_tier":"default","status":"completed","temperature":1,"text":{"format":{"description":null,"name":"WeatherResponse","schema":{"additionalProperties":false,"properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","type":"object"},"strict":true,"type":"json_schema"},"verbosity":"medium"},"tool_choice":"auto","tools":[{"description":"Get the current weather for a city.","name":"weather","parameters":{"additionalProperties":false,"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"strict":true,"type":"function"}],"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":175,"input_tokens_details":{"cached_tokens":0},"output_tokens":21,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":196}}'

@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::client::DefaultTransportBuilder as _;
 use serde_json::json;
 use testcontainers::{
     GenericImage,
@@ -54,7 +55,9 @@ async fn vector_search_test() {
     }
 
     // Setup a local qdrant container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("qdrant/qdrant", "latest")
+    // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+    // layer caching and lets a rerun silently test a different database version.
+    let container = GenericImage::new("qdrant/qdrant", "v1.19.0")
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
         })
@@ -196,7 +199,7 @@ async fn vector_search_test() {
             "definition": "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.",
             "id": "f9e17d59-32e5-440c-be02-b2759a654824"
         })
-    )
+    );
 }
 
 async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
@@ -225,7 +228,13 @@ async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
     documents
         .into_iter()
         .map(|(d, embeddings)| {
-            let vec: Vec<f32> = embeddings.first().vec.iter().map(|&x| x as f32).collect();
+            let vec: Vec<f32> = embeddings
+                .first()
+                .expect("expected at least one embedding")
+                .vec
+                .iter()
+                .map(|&x| x as f32)
+                .collect();
             PointStruct::new(
                 d.id.clone(),
                 vec,

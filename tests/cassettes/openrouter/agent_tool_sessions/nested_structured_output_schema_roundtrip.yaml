@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Return only data that satisfies the requested schema. Use lane canary, risk low, and checks compile=true and replay=true.","type":"text"}],"role":"system"},{"content":"Create the OpenRouter cassette release validation plan.","role":"user"}],"model":"google/gemini-2.5-flash","provider":{"order":["Google AI Studio","Google Vertex"],"require_parameters":true},"response_format":{"json_schema":{"name":"NestedPlan","schema":{"$defs":{"PlanCheck":{"additionalProperties":false,"properties":{"name":{"type":"string"},"required":{"type":"boolean"}},"required":["name","required"],"type":"object"},"ReleaseInfo":{"additionalProperties":false,"properties":{"lane":{"type":"string"},"risk":{"type":"string"}},"required":["lane","risk"],"type":"object"}},"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"checks":{"items":{"$ref":"#/$defs/PlanCheck"},"type":"array"},"release":{"$ref":"#/$defs/ReleaseInfo"}},"required":["release","checks"],"title":"NestedPlan","type":"object"},"strict":true},"type":"json_schema"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"{\n \"release\": {\n  \"lane\": \"canary\",\n  \"risk\": \"low\"\n },\n \"checks\": [\n  {\n   \"name\": \"compile\",\n   \"required\": true\n  },\n  {\n   \"name\": \"replay\",\n   \"required\": true\n  }\n ]\n}","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"STOP"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"google/gemini-2.5-flash","object":"chat.completion","provider":"Google AI Studio","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":74,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.0001961,"cost_details":{"upstream_inference_completions_cost":0.000185,"upstream_inference_cost":0.0001961,"upstream_inference_prompt_cost":0.0000111},"is_byok":false,"prompt_tokens":37,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":111}}'

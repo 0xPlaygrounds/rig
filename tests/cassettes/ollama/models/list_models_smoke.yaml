@@ -1,0 +1,16 @@
+when:
+  path: /api/tags
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"models":[{"details":{"families":["bert"],"family":"bert","format":"gguf","parameter_size":"23M","parent_model":"","quantization_level":"F16"},"digest":"1b226e2802dbb772b5fc32a58f103ca1804ef7501331012de126ab22f67475ef","model":"all-minilm:latest","modified_at":"2026-06-19T17:15:40.188240254-07:00","name":"all-minilm:latest","size":45960996},{"details":{"families":["qwen3"],"family":"qwen3","format":"gguf","parameter_size":"4.0B","parent_model":"","quantization_level":"Q4_K_M"},"digest":"359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7","model":"qwen3:4b","modified_at":"2026-06-19T16:26:52.429441648-07:00","name":"qwen3:4b","size":2497293931},{"details":{"families":["gemma3"],"family":"gemma3","format":"gguf","parameter_size":"4.3B","parent_model":"","quantization_level":"Q4_K_M"},"digest":"a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a","model":"gemma3:4b","modified_at":"2026-04-08T18:45:13.189345728-07:00","name":"gemma3:4b","size":3338801804},{"details":{"families":["llama","clip"],"family":"llama","format":"gguf","parameter_size":"7B","parent_model":"","quantization_level":"Q4_0"},"digest":"8dd30f6b0cb19f555f2c7a7ebda861449ea2cc76bf1f44e262931f45fc81d081","model":"llava:latest","modified_at":"2026-04-08T18:44:06.871467136-07:00","name":"llava:latest","size":4733363377},{"details":{"families":["llama"],"family":"llama","format":"gguf","parameter_size":"3.2B","parent_model":"","quantization_level":"Q4_K_M"},"digest":"a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72","model":"llama3.2:latest","modified_at":"2026-03-08T21:07:29.026636471-07:00","name":"llama3.2:latest","size":2019393189}]}'

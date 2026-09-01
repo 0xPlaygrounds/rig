@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"Reply with the single word: ok","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"ok","reasoning_content":"Okay, the user wants me to reply with the single word \"ok\". Let me make sure I understand the request correctly. They mentioned \"Reply with the single word: ok\" so they just want me to output \"ok\" as the answer. I need to confirm that there''s no additional context or hidden meaning here. The instruction is straightforward, so I''ll just return \"ok\" as specified.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":14,"predicted_ms":482.246,"predicted_n":87,"predicted_per_second":178.33222048498072,"predicted_per_token_ms":5.607511627906977,"prompt_ms":21.069,"prompt_n":1,"prompt_per_second":47.46309744173905,"prompt_per_token_ms":21.069},"usage":{"completion_tokens":87,"prompt_tokens":15,"prompt_tokens_details":{"cached_tokens":14},"total_tokens":102}}'

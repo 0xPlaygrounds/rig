@@ -1,41 +1,27 @@
 //! DeepSeek API client and Rig integration
 //!
 //! # Example
-//! ```no_run
+//! ```ignore
 //! use rig_core::{client::CompletionClient, providers::deepseek};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = deepseek::Client::new("DEEPSEEK_API_KEY")?;
 //!
-//! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_CHAT);
+//! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_V4_FLASH);
 //! # Ok(())
 //! # }
 //! ```
 
-use bytes::Bytes;
-use http::Request;
-use tracing::{Instrument, Level, enabled, info_span};
+use serde_json::Value;
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-    ProviderBuilder, ProviderClient,
-};
-use crate::completion::GetTokenUsage;
-use crate::http_client::{self, HttpClientExt};
-use crate::message::{Document, DocumentSourceKind};
-use crate::model::{Model, ModelList, ModelListingError};
-use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::providers::openai;
+use crate::telemetry::ProviderResponseExt;
 use crate::{
-    OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
-    json_utils, message,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    completion::{self, CompletionError},
+    json_utils,
 };
 use serde::{Deserialize, Serialize};
-
-use super::openai::StreamingToolCall;
 
 // ================================================================
 // Main DeepSeek Client
@@ -54,91 +40,186 @@ impl Provider for DeepSeekExt {
     const VERIFY_PATH: &'static str = "/user/balance";
 }
 
-impl<H> Capabilities<H> for DeepSeekExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<DeepSeekModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
+impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
+    const PROVIDER_NAME: &'static str = "deepseek";
 
-impl DebugExt for DeepSeekExt {}
+    type StreamingUsage = Usage;
 
-impl ProviderBuilder for DeepSeekExtBuilder {
-    type Extension<H>
-        = DeepSeekExt
-    where
-        H: HttpClientExt;
-    type ApiKey = DeepSeekApiKey;
+    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
 
-    const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
+    // DeepSeek's API only supports `json_object` response formats (passed via
+    // `additional_params`), not the `json_schema` mapping of `output_schema`.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(DeepSeekExt)
+    type Response = CompletionResponse;
+
+    fn finalize_request_body(&self, body: &mut Value) -> Result<(), CompletionError> {
+        let Some(map) = body.as_object_mut() else {
+            return Ok(());
+        };
+
+        // DeepSeek takes message `content` as a plain string, not an array of
+        // content parts, and echoes tool calls back with an `index` field.
+        if let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) {
+            for message in messages {
+                let Some(message) = message.as_object_mut() else {
+                    continue;
+                };
+                let is_assistant = message.get("role").and_then(Value::as_str) == Some("assistant");
+
+                if let Some(content) = message.get_mut("content") {
+                    let separator = if is_assistant { "" } else { "\n" };
+                    // Text-only arrays flatten; an array carrying an image,
+                    // audio, video or file part is left alone so DeepSeek's
+                    // own rejection reaches the caller ("unknown variant
+                    // `image_url`, expected `text`", verified live). Dropping
+                    // those parts here answered the question from the text
+                    // alone and never told anyone the attachment was gone.
+                    openai::completion::flatten_text_content_parts(content, separator, true);
+                } else if is_assistant && !message.contains_key("content") {
+                    // Tool-call-only assistant turns must still carry an
+                    // (empty) string content field.
+                    message.insert("content".to_string(), Value::String(String::new()));
+                }
+
+                if is_assistant
+                    && let Some(tool_calls) =
+                        message.get_mut("tool_calls").and_then(Value::as_array_mut)
+                {
+                    for tool_call in tool_calls {
+                        if let Some(tool_call) = tool_call.as_object_mut() {
+                            tool_call
+                                .entry("index")
+                                .or_insert_with(|| serde_json::json!(0));
+                        }
+                    }
+                }
+            }
+        }
+
+        // DeepSeek rejects forced tool choices (`required` or a specific
+        // function) unless thinking is explicitly disabled; suppress them to
+        // an explicit `null` otherwise.
+        let thinking_disabled = map
+            .get("thinking")
+            .and_then(|thinking| thinking.get("type"))
+            .and_then(Value::as_str)
+            .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"));
+        if !thinking_disabled && let Some(tool_choice) = map.get_mut("tool_choice") {
+            let forced = tool_choice.is_object() || tool_choice.as_str() == Some("required");
+            if forced {
+                *tool_choice = Value::Null;
+            }
+        }
+
+        Ok(())
     }
 }
 
-pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
+client::impl_capabilities!(
+    DeepSeekExt,
+    completion = CompletionModel<H>,
+    model_listing = DeepSeekModelLister<H>,
+);
+
+impl DebugExt for DeepSeekExt {}
+
+client::impl_default_provider_builder!(
+    DeepSeekExtBuilder => DeepSeekExt,
+    api_key = DeepSeekApiKey,
+    base_url = DEEPSEEK_API_BASE_URL,
+);
+
+pub type Client<H> = client::Client<DeepSeekExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<DeepSeekExtBuilder, String, H>;
+    client::ClientBuilder<DeepSeekExtBuilder, DeepSeekApiKey, H>;
 
-impl ProviderClient for Client {
+/// DeepSeek completion model, driven by the shared OpenAI Chat Completions path.
+pub type CompletionModel<H> = openai::completion::GenericCompletionModel<DeepSeekExt, H>;
+
+/// DeepSeek's provider-native terminal streaming record: the value carried by
+/// the final item of the stream returned by `CompletionModel::raw_stream`.
+/// Shared with the OpenAI Chat Completions path but carrying DeepSeek's own
+/// usage payload (cache hit/miss counters).
+pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
+
+impl crate::client::ProviderFromEnv for DeepSeekExt {
     type Input = DeepSeekApiKey;
-    type Error = crate::client::ProviderClientError;
-
     // If you prefer the environment variable approach:
-    fn from_env() -> Result<Self, Self::Error> {
+    fn from_env_with<H>(
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
         let api_key = crate::client::required_env_var("DEEPSEEK_API_KEY")?;
-        let mut client_builder = Self::builder();
+        let mut client_builder = crate::client::Client::<Self, crate::markers::Missing>::builder();
         client_builder.headers_mut().insert(
             http::header::CONTENT_TYPE,
             http::HeaderValue::from_static("application/json"),
         );
         let client_builder = client_builder.api_key(&api_key);
-        client_builder.build().map_err(Into::into)
+        client_builder.http_client(http).build().map_err(Into::into)
     }
 
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
-impl From<ApiErrorResponse> for CompletionError {
-    fn from(err: ApiErrorResponse) -> Self {
-        CompletionError::ProviderError(err.message)
+    fn from_val_with<H>(
+        input: Self::Input,
+        http: H,
+    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    where
+        H: crate::http_client::HttpClientExt,
+        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
+    {
+        crate::client::Client::new_with(input, http).map_err(Into::into)
     }
 }
 
 /// The response shape from the DeepSeek API
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
-    // We'll match the JSON:
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub object: Option<String>,
+    #[serde(default)]
+    pub system_fingerprint: Option<String>,
+    #[serde(
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+    )]
     pub choices: Vec<Choice>,
     pub usage: Usage,
-    // you may want other fields
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+impl ProviderResponseExt for CompletionResponse {
+    type Usage = Usage;
+
+    fn response_id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    fn response_model_name(&self) -> Option<&str> {
+        self.model.as_deref()
+    }
+
+    fn text_response(&self) -> Option<String> {
+        self.choices
+            .iter()
+            .find_map(|choice| match &choice.message {
+                Message::Assistant { content, .. } if !content.is_empty() => Some(content.clone()),
+                _ => None,
+            })
+    }
+
+    fn usage(&self) -> Option<Self::Usage> {
+        Some(self.usage)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct Usage {
     pub completion_tokens: u32,
     pub prompt_tokens: u32,
@@ -151,28 +232,40 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        Some(crate::providers::internal::completion_usage(
-            self.prompt_tokens as u64,
-            self.completion_tokens as u64,
-            self.total_tokens as u64,
-            self.prompt_tokens_details
+impl From<&Usage> for crate::completion::Usage {
+    fn from(usage: &Usage) -> Self {
+        let mut normalized = crate::providers::internal::completion_usage(
+            usage.prompt_tokens as u64,
+            usage.completion_tokens as u64,
+            usage.total_tokens as u64,
+            usage
+                .prompt_tokens_details
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
-                .map(u64::from)
-                .unwrap_or(0),
-        ))
+                .map_or(u64::from(usage.prompt_cache_hit_tokens), u64::from),
+        );
+        normalized.reasoning_tokens = usage
+            .completion_tokens_details
+            .as_ref()
+            .and_then(|details| details.reasoning_tokens)
+            .map_or(0, u64::from);
+        normalized
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+impl From<Usage> for crate::completion::Usage {
+    fn from(usage: Usage) -> Self {
+        Self::from(&usage)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct CompletionTokensDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub struct PromptTokensDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cached_tokens: Option<u32>,
@@ -186,26 +279,17 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
+/// DeepSeek's provider-native message shape, as it appears in responses.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    System {
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    User {
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
     Assistant {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         #[serde(
             default,
-            deserialize_with = "json_utils::null_or_vec",
+            deserialize_with = "json_utils::null_or_default",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -213,136 +297,6 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning_content: Option<String>,
     },
-    #[serde(rename = "tool")]
-    ToolResult {
-        tool_call_id: String,
-        content: String,
-    },
-}
-
-impl Message {
-    pub fn system(content: &str) -> Self {
-        Message::System {
-            content: content.to_owned(),
-            name: None,
-        }
-    }
-}
-
-impl From<message::ToolResult> for Message {
-    fn from(tool_result: message::ToolResult) -> Self {
-        let content = match tool_result.content.first() {
-            message::ToolResultContent::Text(text) => text.text,
-            message::ToolResultContent::Image(_) => String::from("[Image]"),
-        };
-
-        Message::ToolResult {
-            tool_call_id: tool_result.id,
-            content,
-        }
-    }
-}
-
-impl From<message::ToolCall> for ToolCall {
-    fn from(tool_call: message::ToolCall) -> Self {
-        Self {
-            id: tool_call.id,
-            // TODO: update index when we have it
-            index: 0,
-            r#type: ToolType::Function,
-            function: Function {
-                name: tool_call.function.name,
-                arguments: tool_call.function.arguments,
-            },
-        }
-    }
-}
-
-impl TryFrom<message::Message> for Vec<Message> {
-    type Error = message::MessageError;
-
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        match message {
-            message::Message::System { content } => Ok(vec![Message::System {
-                content,
-                name: None,
-            }]),
-            message::Message::User { content } => {
-                // extract tool results
-                let mut messages = vec![];
-
-                let tool_results = content
-                    .clone()
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::UserContent::ToolResult(tool_result) => {
-                            Some(Message::from(tool_result))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-
-                messages.extend(tool_results);
-
-                let text_content: String = content
-                    .into_iter()
-                    .filter_map(|content| match content {
-                        message::UserContent::Text(text) => Some(text.text),
-                        message::UserContent::Document(Document {
-                            data:
-                                DocumentSourceKind::Base64(content)
-                                | DocumentSourceKind::String(content),
-                            ..
-                        }) => Some(content),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                if !text_content.is_empty() {
-                    messages.push(Message::User {
-                        content: text_content,
-                        name: None,
-                    });
-                }
-
-                Ok(messages)
-            }
-            message::Message::Assistant { content, .. } => {
-                let mut text_content = String::new();
-                let mut reasoning_content = String::new();
-                let mut tool_calls = Vec::new();
-
-                for item in content.iter() {
-                    match item {
-                        message::AssistantContent::Text(text) => {
-                            text_content.push_str(text.text());
-                        }
-                        message::AssistantContent::Reasoning(reasoning) => {
-                            reasoning_content.push_str(&reasoning.display_text());
-                        }
-                        message::AssistantContent::ToolCall(tool_call) => {
-                            tool_calls.push(ToolCall::from(tool_call.clone()));
-                        }
-                        _ => {}
-                    }
-                }
-
-                let reasoning = if reasoning_content.is_empty() {
-                    None
-                } else {
-                    Some(reasoning_content)
-                };
-
-                Ok(vec![Message::Assistant {
-                    content: text_content,
-                    name: None,
-                    tool_calls,
-                    reasoning_content: reasoning,
-                }])
-            }
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -368,512 +322,71 @@ pub enum ToolType {
     Function,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ToolDefinition {
-    pub r#type: String,
-    pub function: completion::ToolDefinition,
-}
+/// Normalize a DeepSeek chat completion response.
+///
+/// The provider descriptor name is an *input* rather than a constant so the
+/// shared OpenAI-compatible completion path labels the response with the
+/// descriptor that actually produced it, exactly as it does for the OpenAI
+/// wire type.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        use crate::providers::internal::openai_chat_completions_compatible as compat;
 
-impl From<crate::completion::ToolDefinition> for ToolDefinition {
-    fn from(tool: crate::completion::ToolDefinition) -> Self {
-        Self {
-            r#type: "function".into(),
-            function: tool,
-        }
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
-        let content = match &choice.message {
-            Message::Assistant {
-                content,
-                tool_calls,
-                reasoning_content,
-                ..
-            } => {
-                let mut content = if content.trim().is_empty() {
-                    vec![]
-                } else {
-                    vec![completion::AssistantContent::text(content)]
+        let usage = crate::completion::Usage::from(&self.usage);
+        compat::normalize_openai_response(
+            provider,
+            &self.choices,
+            self.id.as_deref(),
+            self.model.as_deref(),
+            usage,
+            |choice| choice.finish_reason.as_str(),
+            |choice| {
+                let Message::Assistant {
+                    content: text,
+                    tool_calls,
+                    reasoning_content,
+                    ..
+                } = &choice.message;
+                // Reasoning leads the turn, as it does on the streaming
+                // path: DeepSeek's stream emits every `reasoning_content`
+                // delta before the first `content` delta and before the tool
+                // call, and the shared canonical chunk order is the same
+                // (reasoning, then text, then tool events). Appending it last
+                // made the two transports disagree about identical bytes.
+                let mut content = match reasoning_content {
+                    Some(reasoning_content) => {
+                        vec![completion::AssistantContent::reasoning(reasoning_content)]
+                    }
+                    None => Vec::new(),
                 };
 
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
+                content.extend(compat::text_then_tool_calls(
+                    text,
+                    text.trim().is_empty(),
+                    tool_calls.iter().map(|call| {
+                        (
+                            call.id.as_str(),
+                            call.function.name.as_str(),
+                            call.function.arguments.clone(),
+                        )
+                    }),
+                ));
 
-                if let Some(reasoning_content) = reasoning_content {
-                    content.push(completion::AssistantContent::reasoning(reasoning_content));
-                }
-
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
-
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
-
-        let usage = completion::Usage {
-            input_tokens: response.usage.prompt_tokens as u64,
-            output_tokens: response.usage.completion_tokens as u64,
-            total_tokens: response.usage.total_tokens as u64,
-            cached_input_tokens: response
-                .usage
-                .prompt_tokens_details
-                .as_ref()
-                .and_then(|d| d.cached_tokens)
-                .map(|c| c as u64)
-                .unwrap_or(0),
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        };
-
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct DeepseekCompletionRequest {
-    model: String,
-    pub messages: Vec<Message>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<ToolDefinition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<crate::providers::openrouter::ToolChoice>,
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub additional_params: Option<serde_json::Value>,
-}
-
-impl TryFrom<(&str, CompletionRequest)> for DeepseekCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        if req.output_schema.is_some() {
-            tracing::warn!("Structured outputs currently not supported for DeepSeek");
-        }
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
-
-        if let Some(docs) = req.normalized_documents() {
-            let docs: Vec<Message> = docs.try_into()?;
-            full_history.extend(docs);
-        }
-
-        let chat_history: Vec<Message> = req
-            .chat_history
-            .clone()
-            .into_iter()
-            .map(|message| message.try_into())
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
-
-        let tool_choice = req
-            .tool_choice
-            .clone()
-            .map(crate::providers::openrouter::ToolChoice::try_from)
-            .transpose()?;
-
-        Ok(Self {
-            model: model.to_string(),
-            messages: full_history,
-            temperature: req.temperature,
-            tools: req
-                .tools
-                .clone()
-                .into_iter()
-                .map(ToolDefinition::from)
-                .collect::<Vec<_>>(),
-            tool_choice,
-            additional_params: req.additional_params,
-        })
-    }
-}
-
-/// The struct implementing the `CompletionModel` trait
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub client: Client<T>,
-    pub model: String,
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self {
-            client: client.clone(),
-            model: model.into().to_string(),
-        }
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<
-        completion::CompletionResponse<CompletionResponse>,
-        crate::completion::CompletionError,
-    > {
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat",
-                gen_ai.operation.name = "chat",
-                gen_ai.provider.name = "deepseek",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = tracing::field::Empty,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        span.record("gen_ai.system_instructions", &completion_request.preamble);
-
-        let request =
-            DeepseekCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "DeepSeek completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.usage.input_tokens", response.usage.prompt_tokens);
-                        span.record(
-                            "gen_ai.usage.output_tokens",
-                            response.usage.completion_tokens,
-                        );
-                        span.record(
-                            "gen_ai.usage.cache_read.input_tokens",
-                            response
-                                .usage
-                                .prompt_tokens_details
-                                .as_ref()
-                                .and_then(|d| d.cached_tokens)
-                                .unwrap_or(0),
-                        );
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "DeepSeek completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-                        response.try_into()
-                    }
-                    ApiResponse::Err(err) => Err(CompletionError::ProviderError(err.message)),
-                }
-            } else {
-                Err(CompletionError::ProviderError(
-                    String::from_utf8_lossy(&response_body).to_string(),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        let preamble = completion_request.preamble.clone();
-        let mut request =
-            DeepseekCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true, "stream_options": {"include_usage": true} }),
-        );
-
-        request.additional_params = Some(params);
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "DeepSeek streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/chat/completions")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let span = if tracing::Span::current().is_disabled() {
-            info_span!(
-                target: "rig::completions",
-                "chat_streaming",
-                gen_ai.operation.name = "chat_streaming",
-                gen_ai.provider.name = "deepseek",
-                gen_ai.request.model = self.model,
-                gen_ai.system_instructions = preamble,
-                gen_ai.response.id = tracing::field::Empty,
-                gen_ai.response.model = tracing::field::Empty,
-                gen_ai.usage.output_tokens = tracing::field::Empty,
-                gen_ai.usage.input_tokens = tracing::field::Empty,
-                gen_ai.usage.cache_read.input_tokens = tracing::field::Empty,
-            )
-        } else {
-            tracing::Span::current()
-        };
-
-        tracing::Instrument::instrument(
-            send_compatible_streaming_request(self.client.clone(), req),
-            span,
+                Some(content)
+            },
         )
-        .await
     }
 }
 
-#[derive(Deserialize, Debug)]
-pub struct StreamingDelta {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
-    tool_calls: Vec<StreamingToolCall>,
-    reasoning_content: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamingChoice {
-    delta: StreamingDelta,
-}
-
-#[derive(Deserialize, Debug)]
-struct StreamingCompletionChunk {
-    id: Option<String>,
-    model: Option<String>,
-    choices: Vec<StreamingChoice>,
-    usage: Option<Usage>,
-}
-
-#[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct StreamingCompletionResponse {
-    pub usage: Usage,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> Option<crate::completion::Usage> {
-        self.usage.token_usage()
-    }
-}
-
-#[derive(Clone, Copy)]
-struct DeepSeekCompatibleProfile;
-
-impl CompatibleStreamProfile for DeepSeekCompatibleProfile {
-    type Usage = Usage;
-    type Detail = ();
-    type FinalResponse = StreamingCompletionResponse;
-
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let data = match serde_json::from_str::<StreamingCompletionChunk>(data) {
-            Ok(data) => data,
-            Err(error) => {
-                tracing::debug!(
-                    "Couldn't parse SSE payload as StreamingCompletionChunk: {:?}",
-                    error
-                );
-                return Ok(None);
-            }
-        };
-
-        Ok(Some(
-            openai_chat_completions_compatible::normalize_first_choice_chunk(
-                data.id,
-                data.model,
-                data.usage,
-                &data.choices,
-                |choice| CompatibleChoiceData {
-                    finish_reason: CompatibleFinishReason::Other,
-                    text: choice.delta.content.clone(),
-                    reasoning: choice.delta.reasoning_content.clone(),
-                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                        &choice.delta.tool_calls,
-                    ),
-                    details: Vec::new(),
-                },
-            ),
-        ))
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
-    }
-
-    fn uses_distinct_tool_call_eviction(&self) -> bool {
-        true
-    }
-
-    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
-        true
-    }
-}
-
-pub async fn send_compatible_streaming_request<T>(
-    http_client: T,
-    req: Request<Vec<u8>>,
-) -> Result<
-    crate::streaming::StreamingCompletionResponse<StreamingCompletionResponse>,
-    CompletionError,
->
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    openai_chat_completions_compatible::send_compatible_streaming_request(
-        http_client,
-        req,
-        DeepSeekCompatibleProfile,
-    )
-    .await
-}
-
-#[derive(Debug, Deserialize)]
-struct ListModelsResponse {
-    data: Vec<ListModelEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListModelEntry {
-    id: String,
-    owned_by: String,
-}
-
-impl From<ListModelEntry> for Model {
-    fn from(value: ListModelEntry) -> Self {
-        let mut model = Model::from_id(value.id);
-        model.owned_by = Some(value.owned_by);
-        model
-    }
-}
-
-/// [`ModelLister`] implementation for the DeepSeek API (`GET /models`).
-#[derive(Clone)]
-pub struct DeepSeekModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for DeepSeekModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                    ModelListingError::api_error_with_context(
-                        "DeepSeek",
-                        path,
-                        status.as_u16(),
-                        message.as_bytes(),
-                    )
-                }
-                other => ModelListingError::from(other),
-            })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "DeepSeek",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("DeepSeek", path, &error, &body)
-        })?;
-
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
-    }
-}
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// DeepSeek API (`GET /models`).
+    DeepSeekModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "DeepSeek",
+    "/models"
+);
 
 // ================================================================
 // DeepSeek Completion API
@@ -898,7 +411,42 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 mod tests {
     use super::*;
     use crate::client::ModelListingClient;
-    use crate::test_utils::RecordingHttpClient;
+    use crate::completion::NormalizeCompletionResponse;
+    use crate::completion::{
+        CompletionRequestBuilder, FinishReason, ToolDefinition as RigToolDefinition,
+    };
+    use crate::message::ToolChoice as RigToolChoice;
+    use crate::model::ModelListingError;
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
+    };
+    use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
+
+    /// Normalize a DeepSeek wire response the way the shared completion path
+    /// does, threading DeepSeek's own descriptor name through the conversion.
+    fn normalized(response: CompletionResponse) -> crate::completion::CompletionResponse {
+        response
+            .normalize(DeepSeekExt::PROVIDER_NAME)
+            .expect("DeepSeek response should convert")
+    }
+
+    fn finalized_body(request: crate::completion::CompletionRequest) -> serde_json::Value {
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: "deepseek-v4-flash".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: DeepSeekExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_image_tool_results: false,
+            supports_tools: true,
+        })
+        .expect("request should convert");
+        let mut body = serde_json::to_value(request).expect("request should serialize");
+        DeepSeekExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+        body
+    }
 
     #[test]
     fn test_deserialize_vec_choice() {
@@ -913,7 +461,6 @@ mod tests {
         assert_eq!(choices.len(), 1);
         match &choices.first().unwrap().message {
             Message::Assistant { content, .. } => assert_eq!(content, "Hello, world!"),
-            _ => panic!("Expected assistant message"),
         }
     }
 
@@ -940,12 +487,484 @@ mod tests {
         match result {
             Ok(response) => match &response.choices.first().unwrap().message {
                 Message::Assistant { content, .. } => assert_eq!(content, "Hello, world!"),
-                _ => panic!("Expected assistant message"),
             },
             Err(err) => {
                 panic!("Deserialization error at {}: {}", err.path(), err);
             }
         }
+    }
+
+    #[test]
+    fn deepseek_request_serializes_specific_tool_choice_as_chat_completions_object() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
+            .tool(RigToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool(RigToolDefinition {
+                name: "beta".to_string(),
+                description: "Beta tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool_choice(RigToolChoice::Specific {
+                function_names: vec!["beta".to_string()],
+            })
+            .additional_params(serde_json::json!({"thinking": {"type": "disabled"}}))
+            .build();
+
+        let body = finalized_body(request);
+
+        assert_eq!(
+            body["tool_choice"],
+            serde_json::json!({"type": "function", "function": {"name": "beta"}})
+        );
+    }
+
+    #[test]
+    fn deepseek_request_suppresses_required_tool_choice_when_thinking_is_not_disabled() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
+            .tool(RigToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool_choice(RigToolChoice::Required)
+            .build();
+
+        let body = finalized_body(request);
+
+        assert!(
+            body.as_object()
+                .expect("body is object")
+                .contains_key("tool_choice"),
+            "suppressed tool_choice should stay present as an explicit null"
+        );
+        assert_eq!(body["tool_choice"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn deepseek_request_flattens_message_content_to_strings() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello!")
+            .preamble("You are helpful.".to_string())
+            .build();
+
+        let body = finalized_body(request);
+
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][0]["content"], "You are helpful.");
+        assert_eq!(body["messages"][1]["role"], "user");
+        assert_eq!(body["messages"][1]["content"], "Hello!");
+    }
+
+    #[test]
+    fn deepseek_finalize_joins_user_parts_with_newline_and_concats_assistant_parts() {
+        let mut body = serde_json::json!({
+            "model": "deepseek-v4-flash",
+            "messages": [
+                {"role": "user", "content": [
+                    {"type": "text", "text": "first part"},
+                    {"type": "text", "text": "second part"}
+                ]},
+                {"role": "assistant", "content": [
+                    {"type": "text", "text": "Hello"},
+                    {"type": "text", "text": " world"}
+                ]}
+            ]
+        });
+
+        DeepSeekExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+
+        assert_eq!(body["messages"][0]["content"], "first part\nsecond part");
+        assert_eq!(body["messages"][1]["content"], "Hello world");
+    }
+
+    #[test]
+    fn deepseek_finalize_adds_tool_call_index_to_assistant_history() {
+        let mut body = serde_json::json!({
+            "model": "deepseek-v4-flash",
+            "messages": [{
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "subtract", "arguments": "{\"x\":2,\"y\":5}"}
+                }]
+            }]
+        });
+
+        DeepSeekExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+
+        assert_eq!(body["messages"][0]["tool_calls"][0]["index"], 0);
+    }
+
+    #[test]
+    fn deepseek_response_preserves_metadata_and_reasoning_token_usage() {
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_123",
+            "object": "chat.completion",
+            "model": "deepseek-v4-flash",
+            "system_fingerprint": "fp_123",
+            "choices": [{
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "role": "assistant",
+                    "content": "done",
+                    "reasoning_content": "thinking"
+                }
+            }],
+            "usage": {
+                "completion_tokens": 8,
+                "completion_tokens_details": { "reasoning_tokens": 5 },
+                "prompt_tokens": 10,
+                "prompt_tokens_details": { "cached_tokens": 3 },
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 10,
+                "total_tokens": 18
+            }
+        }))
+        .expect("fixture should deserialize");
+
+        let converted = normalized(raw.clone());
+
+        assert_eq!(raw.id.as_deref(), Some("chatcmpl_123"));
+        assert_eq!(raw.model.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(raw.system_fingerprint.as_deref(), Some("fp_123"));
+        assert_eq!(converted.provider, "deepseek");
+        assert_eq!(converted.response_id.as_deref(), Some("chatcmpl_123"));
+        assert_eq!(converted.message_id, None);
+        assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(converted.finish_reason(), Some(FinishReason::Stop));
+        assert_eq!(converted.usage.input_tokens, 10);
+        assert_eq!(converted.usage.cached_input_tokens, 3);
+        assert_eq!(converted.usage.output_tokens, 8);
+        assert_eq!(converted.usage.reasoning_tokens, 5);
+    }
+
+    fn response_with_finish_reason(finish_reason: &str) -> CompletionResponse {
+        serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_finish",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": finish_reason,
+                "index": 0,
+                "logprobs": null,
+                "message": {"role": "assistant", "content": "done"}
+            }],
+            "usage": {
+                "completion_tokens": 1,
+                "prompt_tokens": 1,
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 1,
+                "total_tokens": 2
+            }
+        }))
+        .expect("fixture should deserialize")
+    }
+
+    #[test]
+    fn deepseek_finish_reasons_normalize_and_preserve_unknowns() {
+        for (wire, expected) in [
+            ("stop", FinishReason::Stop),
+            ("length", FinishReason::Length),
+            ("max_tokens", FinishReason::Length),
+            ("tool_calls", FinishReason::ToolCalls),
+            ("function_call", FinishReason::ToolCalls),
+            ("content_filter", FinishReason::ContentFilter),
+            // Anything DeepSeek invents survives verbatim rather than reading
+            // as a natural stop.
+            (
+                "insufficient_system_resource",
+                FinishReason::Other("insufficient_system_resource".to_owned()),
+            ),
+        ] {
+            let converted = normalized(response_with_finish_reason(wire));
+
+            assert_eq!(converted.finish_reason(), Some(expected), "wire: {wire}");
+        }
+    }
+
+    /// Build a one-choice DeepSeek turn out of its three assistant slots.
+    fn assistant_turn(
+        finish_reason: &str,
+        content: &str,
+        reasoning_content: Option<&str>,
+        tool_arguments: &[&str],
+    ) -> CompletionResponse {
+        let mut message = serde_json::json!({
+            "role": "assistant",
+            "content": content,
+        });
+        if let Some(reasoning_content) = reasoning_content {
+            message["reasoning_content"] = serde_json::Value::String(reasoning_content.to_owned());
+        }
+        if !tool_arguments.is_empty() {
+            message["tool_calls"] = tool_arguments
+                .iter()
+                .enumerate()
+                .map(|(index, arguments)| {
+                    serde_json::json!({
+                        "id": format!("call_{index}"),
+                        "index": index,
+                        "type": "function",
+                        "function": {"name": format!("tool_{index}"), "arguments": arguments},
+                    })
+                })
+                .collect();
+        }
+
+        serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_truncated",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": finish_reason,
+                "index": 0,
+                "logprobs": null,
+                "message": message,
+            }],
+            "usage": {
+                "completion_tokens": 24,
+                "prompt_tokens": 372,
+                "prompt_cache_hit_tokens": 256,
+                "prompt_cache_miss_tokens": 116,
+                "total_tokens": 396
+            }
+        }))
+        .expect("fixture should deserialize")
+    }
+
+    fn block_kinds(choice: &[crate::completion::AssistantContent]) -> Vec<&'static str> {
+        choice
+            .iter()
+            .map(|content| match content {
+                crate::completion::AssistantContent::Text(_) => "text",
+                crate::completion::AssistantContent::ToolCall(_) => "tool_call",
+                crate::completion::AssistantContent::Reasoning(_) => "reasoning",
+                crate::completion::AssistantContent::Image(_) => "image",
+            })
+            .collect()
+    }
+
+    /// DeepSeek emits the tool call anyway when `max_tokens` runs out mid
+    /// arguments -- live turns capped at 24/32/48/64 tokens returned
+    /// `finish_reason: "length"` with `arguments` cut off partway through the
+    /// object. Parsing strictly took the whole response down with it: text,
+    /// usage, id, model and finish reason all went with the unusable call.
+    #[test]
+    fn deepseek_truncated_tool_arguments_do_not_destroy_the_response() {
+        // The 24-token budget's recorded `arguments`, verbatim; the text is
+        // added on top so the assertions below can show it survives too (the
+        // recorded 24-token turn itself came back with `content: ""`).
+        let raw = assistant_turn("length", "Acknowledged.", None, &[r#"{"summary": "#]);
+
+        assert!(
+            match &raw.choices[0].message {
+                Message::Assistant { tool_calls, .. } => tool_calls.is_empty(),
+            },
+            "the unusable call is dropped at decode, not surfaced as a sentinel"
+        );
+
+        let converted = normalized(raw);
+
+        assert_eq!(converted.finish_reason(), Some(FinishReason::Length));
+        assert_eq!(converted.response_id.as_deref(), Some("chatcmpl_truncated"));
+        assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(converted.usage.total_tokens, 396);
+        assert_eq!(converted.usage.cached_input_tokens, 256);
+        assert_eq!(block_kinds(&converted.choice), vec!["text"]);
+    }
+
+    /// The unusable call is dropped, exactly as the streaming path drops it,
+    /// while a complete sibling in the same turn survives.
+    #[test]
+    fn deepseek_parallel_calls_drop_only_the_truncated_one() {
+        let converted = normalized(assistant_turn(
+            "length",
+            "",
+            None,
+            &[r#"{"team": "platform"}"#, r#"{"summary": "Log this"#],
+        ));
+
+        assert_eq!(block_kinds(&converted.choice), vec!["tool_call"]);
+        let crate::completion::AssistantContent::ToolCall(call) = &converted.choice[0] else {
+            panic!("expected the complete call to survive");
+        };
+        assert_eq!(call.function.name, "tool_0");
+        assert_eq!(
+            call.function.arguments,
+            serde_json::json!({"team": "platform"})
+        );
+    }
+
+    /// The tolerant parse must not weaken a complete payload, and must keep
+    /// reading an empty one as a parameterless invocation.
+    #[test]
+    fn deepseek_complete_and_empty_tool_arguments_are_unaffected() {
+        let complete = normalized(assistant_turn(
+            "tool_calls",
+            "",
+            None,
+            &[r#"{"summary": "done"}"#],
+        ));
+        let crate::completion::AssistantContent::ToolCall(call) = &complete.choice[0] else {
+            panic!("expected a tool call");
+        };
+        assert_eq!(
+            call.function.arguments,
+            serde_json::json!({"summary": "done"})
+        );
+
+        let empty = normalized(assistant_turn("tool_calls", "", None, &[""]));
+        let crate::completion::AssistantContent::ToolCall(call) = &empty.choice[0] else {
+            panic!("expected a parameterless tool call");
+        };
+        assert_eq!(call.function.arguments, serde_json::json!({}));
+
+        let truncated_empty = normalized(assistant_turn("length", "", None, &[""]));
+        assert!(
+            truncated_empty.choice.is_empty(),
+            "an output-length turn with no argument tokens must not dispatch a tool"
+        );
+    }
+
+    /// DeepSeek documents that an ordinary function call may contain invalid
+    /// JSON. Without an outer `length` signal that is a provider response
+    /// defect and must not disappear from the native response.
+    #[test]
+    fn deepseek_malformed_completed_tool_call_is_loud() {
+        let response = serde_json::json!({
+            "id": "chatcmpl-malformed",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_0",
+                        "index": 0,
+                        "type": "function",
+                        "function": {"name": "page", "arguments": "{\"team\":"}
+                    }]
+                }
+            }],
+            "usage": {
+                "completion_tokens": 1,
+                "prompt_tokens": 1,
+                "total_tokens": 2
+            }
+        });
+
+        assert!(
+            serde_json::from_value::<CompletionResponse>(response).is_err(),
+            "a completed malformed call must not be rewritten away"
+        );
+    }
+
+    /// The full blocking block-order enumeration: reasoning present/absent x
+    /// text present/absent x zero/one/two tool calls. Reasoning leads the
+    /// choice on every shape, which is the order DeepSeek's own stream emits
+    /// (`reasoning_content` deltas before the first `content` delta and before
+    /// the tool call) and the order the shared canonical chunk lifecycle
+    /// imposes. Appending it last made the two transports disagree about
+    /// identical wire bytes.
+    #[test]
+    fn deepseek_reasoning_leads_the_choice_on_every_turn_shape() {
+        for reasoning in [None, Some("thinking")] {
+            for text in ["", "spoken"] {
+                for calls in [
+                    &[][..],
+                    &[r#"{"x":1}"#][..],
+                    &[r#"{"x":1}"#, r#"{"y":2}"#][..],
+                ] {
+                    let finish_reason = if calls.is_empty() {
+                        "stop"
+                    } else {
+                        "tool_calls"
+                    };
+                    let raw = assistant_turn(finish_reason, text, reasoning, calls);
+                    // A turn with nothing in it at all is a provider defect the
+                    // shared skeleton rejects; it is not an ordering shape.
+                    if reasoning.is_none() && text.is_empty() && calls.is_empty() {
+                        continue;
+                    }
+                    let kinds = block_kinds(&normalized(raw).choice);
+
+                    let mut expected = Vec::new();
+                    if reasoning.is_some() {
+                        expected.push("reasoning");
+                    }
+                    if !text.is_empty() {
+                        expected.push("text");
+                    }
+                    expected.extend(std::iter::repeat_n("tool_call", calls.len()));
+
+                    assert_eq!(
+                        kinds,
+                        expected,
+                        "reasoning={reasoning:?} text={text:?} calls={}",
+                        calls.len()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn deepseek_stop_finish_reason_upgrades_when_the_turn_called_a_tool() {
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_tool",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "index": 0,
+                        "type": "function",
+                        "function": {"name": "subtract", "arguments": "{\"x\":2,\"y\":5}"}
+                    }]
+                }
+            }],
+            "usage": {
+                "completion_tokens": 1,
+                "prompt_tokens": 1,
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 1,
+                "total_tokens": 2
+            }
+        }))
+        .expect("fixture should deserialize");
+
+        assert_eq!(
+            normalized(raw).finish_reason(),
+            Some(FinishReason::ToolCalls)
+        );
     }
 
     #[test]
@@ -989,7 +1008,6 @@ mod tests {
                     content,
                     "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄"
                 ),
-                _ => panic!("Expected assistant message"),
             },
             Err(err) => {
                 panic!("Deserialization error at {}: {}", err.path(), err);
@@ -1022,137 +1040,34 @@ mod tests {
             }
         "#;
 
-        let choice: Choice = serde_json::from_str(tool_call_choice_json).unwrap();
+        let choice: Choice =
+            serde_json::from_str(tool_call_choice_json).expect("choice should deserialize");
+        match &choice.message {
+            Message::Assistant { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                let call = tool_calls.first().expect("one tool call");
+                assert_eq!(call.function.name, "subtract");
+                assert_eq!(call.index, 0);
+            }
+        }
 
-        let expected_choice: Choice = Choice {
-            finish_reason: "tool_calls".to_string(),
-            index: 0,
-            logprobs: None,
-            message: Message::Assistant {
-                content: "".to_string(),
-                name: None,
-                tool_calls: vec![ToolCall {
-                    id: "call_0_2b4a85ee-b04a-40ad-a16b-a405caf6e65b".to_string(),
-                    function: Function {
-                        name: "subtract".to_string(),
-                        arguments: serde_json::from_str(r#"{"x":2,"y":5}"#).unwrap(),
-                    },
-                    index: 0,
-                    r#type: ToolType::Function,
-                }],
-                reasoning_content: None,
-            },
-        };
-
-        assert_eq!(choice, expected_choice);
-    }
-    #[test]
-    fn test_user_message_multiple_text_items_merged() {
-        use crate::completion::message::{Message as RigMessage, UserContent};
-
-        let rig_msg = RigMessage::User {
-            content: OneOrMany::many(vec![
-                UserContent::text("first part"),
-                UserContent::text("second part"),
-            ])
-            .expect("content should not be empty"),
-        };
-
-        let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
-
-        let user_messages: Vec<&Message> = messages
-            .iter()
-            .filter(|m| matches!(m, Message::User { .. }))
-            .collect();
-
+        let serialized = serde_json::to_value(&choice).expect("choice should serialize");
         assert_eq!(
-            user_messages.len(),
-            1,
-            "multiple text items should produce a single user message"
+            serialized["message"]["tool_calls"][0]["function"]["name"],
+            "subtract"
         );
-        match &user_messages[0] {
-            Message::User { content, .. } => {
-                assert_eq!(content, "first part\nsecond part");
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_assistant_message_with_reasoning_and_tool_calls() {
-        use crate::completion::message::{AssistantContent, Message as RigMessage};
-
-        let rig_msg = RigMessage::Assistant {
-            id: None,
-            content: OneOrMany::many(vec![
-                AssistantContent::reasoning("thinking about the problem"),
-                AssistantContent::text("I'll call the tool"),
-                AssistantContent::tool_call(
-                    "call_1",
-                    "subtract",
-                    serde_json::json!({"x": 2, "y": 5}),
-                ),
-            ])
-            .expect("content should not be empty"),
-        };
-
-        let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
-
-        assert_eq!(messages.len(), 1, "should produce exactly one message");
-        match &messages[0] {
-            Message::Assistant {
-                content,
-                tool_calls,
-                reasoning_content,
-                ..
-            } => {
-                assert_eq!(content, "I'll call the tool");
-                assert_eq!(
-                    reasoning_content.as_deref(),
-                    Some("thinking about the problem")
-                );
-                assert_eq!(tool_calls.len(), 1);
-                assert_eq!(tool_calls[0].function.name, "subtract");
-            }
-            _ => panic!("Expected assistant message"),
-        }
-    }
-
-    #[test]
-    fn test_assistant_message_without_reasoning() {
-        use crate::completion::message::{AssistantContent, Message as RigMessage};
-
-        let rig_msg = RigMessage::Assistant {
-            id: None,
-            content: OneOrMany::many(vec![
-                AssistantContent::text("calling tool"),
-                AssistantContent::tool_call("call_1", "add", serde_json::json!({"a": 1, "b": 2})),
-            ])
-            .expect("content should not be empty"),
-        };
-
-        let messages: Vec<Message> = rig_msg.try_into().expect("conversion should succeed");
-
-        assert_eq!(messages.len(), 1);
-        match &messages[0] {
-            Message::Assistant {
-                reasoning_content,
-                tool_calls,
-                ..
-            } => {
-                assert!(reasoning_content.is_none());
-                assert_eq!(tool_calls.len(), 1);
-            }
-            _ => panic!("Expected assistant message"),
-        }
     }
 
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::deepseek::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::deepseek::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
     }
@@ -1162,24 +1077,17 @@ mod tests {
         let data = r#"{
             "object": "list",
             "data": [
-                {
-                    "id": "deepseek-v4-flash",
-                    "object": "model",
-                    "owned_by": "deepseek"
-                },
-                {
-                    "id": "deepseek-v4-pro",
-                    "object": "model",
-                    "owned_by": "deepseek"
-                }
+                {"id": "deepseek-chat", "object": "model", "owned_by": "deepseek"},
+                {"id": "deepseek-reasoner", "object": "model", "owned_by": "deepseek"}
             ]
         }"#;
 
-        let response: ListModelsResponse = serde_json::from_str(data).unwrap();
-
+        let response: crate::providers::internal::model_listing::DataEnvelope<
+            crate::providers::internal::model_listing::ListModelEntry,
+        > = serde_json::from_str(data).expect("list models response should deserialize");
         assert_eq!(response.data.len(), 2);
-        assert_eq!(response.data[0].id, "deepseek-v4-flash");
-        assert_eq!(response.data[0].owned_by, "deepseek");
+        assert_eq!(response.data[0].id, "deepseek-chat");
+        assert_eq!(response.data[0].owned_by.as_deref(), Some("deepseek"));
     }
 
     #[tokio::test]

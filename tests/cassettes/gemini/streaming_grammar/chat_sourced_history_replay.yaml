@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to compute 2 + 3, then state the result.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":2,"y":3},"name":"add"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":"5"}},"thought":false}],"role":"user"},{"parts":[{"text":"State the final result in one short sentence.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. Report tool results faithfully.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The result of adding\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":4,\"promptTokenCount\":125,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":125}],\"serviceTier\":\"standard\",\"totalTokenCount\":129}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" 2 and 3 is 5.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":12,\"promptTokenCount\":125,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":125}],\"serviceTier\":\"standard\",\"totalTokenCount\":137}}\r\n\r\n"

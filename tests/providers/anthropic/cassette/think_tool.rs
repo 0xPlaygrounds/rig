@@ -1,9 +1,9 @@
 //! Migrated from `examples/anthropic_think_tool.rs`.
 
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::tools::ThinkTool;
+use rig::tool::builtin::ThinkTool;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};

@@ -1,6 +1,6 @@
 [package]
 name = "rig-sqlite"
-version = "0.2.6"
+version.workspace = true
 edition = { workspace = true }
 description = "SQLite-based vector store implementation for the rig framework"
 license = "MIT"
@@ -9,22 +9,23 @@ license = "MIT"
 workspace = true
 
 [lib]
-doctest = false
+doctest = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.37.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
   "derive",
 ] }
 rusqlite = { workspace = true, features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sqlite-vec = { workspace = true }
+thiserror = { workspace = true }
 tokio-rusqlite = { workspace = true, features = ["bundled"] }
 tracing = { workspace = true }
-zerocopy = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }
 httpmock = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

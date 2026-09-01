@@ -1,16 +1,22 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
-
-use rig::OneOrMany;
-use rig::client::CompletionClient;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Prompt};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
+use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
+use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use serde_json::json;
 
-use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
+use crate::support::{
+    assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
+};
+
+/// Descriptor name the Anthropic client normalizes responses under; needed
+/// when a test converts a `raw_completion` response itself.
+const ANTHROPIC_PROVIDER: &str = "anthropic";
 
 fn rust_document() -> String {
     r#"
@@ -33,26 +39,26 @@ fn cited_rust_document() -> Document {
     Document {
         data: DocumentSourceKind::String(rust_document()),
         media_type: Some(DocumentMediaType::TXT),
-        additional_params: Some(json!({
+        additional_params: rig::message::AdditionalParams::try_from_value(json!({
             "title": "Rust Goals",
             "citations": { "enabled": true }
-        })),
+        }))
+        .expect("object params"),
     }
 }
 
 fn citation_prompt() -> Message {
     Message::User {
-        content: OneOrMany::many(vec![
+        content: vec![
             UserContent::Document(cited_rust_document()),
             UserContent::text(
                 "Using citations, answer in one sentence: what three goals does Rust focus on?",
             ),
-        ])
-        .expect("citation prompt content should be non-empty"),
+        ],
     }
 }
 
-fn assistant_text(choice: &OneOrMany<rig::message::AssistantContent>) -> String {
+fn assistant_text(choice: &[rig::message::AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -62,9 +68,7 @@ fn assistant_text(choice: &OneOrMany<rig::message::AssistantContent>) -> String 
         .collect()
 }
 
-fn collect_anthropic_citations(
-    choice: &OneOrMany<rig::message::AssistantContent>,
-) -> Vec<Citation> {
+fn collect_anthropic_citations(choice: &[rig::message::AssistantContent]) -> Vec<Citation> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -119,16 +123,37 @@ async fn plaintext_document_with_instruction() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: OneOrMany::many(vec![
+                    content: vec![
                         UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
                         UserContent::text(
                             "List the three main goals of Rust mentioned in this document.",
                         ),
-                    ])
-                    .expect("content should be non-empty"),
+                    ],
                 })
                 .await
                 .expect("instruction prompt should succeed");
+
+            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn streaming_document_citations_accepts_null_citation_start() {
+    super::super::support::with_anthropic_cassette(
+        "plaintext_document/streaming_document_citations_accepts_null_citation_start",
+        |client| async move {
+            let agent = client
+                .agent(CLAUDE_SONNET_4_6)
+                .preamble("Answer using the supplied document and citation metadata.")
+                .temperature(0.0)
+                .build();
+
+            let mut stream = agent.stream_prompt(citation_prompt()).await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming document citations should accept null citations on text start");
 
             assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
         },
@@ -144,7 +169,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
-            let first_turn = model
+            let first_request = model
                 .completion_request(prompt.clone())
                 .preamble(
                     "Answer using the supplied document and preserve citation metadata."
@@ -152,9 +177,17 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 )
                 .max_tokens(256)
                 .temperature(0.0)
-                .send()
+                .build();
+            // Raw-vs-normalized parity on a single recorded interaction: take
+            // Anthropic's own response once, then normalize that same value.
+            let first_turn_raw = model
+                .raw_completion(first_request)
                 .await
                 .expect("first document citation turn should succeed");
+            let first_turn_raw_text = first_turn_raw.text_response();
+            let first_turn: rig::completion::CompletionResponse = first_turn_raw
+                .normalize(ANTHROPIC_PROVIDER)
+                .expect("first document citation turn should normalize");
 
             let first_turn_text = assistant_text(&first_turn.choice);
             assert_nonempty_response(&first_turn_text);
@@ -163,24 +196,19 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 &["safety", "speed", "concurrency"],
             );
             assert_eq!(
-                first_turn.raw_response.get_text_response().as_deref(),
+                first_turn_raw_text.as_deref(),
                 Some(first_turn_text.as_str())
             );
 
             let citations = collect_anthropic_citations(&first_turn.choice);
             assert!(!citations.is_empty(), "expected citations: {first_turn:?}");
             assert!(citations.iter().any(|citation| match citation {
-                Citation::CharLocation {
-                    cited_text,
-                    document_index,
-                    document_title,
-                    ..
-                } => {
-                    *document_index == 0
-                        && document_title.as_deref() == Some("Rust Goals")
+                Citation::CharLocation(citation) => {
+                    citation.document_index == 0
+                        && citation.document_title.as_deref() == Some("Rust Goals")
                         && ["safety", "speed", "concurrency"]
                             .iter()
-                            .any(|needle| cited_text.to_lowercase().contains(needle))
+                            .any(|needle| citation.cited_text.to_lowercase().contains(needle))
                 }
                 _ => false,
             }));

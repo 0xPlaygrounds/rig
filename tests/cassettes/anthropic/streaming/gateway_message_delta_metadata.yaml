@@ -1,0 +1,48 @@
+when:
+  path: /api/v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"In one short paragraph, explain what a solar eclipse is.","type":"text"}],"role":"user"}],"model":"anthropic/claude-haiku-4.5","stream":true,"system":[{"text":"You are a concise assistant. Answer directly in plain text.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_REDACTED_1","model":"anthropic/claude-haiku-4.5","provider":"Amazon Bedrock","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":null,"cache_creation_input_tokens":null,"cache_read_input_tokens":null,"inference_geo":null,"input_tokens":0,"output_tokens":0,"server_tool_use":null,"service_tier":null,"speed":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"citations":[],"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"A solar eclipse occurs when the Moon passes","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" directly","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" between the Earth","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" and the Sun,","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"context_management":null,"delta":{"container":null,"stop_details":null,"stop_reason":"max_tokens","stop_sequence":null},"type":"message_delta","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cost":0.000112,"cost_details":{"upstream_inference_completions_cost":0.00008,"upstream_inference_cost":0.000112,"upstream_inference_prompt_cost":0.000032},"input_tokens":32,"is_byok":false,"output_tokens":16,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":null,"service_tier":null,"speed":"standard"}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+    event: data
+    data: [DONE]
+

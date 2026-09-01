@@ -1,0 +1,5 @@
+error: `limit` must be a string literal
+ --> tests/ui/tool_args/fail_params_non_string.rs:4:27
+  |
+4 | #[rig_tool(params(limit = 3))]
+  |                           ^

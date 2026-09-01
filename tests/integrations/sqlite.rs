@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::client::DefaultTransportBuilder as _;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use serde_json::json;
 
@@ -15,7 +16,7 @@ use rig::sqlite::{
 };
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
@@ -247,7 +248,7 @@ async fn insert_documents_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = create_embeddings(model.clone()).await;
 
-    let vector_store: SqliteVectorStore<_, Word> = SqliteVectorStore::new(conn.clone(), &model)
+    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), &model)
         .await
         .expect("Could not initialize SQLite vector store");
 
@@ -274,7 +275,7 @@ async fn insert_documents_test() {
     assert_eq!(embedding_count, 3);
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {
+async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Follow the user''s tool-call instruction exactly. Do not answer in prose.","role":"system"},{"content":"Call ping exactly once with no arguments.","role":"user"}],"model":"mistral-small-latest","parallel_tool_calls":false,"tool_choice":"any","tools":[{"function":{"description":"Matrix tool ping","name":"ping","parameters":{"additionalProperties":false,"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":86,"prompt_tokens_details":{"cached_tokens":16},"service_tier":"standard","total_tokens":91}}'

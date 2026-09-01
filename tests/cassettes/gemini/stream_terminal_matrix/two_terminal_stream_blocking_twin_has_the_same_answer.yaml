@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"You must call the code execution tool twice as two separate executions. Execution 1: run only print(987654321 * 123456789). Then, after seeing that number, Execution 2: run only print(sum(int(d) for d in str(N))) where N is the exact number from Execution 1. Never combine them. Finally state both numbers.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"print(987654321 * 123456789)\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"121932631112635269\n"}},{"executableCode":{"code":"N = 121932631112635269\nprint(sum(int(d) for d in str(N)))\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"63\n"}},{"text":"The first number is 121932631112635269.\nThe second number is 63."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":93,"promptTokenCount":91,"promptTokensDetails":[{"modality":"TEXT","tokenCount":91}],"serviceTier":"standard","thoughtsTokenCount":211,"toolUsePromptTokenCount":574,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":574}],"totalTokenCount":969}}'

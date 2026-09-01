@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::client::CompletionClient;
-use rig::completion::{Prompt, ToolDefinition};
+use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message};
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
-use rig::tools::ThinkTool;
+use rig::tool::builtin::ThinkTool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -41,25 +41,28 @@ impl Tool for Calculator {
     type Args = CalculatorArgs;
     type Output = f64;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "calculator".to_string(),
-            description: "Evaluate arithmetic expressions with +, -, *, /, and parentheses."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "expression": {
-                        "type": "string",
-                        "description": "An arithmetic expression such as '25 + (2 * 40)'"
-                    }
-                },
-                "required": ["expression"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Evaluate arithmetic expressions with +, -, *, /, and parentheses.".to_string()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "expression": {
+                    "type": "string",
+                    "description": "An arithmetic expression such as '25 + (2 * 40)'"
+                }
+            },
+            "required": ["expression"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         evaluate_expression(&args.expression).map_err(CalculatorError)
     }
@@ -210,25 +213,28 @@ impl Tool for DatabaseLookup {
     type Args = DatabaseLookupArgs;
     type Output = String;
 
-    async fn definition(&self, _prompt: String) -> ToolDefinition {
-        ToolDefinition {
-            name: "database_lookup".to_string(),
-            description: "Look up customer_policy, shipping_rates, or product_inventory."
-                .to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "One of customer_policy, shipping_rates, or product_inventory"
-                    }
-                },
-                "required": ["query"]
-            }),
-        }
+    fn description(&self) -> String {
+        "Look up customer_policy, shipping_rates, or product_inventory.".to_string()
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "One of customer_policy, shipping_rates, or product_inventory"
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
 
         let value = match args.query {

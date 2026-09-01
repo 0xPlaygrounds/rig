@@ -1,7 +1,4 @@
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+use crate::client::{self, BearerAuth, DebugExt, Provider, ProviderBuilder};
 use crate::http_client;
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
@@ -57,7 +54,20 @@ impl SubProvider {
 
     pub fn model_identifier(&self, model: &str) -> String {
         match self {
-            SubProvider::Fireworks => format!("accounts/fireworks/models/{model}"),
+            // Fireworks addresses models by a fully-qualified id. Guard against
+            // re-prefixing an already-qualified id (e.g. a per-request model
+            // override that is already fully qualified) — the generic path
+            // applies this to the resolved request model unconditionally, so
+            // without the guard a qualified override would become an invalid
+            // `accounts/fireworks/models/accounts/fireworks/models/...` id.
+            SubProvider::Fireworks => {
+                const FIREWORKS_PREFIX: &str = "accounts/fireworks/models/";
+                if model.starts_with(FIREWORKS_PREFIX) {
+                    model.to_string()
+                } else {
+                    format!("{FIREWORKS_PREFIX}{model}")
+                }
+            }
             _ => model.to_string(),
         }
     }
@@ -109,7 +119,7 @@ pub struct HuggingFaceBuilder {
 
 type HuggingFaceApiKey = BearerAuth;
 
-pub type Client<H = reqwest::Client> = client::Client<HuggingFaceExt, H>;
+pub type Client<H> = client::Client<HuggingFaceExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HuggingFaceBuilder, HuggingFaceApiKey, H>;
 
@@ -119,17 +129,41 @@ impl Provider for HuggingFaceExt {
     const VERIFY_PATH: &'static str = "/api/whoami-v2";
 }
 
-impl<H> Capabilities<H> for HuggingFaceExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
+impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingFaceExt {
+    const PROVIDER_NAME: &'static str = "huggingface";
 
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
+    type StreamingUsage = crate::providers::openai::Usage;
+
+    // Structured-output support varies by sub-provider; keep the
+    // pre-migration behavior of dropping `output_schema` with a warning.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
+    type Response = crate::providers::openai::CompletionResponse;
+
+    // Chat completions live under the router's `/v1` while verification,
+    // transcription, and image generation use root-relative paths, so the
+    // prefix cannot live in the client base URL.
+    fn completion_path(&self, _model: &str) -> String {
+        self.subprovider.completion_endpoint(_model)
+    }
+
+    fn prepare_request(
+        &self,
+        request: &mut crate::providers::openai::completion::CompletionRequest,
+    ) -> Result<(), crate::completion::CompletionError> {
+        // Some sub-providers (Fireworks) address models through a qualified
+        // identifier in the request body.
+        request.model = self.subprovider.model_identifier(&request.model);
+        Ok(())
+    }
 }
+
+client::impl_capabilities!(
+    HuggingFaceExt,
+    completion = super::completion::CompletionModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    image_generation = super::image_generation::ImageGenerationModel<H>,
+);
 
 impl DebugExt for HuggingFaceExt {
     fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
@@ -158,21 +192,11 @@ impl ProviderBuilder for HuggingFaceBuilder {
     }
 }
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HUGGINGFACE_API_KEY")?;
-
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_from_env!(
+    HuggingFaceExt,
+    input = String,
+    api_key_env = "HUGGINGFACE_API_KEY",
+);
 
 impl<H> ClientBuilder<H> {
     pub fn subprovider(mut self, subprovider: SubProvider) -> Self {
@@ -188,13 +212,39 @@ impl<H> Client<H> {
 }
 #[cfg(test)]
 mod tests {
+    use super::SubProvider;
+
     #[test]
     fn test_client_initialization() {
-        let _client =
-            crate::providers::huggingface::Client::new("dummy-key").expect("Client::new() failed");
+        let _client = crate::providers::huggingface::Client::new_with(
+            "dummy-key",
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
+        .expect("Client::new() failed");
         let _client_from_builder = crate::providers::huggingface::Client::builder()
             .api_key("dummy-key")
+            .http_client(crate::test_utils::RecordingHttpClient::new(""))
             .build()
             .expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn fireworks_model_identifier_is_idempotent() {
+        // A bare id is qualified once...
+        assert_eq!(
+            SubProvider::Fireworks.model_identifier("deepseek-v3"),
+            "accounts/fireworks/models/deepseek-v3"
+        );
+        // ...and an already-qualified id (e.g. a per-request model override)
+        // is left untouched rather than double-prefixed.
+        assert_eq!(
+            SubProvider::Fireworks.model_identifier("accounts/fireworks/models/deepseek-v3"),
+            "accounts/fireworks/models/deepseek-v3"
+        );
+        // Other sub-providers pass the id through verbatim.
+        assert_eq!(
+            SubProvider::HFInference.model_identifier("meta-llama/Llama-3.1-8B"),
+            "meta-llama/Llama-3.1-8B"
+        );
     }
 }

@@ -2,10 +2,19 @@ version: 2
 updates:
   # Cargo dependencies at the workspace root.
   # archived/ is excluded from the workspace via Cargo.toml.
+  #
+  # `increase-if-necessary`: a manifest requirement is a *floor*, not a pin
+  # (`tokio = "1"` is `^1`), so a new upstream release inside the range needs
+  # only a `Cargo.lock` update. The default strategy rewrote the floor on
+  # every patch release, and every published rig release then forced
+  # downstream users to `cargo update` those crates just to take a rig point
+  # release (#2195). The manifest now moves only when a release falls outside
+  # the declared range — a major bump — which is a change worth reviewing.
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
+    versioning-strategy: increase-if-necessary
 
   # All npm package.json files live inside archived/ and should be ignored.
   # These entries exist solely to suppress Dependabot security/version PRs

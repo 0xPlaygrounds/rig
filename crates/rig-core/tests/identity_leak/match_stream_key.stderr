@@ -1,0 +1,23 @@
+error[E0532]: cannot match against a tuple struct which contains private fields
+ --> tests/identity_leak/match_stream_key.rs:7:9
+  |
+7 |     let rig_core::streaming::StreamPartId(repr) = &id;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> tests/identity_leak/match_stream_key.rs:7:43
+  |
+7 |     let rig_core::streaming::StreamPartId(repr) = &id;
+  |                                           ^^^^ private field
+
+error[E0599]: no associated item named `Wire` found for struct `StreamPartId` in the current scope
+ --> tests/identity_leak/match_stream_key.rs:9:44
+  |
+9 |         rig_core::streaming::StreamPartId::Wire(wire) => drop(wire),
+  |                                            ^^^^ associated item not found in `StreamPartId`
+  |
+help: there is an associated function `wire` with a similar name
+ --> src/streaming/identity.rs
+  |
+  |     pub fn wire(id: impl Into<String>) -> Self {
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

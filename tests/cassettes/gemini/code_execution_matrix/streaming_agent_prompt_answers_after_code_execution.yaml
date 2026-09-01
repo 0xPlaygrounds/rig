@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to compute 2 to the power of 20. State the number in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"print(2**20)\\n\",\"language\":\"PYTHON\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":7,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":34,\"totalTokenCount\":66}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"outcome\":\"OUTCOME_OK\",\"output\":\"1048576\\n\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":7,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":34,\"totalTokenCount\":66}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The number 2\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":11,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":34,\"toolUsePromptTokenCount\":75,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":75}],\"totalTokenCount\":145}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" to the power of 20 is 1,048,5\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":27,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":34,\"toolUsePromptTokenCount\":75,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":75}],\"totalTokenCount\":161}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"76.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":30,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":34,\"toolUsePromptTokenCount\":75,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":75}],\"totalTokenCount\":164}}\r\n\r\n"

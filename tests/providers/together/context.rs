@@ -1,7 +1,7 @@
 //! Together context smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::together;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
@@ -15,7 +15,7 @@ async fn context_smoke() {
         .copied()
         .fold(
             client.agent(together::MIXTRAL_8X7B_INSTRUCT_V0_1),
-            |builder, doc| builder.context(doc),
+            rig::AgentBuilder::context,
         )
         .build();
 

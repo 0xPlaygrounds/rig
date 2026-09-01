@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a concise assistant. Answer directly.","role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"deepseek-v4-flash"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Rust is a systems programming language that ensures memory safety at compile time through its ownership model and borrow checker, eliminating common bugs without needing a garbage collector. Memory safety is crucial because it prevents vulnerabilities like buffer overflows and dangling pointers, which can cause crashes, data corruption, or security exploits.","reasoning_content":"We need to explain Rust and why memory safety matters in one or two sentences. Keep concise. Rust is a systems programming language that focuses on safety, speed, and concurrency, using a borrow checker to enforce memory safety without garbage collection. Memory safety matters because it prevents common bugs like buffer overflows and use-after-free, which can lead to crashes, security vulnerabilities, and undefined behavior.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":138,"completion_tokens_details":{"reasoning_tokens":78},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":31,"prompt_tokens":31,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":169}}'

@@ -1,15 +1,18 @@
 use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
-pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
-use http::{HeaderName, StatusCode};
-use reqwest::Body;
+use http::HeaderName;
+pub use http::{
+    HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
+};
+mod erased;
+pub mod middleware;
 pub mod multipart;
 pub mod retry;
 pub mod sse;
 use crate::wasm_compat::*;
+pub use erased::BoxedHttpClient;
+pub use middleware::HttpMiddleware;
 pub use multipart::MultipartForm;
-pub use reqwest::Client as ReqwestClient;
-use std::pin::Pin;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -19,6 +22,19 @@ pub enum Error {
     InvalidStatusCode(StatusCode),
     #[error("Invalid status code {0} with message: {1}")]
     InvalidStatusCodeWithMessage(StatusCode, String),
+    /// A non-success HTTP response whose headers were preserved alongside the
+    /// body, so provider layers can read transport metadata — e.g. their
+    /// request-id contract — off the failed response (rig#2314). Displays
+    /// identically to [`Self::InvalidStatusCodeWithMessage`].
+    #[error("Invalid status code {status} with message: {body}")]
+    InvalidStatusCodeWithDetails {
+        /// The non-success status.
+        status: StatusCode,
+        /// The raw response body.
+        body: String,
+        /// The failed response's headers, verbatim.
+        headers: Box<http::HeaderMap>,
+    },
     #[error("Header value outside of legal range: {0}")]
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
     #[error("Request in error state, cannot access headers")]
@@ -36,25 +52,96 @@ pub enum Error {
     Instance(#[from] Box<dyn std::error::Error + 'static>),
 }
 
+impl Error {
+    /// The status this error carries, when it was built from a non-success
+    /// response. `None` for a response-less failure (connect, decode, timeout).
+    ///
+    /// Public because a transport crate outside rig-core needs it: a websocket
+    /// backend builds this error from a rejected upgrade, and the provider
+    /// layer that maps it back into its own error model reads the status here.
+    pub fn non_success_status(&self) -> Option<StatusCode> {
+        match self {
+            Self::InvalidStatusCode(status) | Self::InvalidStatusCodeWithMessage(status, _) => {
+                Some(*status)
+            }
+            Self::InvalidStatusCodeWithDetails { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+
+    /// The response body this error preserved, when it has one. Companion to
+    /// [`Self::non_success_status`] and [`Self::non_success_headers`].
+    pub fn non_success_body(&self) -> Option<&str> {
+        match self {
+            Self::InvalidStatusCodeWithMessage(_, body) => Some(body.as_str()),
+            Self::InvalidStatusCodeWithDetails { body, .. } => Some(body.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Build the headers-preserving non-success error from a failed
+    /// response's parts. Transports call this with the status, headers and
+    /// body they read off the wire, so provider layers can recover transport
+    /// metadata — request ids, rate-limit headers — from the error (rig#2314).
+    pub fn non_success_with_details(status: StatusCode, headers: HeaderMap, body: String) -> Self {
+        Self::InvalidStatusCodeWithDetails {
+            status,
+            body,
+            headers: Box::new(headers),
+        }
+    }
+
+    /// Returns the failed response's headers, when this error preserved them.
+    ///
+    /// Rig's bundled HTTP clients capture the full [`HeaderMap`] whenever a
+    /// non-success status error is built from a live response, so rate-limit
+    /// metadata such as `Retry-After` or `x-ratelimit-*` stays readable
+    /// (rig#2210). This is the accessor a [`retry::RetryPolicy`] uses to honor
+    /// a server-supplied backoff, since it is handed this error directly:
+    ///
+    /// ```
+    /// # use rig_core::http_client::{Error, retry::RetryPolicy};
+    /// # use std::time::Duration;
+    /// fn retry_after(error: &Error) -> Option<Duration> {
+    ///     let seconds = error
+    ///         .non_success_headers()?
+    ///         .get(http::header::RETRY_AFTER)?
+    ///         .to_str()
+    ///         .ok()?
+    ///         .parse()
+    ///         .ok()?;
+    ///     Some(Duration::from_secs(seconds))
+    /// }
+    /// ```
+    ///
+    /// Returns `None` when the error carries no captured headers: transports
+    /// that report a non-success status without them, and errors built from
+    /// only a status and body.
+    pub fn non_success_headers(&self) -> Option<&HeaderMap> {
+        match self {
+            Self::InvalidStatusCodeWithDetails { headers, .. } => Some(headers),
+            _ => None,
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[cfg(not(target_family = "wasm"))]
-pub(crate) fn instance_error<E: std::error::Error + Send + Sync + 'static>(error: E) -> Error {
-    Error::Instance(error.into())
-}
+impl Error {
+    /// Wrap a transport's native error as [`Error::Instance`]. Transports use
+    /// this for response-less failures (connect, decode, timeout); non-success
+    /// responses go through [`Error::non_success_with_details`] instead so the
+    /// status stays inspectable.
+    #[cfg(not(target_family = "wasm"))]
+    pub fn instance<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
+        Self::Instance(error.into())
+    }
 
-#[cfg(target_family = "wasm")]
-fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
-    Error::Instance(error.into())
-}
-
-async fn non_success_status_error(response: reqwest::Response) -> Error {
-    let status = response.status();
-    let message = response
-        .text()
-        .await
-        .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
-    Error::InvalidStatusCodeWithMessage(status, message)
+    /// Wrap a transport's native error as [`Error::Instance`].
+    #[cfg(target_family = "wasm")]
+    pub fn instance<E: std::error::Error + 'static>(error: E) -> Self {
+        Self::Instance(error.into())
+    }
 }
 
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
@@ -68,12 +155,6 @@ pub struct NoBody;
 impl From<NoBody> for Bytes {
     fn from(_: NoBody) -> Self {
         Bytes::new()
-    }
-}
-
-impl From<NoBody> for Body {
-    fn from(_: NoBody) -> Self {
-        reqwest::Body::default()
     }
 }
 
@@ -95,12 +176,6 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
     headers.insert(k, v);
 
     Ok(())
-}
-
-pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
-    bearer_auth_header(req.headers_mut().ok_or(Error::NoHeaders)?, auth)?;
-
-    Ok(req)
 }
 
 /// A helper trait to make generic requests (both regular and SSE) possible.
@@ -134,268 +209,31 @@ pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
         T: Into<Bytes> + WasmCompatSend;
 }
 
-impl HttpClientExt for reqwest::Client {
-    fn send<T, U>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        U: From<Bytes> + WasmCompatSend,
-    {
-        let (parts, body) = req.into_parts();
-        let req = self
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .body(body.into());
+#[cfg(test)]
+mod non_success_header_tests {
+    use super::*;
 
-        async move {
-            let response = req.send().await.map_err(instance_error)?;
-            if !response.status().is_success() {
-                return Err(non_success_status_error(response).await);
-            }
-
-            let mut res = Response::builder().status(response.status());
-
-            if let Some(hs) = res.headers_mut() {
-                *hs = response.headers().clone();
-            }
-
-            let body: LazyBody<U> = Box::pin(async {
-                let bytes = response
-                    .bytes()
-                    .await
-                    .map_err(|e| Error::Instance(e.into()))?;
-
-                let body = U::from(bytes);
-                Ok(body)
-            });
-
-            res.body(body).map_err(Error::Protocol)
+    /// `None` means "not captured" and must not be confused with an empty map:
+    /// every other shape of this error reports it.
+    #[test]
+    fn non_success_headers_absent_when_not_captured() {
+        for error in [
+            Error::InvalidStatusCodeWithMessage(
+                StatusCode::TOO_MANY_REQUESTS,
+                "rate limited".to_string(),
+            ),
+            Error::InvalidStatusCode(StatusCode::TOO_MANY_REQUESTS),
+            Error::StreamEnded,
+        ] {
+            assert!(error.non_success_headers().is_none());
         }
-    }
 
-    fn send_multipart<U>(
-        &self,
-        req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
-    {
-        let (parts, body) = req.into_parts();
-        let body = reqwest::multipart::Form::from(body);
-
-        let req = self
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .multipart(body);
-
-        async move {
-            let response = req.send().await.map_err(instance_error)?;
-            if !response.status().is_success() {
-                return Err(non_success_status_error(response).await);
-            }
-
-            let mut res = Response::builder().status(response.status());
-
-            if let Some(hs) = res.headers_mut() {
-                *hs = response.headers().clone();
-            }
-
-            let body: LazyBody<U> = Box::pin(async {
-                let bytes = response
-                    .bytes()
-                    .await
-                    .map_err(|e| Error::Instance(e.into()))?;
-
-                let body = U::from(bytes);
-                Ok(body)
-            });
-
-            res.body(body).map_err(Error::Protocol)
-        }
-    }
-
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let (parts, body) = req.into_parts();
-
-        let client = self.clone();
-
-        async move {
-            let req = self
-                .request(parts.method, parts.uri.to_string())
-                .headers(parts.headers)
-                .body(body.into())
-                .build()
-                .map_err(|error| Error::Instance(error.into()))?;
-            let response: reqwest::Response = client.execute(req).await.map_err(instance_error)?;
-            if !response.status().is_success() {
-                return Err(non_success_status_error(response).await);
-            }
-
-            #[cfg(not(target_family = "wasm"))]
-            let mut res = Response::builder()
-                .status(response.status())
-                .version(response.version());
-
-            #[cfg(target_family = "wasm")]
-            let mut res = Response::builder().status(response.status());
-
-            if let Some(hs) = res.headers_mut() {
-                *hs = response.headers().clone();
-            }
-
-            use futures::StreamExt;
-
-            let mapped_stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> =
-                Box::pin(
-                    response
-                        .bytes_stream()
-                        .map(|chunk| chunk.map_err(|e| Error::Instance(Box::new(e)))),
-                );
-
-            res.body(mapped_stream).map_err(Error::Protocol)
-        }
-    }
-}
-
-#[cfg(feature = "reqwest-middleware")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
-impl HttpClientExt for reqwest_middleware::ClientWithMiddleware {
-    fn send<T, U>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        U: From<Bytes> + WasmCompatSend,
-    {
-        let (parts, body) = req.into_parts();
-        let req = self
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .body(body.into());
-
-        async move {
-            let response = req.send().await.map_err(instance_error)?;
-            if !response.status().is_success() {
-                return Err(non_success_status_error(response).await);
-            }
-
-            let mut res = Response::builder().status(response.status());
-
-            if let Some(hs) = res.headers_mut() {
-                *hs = response.headers().clone();
-            }
-
-            let body: LazyBody<U> = Box::pin(async {
-                let bytes = response
-                    .bytes()
-                    .await
-                    .map_err(|e| Error::Instance(e.into()))?;
-
-                let body = U::from(bytes);
-                Ok(body)
-            });
-
-            res.body(body).map_err(Error::Protocol)
-        }
-    }
-
-    fn send_multipart<U>(
-        &self,
-        req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static,
-    {
-        let (parts, body) = req.into_parts();
-        let body = reqwest::multipart::Form::from(body);
-
-        let req = self
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .multipart(body);
-
-        async move {
-            let response = req.send().await.map_err(instance_error)?;
-            if !response.status().is_success() {
-                return Err(non_success_status_error(response).await);
-            }
-
-            let mut res = Response::builder().status(response.status());
-
-            if let Some(hs) = res.headers_mut() {
-                *hs = response.headers().clone();
-            }
-
-            let body: LazyBody<U> = Box::pin(async {
-                let bytes = response
-                    .bytes()
-                    .await
-                    .map_err(|e| Error::Instance(e.into()))?;
-
-                let body = U::from(bytes);
-                Ok(body)
-            });
-
-            res.body(body).map_err(Error::Protocol)
-        }
-    }
-
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let (parts, body) = req.into_parts();
-
-        let client = self.clone();
-
-        async move {
-            let req = self
-                .request(parts.method, parts.uri.to_string())
-                .headers(parts.headers)
-                .body(body.into())
-                .build()
-                .map_err(|error| Error::Instance(error.into()))?;
-            let response: reqwest::Response = client.execute(req).await.map_err(instance_error)?;
-            if !response.status().is_success() {
-                return Err(non_success_status_error(response).await);
-            }
-
-            #[cfg(not(target_family = "wasm"))]
-            let mut res = Response::builder()
-                .status(response.status())
-                .version(response.version());
-
-            #[cfg(target_family = "wasm")]
-            let mut res = Response::builder().status(response.status());
-
-            if let Some(hs) = res.headers_mut() {
-                *hs = response.headers().clone();
-            }
-
-            use futures::StreamExt;
-
-            let mapped_stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> =
-                Box::pin(
-                    response
-                        .bytes_stream()
-                        .map(|chunk| chunk.map_err(|e| Error::Instance(Box::new(e)))),
-                );
-
-            res.body(mapped_stream).map_err(Error::Protocol)
-        }
+        // A captured-but-empty map is `Some`, not `None`.
+        let error = Error::InvalidStatusCodeWithDetails {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            body: "rate limited".to_string(),
+            headers: Box::new(HeaderMap::new()),
+        };
+        assert!(error.non_success_headers().is_some_and(HeaderMap::is_empty));
     }
 }

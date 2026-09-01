@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
+use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
@@ -20,6 +20,7 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
+                .with_system_instructions_as_messages()
                 .agent(openai::GPT_5_2)
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
@@ -27,6 +28,7 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                 .additional_params(serde_json::json!({
                     "reasoning": { "effort": "high" }
                 }))
+                .default_max_turns(2)
                 .build();
             let mut chat_history = Vec::<Message>::new();
 

@@ -1,0 +1,84 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant.","type":"text"}],"role":"system"},{"content":"hello","role":"user"}],"model":"deepseek/deepseek-v3.2","provider":{"allow_fallbacks":true,"order":["DeepInfra","DeepSeek","Chutes"]}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Hello! How can I assist you today? 😊","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek/deepseek-v3.2-20251201","object":"chat.completion","provider":"DeepInfra","service_tier":null,"system_fingerprint":null,"usage":{"completion_tokens":12,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":9.5e-6,"cost_details":{"upstream_inference_completions_cost":4.56e-6,"upstream_inference_cost":9.5e-6,"upstream_inference_prompt_cost":4.94e-6},"is_byok":false,"prompt_tokens":23,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":8,"video_tokens":0},"total_tokens":35}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant.","type":"text"}],"role":"system"},{"content":"planet","role":"user"}],"model":"deepseek/deepseek-v3.2","provider":{"ignore":["Google Vertex"]}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Of course! Here are some key points about **planets**, from a general overview to specific categories:\n\n### What is a Planet?\nA planet is a large, rounded celestial body that orbits a star (like our Sun) and has cleared its orbit of other debris. It is not massive enough to trigger nuclear fusion (which would make it a star).\n\n### Planets in Our Solar System\nOur solar system has **eight officially recognized planets**, divided into two groups:\n\n**1. Terrestrial (Rocky) Planets:**\n*   **Mercury:** Closest to the Sun, small, heavily cratered.\n*   **Venus:** Similar in size to Earth, but with a thick, toxic atmosphere and a runaway greenhouse effect.\n*   **Earth:** The only planet known to support life, with liquid water and a protective atmosphere.\n*   **Mars:** The \"Red Planet,\" with a thin atmosphere, evidence of past water, and the target of many exploration missions.\n\n**2. Giant Planets:**\n*   **Jupiter:** The largest planet, a gas giant with a famous Great Red Spot storm.\n*   **Saturn:** Known for its spectacular ring system made of ice and rock.\n*   **Uranus:** An ice giant that rotates on its side.\n*   **Neptune:** The windiest planet, an ice giant with vivid blue hues.\n\n*(Pluto is now classified as a **dwarf planet**, as it has not cleared its orbital neighborhood.)*\n\n### Beyond Our Solar System: Exoplanets\nThousands of planets have been discovered orbiting **other stars** (exoplanets). They come in amazing varieties:\n*   **Hot Jupiters:** Gas giants orbiting extremely close to their stars.\n*   **Super-Earths:** Rocky planets larger than Earth but smaller than Neptune.\n*   **Planets in the Habitable Zone:** Planets where temperatures could allow liquid water to exist on their surfaces.\n\n### Key Characteristics of Planets\n*   **Orbit:** They orbit a star.\n*   **Hydrostatic Equilibrium:** They are round due to their own gravity.\n*   **Cleared Orbit:** They are the dominant gravitational body in their orbital path.\n*   **Atmosphere:** Most have an atmosphere (though composition varies drastically).\n*   **Moons:** Many have natural satellites (moons).\n*   **Geological Activity:** Some have volcanoes, tectonics, or magnetic fields.\n\nIs there a specific aspect of planets you''d like to explore deeper? For example, planetary formation, the search for life, or missions to a particular planet?","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek/deepseek-v3.2-20251201","object":"chat.completion","provider":"Novita","service_tier":null,"system_fingerprint":null,"usage":{"completion_tokens":523,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.000212159,"cost_details":{"upstream_inference_completions_cost":0.0002092,"upstream_inference_cost":0.000212159,"upstream_inference_prompt_cost":2.959e-6},"is_byok":false,"prompt_tokens":11,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":534}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant.","type":"text"}],"role":"system"},{"content":"french hello","role":"user"}],"model":"deepseek/deepseek-v3.2","provider":{"sort":"latency"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Bonjour !  \nComment puis-je vous aider aujourd''hui ? 😊","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_3","model":"deepseek/deepseek-v3.2-20251201","object":"chat.completion","provider":"Friendli","service_tier":null,"system_fingerprint":null,"usage":{"completion_tokens":15,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.000035,"cost_details":{"upstream_inference_completions_cost":0.0000225,"upstream_inference_cost":0.000035,"upstream_inference_prompt_cost":0.0000125},"is_byok":false,"prompt_tokens":25,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":40}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant.","type":"text"}],"role":"system"},{"content":"sky color","role":"user"}],"model":"deepseek/deepseek-v3.2","provider":{"require_parameters":true}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The color of the sky can vary depending on the time of day, weather conditions, and location. Here’s a breakdown:\n\n1. **Blue Sky** – During the day, the sky usually appears blue due to **Rayleigh scattering**, where sunlight interacts with atmospheric molecules and scatters shorter blue wavelengths more than longer red wavelengths.\n\n2. **Red/Orange/Yellow at Sunrise or Sunset** – At these times, sunlight passes through more of the atmosphere, scattering shorter blue light away and leaving longer red, orange, and yellow wavelengths visible.\n\n3. **Gray or White** – On overcast days, clouds scatter all wavelengths of light equally, making the sky appear gray or white.\n\n4. **Black at Night** – With no sunlight to scatter, the sky appears black, revealing stars and celestial objects.\n\n5. **Other colors** – Rare atmospheric phenomena (like auroras, certain clouds, or pollution) can create green, pink, violet, or other colors in the sky.\n\nSo, in short:  \n- **Daytime, clear weather**: Blue  \n- **Sunrise/Sunset**: Red, orange, pink, yellow  \n- **Cloudy**: Gray or white  \n- **Night**: Black  \n\nIf you’re thinking of a specific sky scene, feel free to describe it!","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_4","model":"deepseek/deepseek-v3.2-20251201","object":"chat.completion","provider":"AtlasCloud","service_tier":null,"system_fingerprint":null,"usage":{"completion_tokens":265,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00010382,"cost_details":{"upstream_inference_completions_cost":0.0001007,"upstream_inference_cost":0.00010382,"upstream_inference_prompt_cost":3.12e-6},"is_byok":false,"prompt_tokens":12,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":277}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant.","type":"text"}],"role":"system"},{"content":"country","role":"user"}],"model":"deepseek/deepseek-v3.2","provider":{"max_price":{"completion":0.5,"prompt":0.3}}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"A \"country\" is a distinct territorial body or political entity. It is often synonymous with terms like nation, state, or nation-state. Here are key aspects that typically define a country:\n\n1. **Defined Territory**: A country has recognized borders, whether by land, water, or both.\n2. **Permanent Population**: There are people living within its territory on an ongoing basis.\n3. **Government**: A country has an organized political structure that exercises authority over its territory and population.\n4. **Sovereignty**: It has the capacity to enter into relations with other countries and is not subject to external control. Recognition by other countries, especially through international bodies like the United Nations, often reinforces sovereignty.\n\nCountries vary widely in size, population, culture, language, political systems, and economic development. They interact through diplomacy, trade, treaties, and international organizations.\n\nIf you have a specific country in mind or want to explore topics like how countries are formed, their types, or examples, feel free to ask! 🌍","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_5","model":"deepseek/deepseek-v3.2-20251201","object":"chat.completion","provider":"AtlasCloud","service_tier":null,"system_fingerprint":null,"usage":{"completion_tokens":209,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00008228,"cost_details":{"upstream_inference_completions_cost":0.00007942,"upstream_inference_cost":0.00008228,"upstream_inference_prompt_cost":2.86e-6},"is_byok":false,"prompt_tokens":11,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":220}}'

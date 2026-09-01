@@ -1,0 +1,33 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a helpful assistant that can read files using different methods.","role":"system","type":"message"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user","type":"message"}],"model":"grok-4-0709","tools":[{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is: \"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.\"\n","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file_head","status":"completed","type":"function_call"},{"arguments":"{}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"read_file_tail","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"},"strict":false,"type":"function"},{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":296,"output_tokens":327},"cost_in_usd_ticks":10531000,"input_tokens":296,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":327,"output_tokens_details":{"reasoning_tokens":315},"total_tokens":623},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a helpful assistant that can read files using different methods.","role":"system","type":"message"},{"content":"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.","role":"user","type":"message"},{"id":"rs_REDACTED_1","summary":[{"text":"The task is: \"Use the available tools to read test.txt now. Do not ask any follow-up questions; just read the file and report its content.\"\n","type":"summary_text"}],"type":"reasoning"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"read_file_head","type":"function_call"},{"arguments":"{}","call_id":"call_REDACTED_2","name":"read_file_tail","type":"function_call"},{"call_id":"call_REDACTED_1","output":"Tool ''read_file_head'' is currently unavailable. Please use ''read_file_tail'' instead to read the file.","type":"function_call_output"},{"call_id":"call_REDACTED_2","output":"hello world","type":"function_call_output"}],"model":"grok-4-0709","tools":[{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"The head tool is unavailable, tail gave \"hello world\".\n","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"hello world","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[{"description":"Read the first line of test.txt using the head command","name":"read_file_head","parameters":{"properties":{},"type":"object"},"strict":false,"type":"function"},{"description":"Read the last line of test.txt using the tail command","name":"read_file_tail","parameters":{"properties":{},"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":661,"output_tokens":28},"cost_in_usd_ticks":6274500,"input_tokens":661,"input_tokens_details":{"cached_tokens":256},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":28,"output_tokens_details":{"reasoning_tokens":26},"total_tokens":689},"user":null}'

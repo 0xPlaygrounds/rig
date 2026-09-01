@@ -1,3 +1,18 @@
+mod support;
+
+mod cassette {
+    mod codex_behaviors;
+    mod codex_sessions;
+    mod codex_tool_args;
+    mod codex_tool_choice;
+    mod http_errors;
+    mod noninteractive_oauth;
+    mod raw_capture_matrix;
+    mod raw_completion_parity_matrix;
+    mod raw_stream_capture_matrix;
+    mod streaming_tools;
+}
+
 mod agent;
 mod auth;
 mod completion;
@@ -11,6 +26,7 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
+use rig::client::DefaultTransportBuilder as _;
 use rig::providers::chatgpt::{self, ChatGPTAuth};
 use serde::Deserialize;
 use std::path::PathBuf;

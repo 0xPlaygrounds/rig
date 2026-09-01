@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them together in this single reply, before writing any text. Emit the two tool calls in one turn - do not wait for results between them.","thought":false}],"role":"user"}],"generationConfig":{"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"lookup_harbor_label\"}},{\"functionCall\":{\"args\":{},\"name\":\"lookup_orchard_label\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":26,\"promptTokenCount\":170,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":170}],\"serviceTier\":\"standard\",\"totalTokenCount\":196}}\r\n\r\n"

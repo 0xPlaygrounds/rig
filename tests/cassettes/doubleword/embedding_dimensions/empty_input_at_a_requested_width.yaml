@@ -1,0 +1,16 @@
+when:
+  path: /v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"dimensions":512,"input":[""],"model":"Qwen/Qwen3-Embedding-8B"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":null,"message":"Invalid request","param":null,"type":"invalid_request_error"}}'

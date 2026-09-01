@@ -1,0 +1,18 @@
+when:
+  path: /v1/images/generations
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"dall-e-3","prompt":"a plain red circle on a white background","size":"1024x1024"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"invalid_value","message":"The model ''dall-e-3'' does not exist.","param":"model","type":"image_generation_user_error"}}'

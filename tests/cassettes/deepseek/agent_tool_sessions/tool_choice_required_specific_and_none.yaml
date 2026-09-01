@@ -1,0 +1,50 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Call lookup_harbor_label exactly once with an empty object and do not answer in prose.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tool_choice":"required","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":24,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":290,"prompt_tokens":290,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":314}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Call the orchard-label tool exactly once with an empty object and do not call any other tool.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tool_choice":{"function":{"name":"lookup_orchard_label"},"type":"function"},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"call_REDACTED_2","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":23,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":289,"prompt_tokens":289,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":312}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Do not call tools. Reply with exactly this phrase: no-tool-answer","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"no-tool-answer","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":5,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":20,"prompt_tokens":20,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":25}}'

@@ -67,20 +67,20 @@ impl QdrantFilter {
         self.0
     }
 
-    pub fn exists(key: String) -> Self {
+    pub fn exists(key: &str) -> Self {
         Self(json!({ "key": key, "is_null": { "value": false } }))
     }
 
-    pub fn is_null(key: String) -> Self {
+    pub fn is_null(key: &str) -> Self {
         Self(json!({ "key": key, "is_null": { "value": true } }))
     }
 
-    pub fn is_empty(key: String) -> Self {
+    pub fn is_empty(key: &str) -> Self {
         Self(json!({ "is_empty": { "key": key } }))
     }
 
     /// Construct a range filter `(lo .. hi)`
-    pub fn range_exclusive(key: String, lo: serde_json::Value, hi: serde_json::Value) -> Self {
+    pub fn range_exclusive(key: &str, lo: &serde_json::Value, hi: &serde_json::Value) -> Self {
         Self(json!({
             "key": key,
             "range": {
@@ -92,9 +92,9 @@ impl QdrantFilter {
 
     /// Construct a range filter `[lo .. hi)`
     pub fn range_lower_inclusive(
-        key: String,
-        lo: serde_json::Value,
-        hi: serde_json::Value,
+        key: &str,
+        lo: &serde_json::Value,
+        hi: &serde_json::Value,
     ) -> Self {
         Self(json!({
             "key": key,
@@ -107,9 +107,9 @@ impl QdrantFilter {
 
     /// Construct a range filter `(lo .. hi]`
     pub fn range_higher_inclusive(
-        key: String,
-        lo: serde_json::Value,
-        hi: serde_json::Value,
+        key: &str,
+        lo: &serde_json::Value,
+        hi: &serde_json::Value,
     ) -> Self {
         Self(json!({
             "key": key,
@@ -121,7 +121,7 @@ impl QdrantFilter {
     }
 
     /// Construct a range filter `[lo .. hi]`
-    pub fn range_inclusive(key: String, lo: serde_json::Value, hi: serde_json::Value) -> Self {
+    pub fn range_inclusive(key: &str, lo: &serde_json::Value, hi: &serde_json::Value) -> Self {
         Self(json!({
             "key": key,
             "range": {
@@ -165,7 +165,7 @@ impl QdrantFilter {
                     let key = is_empty
                         .get("key")
                         .and_then(|k| k.as_str())
-                        .ok_or(FilterError::MissingField("key".into()))?
+                        .ok_or_else(|| FilterError::MissingField("key".into()))?
                         .to_string();
 
                     Ok(Condition {
@@ -176,23 +176,20 @@ impl QdrantFilter {
                         ),
                     })
                 } else if let Some(is_null) = value.get("is_null") {
-                    let is_null_value =
-                        is_null
-                            .get("value")
-                            .and_then(|v| v.as_bool())
-                            .ok_or(FilterError::Must(
-                                "is_null".into(),
-                                "have a 'value' field".into(),
-                            ))?;
+                    let is_null_value = is_null
+                        .get("value")
+                        .and_then(serde_json::Value::as_bool)
+                        .ok_or_else(|| {
+                        FilterError::Must("is_null".into(), "have a 'value' field".into())
+                    })?;
 
                     // Get the key from the parent object
                     let key = value
                         .get("key")
                         .and_then(|k| k.as_str())
-                        .ok_or(FilterError::Must(
-                            "is_null".into(),
-                            "have a 'key' field".into(),
-                        ))?
+                        .ok_or_else(|| {
+                            FilterError::Must("is_null".into(), "have a 'key' field".into())
+                        })?
                         .to_string();
 
                     if is_null_value {
@@ -219,15 +216,9 @@ impl QdrantFilter {
                             condition_one_of: Some(ConditionOneOf::Filter(filter)),
                         })
                     }
-                } else if value
-                    .as_object()
-                    .map(|o| {
-                        o.contains_key("must")
-                            || o.contains_key("must_not")
-                            || o.contains_key("should")
-                    })
-                    .unwrap_or(false)
-                {
+                } else if value.as_object().is_some_and(|o| {
+                    o.contains_key("must") || o.contains_key("must_not") || o.contains_key("should")
+                }) {
                     let filter = QdrantFilter(value).interpret()?;
 
                     Ok(Condition {
@@ -296,7 +287,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.must.extend(conditions)
+                        filter.must.extend(conditions);
                     }
 
                     if let Some(should) = value.get("should")
@@ -307,7 +298,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.should.extend(conditions)
+                        filter.should.extend(conditions);
                     }
 
                     if let Some(must_not) = value.get("must_not")
@@ -318,7 +309,7 @@ impl QdrantFilter {
                             .cloned()
                             .map(to_condition)
                             .collect::<Result<_, _>>()?;
-                        filter.must_not.extend(conditions)
+                        filter.must_not.extend(conditions);
                     }
 
                     if filter.must.is_empty()

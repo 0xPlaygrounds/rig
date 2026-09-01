@@ -1,31 +1,39 @@
-use rig_core::client::{CompletionClient, ProviderClient};
-use rig_core::completion::Prompt;
+use rig_agent::completion::Prompt;
+use rig_agent::prelude::*;
 use rig_core::providers;
-use rig_core::tool::Tool;
 use rig_derive::rig_tool;
+use rig_reqwest::prelude::*;
 
-// Example with description attribute
+// Demonstrates explicit attribute override.
+// The description and params() attributes override any doc comments.
 #[rig_tool(
     description = "Perform basic arithmetic operations",
     required(x, y, operation)
 )]
-fn calculator(x: i32, y: i32, operation: String) -> Result<i32, rig_core::tool::ToolError> {
+fn calculator(
+    /// The first operand
+    x: i32,
+    /// The second operand
+    y: i32,
+    /// The operation to perform
+    operation: String,
+) -> Result<i32, rig_core::tool::ToolExecutionError> {
     match operation.as_str() {
         "add" => Ok(x + y),
         "subtract" => Ok(x - y),
         "multiply" => Ok(x * y),
         "divide" => {
             if y == 0 {
-                Err(rig_core::tool::ToolError::ToolCallError(
-                    "Division by zero".into(),
+                Err(rig_core::tool::ToolExecutionError::other(
+                    "Division by zero",
                 ))
             } else {
                 Ok(x / y)
             }
         }
-        _ => Err(rig_core::tool::ToolError::ToolCallError(
-            format!("Unknown operation: {operation}").into(),
-        )),
+        _ => Err(rig_core::tool::ToolExecutionError::other(format!(
+            "Unknown operation: {operation}"
+        ))),
     }
 }
 
@@ -43,7 +51,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "CALCULATOR: {}",
-        serde_json::to_string_pretty(&CALCULATOR.definition(String::default()).await)?
+        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&CALCULATOR))?
     );
 
     for prompt in [

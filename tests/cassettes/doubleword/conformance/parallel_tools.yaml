@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.","type":"text"}],"role":"system"},{"content":"Compute 3 + 4 and 10 - 2. You MUST call the add tool and the subtract tool together in your first response, as two parallel function calls, then report both results.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e. x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to compute two arithmetic operations:\n1. 3 + 4 (using the add tool)\n2. 10 - 2 (using the subtract tool)\n\nThey specifically want me to call both tools together in my first response as parallel function calls. I need to use the add function with x=3 and y=4, and the subtract function with x=10 and y=2.\n\nLet me make both function calls in parallel.","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to compute two arithmetic operations:\n1. 3 + 4 (using the add tool)\n2. 10 - 2 (using the subtract tool)\n\nThey specifically want me to call both tools together in my first response as parallel function calls. I need to use the add function with x=3 and y=4, and the subtract function with x=10 and y=2.\n\nLet me make both function calls in parallel.","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 3, \"y\": 4}","name":"add"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"x\": 10, \"y\": 2}","name":"subtract"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":174,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":98},"prompt_tokens":468,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":642}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.","type":"text"}],"role":"system"},{"content":"Compute 3 + 4 and 10 - 2. You MUST call the add tool and the subtract tool together in your first response, as two parallel function calls, then report both results.","role":"user"},{"reasoning_content":"The user wants me to compute two arithmetic operations:\n1. 3 + 4 (using the add tool)\n2. 10 - 2 (using the subtract tool)\n\nThey specifically want me to call both tools together in my first response as parallel function calls. I need to use the add function with x=3 and y=4, and the subtract function with x=10 and y=2.\n\nLet me make both function calls in parallel.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":3,\"y\":4}","name":"add"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"x\":10,\"y\":2}","name":"subtract"},"id":"call_REDACTED_2","type":"function"}]},{"content":"7","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"8","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e. x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The first operand","type":"number"},"y":{"description":"The second operand","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The results are:\n- 3 + 4 = 7\n- 10 - 2 = 8","reasoning":"I got the results from both function calls:\n- 3 + 4 = 7\n- 10 - 2 = 8\n\nNow I need to report both results to the user.","reasoning_details":[{"format":"unknown","index":0,"text":"I got the results from both function calls:\n- 3 + 4 = 7\n- 10 - 2 = 8\n\nNow I need to report both results to the user.","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":72,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":42},"prompt_tokens":659,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":731}}'

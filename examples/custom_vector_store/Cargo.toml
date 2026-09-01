@@ -1,0 +1,16 @@
+[package]
+name = "custom_vector_store"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rig.workspace = true
+anyhow = { workspace = true }
+redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

@@ -106,11 +106,11 @@ impl LSHIndex {
     }
 
     /// Insert a document ID with its embedding
-    pub fn insert(&mut self, id: String, embedding: &[f64]) {
+    pub fn insert(&mut self, id: &str, embedding: &[f64]) {
         for table_idx in 0..self.lsh.num_tables {
             let hash = self.lsh.hash(embedding, table_idx);
             if let Some(table) = self.tables.get_mut(table_idx) {
-                table.entry(hash).or_default().push(id.clone());
+                table.entry(hash).or_default().push(id.to_owned());
             }
         }
     }

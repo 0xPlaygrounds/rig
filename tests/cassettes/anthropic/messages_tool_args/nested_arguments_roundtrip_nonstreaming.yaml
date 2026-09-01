@@ -1,0 +1,37 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Book this trip by calling the plan_trip tool exactly once with these exact values: itinerary.city = \"Kyoto\", itinerary.days = 3, itinerary.activities = [\"temples\", \"tea ceremony\"], itinerary.lodging.name = \"Sakura Inn\", itinerary.lodging.rooms = 2. After the tool returns, repeat its confirmation code in one short sentence.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a travel booking assistant. Use the plan_trip tool for every booking request and copy the requested values into the tool arguments exactly as given.","type":"text"}],"tools":[{"description":"Book a trip from a nested itinerary object.","input_schema":{"properties":{"itinerary":{"description":"The trip to book.","properties":{"activities":{"items":{"type":"string"},"type":"array"},"city":{"type":"string"},"days":{"type":"integer"},"lodging":{"properties":{"name":{"type":"string"},"rooms":{"type":"integer"}},"required":["name","rooms"],"type":"object"}},"required":["city","days","activities","lodging"],"type":"object"}},"required":["itinerary"],"type":"object"},"name":"plan_trip"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"I''ll book that trip to Kyoto right away!","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"itinerary":{"activities":["temples","tea ceremony"],"city":"Kyoto","days":3,"lodging":{"name":"Sakura Inn","rooms":2}}},"name":"plan_trip","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":799,"output_tokens":110,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Book this trip by calling the plan_trip tool exactly once with these exact values: itinerary.city = \"Kyoto\", itinerary.days = 3, itinerary.activities = [\"temples\", \"tea ceremony\"], itinerary.lodging.name = \"Sakura Inn\", itinerary.lodging.rooms = 2. After the tool returns, repeat its confirmation code in one short sentence.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll book that trip to Kyoto right away!","type":"text"},{"id":"toolu_REDACTED_1","input":{"itinerary":{"activities":["temples","tea ceremony"],"city":"Kyoto","days":3,"lodging":{"name":"Sakura Inn","rooms":2}}},"name":"plan_trip","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"Booked Kyoto for 3 day(s), 2 room(s) at Sakura Inn, with 2 planned activities. Confirmation code SAKURA-77.","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a travel booking assistant. Use the plan_trip tool for every booking request and copy the requested values into the tool arguments exactly as given.","type":"text"}],"tools":[{"description":"Book a trip from a nested itinerary object.","input_schema":{"properties":{"itinerary":{"description":"The trip to book.","properties":{"activities":{"items":{"type":"string"},"type":"array"},"city":{"type":"string"},"days":{"type":"integer"},"lodging":{"properties":{"name":{"type":"string"},"rooms":{"type":"integer"}},"required":["name","rooms"],"type":"object"}},"required":["city","days","activities","lodging"],"type":"object"}},"required":["itinerary"],"type":"object"},"name":"plan_trip"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"Your trip is all set — your confirmation code is **SAKURA-77**! 🎉","type":"text"}],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":963,"output_tokens":25,"service_tier":"standard"}}'

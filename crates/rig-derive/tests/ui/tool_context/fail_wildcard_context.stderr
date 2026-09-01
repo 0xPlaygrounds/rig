@@ -1,0 +1,5 @@
+error: the `ToolContext` parameter must be a plain identifier
+  --> tests/ui/tool_context/fail_wildcard_context.rs:10:21
+   |
+10 |     #[rig(context)] _: &mut ToolContext,
+   |                     ^

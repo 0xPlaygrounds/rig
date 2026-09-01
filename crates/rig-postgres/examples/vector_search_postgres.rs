@@ -3,11 +3,11 @@ use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
-    client::ProviderClient,
     embeddings::EmbeddingsBuilder,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_postgres::PostgresVectorStore;
+use rig_reqwest::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
 

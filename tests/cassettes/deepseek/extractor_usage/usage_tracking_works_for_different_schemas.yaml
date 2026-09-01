@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","role":"system"},{"content":"Alice is a 25 year old developer.","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"age":{"format":"uint8","maximum":255,"minimum":0,"type":["integer","null"]},"name":{"type":["string","null"]},"profession":{"type":["string","null"]}},"title":"Person","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"Let me extract the structured data from the provided text.\n\n- Name: \"Alice\"\n- Age: 25\n- Profession: \"developer\"\n\nLet me submit this.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"name\": \"Alice\", \"age\": 25, \"profession\": \"developer\"}","name":"submit"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":110,"completion_tokens_details":{"reasoning_tokens":34},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":47,"prompt_tokens":431,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":541}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","role":"system"},{"content":"456 Oak Avenue, Cambridge, MA 02139","role":"user"}],"model":"deepseek-v4-flash","tool_choice":null,"tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":["string","null"]},"state":{"type":["string","null"]},"street":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"title":"Address","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"Let me extract the structured data from this address:\n\n- Street: 456 Oak Avenue\n- City: Cambridge\n- State: MA\n- Zip code: 02139","role":"assistant","tool_calls":[{"function":{"arguments":"{\"street\": \"456 Oak Avenue\", \"city\": \"Cambridge\", \"state\": \"MA\", \"zip_code\": \"02139\"}","name":"submit"},"id":"call_REDACTED_2","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":130,"completion_tokens_details":{"reasoning_tokens":35},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":43,"prompt_tokens":427,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":557}}'

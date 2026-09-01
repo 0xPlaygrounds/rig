@@ -1,79 +1,65 @@
-use crate::audio_generation::{
-    self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
+use crate::providers::internal::audio_generation::{
+    GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::openai::Client;
-use bytes::{Buf, Bytes};
-use serde_json::json;
+use crate::providers::openai::{OpenAICompletionsExt, OpenAIResponsesExt};
 
 pub const TTS_1: &str = "tts-1";
 pub const TTS_1_HD: &str = "tts-1-hd";
 
-#[derive(Clone)]
-pub struct AudioGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
+/// OpenAI audio generation model.
+pub type AudioGenerationModel<T> = GenericAudioGenerationModel<OpenAIResponsesExt, T>;
+
+/// OpenAI audio generation model for a client using Chat Completions.
+pub type CompletionsAudioGenerationModel<T> = GenericAudioGenerationModel<OpenAICompletionsExt, T>;
+
+impl RawAudioGenerationProvider for OpenAIResponsesExt {
+    const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
-impl<T> AudioGenerationModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
+impl RawAudioGenerationProvider for OpenAICompletionsExt {
+    const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
+    const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
-impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type Response = Bytes;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio_generation::{AudioGenerationError, AudioGenerationModel as _};
+    use crate::client::audio_generation::AudioGenerationClient;
+    use crate::providers::openai::Client;
+    use crate::test_utils::RecordingHttpClient;
 
-    type Client = Client<T>;
+    #[tokio::test]
+    async fn audio_generation_non_success_preserves_status_and_body() {
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let http_client =
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.audio_generation_model(TTS_1);
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
+        let request = model
+            .audio_generation_request()
+            .text("hello")
+            .voice("alloy")
+            .build();
 
-    async fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let body = serde_json::to_vec(&json!({
-            "model": self.model,
-            "input": request.text,
-            "voice": request.voice,
-            "speed": request.speed,
-        }))?;
+        let error = model
+            .audio_generation(request)
+            .await
+            .expect_err("should fail with non-success status");
 
-        let req = self
-            .client
-            .post("/audio/speech")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let response = self.client.send(req).await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let mut bytes: Bytes = response.into_body().await?;
-            let mut as_slice = Vec::new();
-            bytes.copy_to_slice(&mut as_slice);
-
-            let text: String = String::from_utf8_lossy(&as_slice).into();
-
-            return Err(AudioGenerationError::ProviderError(format!(
-                "{}: {}",
-                status, text
-            )));
-        }
-
-        let bytes: Bytes = response.into_body().await?;
-
-        Ok(AudioGenerationResponse {
-            audio: bytes.to_vec(),
-            response: bytes,
-        })
+        assert!(matches!(error, AudioGenerationError::HttpError(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
     }
 }

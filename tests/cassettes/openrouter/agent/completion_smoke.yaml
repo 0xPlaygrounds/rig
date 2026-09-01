@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"openai/gpt-4o-mini"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Rust is a systems programming language focused on speed, safety, and concurrency, designed to prevent common bugs associated with memory management. Memory safety is crucial because it helps eliminate vulnerabilities like buffer overflows and null pointer dereferences, leading to more secure and reliable software.","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"Azure","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":53,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.0000375,"cost_details":{"upstream_inference_completions_cost":0.0000318,"upstream_inference_cost":0.0000375,"upstream_inference_prompt_cost":5.7e-6},"is_byok":false,"prompt_tokens":38,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":91}}'

@@ -1,0 +1,152 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"text"}],"role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\":[]}","name":"submit"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":12,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003015,"cost_details":{"upstream_inference_completions_cost":7.2e-6,"upstream_inference_cost":0.00003015,"upstream_inference_prompt_cost":0.00002295},"is_byok":false,"prompt_tokens":153,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":165}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"text"}],"role":"system"},{"content":"I love my dog, but I hate rainy weather.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\":[]}","name":"submit"},"id":"call_REDACTED_2","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":12,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003015,"cost_details":{"upstream_inference_completions_cost":7.2e-6,"upstream_inference_cost":0.00003015,"upstream_inference_prompt_cost":0.00002295},"is_byok":false,"prompt_tokens":153,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":165}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"text"}],"role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\":[\"store\",\"milk\",\"bread\"]}","name":"submit"},"id":"call_REDACTED_3","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_3","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_2","usage":{"completion_tokens":18,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003375,"cost_details":{"upstream_inference_completions_cost":0.0000108,"upstream_inference_cost":0.00003375,"upstream_inference_prompt_cost":0.00002295},"is_byok":false,"prompt_tokens":153,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":171}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"text"}],"role":"system"},{"content":"I love my dog, but I hate rainy weather.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\":[\"dogs\",\"weather\",\"rain\",\"pets\",\"emotions\"]}","name":"submit"},"id":"call_REDACTED_4","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_4","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_2","usage":{"completion_tokens":23,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003675,"cost_details":{"upstream_inference_completions_cost":0.0000138,"upstream_inference_cost":0.00003675,"upstream_inference_prompt_cost":0.00002295},"is_byok":false,"prompt_tokens":153,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":176}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract names from the given text.","type":"text"}],"role":"system"},{"content":"Ada Lovelace discussed analytical engines and early programming.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"names":{"items":{"type":"string"},"type":"array"}},"required":["names"],"title":"Names","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"names\":[\"Ada Lovelace\"]}","name":"submit"},"id":"call_REDACTED_5","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_5","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":17,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003315,"cost_details":{"upstream_inference_completions_cost":0.0000102,"upstream_inference_cost":0.00003315,"upstream_inference_prompt_cost":0.00002295},"is_byok":false,"prompt_tokens":153,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":170}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"text"}],"role":"system"},{"content":"I''m going to the store to buy milk and bread.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.5, \"confidence\": 0.8}","name":"submit"},"id":"call_REDACTED_6","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_6","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_3","usage":{"completion_tokens":38,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00004665,"cost_details":{"upstream_inference_completions_cost":0.0000228,"upstream_inference_cost":0.00004665,"upstream_inference_prompt_cost":0.00002385},"is_byok":false,"prompt_tokens":159,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":197}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"text"}],"role":"system"},{"content":"Ada Lovelace discussed analytical engines and early programming.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.5, \"confidence\": 0.8}","name":"submit"},"id":"call_REDACTED_7","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_7","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_3","usage":{"completion_tokens":38,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00004665,"cost_details":{"upstream_inference_completions_cost":0.0000228,"upstream_inference_cost":0.00004665,"upstream_inference_prompt_cost":0.00002385},"is_byok":false,"prompt_tokens":159,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":197}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract topics from the given text.","type":"text"}],"role":"system"},{"content":"Ada Lovelace discussed analytical engines and early programming.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"topics":{"items":{"type":"string"},"type":"array"}},"required":["topics"],"title":"Topics","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"topics\":[\"Ada Lovelace\",\"analytical engines\",\"early programming\"]}","name":"submit"},"id":"call_REDACTED_8","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_8","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_2","usage":{"completion_tokens":24,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003735,"cost_details":{"upstream_inference_completions_cost":0.0000144,"upstream_inference_cost":0.00003735,"upstream_inference_prompt_cost":0.00002295},"is_byok":false,"prompt_tokens":153,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":177}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract sentiment and confidence from the given text.","type":"text"}],"role":"system"},{"content":"I love my dog, but I hate rainy weather.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"confidence":{"format":"double","type":"number"},"sentiment":{"format":"double","type":"number"}},"required":["sentiment","confidence"],"title":"Sentiment","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"sentiment\": 0.5, \"confidence\": 0.7}","name":"submit"},"id":"call_REDACTED_9","index":0,"type":"function"},{"function":{"arguments":"{\"sentiment\": -0.5, \"confidence\": 0.7}","name":"submit"},"id":"call_REDACTED_10","index":1,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_9","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_3","usage":{"completion_tokens":61,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00006045,"cost_details":{"upstream_inference_completions_cost":0.0000366,"upstream_inference_cost":0.00006045,"upstream_inference_prompt_cost":0.00002385},"is_byok":false,"prompt_tokens":159,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":220}}'

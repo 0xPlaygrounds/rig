@@ -1,6 +1,6 @@
 //! Together streaming tools smoke test.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::prelude::*;
 use rig::providers::together;
 use rig::streaming::StreamingPrompt;
 

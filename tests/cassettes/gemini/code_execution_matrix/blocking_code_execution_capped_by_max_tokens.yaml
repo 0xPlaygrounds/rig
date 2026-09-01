@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to compute 999 times 999. State the number in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":1500,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"print(999 * 999)\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"998001\n"}},{"text":"The product of 999 times 999 is 998,001."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":33,"promptTokenCount":25,"promptTokensDetails":[{"modality":"TEXT","tokenCount":25}],"serviceTier":"standard","thoughtsTokenCount":38,"toolUsePromptTokenCount":82,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":82}],"totalTokenCount":178}}'

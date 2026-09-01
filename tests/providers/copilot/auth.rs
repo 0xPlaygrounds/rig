@@ -1,8 +1,8 @@
 //! Copilot OAuth and bootstrap smoke tests.
 
 use assert_fs::TempDir;
-use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::prelude::*;
 use rig::providers::copilot;
 use serde_json::json;
 use std::fs;

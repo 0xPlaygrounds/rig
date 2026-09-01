@@ -1,0 +1,22 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Use the requested tool call and no prose before it.","role":"system"},{"content":"Call inspect_manifest exactly once for project rig-mistral with critical=true, retries=2, steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. Do not write normal text before the tool call.","role":"user"}],"model":"mistral-small-latest","stream":true,"tool_choice":"any","tools":[{"function":{"description":"Validate a nested deployment manifest.","name":"inspect_manifest","parameters":{"properties":{"flags":{"properties":{"critical":{"type":"boolean"},"retries":{"type":"integer"}},"required":["critical","retries"],"type":"object"},"note":{"type":"string"},"project":{"type":"string"},"steps":{"items":{"properties":{"name":{"type":"string"},"weight":{"type":"integer"}},"required":["name","weight"],"type":"object"},"type":"array"}},"required":["project","flags","steps","note"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"project\": \"rig-mistral\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"streamed nested JSON\"}","name":"inspect_manifest"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234","usage":{"completion_tokens":69,"prompt_tokens":261,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":330}}
+
+    data: [DONE]
+

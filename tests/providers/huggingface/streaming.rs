@@ -1,6 +1,6 @@
 //! Hugging Face streaming coverage for the default and Together-backed inference paths.
 
-use rig::client::{CompletionClient, ProviderClient};
+use rig::prelude::*;
 use rig::providers::huggingface::{self, SubProvider};
 use rig::streaming::StreamingPrompt;
 

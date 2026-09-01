@@ -8,6 +8,7 @@
 
 use anyhow::Result;
 use rig::extractor::ExtractionResponse;
+use rig::prelude::*;
 use rig::providers;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

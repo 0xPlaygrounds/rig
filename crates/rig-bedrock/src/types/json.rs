@@ -44,11 +44,10 @@ impl From<Value> for AwsDocument {
             Value::Null => AwsDocument(Document::Null),
             Value::Bool(b) => AwsDocument(Document::Bool(b)),
             Value::Number(num) => {
-                if let Some(i) = num.as_i64() {
-                    match i > 0 {
-                        true => AwsDocument(Document::Number(Number::PosInt(i as u64))),
-                        false => AwsDocument(Document::Number(Number::NegInt(i))),
-                    }
+                if let Some(unsigned) = num.as_u64() {
+                    AwsDocument(Document::Number(Number::PosInt(unsigned)))
+                } else if let Some(signed) = num.as_i64() {
+                    AwsDocument(Document::Number(Number::NegInt(signed)))
                 } else if let Some(f) = num.as_f64() {
                     AwsDocument(Document::Number(Number::Float(f)))
                 } else {
@@ -59,7 +58,7 @@ impl From<Value> for AwsDocument {
             Value::Array(arr) => {
                 let documents = arr
                     .into_iter()
-                    .map(|json| json.into())
+                    .map(std::convert::Into::into)
                     .map(|aws: AwsDocument| aws.0)
                     .collect();
                 AwsDocument(Document::Array(documents))
@@ -86,6 +85,19 @@ mod tests {
     use serde_json::Value;
 
     use crate::types::json::AwsDocument;
+
+    #[test]
+    fn unsigned_json_numbers_round_trip_without_precision_loss() {
+        let value = serde_json::json!(u64::MAX);
+        let document: AwsDocument = value.clone().into();
+        assert!(matches!(
+            &document.0,
+            Document::Number(Number::PosInt(number)) if *number == u64::MAX
+        ));
+
+        let roundtrip: Value = document.into();
+        assert_eq!(roundtrip, value);
+    }
 
     #[test]
     fn test_json_to_aws_document() {

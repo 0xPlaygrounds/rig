@@ -1,0 +1,14 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{},"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters."}],"role":"user"}],"system":[{"text":"You are a concise assistant. Answer directly."}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":611},"output":{"message":{"content":[{"text":"Rust is a systems programming language focused on safety, speed, and concurrency. Memory safety in Rust is crucial to prevent common bugs like null pointer dereferencing, buffer overflows, and data races, ensuring reliable and secure software."}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":27,"outputTokens":48,"serverToolUsage":{},"totalTokens":75}}'

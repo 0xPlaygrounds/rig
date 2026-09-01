@@ -1,0 +1,288 @@
+//! High-level prompting traits and runtime errors for the classic agent runtime.
+
+use serde::de::DeserializeOwned;
+use thiserror::Error;
+
+use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+
+pub use rig_core::completion::*;
+
+pub use rig_run::PromptError;
+
+/// Forwards the `provider_response_*` accessor trio through the variant that
+/// wraps an error which itself exposes them.
+macro_rules! forward_provider_response_helpers {
+    ($err:ident, $variant:ident, $inner:literal) => {
+        impl $err {
+            #[doc = concat!("Returns the provider response body exposed by a wrapped ", $inner, ".")]
+            pub fn provider_response_body(&self) -> Option<&str> {
+                match self {
+                    Self::$variant(error) => error.provider_response_body(),
+                    _ => None,
+                }
+            }
+
+            #[doc = concat!("Parses the provider response body of a wrapped ", $inner, " as JSON when present.")]
+            pub fn provider_response_json(
+                &self,
+            ) -> Result<Option<serde_json::Value>, serde_json::Error> {
+                match self {
+                    Self::$variant(error) => error.provider_response_json(),
+                    _ => Ok(None),
+                }
+            }
+
+            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314).")]
+            pub fn provider_request_id(&self) -> Option<&str> {
+                match self {
+                    Self::$variant(error) => error.provider_request_id(),
+                    _ => None,
+                }
+            }
+
+            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ".")]
+            pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+                match self {
+                    Self::$variant(error) => error.provider_response_status(),
+                    _ => None,
+                }
+            }
+
+            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " — e.g. `Retry-After` on a 429 (rig#2210).")]
+            pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+                match self {
+                    Self::$variant(error) => error.provider_response_headers(),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+forward_provider_response_helpers!(StructuredOutputError, PromptError, "prompt error");
+
+/// Errors returned by typed structured prompting.
+#[derive(Debug, Error)]
+pub enum StructuredOutputError {
+    /// The underlying classic run failed.
+    #[error("PromptError: {0}")]
+    PromptError(#[from] Box<PromptError>),
+    /// The accepted response could not be deserialized.
+    #[error("DeserializationError: {0}")]
+    DeserializationError(#[from] serde_json::Error),
+    /// The model returned no accepted content.
+    #[error("EmptyResponse: model returned no content")]
+    EmptyResponse,
+}
+
+/// High-level one-shot prompting for the classic runtime.
+pub trait Prompt: WasmCompatSend + WasmCompatSync {
+    /// Send a prompt and return accepted assistant text after runtime orchestration.
+    fn prompt(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
+}
+
+/// High-level prompting with caller-owned canonical chat history.
+pub trait Chat: WasmCompatSend + WasmCompatSync {
+    /// Execute one turn and append only committed messages to `chat_history`.
+    fn chat(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+        chat_history: &mut Vec<Message>,
+    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend;
+}
+
+/// High-level typed structured prompting for the classic runtime.
+pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
+    /// Request type returned for one target output type.
+    type TypedRequest<T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
+    where
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
+
+    /// Send a prompt and deserialize the accepted structured response as `T`.
+    fn prompt_typed<T>(&self, prompt: impl Into<Message> + WasmCompatSend) -> Self::TypedRequest<T>
+    where
+        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
+}
+
+#[cfg(test)]
+mod provider_response_tests {
+    use rig_core::{ProviderResponseError, http_client};
+
+    use super::*;
+
+    #[test]
+    fn prompt_error_forwards_provider_response_to_completion_error() {
+        let body = r#"{"error":{"message":"boom"}}"#;
+        let inner =
+            CompletionError::from_http_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
+        let error = PromptError::CompletionError(inner);
+
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::SERVICE_UNAVAILABLE),
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("valid json")
+                .expect("present json")["error"]["message"],
+            "boom",
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
+        let body = r#"{"error":{"message":"unauthorized"}}"#;
+        let error = PromptError::CompletionError(CompletionError::HttpError(
+            http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::UNAUTHORIZED,
+                body.to_string(),
+            ),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": { "message": "unauthorized" }
+            }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
+        let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
+        let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+            ProviderResponseError::without_status(body),
+        ));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(error.provider_response_status(), None);
+        // rig#2314: the transport request id forwards through the wrapper too.
+        assert_eq!(error.provider_request_id(), None);
+        assert_eq!(
+            error.provider_response_json().expect("valid JSON body"),
+            Some(serde_json::json!({
+                "error": {
+                    "code": "invalid_request",
+                    "message": "bad input"
+                }
+            }))
+        );
+    }
+
+    /// rig#2210: the response headers forward through both wrappers, so an
+    /// agent-level caller can back off on `Retry-After` without unwrapping to
+    /// the transport error by hand. Covered on both classifications, since
+    /// the two store the headers in different places.
+    #[test]
+    fn prompt_error_forwards_captured_response_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::RETRY_AFTER,
+            http::HeaderValue::from_static("20"),
+        );
+        let body = r#"{"error":{"message":"rate limited"}}"#;
+
+        for completion_error in [
+            // Contract provider: headers live on the ProviderResponse.
+            CompletionError::from_http_response_with_request_id(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                body,
+                Some("req_abc".to_string()),
+            )
+            .with_response_headers(Some(Box::new(headers.clone()))),
+            // Contract-less provider: headers live on the transport error.
+            CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
+                .with_response_headers(Some(Box::new(headers.clone()))),
+        ] {
+            let prompt_error = PromptError::CompletionError(completion_error);
+            assert_eq!(
+                prompt_error
+                    .provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                "PromptError dropped the captured headers",
+            );
+
+            let structured = StructuredOutputError::PromptError(Box::new(prompt_error));
+            assert_eq!(
+                structured
+                    .provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                "StructuredOutputError dropped the captured headers",
+            );
+        }
+    }
+
+    /// Variants that wrap no provider response report no headers.
+    #[test]
+    fn prompt_error_reports_no_headers_for_unrelated_variants() {
+        let error = PromptError::PromptCancelled {
+            chat_history: vec![Message::user("hi")],
+            reason: "cancelled".to_string(),
+        };
+        assert!(error.provider_response_headers().is_none());
+        assert!(
+            StructuredOutputError::EmptyResponse
+                .provider_response_headers()
+                .is_none()
+        );
+    }
+
+    /// rig#2314: a wrapped completion error's transport request id forwards
+    /// through `PromptError` (and, transitively, `StructuredOutputError`).
+    #[test]
+    fn prompt_error_forwards_the_provider_request_id() {
+        let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+            ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}")
+                .with_provider_request_id(Some("req_failed_call".to_string())),
+        ));
+        assert_eq!(error.provider_request_id(), Some("req_failed_call"));
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
+        let error = PromptError::PromptCancelled {
+            chat_history: vec![Message::user("hi")],
+            reason: "cancelled".to_string(),
+        };
+
+        assert_eq!(error.provider_response_body(), None);
+        assert_eq!(error.provider_response_status(), None);
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("no body is not an error"),
+            None
+        );
+    }
+
+    #[test]
+    fn structured_output_error_provider_response_helpers_forward_prompt_error() {
+        let body = r#"{"error":{"message":"bad input"}}"#;
+        let error = StructuredOutputError::PromptError(Box::new(PromptError::CompletionError(
+            CompletionError::ProviderResponse(ProviderResponseError::new(
+                http::StatusCode::BAD_REQUEST,
+                body,
+            )),
+        )));
+
+        assert_eq!(error.provider_response_body(), Some(body));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::BAD_REQUEST)
+        );
+    }
+}

@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::client::DefaultTransportBuilder as _;
 use serde_json::json;
 use testcontainers::{
     GenericImage, ImageExt,
@@ -17,7 +18,7 @@ use futures::{StreamExt, TryStreamExt};
 use rig::neo4j::{Neo4jClient, ToBoltType};
 use rig::vector_store::VectorStoreIndex;
 use rig::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
@@ -50,7 +51,9 @@ async fn vector_search_test() {
     }
 
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("neo4j", "latest")
+    // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+    // layer caching and lets a rerun silently test a different database version.
+    let container = GenericImage::new("neo4j", "5.26.29")
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
         })
@@ -158,6 +161,7 @@ async fn vector_search_test() {
 
     futures::stream::iter(embeddings)
         .map(|(doc, embeddings)| {
+            let embedding = embeddings.first().expect("expected at least one embedding");
             neo4j_client.graph.run(
                 neo4rs::query(
                     "
@@ -171,7 +175,7 @@ async fn vector_search_test() {
                 .param("id", doc.id)
                 // Here we use the first embedding but we could use any of them.
                 // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", embeddings.first().vec.clone())
+                .param("embedding", embedding.vec.clone())
                 .param("document", doc.definition.to_bolt_type()),
             )
         })
@@ -236,10 +240,10 @@ async fn vector_search_test() {
             "document": "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
             "embedding": serde_json::Value::Null
         })
-    )
+    );
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {
+async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

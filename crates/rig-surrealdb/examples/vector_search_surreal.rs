@@ -1,4 +1,4 @@
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -6,6 +6,7 @@ use rig_core::{
     embeddings::EmbeddingsBuilder,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
+use rig_reqwest::prelude::*;
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::Surreal;

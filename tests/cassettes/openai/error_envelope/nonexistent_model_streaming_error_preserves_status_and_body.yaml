@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Say hi.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":16,"model":"gpt-4o-mini-nonexistent-rig-test","stream":true}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":"model_not_found","message":"The requested model ''gpt-4o-mini-nonexistent-rig-test'' does not exist.","param":"model","type":"invalid_request_error"}}'

@@ -3,7 +3,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::client::CompletionClient;
+use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::with_anthropic_cassette;
@@ -32,6 +32,21 @@ async fn nonstreaming() {
                 "thinking": { "type": "adaptive" }
             })),
         ))
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_delta_hook_streaming() {
+    with_anthropic_cassette("reasoning_delta_hook/streaming", |client| async move {
+        reasoning::run_reasoning_delta_hook_streaming(
+            client.completion_model(CLAUDE_SONNET_4_6),
+            serde_json::json!({
+                "thinking": { "type": "adaptive" }
+            }),
+            "anthropic",
+        )
         .await;
     })
     .await;

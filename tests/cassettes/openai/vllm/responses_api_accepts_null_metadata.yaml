@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Reply with a short acknowledgement.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":8,"model":"Qwen/Qwen3-0.6B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"created_at":0,"id":"resp_REDACTED_1","incomplete_details":null,"input_messages":null,"instructions":null,"max_output_tokens":8,"max_tool_calls":null,"metadata":null,"model":"Qwen/Qwen3-0.6B","object":"response","output":[{"content":[{"annotations":[],"logprobs":null,"text":"<think>\nOkay, the user wants me","type":"output_text"}],"id":"msg_REDACTED_1","phase":null,"role":"assistant","status":"completed","type":"message"}],"output_messages":null,"parallel_tool_calls":true,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"completed","temperature":0.6,"text":null,"tool_choice":"auto","tools":[],"top_logprobs":null,"top_p":0.95,"truncation":"disabled","usage":{"input_tokens":14,"input_tokens_details":{"cached_tokens":0},"output_tokens":8,"output_tokens_details":{"reasoning_tokens":0,"tool_output_tokens":0},"total_tokens":22},"user":null}'

@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::client::DefaultTransportBuilder as _;
 use rig::client::EmbeddingsClient;
 use rig::postgres::PostgresVectorStore;
 use rig::providers::openai;

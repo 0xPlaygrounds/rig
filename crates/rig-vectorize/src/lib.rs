@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use rig_core::client::ProviderClient;
+//! use rig_reqwest::prelude::*;
 //! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
@@ -31,16 +31,16 @@ pub use client::{
 };
 
 use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
-use rig_core::embeddings::EmbeddingModel;
+use rig_core::embeddings::{EmbeddingModel, EmbeddingModelHandle};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig_core::{Embed, OneOrMany, embeddings::Embedding};
+use rig_core::{Embed, embeddings::Embedding};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 impl From<VectorizeError> for VectorStoreError {
     fn from(err: VectorizeError) -> Self {
-        VectorStoreError::DatastoreError(Box::new(err))
+        VectorStoreError::datastore(err)
     }
 }
 
@@ -48,15 +48,19 @@ impl From<VectorizeError> for VectorStoreError {
 ///
 /// This struct implements [`VectorStoreIndex`] to provide vector similarity search
 /// using Cloudflare's globally distributed Vectorize service.
+///
+/// The embedding model's concrete type is erased at construction into an
+/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an index
+/// populated under one model is only meaningful under that same model).
 #[derive(Debug, Clone)]
-pub struct VectorizeVectorStore<M> {
+pub struct VectorizeVectorStore {
     /// The embedding model used to generate query embeddings.
-    model: M,
+    model: EmbeddingModelHandle,
     /// The HTTP client for Vectorize API.
     client: VectorizeClient,
 }
 
-impl<M> VectorizeVectorStore<M> {
+impl VectorizeVectorStore {
     /// Creates a new Vectorize vector store.
     ///
     /// # Arguments
@@ -65,28 +69,25 @@ impl<M> VectorizeVectorStore<M> {
     /// * `index_name` - Name of the Vectorize index
     /// * `api_token` - Cloudflare API token with Vectorize read permissions
     pub fn new(
-        model: M,
+        model: impl EmbeddingModel + 'static,
         account_id: impl Into<String>,
         index_name: impl Into<String>,
         api_token: impl Into<String>,
     ) -> Self {
         Self {
-            model,
+            model: EmbeddingModelHandle::new(model),
             client: VectorizeClient::new(account_id, index_name, api_token),
         }
     }
 }
 
-impl<M> VectorStoreIndex for VectorizeVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    type Filter = VectorizeFilter;
-
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+impl VectorizeVectorStore {
+    /// Validates the filter, embeds the query, and returns the threshold-filtered matches.
+    async fn query_matches(
         &self,
-        req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        req: &VectorSearchRequest<VectorizeFilter>,
+        return_metadata: ReturnMetadata,
+    ) -> Result<Vec<VectorMatch>, VectorStoreError> {
         if let Some(filter) = req.filter() {
             filter.validate()?;
         }
@@ -97,17 +98,32 @@ where
             vector: embedding.vec,
             top_k: req.samples(),
             return_values: Some(false),
-            return_metadata: Some(ReturnMetadata::All),
+            return_metadata: Some(return_metadata),
             filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
         };
 
         let result = self.client.query(query_request).await?;
 
-        // Convert results to the expected format
-        let results = result
+        Ok(result
             .matches
             .into_iter()
             .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
+            .collect())
+    }
+}
+
+impl VectorStoreIndex for VectorizeVectorStore {
+    type Filter = VectorizeFilter;
+
+    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+        &self,
+        req: VectorSearchRequest<Self::Filter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        let matches = self.query_matches(&req, ReturnMetadata::All).await?;
+
+        // Convert results to the expected format
+        let results = matches
+            .into_iter()
             .map(|m| {
                 let metadata = m.metadata.unwrap_or(serde_json::Value::Null);
                 let doc: T = serde_json::from_value(metadata)?;
@@ -122,56 +138,27 @@ where
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        if let Some(filter) = req.filter() {
-            filter.validate()?;
-        }
-
-        let embedding = self.model.embed_text(req.query()).await?;
-
-        let query_request = ApiQueryRequest {
-            vector: embedding.vec,
-            top_k: req.samples(),
-            return_values: Some(false),
-            return_metadata: Some(ReturnMetadata::None),
-            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
-        };
-
-        let result = self.client.query(query_request).await?;
+        let matches = self.query_matches(&req, ReturnMetadata::None).await?;
 
         // Convert results to (score, id) tuples
-        let results = result
-            .matches
-            .into_iter()
-            .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
-            .map(|m| (m.score, m.id))
-            .collect();
-
-        Ok(results)
+        Ok(matches.into_iter().map(|m| (m.score, m.id)).collect())
     }
 }
 
-impl<M> InsertDocuments for VectorizeVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
+impl InsertDocuments for VectorizeVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
-        let mut vectors: Vec<ApiVectorInput> = Vec::new();
-
-        for (doc, embeddings) in documents {
-            let metadata = serde_json::to_value(&doc)?;
-
-            for embedding in embeddings {
-                vectors.push(ApiVectorInput {
+        let vectors =
+            rig_core::vector_store::flatten_embedded(documents, |metadata, embedding| {
+                Ok(ApiVectorInput {
                     id: Uuid::new_v4().to_string(),
                     values: embedding.vec,
                     metadata: Some(metadata.clone()),
                     namespace: None,
-                });
-            }
-        }
+                })
+            })?;
 
         if vectors.is_empty() {
             return Ok(());
