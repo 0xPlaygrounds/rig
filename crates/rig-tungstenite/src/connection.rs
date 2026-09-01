@@ -109,6 +109,16 @@ struct ConnectionTaskGone;
 /// that buffer; a frame whose caller has gone away goes back on the front of it.
 /// Reading continuously also keeps tungstenite's automatic pong replies flowing,
 /// which only happen when the stream is polled.
+/// How many frames the actor will read ahead of the session.
+///
+/// Reading continuously is what makes a cancelled read safe and keeps
+/// tungstenite's pong replies flowing, but an unbounded buffer would let a host
+/// that reads slowly (rendering, disk, its own rate limit) accumulate a whole
+/// streamed response in memory while TCP happily kept delivering. Past this
+/// depth the actor stops draining the socket, which is where the backpressure
+/// the pre-split code got for free comes back.
+const READ_AHEAD: usize = 256;
+
 async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receiver<Command>) {
     use futures::{FutureExt, select};
 
@@ -145,9 +155,11 @@ async fn run_actor(socket: Socket, mut requests: futures::channel::mpsc::Receive
             still_pending => pending_read = still_pending,
         }
 
-        let command = if stream_ended {
-            // No further frames can arrive, so only a command can make
-            // progress; selecting on the dead stream would spin.
+        let command = if stream_ended || inbound.len() >= READ_AHEAD {
+            // Either no further frames can arrive, or the reader is far enough
+            // behind that we stop taking them off the socket; in both cases
+            // only a command can make progress, and selecting on the stream
+            // would spin (or read ahead without bound).
             requests.next().await
         } else {
             select! {

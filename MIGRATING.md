@@ -874,8 +874,16 @@ A session can also be built over an already-open connection with
 `ResponsesWebSocketSession::from_connection(model, connection, event_timeout)` —
 which is how the protocol is now tested, with no socket involved.
 
-Two smaller consequences:
+Three smaller consequences:
 
+- **The connect-timeout error text changed.** The handshake deadline is the
+  backend's now (it owns the handshake), so a hung connect reports
+  `ProviderError: Http client error: timed out connecting the websocket after
+  30s` where it used to report `ProviderError: Timed out connecting to the
+  OpenAI websocket after 30s`. Both are `CompletionError::ProviderError`; only
+  code matching on the string is affected. The per-event timeout is unchanged —
+  it stays with the session, which is the only side that knows where a turn
+  ends.
 - `rig_core::http_client::Error::non_success_status()` and `non_success_body()`
   are now public (they were `pub(crate)`). A websocket backend outside rig-core
   builds a rejected upgrade into that error, and the provider layer reads the

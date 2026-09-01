@@ -50,12 +50,13 @@ pub use rig_core::*;
 pub use rig_reqwest;
 
 /// The bundled `tokio-tungstenite` websocket backend and its default-backend
-/// conveniences (`rig-tungstenite`). With the `websocket` feature,
+/// conveniences (`rig-tungstenite`), on native targets. With the `websocket`
+/// feature,
 /// `client.responses_websocket("gpt-5.4")` opens a session over it with no
 /// backend named; without it, rig has no websocket backend and a session is
 /// opened with `connect_with(..)` and any
 /// [`rig_core::ws_client::WebSocketClientExt`] implementation.
-#[cfg(feature = "websocket")]
+#[cfg(all(feature = "websocket", not(target_family = "wasm")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
@@ -173,7 +174,7 @@ pub mod prelude {
     // Default-backend websocket traits: `client.responses_websocket(..)` and
     // `builder().connect()` over the bundled tungstenite backend, plus the
     // provider's own session extension trait.
-    #[cfg(feature = "websocket")]
+    #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
     pub use rig_tungstenite::prelude::*;
 }
 

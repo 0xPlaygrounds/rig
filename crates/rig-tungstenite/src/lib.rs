@@ -327,6 +327,24 @@ mod tests {
         }
     }
 
+    /// The connect timeout's message is part of the caller-visible surface: it
+    /// is what a host sees on a hung handshake, and it changed when the
+    /// timeout moved from the session to the backend (rig#2426, recorded in
+    /// MIGRATING.md). Pin it so a further change is deliberate.
+    #[test]
+    fn the_connect_timeout_names_itself_and_its_duration() {
+        let error = Error::instance(ConnectTimeout(Duration::from_secs(30)));
+
+        assert!(
+            error
+                .to_string()
+                .contains("timed out connecting the websocket after 30s"),
+            "the timeout should name itself and its duration, got {error}"
+        );
+        // A timeout never reached the provider, so it carries no response.
+        assert_eq!(error.non_success_status(), None);
+    }
+
     /// The handshake request must carry the caller's auth headers onto the
     /// websocket scheme.
     #[test]

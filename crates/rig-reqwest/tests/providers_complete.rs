@@ -25,12 +25,12 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// `(provider module, type name)` for every `pub type X<H>` / `pub struct X<H>`
-/// (or `<T>`) under rig-core's providers, excluding `internal/`.
 /// Feature-gated modules whose transport-generic types have no alias here, by
 /// exact path under `rig-core/src/providers`.
 const WEBSOCKET_EXEMPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
 
+/// `(provider module, type name)` for every `pub type X<H>` / `pub struct X<H>`
+/// (or `<T>`) under rig-core's providers, excluding `internal/`.
 fn expected_aliases() -> Vec<(String, String)> {
     let root = rig_core_providers_dir();
     let mut files = Vec::new();

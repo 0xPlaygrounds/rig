@@ -44,8 +44,10 @@ pub enum WhenDrained {
 
 #[derive(Default)]
 struct ScriptState {
-    /// Server frames per turn; the first entry is released on connect, each
-    /// subsequent one when the session writes another `response.create`.
+    /// Server frames per turn, released one turn per write: the session opens
+    /// every turn with a `response.create`, so the first write releases turn
+    /// one, the second write turn two, and so on. Nothing is released before
+    /// the first write.
     turns: VecDeque<Vec<Frame>>,
     inbound: VecDeque<Frame>,
     sent: Vec<String>,

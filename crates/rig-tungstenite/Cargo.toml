@@ -18,11 +18,8 @@ workspace = true
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
   "websocket",
 ] }
-bytes = { workspace = true }
 futures = { workspace = true }
-http = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 
 # tungstenite is a native-only backend: it needs a tokio reactor, and browser
 # wasm reaches websockets through `web_sys` instead. `rig_core::ws_client` is
@@ -37,6 +34,10 @@ rig-core = { path = "../rig-core", version = "0.42.0", default-features = false,
   "test-utils",
 ] }
 anyhow = { workspace = true }
+# Test-only: the crate's own surface speaks `rig_core::ws_client` types, so
+# neither reaches a downstream build.
+bytes = { workspace = true }
+http = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-tungstenite = { workspace = true, features = ["handshake"] }
