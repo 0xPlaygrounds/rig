@@ -758,7 +758,7 @@ impl NdjsonBuffer {
 
 impl<T> CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Send + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     /// Execute a completion and return Ollama's own wire response.
     ///
@@ -1037,7 +1037,7 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
 
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Send + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     async fn completion(
         &self,

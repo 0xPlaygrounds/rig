@@ -4,6 +4,7 @@ use crate::image_generation;
 use crate::image_generation::{
     ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
 };
+use crate::wasm_compat::WasmCompatSend;
 use serde_json::json;
 
 #[allow(non_upper_case_globals)]
@@ -49,7 +50,7 @@ impl<T> ImageGenerationModel<T> {
 
 impl<T> ImageGenerationModel<T>
 where
-    T: HttpClientExt + Send + Clone + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     /// Perform the generation and return the provider's native response (the
     /// image bytes) instead of the normalized
@@ -102,7 +103,7 @@ where
 
 impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
 where
-    T: HttpClientExt + Send + Clone + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     async fn image_generation(
         &self,
@@ -126,7 +127,7 @@ where
 
 impl<T> crate::client::ConstructImageGenerationModel<Client<T>> for ImageGenerationModel<T>
 where
-    T: HttpClientExt + Send + Clone + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     fn construct(client: &Client<T>, model: String) -> Self {
         Self::new(client.clone(), model)

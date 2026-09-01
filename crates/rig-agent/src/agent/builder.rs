@@ -433,7 +433,7 @@ forward_into_tool_builder! {
     /// Transitions the builder to the `WithBuilderTools` state.
     retrieved_tools(
         sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        index: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet
     );
 }
@@ -491,7 +491,7 @@ impl AgentBuilder<WithBuilderTools> {
     pub fn retrieved_tools(
         self,
         sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        index: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
     ) -> Self {
         self.map_server(|server| server.retrieved_tools(sample, index, toolset))

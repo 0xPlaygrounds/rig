@@ -2,6 +2,7 @@
 //! Copilot). Re-exported from each provider's `auth` module as `AuthError`.
 
 use crate::http_client::{self, HttpClientExt};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::sync::Arc;
 
 /// Device authorization details surfaced to a provider callback.
@@ -13,15 +14,23 @@ pub struct DeviceCodePrompt {
     pub user_code: String,
 }
 
+/// The stored device-code callback: thread-safe on every target where the
+/// `WasmCompat*` markers mean `Send`/`Sync`, unconstrained on browser wasm
+/// (where the callback is never invoked — the wasm authenticators ignore it).
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt) + Send + Sync;
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub(crate) type DeviceCodeCallback = dyn Fn(DeviceCodePrompt);
+
 /// Optional callback invoked when an OAuth device flow needs user action.
 #[derive(Clone, Default)]
-pub struct DeviceCodeHandler(pub(crate) Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>);
+pub struct DeviceCodeHandler(pub(crate) Option<Arc<DeviceCodeCallback>>);
 
 impl DeviceCodeHandler {
     /// Wraps a device-code callback.
     pub fn new<F>(handler: F) -> Self
     where
-        F: Fn(DeviceCodePrompt) + Send + Sync + 'static,
+        F: Fn(DeviceCodePrompt) + WasmCompatSend + WasmCompatSync + 'static,
     {
         Self(Some(Arc::new(handler)))
     }

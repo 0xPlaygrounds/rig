@@ -8,6 +8,7 @@ use ordered_float::OrderedFloat;
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
     embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle, distance::VectorDistance},
     vector_store::request::Filter,
@@ -418,7 +419,9 @@ impl<D: Serialize> InMemoryVectorIndex<D> {
     }
 }
 
-impl<D: Serialize + Sync + Send + Eq> VectorStoreIndex for InMemoryVectorIndex<D> {
+impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq> VectorStoreIndex
+    for InMemoryVectorIndex<D>
+{
     type Filter = Filter<serde_json::Value>;
 
     async fn top_n<T: DeserializeOwned>(

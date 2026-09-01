@@ -10,6 +10,7 @@ use crate::http_client::HttpClientExt;
 use crate::image_generation::{
     ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
 };
+use crate::wasm_compat::WasmCompatSend;
 use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
@@ -58,7 +59,7 @@ impl NormalizeImageGenerationResponse for GenerateContentResponse {
 
 impl<T> ImageGenerationModel<T>
 where
-    T: HttpClientExt + Clone + Send + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     /// Perform the generation and return Gemini's native
     /// [`GenerateContentResponse`] instead of the normalized
@@ -98,7 +99,7 @@ where
 
 impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
 where
-    T: HttpClientExt + Clone + Send + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     async fn image_generation(
         &self,
@@ -122,7 +123,7 @@ where
 
 impl<T> crate::client::ConstructImageGenerationModel<Client<T>> for ImageGenerationModel<T>
 where
-    T: HttpClientExt + Clone + Send + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     fn construct(client: &Client<T>, model: String) -> Self {
         Self::new(client.clone(), model)

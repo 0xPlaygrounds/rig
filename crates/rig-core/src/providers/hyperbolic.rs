@@ -271,7 +271,7 @@ mod audio_generation {
 
     impl<T> AudioGenerationModel<T>
     where
-        T: HttpClientExt + Clone + Send + 'static,
+        T: HttpClientExt + Clone + crate::wasm_compat::WasmCompatSend + 'static,
     {
         /// Perform the generation and return Hyperbolic's native response
         /// (base64 audio) instead of the normalized
@@ -323,7 +323,7 @@ mod audio_generation {
 
     impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
     where
-        T: HttpClientExt + Clone + Send + 'static,
+        T: HttpClientExt + Clone + crate::wasm_compat::WasmCompatSend + 'static,
     {
         async fn audio_generation(
             &self,
@@ -345,7 +345,7 @@ mod audio_generation {
 
     impl<T> crate::client::ConstructAudioGenerationModel<Client<T>> for AudioGenerationModel<T>
     where
-        T: HttpClientExt + Clone + Send + 'static,
+        T: HttpClientExt + Clone + crate::wasm_compat::WasmCompatSend + 'static,
     {
         fn construct(client: &Client<T>, language: String) -> Self {
             Self {
