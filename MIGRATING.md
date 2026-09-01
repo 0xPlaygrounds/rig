@@ -806,6 +806,15 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Ownership audit: relaxed generic bounds, fewer clones
+
+No caller-visible breakage — every public signature change is a relaxation.
+The OpenAI-compatible embeddings impls (`GenericEmbeddingModel` and its
+`ConstructEmbeddingModel` impl) no longer require `H: 'static` /
+`Ext: 'static`; code that compiled before still compiles. Internal clone
+reductions in the agent loop (tool-result assembly, run-spec application)
+change no behaviour and no wire bytes.
+
 ### Compatibility shims are gone: `CompletionRequest::preamble`, retired model constants, `rig-candle` aliases, tolerant decoders
 
 Every remaining backwards-compatibility shim was removed in one sweep. None

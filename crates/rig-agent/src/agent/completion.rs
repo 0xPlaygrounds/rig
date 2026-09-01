@@ -86,7 +86,8 @@ pub(crate) async fn build_prepared_completion_request(
         .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
 
     let mut spec = runner.config.run_spec();
-    spec.output_tool_description = runner.output_tool_description.clone();
+    spec.output_tool_description
+        .clone_from(&runner.output_tool_description);
     spec.augment_output_preamble = runner.augment_output_preamble;
 
     let prepared = rig_run::prepare_request(
@@ -264,12 +265,12 @@ impl AgentConfig {
         &mut self,
         spec: &rig_run::RunSpec,
     ) -> Result<(), serde_json::Error> {
-        self.preamble = spec.preamble.clone();
-        self.static_context = spec.static_context.clone();
-        self.additional_params = spec.additional_params.clone();
+        self.preamble.clone_from(&spec.preamble);
+        self.static_context.clone_from(&spec.static_context);
+        self.additional_params.clone_from(&spec.additional_params);
         self.max_tokens = spec.max_tokens;
         self.temperature = spec.temperature;
-        self.tool_choice = spec.tool_choice.clone();
+        self.tool_choice.clone_from(&spec.tool_choice);
         self.max_turns = spec.effective_max_turns();
         self.output_schema = spec
             .output_schema

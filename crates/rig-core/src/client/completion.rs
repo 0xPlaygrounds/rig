@@ -178,7 +178,7 @@ mod tests {
 
         impl<H> CompletionModel for ExternalGenericModel<H>
         where
-            H: Clone + Send + Sync + std::fmt::Debug + 'static,
+            H: Clone + Send + Sync + std::fmt::Debug,
         {
             async fn completion(
                 &self,
@@ -203,7 +203,7 @@ mod tests {
 
         impl<H> ConstructCompletionModel<Client<ExternalExt, H>> for ExternalGenericModel<H>
         where
-            H: Clone + Send + Sync + std::fmt::Debug + 'static,
+            H: Clone + Send + Sync + std::fmt::Debug,
         {
             fn construct(client: &Client<ExternalExt, H>, model: String) -> Self {
                 Self {
