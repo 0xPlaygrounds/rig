@@ -8,6 +8,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Sections are generated on the release PR from the merged pull requests; do not
 edit this file in an ordinary PR (CI fails). Put notes under `## Changelog` in
 your PR description.
+## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/v0.42.0...v0.43.0) - 2026-09-02
+
+### Added
+
+- [**breaking**] finish the data layer — blessed ModelTurn conversion, counter/newtype ids, owned dispatch, serde across the protocol surface ([#2419](https://github.com/0xPlaygrounds/rig/pull/2419)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2419
+- [**breaking**] event-sourced hook state — RunEntry log on AgentRun replaces the durable Scratchpad snapshot ([#2408](https://github.com/0xPlaygrounds/rig/pull/2408)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2408
+- [**breaking**] transport middleware + run lifecycle hooks (on_run_start/on_run_settled, durable Scratchpad) ([#2407](https://github.com/0xPlaygrounds/rig/pull/2407)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2407
+- [**breaking**] lower ModelHandle and the erased tool set into rig-core; pure rig_run::prepare_request ([#2405](https://github.com/0xPlaygrounds/rig/pull/2405)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2405
+- [**breaking**] rig-run — extract the sans-IO run protocol out of rig-agent (RunSpec, TurnTools, transcript validator, counter RunId) ([#2403](https://github.com/0xPlaygrounds/rig/pull/2403)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2403
+- [**breaking**] BoxedHttpClient — an erased HTTP transport; Client<Ext> defaults to it ([#2401](https://github.com/0xPlaygrounds/rig/pull/2401)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2401
+- *(agent)* sync, retrieval-free registry reads — ToolServerHandle::{snapshot, static_tool_defs, toolset}, public ToolRegistrySnapshot, ToolSet: Clone ([#2400](https://github.com/0xPlaygrounds/rig/pull/2400)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* run_channel/RunEvents, static Send+Sync pins, bevy_tasks example, dependency-graph guard ([#2399](https://github.com/0xPlaygrounds/rig/pull/2399)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] rig-rmcp — move MCP tool support out of rig-agent into its own crate ([#2398](https://github.com/0xPlaygrounds/rig/pull/2398)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2398
+- [**breaking**] rig-reqwest — cut the bundled transport into its own crate; rig-core has no default transport and no reqwest/tokio ([#2397](https://github.com/0xPlaygrounds/rig/pull/2397)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2397
+- *(telemetry)* gen_ai spans for every non-completion modality, plus a recorded embedding matrix for all seven keyed providers ([#2390](https://github.com/0xPlaygrounds/rig/pull/2390)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type-erasure sweep part 2 — normalize embedding/rerank responses, erase rerank and image-embedding models, move ModelLister construction to a hook ([#2389](https://github.com/0xPlaygrounds/rig/pull/2389)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2389
+- [**breaking**] finish the type-erasure sweep — normalize transcription/image/audio responses, move construction off every model trait, erase the embedding model in vector stores ([#2385](https://github.com/0xPlaygrounds/rig/pull/2385)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2385
+- *(llamacpp)* [**breaking**] replace the llamafile provider, merge its two suites, and exhaust the matrix ([#2382](https://github.com/0xPlaygrounds/rig/pull/2382)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* explicit context caching, and three usage-mapping bugs the cache audit found ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(openai-compatible)* let llama.cpp receive an image in a tool result, plus two cassette-hygiene bugs ([#2380](https://github.com/0xPlaygrounds/rig/pull/2380)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* six cachedContents defects the follow-up audit found ([#2379](https://github.com/0xPlaygrounds/rig/pull/2379)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- [**breaking**] collapse the client machinery to Provider + Has* ([#2441](https://github.com/0xPlaygrounds/rig/pull/2441)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2441
+- [**breaking**] provider types default to the erased transport; delete the alias tree ([#2440](https://github.com/0xPlaygrounds/rig/pull/2440)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2440
+- [**breaking**] one run type in rig-agent ([#2438](https://github.com/0xPlaygrounds/rig/pull/2438)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2438
+- [**breaking**] one response hook and one post-turn body in rig-agent ([#2436](https://github.com/0xPlaygrounds/rig/pull/2436)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2436
+- freeze CHANGELOG.md and MIGRATING.md outside release PRs ([#2435](https://github.com/0xPlaygrounds/rig/pull/2435)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2435
+- forbid inline test modules via cargo xtask check-test-layout ([#2434](https://github.com/0xPlaygrounds/rig/pull/2434)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2434
+- move every inline test module to a sibling file ([#2433](https://github.com/0xPlaygrounds/rig/pull/2433)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2433
+- [**breaking**] dissolve rig-run — the run vocabulary is rig-core's, AgentRun is rig_agent::run ([#2432](https://github.com/0xPlaygrounds/rig/pull/2432)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2432
+- ownership audit themes 2–7 — 'static precision and clone hygiene; themes 3/5/6/7 dispositioned ([#2431](https://github.com/0xPlaygrounds/rig/pull/2431)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2431
+- bound hygiene — raw Send/Sync in wasm-built code becomes precise ([#2430](https://github.com/0xPlaygrounds/rig/pull/2430)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2430
+- [**breaking**] remove every backwards-compatibility shim ([#2429](https://github.com/0xPlaygrounds/rig/pull/2429)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2429
+- [**breaking**] rig-reqwest API and hygiene cleanups ([#2428](https://github.com/0xPlaygrounds/rig/pull/2428)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2428
+- generate the provider alias tree from rig-core's rustdoc output ([#2427](https://github.com/0xPlaygrounds/rig/pull/2427)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2427
+- [**breaking**] make websockets transport-agnostic — protocol to rig-core, socket to rig-tungstenite ([#2426](https://github.com/0xPlaygrounds/rig/pull/2426)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2426
+- [**breaking**] move the Discord integration out of the workspace ([#2418](https://github.com/0xPlaygrounds/rig/pull/2418)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2418
+- ownership sweep round 4 — avoidable clones, dead public items, is_false dedup ([#2416](https://github.com/0xPlaygrounds/rig/pull/2416)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2416
+- idiomatic Rust sweep, round 3 ([#2411](https://github.com/0xPlaygrounds/rig/pull/2411)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2411
+- idiomatic Rust sweep, round 2 ([#2410](https://github.com/0xPlaygrounds/rig/pull/2410)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2410
+- idiomatic Rust sweep across the workspace ([#2409](https://github.com/0xPlaygrounds/rig/pull/2409)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2409
+- [**breaking**] confine reqwest to one transport module; auth flows go through HttpClientExt ([#2396](https://github.com/0xPlaygrounds/rig/pull/2396)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2396
+- [**breaking**] purge reqwest types from rig-core's public error surface ([#2395](https://github.com/0xPlaygrounds/rig/pull/2395)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2395
+- [**breaking**] kill direct tokio sync coupling in hot paths ([#2394](https://github.com/0xPlaygrounds/rig/pull/2394)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2394
+- [**breaking**] ownership audit round 2 — borrow-shaped telemetry getters, slice-shaped embed seams, Copy usage types, dead Default/Debug transport bounds ([#2392](https://github.com/0xPlaygrounds/rig/pull/2392)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2392
+- [**breaking**] ownership audit — borrow-shaped signatures, dead clones, clone_from in accumulators, minimal bounds ([#2391](https://github.com/0xPlaygrounds/rig/pull/2391)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2391
+- *(llamacpp, llamafile)* bring all 53 ignored llama.cpp tests under recorded coverage ([#2381](https://github.com/0xPlaygrounds/rig/pull/2381)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cache)* a prompt-cache verification harness, and the two cache bugs it found ([#2374](https://github.com/0xPlaygrounds/rig/pull/2374)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(release)* set release_always back to false ([#2372](https://github.com/0xPlaygrounds/rig/pull/2372)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/v0.41.0...v0.42.0) - 2026-08-17
 
