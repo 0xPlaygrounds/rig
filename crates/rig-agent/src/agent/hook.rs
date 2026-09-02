@@ -49,7 +49,7 @@
 //!     ) -> ObservationAction {
 //!         println!(
 //!             "message {:?}: {:?} ({:?})",
-//!             event.message_id, event.content, event.usage
+//!             event.identity.message_id, event.content, event.usage
 //!         );
 //!         ObservationAction::continue_run()
 //!     }
@@ -638,7 +638,16 @@ impl<'a> ModelSelection<'a> {
     }
 }
 
-/// Canonical non-streaming completion response event.
+/// A completed model response, in canonical Rig form.
+///
+/// Fires once per accepted model turn on both drivers: after the unary call
+/// returns under [`AgentRunner::run`](crate::agent::AgentRunner::run), and
+/// after the whole stream is assembled under
+/// [`AgentRunner::stream`](crate::agent::AgentRunner::stream).
+/// [`HookContext::is_streaming`] tells them apart. Tool-only and
+/// reasoning-only turns fire it too; a turn recovered from an invalid tool
+/// call does not. The provider-assigned message id is
+/// [`identity`](Self::identity)`.message_id`.
 #[derive(Clone, Copy)]
 pub struct CompletionResponse<'a> {
     /// Prompt sent for this turn.
@@ -647,10 +656,6 @@ pub struct CompletionResponse<'a> {
     pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
-    /// Provider-assigned message ID, when available. Always equal to
-    /// [`identity`](Self::identity)`.message_id`; kept as a field for
-    /// continuity with pre-identity hooks.
-    pub message_id: Option<&'a str>,
     /// This exact attempt's response identity metadata (message-scoped,
     /// response-scoped, and transport request ids).
     pub identity: &'a ResponseIdentity,
@@ -678,12 +683,9 @@ pub struct ModelTurnFinished<'a> {
     pub content: &'a Vec<AssistantContent>,
     /// Usage reported for the turn.
     pub usage: Usage,
-    /// This exact attempt's response identity metadata. Fired for every
-    /// completed model call on both surfaces — including streamed tool-only
-    /// and reasoning-only turns, which fire no [`StreamResponseFinish`] — so
-    /// a provider-neutral hook observing this event alone records identity
-    /// for every accepted call. On a retry, this is the retried attempt's own
-    /// identity, never a previous attempt's.
+    /// This exact attempt's response identity metadata, the same value the
+    /// preceding [`CompletionResponse`] event carried. On a retry, this is
+    /// the retried attempt's own identity, never a previous attempt's.
     pub identity: &'a ResponseIdentity,
     /// Why the provider stopped generating this attempt, normalized.
     ///
@@ -849,33 +851,6 @@ pub struct ToolCallDelta<'a> {
     pub delta: &'a str,
 }
 
-/// Canonical streaming response-finish event.
-#[derive(Clone, Copy)]
-pub struct StreamResponseFinish<'a> {
-    /// Prompt sent for this turn.
-    pub prompt: &'a Message,
-    /// Canonical assistant content aggregated for this turn.
-    pub content: &'a Vec<AssistantContent>,
-    /// Usage reported for this turn.
-    pub usage: Usage,
-    /// Provider-assigned message ID, when available. Always equal to
-    /// [`identity`](Self::identity)`.message_id`; kept as a field for
-    /// continuity with pre-identity hooks.
-    pub message_id: Option<&'a str>,
-    /// This exact attempt's response identity metadata (message-scoped,
-    /// response-scoped, and transport request ids).
-    pub identity: &'a ResponseIdentity,
-    /// The provider's own response for this attempt — see
-    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
-    /// payload: the value the model's inherent `raw_completion` /
-    /// `raw_stream` would have returned, serialized. Every provider seam
-    /// populates it; `Value::Null` only when the response was built without
-    /// a provider behind it (a hand-constructed model, a record persisted
-    /// before the field). On a retry this is the retried attempt's own,
-    /// never a previous attempt's.
-    pub raw: &'a serde_json::Value,
-}
-
 /// Pre-run event: the run's initial prompt, before any model call.
 ///
 /// Fired exactly once per run, before the first completion-call hook. The
@@ -925,7 +900,7 @@ impl RunStartAction {
 ///
 /// Fired exactly once per run, after the outcome is decided — no retry,
 /// further turn, or tool execution will run. This is deliberately distinct
-/// from per-turn finishes ([`ModelTurnFinished`], [`StreamResponseFinish`]):
+/// from per-turn finishes ([`CompletionResponse`], [`ModelTurnFinished`]):
 /// those can be followed by hook-driven retries or tool turns, while
 /// `RunSettled` cannot. On the streaming surface the success case coincides
 /// with the run's `FinalResponse` stream item; `RunSettled` additionally
@@ -959,7 +934,6 @@ pub enum StepEventKind {
     TextDelta,
     ReasoningDelta,
     ToolCallDelta,
-    StreamResponseFinish,
 }
 
 pub use crate::run::patch::RequestPatch;
@@ -1186,7 +1160,8 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { CompletionCallAction::Continue }
     }
 
-    /// Observes a completed model response.
+    /// Observes a completed model response on either driver; see
+    /// [`CompletionResponse`] for when it fires.
     ///
     /// The default action continues the run.
     fn on_completion_response(
@@ -1286,17 +1261,6 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// Observes a completed streaming response in canonical Rig form.
-    ///
-    /// The default action continues the run.
-    fn on_stream_response_finish(
-        &self,
-        _ctx: &HookContext,
-        _event: StreamResponseFinish<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
-        async { ObservationAction::Continue }
-    }
-
     /// Observation interest hint, primarily for high-frequency deltas.
     fn observes(&self, _kind: StepEventKind) -> bool {
         true
@@ -1349,12 +1313,6 @@ macro_rules! for_each_boxed_hook_event {
             tool_call_delta,
             on_tool_call_delta,
             ToolCallDelta,
-            ObservationAction
-        );
-        $m!(
-            stream_response_finish,
-            on_stream_response_finish,
-            StreamResponseFinish,
             ObservationAction
         );
     };
@@ -1669,7 +1627,6 @@ impl AgentHook for HookStack {
         on_text_delta, text_delta, TextDelta, ObservationAction;
         on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
         on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction;
-        on_stream_response_finish, stream_response_finish, StreamResponseFinish, ObservationAction;
     }
     async fn on_invalid_tool_call(
         &self,
@@ -1719,6 +1676,3 @@ impl AgentHook for HookStack {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod migrated_tests;

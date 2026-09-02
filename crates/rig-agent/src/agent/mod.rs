@@ -103,10 +103,12 @@
 //! ```
 mod builder;
 mod completion;
+mod engine;
 pub mod hook;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
+mod telemetry;
 mod tool;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
@@ -122,8 +124,8 @@ pub use hook::{
     HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
     ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
     RetryRequest, RunEntry, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
-    SettledOutcome, StepEventKind, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction,
-    ToolCallDelta, ToolResultAction, ToolResultEvent,
+    SettledOutcome, StepEventKind, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
+    ToolResultAction, ToolResultEvent,
 };
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingPromptRequest,

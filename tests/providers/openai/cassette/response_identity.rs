@@ -204,7 +204,7 @@ async fn streamed_agent_run_reports_identity() {
             let turns = probe.turn_identities();
             assert_eq!(turns.len(), 1);
             assert_request_id(turns[0].provider_request_id.as_deref(), "streamed turn");
-            let finishes = probe.stream_finish_identities();
+            let finishes = probe.response_identities();
             assert_eq!(finishes.len(), 1);
             assert_eq!(finishes[0], turns[0]);
         },

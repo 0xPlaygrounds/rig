@@ -104,7 +104,7 @@ impl AgentHook for ExtractorResponseCapture {
             event.prompt.clone(),
             event.content.clone(),
             event.usage,
-            event.message_id.map(str::to_owned),
+            event.identity.message_id.clone(),
         ));
         ObservationAction::continue_run()
     }

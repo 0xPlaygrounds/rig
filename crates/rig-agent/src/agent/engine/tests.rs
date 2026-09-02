@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use crate::agent::{
     CompletionCallAction, CompletionCallEvent, HookStack, InvalidToolCallAction,
     InvalidToolCallContext, ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta,
-    StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
-    ToolResultEvent,
+    TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
 
 use std::sync::{
@@ -51,8 +50,7 @@ struct RecordingHook {
 
 impl RecordingHook {
     /// Event kinds that should be identical across streaming and
-    /// non-streaming (excludes the medium-specific delta / response-finish
-    /// events).
+    /// non-streaming (excludes the streaming-only delta events).
     fn shared_events(&self) -> Vec<StepEventKind> {
         self.events
             .lock()
@@ -63,6 +61,7 @@ impl RecordingHook {
                 matches!(
                     kind,
                     StepEventKind::CompletionCall
+                        | StepEventKind::CompletionResponse
                         | StepEventKind::ToolCall
                         | StepEventKind::ToolResult
                         | StepEventKind::InvalidToolCall
@@ -76,7 +75,7 @@ impl RecordingHook {
     }
 
     /// Count of a single event kind across the whole run, including the
-    /// medium-specific response-finish events that `shared_events` excludes.
+    /// streaming-only delta events that `shared_events` excludes.
     fn count(&self, kind: StepEventKind) -> usize {
         self.events
             .lock()
@@ -158,14 +157,6 @@ impl AgentHook for RecordingHook {
         self.record(StepEventKind::ToolCallDelta);
         ObservationAction::continue_run()
     }
-    async fn on_stream_response_finish(
-        &self,
-        _: &HookContext,
-        _: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        self.record(StepEventKind::StreamResponseFinish);
-        ObservationAction::continue_run()
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -176,10 +167,11 @@ struct CanonicalResponseSnapshot {
     message_id: Option<String>,
 }
 
+/// Records every `CompletionResponse` (both drivers) and every committed
+/// `ModelTurnFinished` content.
 #[derive(Clone, Default)]
 struct CanonicalResponseHook {
-    blocking: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
-    streaming: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
+    responses: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
     committed: Arc<Mutex<Vec<Vec<AssistantContent>>>>,
 }
 
@@ -189,31 +181,14 @@ impl AgentHook for CanonicalResponseHook {
         _ctx: &HookContext,
         event: crate::agent::hook::CompletionResponse<'_>,
     ) -> ObservationAction {
-        self.blocking
+        self.responses
             .lock()
-            .expect("blocking snapshots")
+            .expect("response snapshots")
             .push(CanonicalResponseSnapshot {
                 prompt: event.prompt.clone(),
                 content: event.content.clone(),
                 usage: event.usage,
-                message_id: event.message_id.map(str::to_owned),
-            });
-        ObservationAction::continue_run()
-    }
-
-    async fn on_stream_response_finish(
-        &self,
-        _ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        self.streaming
-            .lock()
-            .expect("streaming snapshots")
-            .push(CanonicalResponseSnapshot {
-                prompt: event.prompt.clone(),
-                content: event.content.clone(),
-                usage: event.usage,
-                message_id: event.message_id.map(str::to_owned),
+                message_id: event.identity.message_id.clone(),
             });
         ObservationAction::continue_run()
     }
@@ -247,10 +222,10 @@ impl FinishLifecycleHook {
 }
 
 impl AgentHook for FinishLifecycleHook {
-    async fn on_stream_response_finish(
+    async fn on_completion_response(
         &self,
         _ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
+        event: crate::agent::hook::CompletionResponse<'_>,
     ) -> ObservationAction {
         self.snapshots
             .lock()
@@ -259,7 +234,7 @@ impl AgentHook for FinishLifecycleHook {
                 prompt: event.prompt.clone(),
                 content: event.content.clone(),
                 usage: event.usage,
-                message_id: event.message_id.map(str::to_owned),
+                message_id: event.identity.message_id.clone(),
             });
         if self.stop.load(SeqCst) {
             ObservationAction::stop("stop at stream EOF")
@@ -294,33 +269,6 @@ fn canonical_usage() -> Usage {
     }
 }
 
-#[tokio::test]
-async fn blocking_completion_response_hook_receives_canonical_fields() {
-    let hook = CanonicalResponseHook::default();
-    let prompt = Message::user("canonical prompt");
-    AgentBuilder::new(MockCompletionModel::new([MockTurn::text(
-        "canonical response",
-    )
-    .with_usage(canonical_usage())
-    .with_message_id("msg-canonical")]))
-    .add_hook(hook.clone())
-    .build()
-    .runner(prompt.clone())
-    .run()
-    .await
-    .expect("blocking response");
-
-    assert_eq!(
-        *hook.blocking.lock().expect("blocking snapshots"),
-        [CanonicalResponseSnapshot {
-            prompt,
-            content: vec![AssistantContent::text("canonical response")],
-            usage: canonical_usage(),
-            message_id: Some("msg-canonical".to_string()),
-        }]
-    );
-}
-
 /// One hook observation per completed model call carries the attempt's
 /// full identity triple, and the run's `completion_calls` record it
 /// per-attempt (mock-model unit test; the live header-capture halves are
@@ -341,7 +289,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
             event: crate::agent::hook::CompletionResponse<'_>,
         ) -> ObservationAction {
             self.seen.lock().expect("identity snapshots").push((
-                event.message_id.map(str::to_owned),
+                event.identity.message_id.clone(),
                 event.identity.response_id.clone(),
                 event.identity.provider_request_id.clone(),
             ));
@@ -431,13 +379,13 @@ async fn failed_attempt_error_carries_its_own_request_id() {
     );
 }
 
-/// Hook capturing every `ModelTurnFinished` identity plus whether a
-/// `StreamResponseFinish` fired — the cross-surface "every completed
+/// Hook capturing every `ModelTurnFinished` identity plus every
+/// `CompletionResponse` identity — the cross-surface "every completed
 /// call" observer #2265 requires.
 #[derive(Clone, Default)]
 struct TurnIdentityHook {
     turns: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
-    stream_finishes: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
+    responses: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
 }
 
 impl AgentHook for TurnIdentityHook {
@@ -453,14 +401,14 @@ impl AgentHook for TurnIdentityHook {
         ModelTurnAction::continue_run()
     }
 
-    async fn on_stream_response_finish(
+    async fn on_completion_response(
         &self,
         _ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
+        event: crate::agent::hook::CompletionResponse<'_>,
     ) -> ObservationAction {
-        self.stream_finishes
+        self.responses
             .lock()
-            .expect("stream finish identities")
+            .expect("response identities")
             .push(event.identity.clone());
         ObservationAction::continue_run()
     }
@@ -518,10 +466,10 @@ async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     assert_eq!(request_ids, call_ids);
 }
 
-/// Streamed surface: a tool-only turn fires no `StreamResponseFinish`
-/// (that event is text-turn-scoped by design) but its `ModelTurnFinished`
-/// carries full identity — so an observer of that one event still records
-/// every completed call. The two turns report distinct per-attempt ids.
+/// Streamed surface: a tool-only turn and the following text turn each
+/// fire `CompletionResponse` and `ModelTurnFinished` with full identity —
+/// so an observer of either event records every completed call. The two
+/// turns report distinct per-attempt ids.
 #[tokio::test]
 async fn model_turn_finished_identity_streamed_tool_only_and_text() {
     let hook = TurnIdentityHook::default();
@@ -562,21 +510,19 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
         ],
         "streamed tool-only and text turns each carry their own identity"
     );
-    let finishes = hook.stream_finishes.lock().expect("finishes").clone();
+    let responses = hook.responses.lock().expect("responses").clone();
+    let response_ids: Vec<_> = responses
+        .iter()
+        .map(|identity| identity.provider_request_id.clone())
+        .collect();
     assert_eq!(
-        finishes.len(),
-        1,
-        "StreamResponseFinish stays text-turn-scoped; the tool-only turn fires none"
-    );
-    assert_eq!(
-        finishes[0].provider_request_id.as_deref(),
-        Some("req-stream-2"),
-        "the text turn's finish event carries that turn's identity"
+        response_ids, request_ids,
+        "CompletionResponse fires for the tool-only turn too, each carrying its own identity"
     );
 }
 
 /// A reasoning-only streamed turn (no text, no tool calls) also fires
-/// `ModelTurnFinished` with identity.
+/// `CompletionResponse` and `ModelTurnFinished` with identity.
 #[tokio::test]
 async fn model_turn_finished_identity_streamed_reasoning_only() {
     let hook = TurnIdentityHook::default();
@@ -601,9 +547,15 @@ async fn model_turn_finished_identity_streamed_reasoning_only() {
         Some("req-reasoning-only")
     );
     assert_eq!(turns[0].response_id.as_deref(), Some("resp-reasoning-only"));
-    assert!(
-        hook.stream_finishes.lock().expect("finishes").is_empty(),
-        "a reasoning-only turn streams no text, so no StreamResponseFinish"
+    let responses = hook.responses.lock().expect("responses").clone();
+    assert_eq!(
+        responses.len(),
+        1,
+        "a reasoning-only turn fires CompletionResponse once"
+    );
+    assert_eq!(
+        responses[0].provider_request_id.as_deref(),
+        Some("req-reasoning-only")
     );
 }
 
@@ -669,12 +621,10 @@ async fn retried_turn_reports_the_retried_attempts_own_identity() {
 // ---------------------------------------------------------------------
 
 /// Hook capturing the `raw` payload from every event that carries one:
-/// `CompletionResponse` (blocking), `StreamResponseFinish` (streamed text
-/// turns), and the medium-neutral `ModelTurnFinished` (both surfaces).
+/// `CompletionResponse` and `ModelTurnFinished` (both surfaces).
 #[derive(Clone, Default)]
 struct RawCaptureHook {
     completion_responses: Arc<Mutex<Vec<serde_json::Value>>>,
-    stream_finishes: Arc<Mutex<Vec<serde_json::Value>>>,
     turns: Arc<Mutex<Vec<serde_json::Value>>>,
 }
 
@@ -683,13 +633,6 @@ impl RawCaptureHook {
         self.completion_responses
             .lock()
             .expect("completion response raws")
-            .clone()
-    }
-
-    fn stream_finishes(&self) -> Vec<serde_json::Value> {
-        self.stream_finishes
-            .lock()
-            .expect("stream finish raws")
             .clone()
     }
 
@@ -707,18 +650,6 @@ impl AgentHook for RawCaptureHook {
         self.completion_responses
             .lock()
             .expect("completion response raws")
-            .push(event.raw.clone());
-        ObservationAction::continue_run()
-    }
-
-    async fn on_stream_response_finish(
-        &self,
-        _ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        self.stream_finishes
-            .lock()
-            .expect("stream finish raws")
             .push(event.raw.clone());
         ObservationAction::continue_run()
     }
@@ -787,15 +718,11 @@ async fn hook_events_carry_raw_blocking() {
 
     assert_eq!(hook.completion_responses(), std::slice::from_ref(&payload));
     assert_eq!(hook.turns(), std::slice::from_ref(&payload));
-    assert!(
-        hook.stream_finishes().is_empty(),
-        "StreamResponseFinish is a streamed-surface event"
-    );
     assert_eq!(call_raws(&response.completion_calls), [payload]);
 }
 
-/// Streamed surface: `StreamResponseFinish` (the text turn's) and
-/// `ModelTurnFinished` both see the terminal record the mock scripted,
+/// Streamed surface: `CompletionResponse` and `ModelTurnFinished` both
+/// see the terminal record the mock scripted,
 /// and so do the recorded call and the forwarded
 /// `StreamedAssistantContent::Final` — again with no opt-in anywhere.
 #[tokio::test]
@@ -824,12 +751,8 @@ async fn hook_events_carry_raw_streamed() {
         }
     }
 
-    assert_eq!(hook.stream_finishes(), std::slice::from_ref(&expected));
+    assert_eq!(hook.completion_responses(), std::slice::from_ref(&expected));
     assert_eq!(hook.turns(), std::slice::from_ref(&expected));
-    assert!(
-        hook.completion_responses().is_empty(),
-        "CompletionResponse is a blocking-surface event"
-    );
     assert_eq!(finals, std::slice::from_ref(&expected));
     let response = final_response.expect("run final response");
     assert_eq!(call_raws(&response.completion_calls), [expected]);
@@ -871,9 +794,9 @@ async fn completion_calls_carry_each_attempts_own_raw_blocking() {
 /// Streamed multi-turn tool run: the tool-only turn and the text turn
 /// carry two *different* terminal records; `completion_calls` (both the
 /// forwarded items and the final response's record) carry each attempt's
-/// own, `ModelTurnFinished` agrees for both, `StreamResponseFinish` fires
-/// for the text turn only with that turn's payload, and the single
-/// forwarded `StreamedAssistantContent::Final` carries the final turn's.
+/// own, `CompletionResponse` and `ModelTurnFinished` agree for both, and
+/// the single forwarded `StreamedAssistantContent::Final` carries the
+/// final turn's.
 #[tokio::test]
 async fn completion_calls_carry_each_attempts_own_raw_streamed() {
     let first_terminal = stream_final_for_attempt("stream-1", 1);
@@ -928,12 +851,12 @@ async fn completion_calls_carry_each_attempts_own_raw_streamed() {
         [first.clone(), second.clone()],
         "the forwarded CompletionCall items agree with the final record"
     );
-    assert_eq!(hook.turns(), [first, second.clone()]);
     assert_eq!(
-        hook.stream_finishes(),
-        std::slice::from_ref(&second),
-        "StreamResponseFinish stays text-turn-scoped and carries that turn's payload"
+        hook.completion_responses(),
+        [first.clone(), second.clone()],
+        "CompletionResponse fires for the tool-only turn too, carrying that turn's payload"
     );
+    assert_eq!(hook.turns(), [first, second.clone()]);
     assert_eq!(
         finals,
         [second],
@@ -1000,7 +923,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_blocking() {
 }
 
 /// Streamed: the same retry, same guarantee — the retried attempt's
-/// `ModelTurnFinished`, `StreamResponseFinish`, and recorded call carry
+/// `ModelTurnFinished`, `CompletionResponse`, and recorded call carry
 /// its own terminal record, and the one forwarded Final (the rejected
 /// attempt's is suppressed) is the accepted attempt's.
 #[tokio::test]
@@ -1053,9 +976,9 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
     );
     assert_eq!(probe.turns(), [first.clone(), second.clone()]);
     assert_eq!(
-        probe.stream_finishes(),
+        probe.completion_responses(),
         [first.clone(), second.clone()],
-        "each attempt's finish event carries its own terminal record"
+        "each attempt's response event carries its own terminal record"
     );
     assert_eq!(
         call_raws(&response.completion_calls),
@@ -1115,54 +1038,40 @@ async fn message_id_is_promoted_into_history() {
     assert_eq!(assistant_ids, [Some("msg_abc".to_string())]);
 }
 
+/// The streamed `CompletionResponse` carries the same canonical fields the
+/// blocking driver reports: the prompt, the assembled content, the usage
+/// and the provider message id.
 #[tokio::test]
-async fn streaming_response_finish_matches_blocking_canonical_fields() {
+async fn streaming_completion_response_receives_canonical_fields() {
     let prompt = Message::user("canonical prompt");
-    let blocking_hook = CanonicalResponseHook::default();
-    AgentBuilder::new(MockCompletionModel::new([MockTurn::text(
-        "canonical response",
-    )
-    .with_usage(canonical_usage())
-    .with_message_id("msg-canonical")]))
-    .add_hook(blocking_hook.clone())
-    .build()
-    .runner(prompt.clone())
-    .run()
-    .await
-    .expect("blocking response");
-
-    let streaming_hook = CanonicalResponseHook::default();
+    let hook = CanonicalResponseHook::default();
     let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
         MockStreamEvent::message_id("msg-canonical"),
     ]]))
-    .add_hook(streaming_hook.clone())
+    .add_hook(hook.clone())
     .build()
-    .runner(prompt)
+    .runner(prompt.clone())
     .stream()
     .await;
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
 
-    let blocking = blocking_hook
-        .blocking
-        .lock()
-        .expect("blocking snapshots")
-        .clone();
-    let streaming = streaming_hook
-        .streaming
-        .lock()
-        .expect("streaming snapshots")
-        .clone();
-    assert_eq!(streaming, blocking);
-    assert_eq!(streaming[0].usage, canonical_usage());
-    assert_eq!(streaming[0].message_id.as_deref(), Some("msg-canonical"));
+    assert_eq!(
+        *hook.responses.lock().expect("response snapshots"),
+        [CanonicalResponseSnapshot {
+            prompt,
+            content: vec![AssistantContent::text("canonical response")],
+            usage: canonical_usage(),
+            message_id: Some("msg-canonical".to_string()),
+        }]
+    );
 }
 
 #[tokio::test]
-async fn streaming_response_finish_without_provider_message_id_reports_none() {
+async fn streaming_completion_response_without_provider_message_id_reports_none() {
     let hook = FinishLifecycleHook::default();
     let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("canonical response"),
@@ -1183,7 +1092,7 @@ async fn streaming_response_finish_without_provider_message_id_reports_none() {
 }
 
 #[tokio::test]
-async fn streaming_response_finish_runs_before_buffered_final_is_exposed() {
+async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     let hook = FinishLifecycleHook::default();
     let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("canonical response"),
@@ -1218,8 +1127,12 @@ async fn streaming_response_finish_runs_before_buffered_final_is_exposed() {
     assert_eq!(hook.model_turns.load(SeqCst), 1);
 }
 
+/// A stop from the response hook settles the turn exactly like a stop from
+/// `on_model_turn_finished`: the provider's completed turn stays visible (its
+/// buffered final is surfaced before the cancellation), the run produces no
+/// response, and the canonical turn hook never runs.
 #[tokio::test]
-async fn streaming_response_finish_stop_suppresses_final_and_turn_commit() {
+async fn streaming_completion_response_stop_preserves_provider_final() {
     let hook = FinishLifecycleHook::stopping();
     let prompt = Message::user("canonical prompt");
     let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
@@ -1246,7 +1159,10 @@ async fn streaming_response_finish_stop_suppresses_final_and_turn_commit() {
         }
     }
 
-    assert!(!saw_provider_final, "the buffered final must remain hidden");
+    assert!(
+        saw_provider_final,
+        "the completed provider turn's buffered final is surfaced before the stop"
+    );
     assert!(
         !saw_run_final,
         "the cancelled run must not produce a response"
@@ -1448,7 +1364,7 @@ async fn visible_item_after_non_emittable_final_is_rejected() {
 }
 
 #[tokio::test]
-async fn streaming_response_finish_normalizes_interleaved_content() {
+async fn streaming_completion_response_normalizes_interleaved_content() {
     let hook = CanonicalResponseHook::default();
     let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         vec![
@@ -1473,7 +1389,7 @@ async fn streaming_response_finish_normalizes_interleaved_content() {
         item.expect("stream item");
     }
 
-    let snapshots = hook.streaming.lock().expect("streaming snapshots");
+    let snapshots = hook.responses.lock().expect("response snapshots");
     let committed = hook.committed.lock().expect("committed snapshots");
     let kinds = snapshots[0]
         .content
@@ -1737,8 +1653,8 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     assert_eq!(blocking.output, "the answer is 5");
     assert_eq!(final_response.output(), blocking.output);
 
-    // Same medium-independent hook event sequence (model call, tool call,
-    // tool result, second model call).
+    // Same medium-independent hook event sequence (model call and its
+    // response, tool call, tool result, second model call and its response).
     assert_eq!(
         blocking_hook.shared_events(),
         streaming_hook.shared_events()
@@ -1747,9 +1663,11 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
         blocking_hook.shared_events(),
         vec![
             StepEventKind::CompletionCall,
+            StepEventKind::CompletionResponse,
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
             StepEventKind::CompletionCall,
+            StepEventKind::CompletionResponse,
         ]
     );
 
@@ -2577,6 +2495,7 @@ mod structured_tool_results {
 /// later refactor onto a shared engine cannot silently drift it. The
 /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
 mod span_safety_net {
+    use crate::agent::telemetry::build_chat_span;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 
@@ -5030,8 +4949,7 @@ async fn run_terminates_from_each_shared_event() {
 }
 
 /// The same fail-closed termination holds for the streaming driver across the
-/// shared events it fires (it surfaces `StreamResponseFinish` instead of
-/// `CompletionResponse`): each yields a stream error and no final response.
+/// shared events it fires: each yields a stream error and no final response.
 #[tokio::test]
 async fn stream_terminates_from_each_shared_event() {
     for kind in [
@@ -5105,9 +5023,11 @@ async fn multi_hook_stack_parity_across_run_and_stream() {
         a_block.shared_events(),
         vec![
             StepEventKind::CompletionCall,
+            StepEventKind::CompletionResponse,
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
             StepEventKind::CompletionCall,
+            StepEventKind::CompletionResponse,
         ]
     );
     assert_eq!(blocking.output, "the answer is 5");
@@ -5655,16 +5575,13 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
 }
 
 /// A turn that streams *text and* an invalid tool call, then is repaired, is
-/// a recovered turn: its response-finish hook must be suppressed on BOTH
-/// drivers — `CompletionResponse` under `run()`, `StreamResponseFinish` under
-/// `stream()`. The shared-events parity harness deliberately excludes these
-/// medium-specific events, so this asymmetry needs a dedicated assertion (it
-/// is the exact event the harness cannot see).
+/// a recovered turn: its `CompletionResponse` must be suppressed on BOTH
+/// drivers, `run()` and `stream()` alike.
 #[tokio::test]
-async fn recovered_turn_suppresses_response_finish_hook_on_both_drivers() {
+async fn recovered_turn_suppresses_completion_response_on_both_drivers() {
     // Turn 1 emits text then an invalid tool call (repaired to "add"); turn 2
     // is a plain final-text turn whose response event DOES fire on both
-    // drivers — so a correct run sees exactly one response-finish event.
+    // drivers — so a correct run sees exactly one CompletionResponse.
     let blocking_model = MockCompletionModel::from_turns([
         MockTurn::from_contents([
             AssistantContent::text("let me compute that"),
@@ -5721,22 +5638,16 @@ async fn recovered_turn_suppresses_response_finish_hook_on_both_drivers() {
         "the recovered turn must not fire CompletionResponse"
     );
     // Streaming: the recovered turn 1 must likewise suppress
-    // `StreamResponseFinish` (without the fix this is 2).
+    // `CompletionResponse` (without the fix this is 2).
     assert_eq!(
-        streaming_hook.count(StepEventKind::StreamResponseFinish),
+        streaming_hook.count(StepEventKind::CompletionResponse),
         1,
-        "the recovered turn must not fire StreamResponseFinish"
-    );
-    // Stated as parity: the count of un-suppressed response-finish events is
-    // the same across drivers.
-    assert_eq!(
-        blocking_hook.count(StepEventKind::CompletionResponse),
-        streaming_hook.count(StepEventKind::StreamResponseFinish),
+        "the recovered turn must not fire CompletionResponse on the streaming driver"
     );
 
     // The normalized per-turn `ModelTurnFinished` is suppressed on the
     // recovered turn 1 on BOTH surfaces too (its own guard, separate from the
-    // medium-specific response-finish guards above), so only the accepted turn
+    // response guard above), so only the accepted turn
     // 2 fires it — count is 1, not 2, on each driver. Without the suppression
     // this would be 2, and a per-turn accounting hook would double-count the
     // recovered turn.
@@ -7260,8 +7171,8 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
     );
 }
 
-/// `ModelTurnFinished` fires exactly once per accepted turn on both surfaces,
-/// including a streamed tool-only turn that fires no `StreamResponseFinish`.
+/// `ModelTurnFinished` and `CompletionResponse` each fire exactly once per
+/// accepted turn on both surfaces, including a streamed tool-only turn.
 #[tokio::test]
 async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() {
     let blocking_hook = RecordingHook::default();
@@ -7278,6 +7189,11 @@ async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() 
         blocking_hook.count(StepEventKind::ModelTurnFinished),
         2,
         "one ModelTurnFinished per accepted turn (tool turn + text turn)"
+    );
+    assert_eq!(
+        blocking_hook.count(StepEventKind::CompletionResponse),
+        2,
+        "one CompletionResponse per accepted turn (tool turn + text turn)"
     );
 
     let streaming_hook = RecordingHook::default();
@@ -7297,18 +7213,17 @@ async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() 
         2,
         "ModelTurnFinished fires once per turn on the streaming surface too"
     );
-    // The tool-only first turn streams no assistant text, so only the second
-    // (text) turn fires StreamResponseFinish — proving ModelTurnFinished
-    // covers the gap.
+    // The tool-only first turn streams no assistant text, but it is still an
+    // accepted model turn: it fires CompletionResponse like the text turn.
     assert_eq!(
-        streaming_hook.count(StepEventKind::StreamResponseFinish),
-        1,
-        "the tool-only turn fires no StreamResponseFinish"
+        streaming_hook.count(StepEventKind::CompletionResponse),
+        2,
+        "the tool-only turn fires CompletionResponse on the streaming surface too"
     );
 }
 
 #[tokio::test]
-async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
+async fn reasoning_only_turn_fires_completion_response() {
     let hook = RecordingHook::default();
     let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning_delta("think"),
@@ -7325,9 +7240,9 @@ async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
     }
 
     assert_eq!(
-        hook.count(StepEventKind::StreamResponseFinish),
-        0,
-        "reasoning-only turns must not fire StreamResponseFinish"
+        hook.count(StepEventKind::CompletionResponse),
+        1,
+        "a reasoning-only turn fires CompletionResponse once"
     );
     assert_eq!(
         hook.count(StepEventKind::ModelTurnFinished),
@@ -9414,11 +9329,11 @@ async fn response_retry_preserves_model_turn_hook_order_across_surfaces() {
         vec![
             StepEventKind::CompletionCall,
             StepEventKind::TextDelta,
-            StepEventKind::StreamResponseFinish,
+            StepEventKind::CompletionResponse,
             StepEventKind::ModelTurnFinished,
             StepEventKind::CompletionCall,
             StepEventKind::TextDelta,
-            StepEventKind::StreamResponseFinish,
+            StepEventKind::CompletionResponse,
             StepEventKind::ModelTurnFinished,
         ]
     );

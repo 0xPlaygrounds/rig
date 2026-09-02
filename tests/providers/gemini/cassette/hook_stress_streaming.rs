@@ -1,6 +1,8 @@
 //! Hook-system stress suite: streaming lifecycle and blocking-vs-streaming
-//! parity — `TextDelta` / `StreamResponseFinish` / `ModelTurnFinished` on the
-//! streaming surface, `ToolResultAction::Rewrite` redaction reaching the `FinalResponse`,
+//! parity — `TextDelta` / `CompletionResponse` / `ModelTurnFinished` on the
+//! streaming surface (`CompletionResponse` fires once per accepted turn on
+//! both drivers, tool-only turns included), `ToolResultAction::Rewrite`
+//! redaction reaching the `FinalResponse`,
 //! `active_tools` narrowing and `Skip` on the streaming driver, and the same
 //! workflow producing the same answer on both surfaces. Recorded against real
 //! Gemini.
@@ -52,12 +54,17 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 "a streamed text turn must emit TextDelta events"
             );
             assert!(
-                probe.count("StreamResponseFinish") >= 1,
-                "a streamed text turn must emit StreamResponseFinish"
+                probe.count("CompletionResponse") >= 1,
+                "a streamed text turn must emit CompletionResponse once the stream is assembled"
             );
             assert!(
                 probe.count("ModelTurnFinished") >= 1,
                 "ModelTurnFinished must fire on the streaming surface"
+            );
+            assert_eq!(
+                probe.count("CompletionResponse"),
+                probe.count("ModelTurnFinished"),
+                "CompletionResponse and ModelTurnFinished fire once per accepted turn"
             );
         },
     )
@@ -106,6 +113,12 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 probe.count("ModelTurnFinished") >= 2,
                 "ModelTurnFinished must fire once per accepted turn on the streaming surface, \
                  including tool turns"
+            );
+            assert_eq!(
+                probe.count("CompletionResponse"),
+                probe.count("ModelTurnFinished"),
+                "CompletionResponse fires once per accepted turn on the streaming surface, \
+                 tool-only turns included"
             );
         },
     )
