@@ -107,8 +107,6 @@ pub use replay::EffectLogReplayer;
 
 use std::sync::Arc;
 
-use futures::channel::mpsc;
-
 use crate::effect::HandlerKey;
 
 /// Constructors for a bus.
@@ -124,14 +122,9 @@ impl Bus {
 
     /// A bus with an explicit config.
     pub fn channel_with(config: BusConfig) -> (Dispatcher, BusDriver) {
-        let (tx, rx) = mpsc::channel(config.command_capacity);
-        let shared = Arc::new(dispatcher::Shared::new());
-        let dispatcher = Dispatcher {
-            tx,
-            shared: shared.clone(),
-            stream_capacity: config.stream_capacity.max(1),
-        };
-        let driver = BusDriver::new(rx, shared, config);
+        let shared = Arc::new(dispatcher::Shared::new(config.command_capacity));
+        let dispatcher = Dispatcher::open(shared.clone(), config.stream_capacity.max(1));
+        let driver = BusDriver::new(shared, config);
         (dispatcher, driver)
     }
 
