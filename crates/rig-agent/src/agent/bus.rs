@@ -2,10 +2,12 @@
 //! the agent drives inline while a run is awaited, and the recorder that
 //! taps it.
 //!
-//! **Whoever holds the driver drives.** An agent built with
-//! [`AgentBuilder::new`](super::AgentBuilder::new) holds its own driver and
-//! drives it for the life of every run it produces ([`AgentBus::drive`]);
-//! it never hands its dispatcher out on its own — [`Agent::into_parts`]
+//! **Whoever holds the driver drives — and whoever is awaiting a run holds
+//! it.** An agent built with [`AgentBuilder::new`](super::AgentBuilder::new)
+//! owns its driver, and every run it produces polls that driver whenever
+//! the run is pending ([`AgentBus::drive`], [`Driven`]); no run owns the
+//! driver for longer than one poll. The agent never hands its dispatcher
+//! out on its own — [`Agent::into_parts`]
 //! (super::Agent::into_parts) moves the driver out together with it. An
 //! agent built over a host's bus ([`AgentBuilder::over_bus`]
 //! (super::AgentBuilder::over_bus)) holds no driver: the host drives.
@@ -14,15 +16,12 @@ use std::{
     pin::Pin,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
-    task::{Context, Poll},
+    task::{Context, Poll, Wake, Waker},
 };
 
-use futures::{
-    Stream,
-    lock::{Mutex, OwnedMutexGuard, OwnedMutexLockFuture},
-};
+use futures::{Stream, lock::Mutex};
 use rig_core::{
     bus::{BusDriver, Dispatcher, EffectLogRecorder, adapters::CompletionAdapter, model_key},
     completion::{CompletionModel, ModelRef},
@@ -37,6 +36,8 @@ pub(crate) struct AgentBus {
     /// concurrent runs on clones of one agent take turns driving: the run
     /// holding the guard serves every run's dispatches.
     driver: Option<Arc<Mutex<BusDriver>>>,
+    /// The wakers of every live run; see [`Driven`].
+    wakers: Arc<WakerSet>,
     recorder: Option<EffectLogRecorder>,
     anonymous_models: Arc<AtomicUsize>,
 }
@@ -55,6 +56,7 @@ impl AgentBus {
         Self {
             dispatcher,
             driver: Some(Arc::new(Mutex::new(driver))),
+            wakers: Arc::new(WakerSet::default()),
             recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
         }
@@ -75,6 +77,7 @@ impl AgentBus {
         Self {
             dispatcher,
             driver: None,
+            wakers: Arc::new(WakerSet::default()),
             recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
         }
@@ -138,50 +141,68 @@ impl AgentBus {
     /// Drive the agent's driver for as long as `inner` runs: every poll of
     /// the returned stream that leaves `inner` pending polls the driver too,
     /// so every dispatch the run makes — from the engine, a hook, a tool —
-    /// is served by the run awaiting it. Over a host's bus this is `inner`
+    /// is served by a run awaiting it. Over a host's bus this is `inner`
     /// unchanged.
     pub(crate) fn drive<S>(&self, inner: S) -> Driven<S> {
         Driven {
             inner: Some(inner),
             driver: self.driver.clone(),
-            lock: None,
-            guard: None,
+            wakers: Arc::clone(&self.wakers),
+            slot: self.wakers.slot(),
         }
     }
 }
 
 /// A stream that drives the agent's bus driver whenever it is pending.
+///
+/// **Whoever is awaiting drives.** The driver sits behind a mutex that is
+/// only ever held for the duration of one synchronous poll: every `Driven`
+/// that is polled and finds its run pending takes the lock if it is free,
+/// polls the driver once, and releases it. A `Driven` that finds the lock
+/// taken is being polled from *inside* another `Driven`'s driver poll (a
+/// tool that runs a nested prompt on a clone) and simply yields — the
+/// poll in progress serves its dispatches too.
+///
+/// The driver is polled with a waker that wakes *every* live `Driven` on
+/// this bus, so progress inside the driver (a provider reply, a timer, a
+/// channel send) reaches whichever run is awaiting it, even when the run
+/// that last polled the driver has since finished or been dropped. That is
+/// what keeps a finished stream in scope, two streams polled alternately,
+/// and a `prompt()` awaited inside a `while let` over a stream from
+/// starving each other: none of them owns the driver.
 pub(crate) struct Driven<S> {
-    /// `None` only while dropping: the run is released before the driver's
-    /// last poll, so its abandoned dispatches read as cancelled.
+    /// `None` once the run finished or while dropping: the run is released
+    /// before the driver's last poll, so its abandoned dispatches read as
+    /// cancelled.
     inner: Option<S>,
+    /// The agent's driver, when it owns one. Over a host's bus this is
+    /// `None` and the wrapper is `inner` unchanged.
     driver: Option<Arc<Mutex<BusDriver>>>,
-    lock: Option<OwnedMutexLockFuture<BusDriver>>,
-    guard: Option<OwnedMutexGuard<BusDriver>>,
+    /// The bus-wide set of wakers the driver is polled with.
+    wakers: Arc<WakerSet>,
+    /// This run's slot in `wakers`.
+    slot: u64,
 }
 
 impl<S> Driven<S> {
-    fn poll_driver(&mut self, cx: &mut Context<'_>) {
+    /// The run is over: it neither drives nor needs waking any more.
+    fn finish(&mut self) {
+        self.inner = None;
+        self.wakers.unregister(self.slot);
+    }
+
+    /// Register `cx`'s waker so driver progress under any other run's poll
+    /// wakes this one, then poll the driver once if nobody else is polling
+    /// it right now.
+    fn poll_driver(&mut self, cx: &Context<'_>) {
         let Some(driver) = &self.driver else {
             return;
         };
-        if self.guard.is_none() {
-            if self.lock.is_none() {
-                self.lock = Some(Arc::clone(driver).lock_owned());
-            }
-            let Some(lock) = &mut self.lock else {
-                return;
-            };
-            match Pin::new(lock).poll(cx) {
-                Poll::Ready(guard) => {
-                    self.guard = Some(guard);
-                    self.lock = None;
-                }
-                Poll::Pending => return,
-            }
-        }
-        if let Some(guard) = &mut self.guard {
-            let _ = Pin::new(&mut **guard).poll(cx);
+        self.wakers.register(self.slot, cx.waker());
+        if let Some(mut guard) = driver.try_lock() {
+            let waker = Waker::from(Arc::clone(&self.wakers));
+            let mut driver_cx = Context::from_waker(&waker);
+            let _ = Pin::new(&mut *guard).poll(&mut driver_cx);
         }
     }
 }
@@ -192,12 +213,21 @@ impl<S> Drop for Driven<S> {
         // dispatches drop their cancel guards), then give the driver one last
         // poll so every abandoned dispatch is observed as cancelled now — its
         // handler future (and the provider call or stream inside) drops here
-        // rather than when the next run happens to drive.
-        self.inner = None;
-        if let Some(guard) = &mut self.guard {
-            let waker = futures::task::noop_waker();
-            let mut cx = Context::from_waker(&waker);
-            let _ = Pin::new(&mut **guard).poll(&mut cx);
+        // rather than when the next run happens to drive. The poll uses the
+        // bus-wide waker, never a noop one: the driver's internals must keep
+        // waking the runs that are still live. A run that already finished
+        // has nothing to cancel.
+        let was_live = self.inner.take().is_some();
+        self.wakers.unregister(self.slot);
+        if !was_live {
+            return;
+        }
+        if let Some(driver) = &self.driver
+            && let Some(mut guard) = driver.try_lock()
+        {
+            let waker = Waker::from(Arc::clone(&self.wakers));
+            let mut driver_cx = Context::from_waker(&waker);
+            let _ = Pin::new(&mut *guard).poll(&mut driver_cx);
         }
     }
 }
@@ -211,7 +241,11 @@ impl<S: Stream + Unpin> Stream for Driven<S> {
             return Poll::Ready(None);
         };
         match Pin::new(&mut *inner).poll_next(cx) {
-            Poll::Ready(item) => Poll::Ready(item),
+            Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
+            Poll::Ready(None) => {
+                this.finish();
+                Poll::Ready(None)
+            }
             Poll::Pending => {
                 this.poll_driver(cx);
                 // The driver may have served the reply the inner stream
@@ -219,10 +253,75 @@ impl<S: Stream + Unpin> Stream for Driven<S> {
                 let Some(inner) = &mut this.inner else {
                     return Poll::Ready(None);
                 };
-                Pin::new(&mut *inner).poll_next(cx)
+                match Pin::new(&mut *inner).poll_next(cx) {
+                    Poll::Ready(None) => {
+                        this.finish();
+                        Poll::Ready(None)
+                    }
+                    other => other,
+                }
             }
         }
     }
 }
 
 impl<S: Unpin> Unpin for Driven<S> {}
+
+/// The wakers of every live run on one agent bus. The driver is polled with
+/// a waker built from this set, so its progress wakes every run that may be
+/// waiting on it; each run keeps its own slot current on every poll.
+#[derive(Default)]
+pub(crate) struct WakerSet {
+    slots: std::sync::Mutex<Vec<(u64, Waker)>>,
+    next_slot: AtomicU64,
+}
+
+impl WakerSet {
+    fn slot(&self) -> u64 {
+        self.next_slot.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn register(&self, slot: u64, waker: &Waker) {
+        let mut slots = self
+            .slots
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match slots.iter_mut().find(|(id, _)| *id == slot) {
+            Some((_, existing)) => {
+                if !existing.will_wake(waker) {
+                    existing.clone_from(waker);
+                }
+            }
+            None => slots.push((slot, waker.clone())),
+        }
+    }
+
+    fn unregister(&self, slot: u64) {
+        let mut slots = self
+            .slots
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        slots.retain(|(id, _)| *id != slot);
+    }
+}
+
+impl Wake for WakerSet {
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        // Clone out first: a woken task may poll and re-register on this
+        // same set from another thread.
+        let wakers: Vec<Waker> = self
+            .slots
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .iter()
+            .map(|(_, waker)| waker.clone())
+            .collect();
+        for waker in wakers {
+            waker.wake();
+        }
+    }
+}

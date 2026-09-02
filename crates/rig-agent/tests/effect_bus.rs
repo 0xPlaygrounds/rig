@@ -3,7 +3,10 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -432,6 +435,253 @@ async fn streaming_runs_drive_the_bus_too() {
         }
     }
     assert_eq!(output.as_deref(), Some("streamed over the bus"));
+}
+
+fn streamed_text(text: &str) -> Vec<rig_core::test_utils::MockStreamEvent> {
+    vec![
+        rig_core::test_utils::MockStreamEvent::text(text),
+        rig_core::test_utils::MockStreamEvent::final_response_with_total_tokens(1),
+    ]
+}
+
+async fn drain(stream: &mut rig_agent::agent::StreamingResult) -> Option<String> {
+    let mut output = None;
+    while let Some(item) = within(stream.next()).await {
+        if let rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) = item.expect("item")
+        {
+            output = Some(response.output().to_owned());
+        }
+    }
+    output
+}
+
+// Whoever holds the driver drives — and a run that has *finished* holds
+// nothing. A finished stream its owner keeps in scope must not block the
+// next run on the agent.
+#[tokio::test]
+async fn a_finished_stream_kept_in_scope_does_not_block_the_next_run() {
+    let agent = AgentBuilder::named_model(
+        "stream",
+        MockCompletionModel::from_stream_turns([streamed_text("first")]),
+    )
+    .model_route("unary", MockCompletionModel::text("second"))
+    .build();
+    let mut stream = agent.stream_prompt("go").stream().await;
+    assert_eq!(drain(&mut stream).await.as_deref(), Some("first"));
+    // `stream` is still alive here.
+    let response = within(agent.prompt("again").using_model("unary").run())
+        .await
+        .expect("the finished stream released the driver");
+    assert_eq!(response.output, "second");
+    drop(stream);
+}
+
+#[tokio::test]
+async fn two_streams_polled_alternately_both_complete() {
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        streamed_text("one"),
+        streamed_text("two"),
+    ]))
+    .build();
+    let mut first = agent.stream_prompt("a").stream().await;
+    let mut second = agent.stream_prompt("b").stream().await;
+    let (mut out_first, mut out_second) = (None, None);
+    let (mut done_first, mut done_second) = (false, false);
+    while !(done_first && done_second) {
+        if !done_first {
+            match within(first.next()).await {
+                Some(item) => {
+                    if let rig_agent::agent::MultiTurnStreamItem::FinalResponse(r) =
+                        item.expect("item")
+                    {
+                        out_first = Some(r.output().to_owned());
+                    }
+                }
+                None => done_first = true,
+            }
+        }
+        if !done_second {
+            match within(second.next()).await {
+                Some(item) => {
+                    if let rig_agent::agent::MultiTurnStreamItem::FinalResponse(r) =
+                        item.expect("item")
+                    {
+                        out_second = Some(r.output().to_owned());
+                    }
+                }
+                None => done_second = true,
+            }
+        }
+    }
+    let mut outputs = [out_first.expect("first"), out_second.expect("second")];
+    outputs.sort();
+    assert_eq!(outputs, ["one".to_string(), "two".to_string()]);
+}
+
+#[tokio::test]
+async fn a_prompt_awaited_inside_a_stream_loop_on_a_clone_resolves() {
+    let agent = AgentBuilder::named_model(
+        "stream",
+        MockCompletionModel::from_stream_turns([streamed_text("outer")]),
+    )
+    .model_route("unary", MockCompletionModel::text("inner"))
+    .build();
+    let clone = agent.clone();
+    let mut stream = agent.stream_prompt("go").stream().await;
+    let mut inner = None;
+    let mut outer = None;
+    while let Some(item) = within(stream.next()).await {
+        if let rig_agent::agent::MultiTurnStreamItem::FinalResponse(r) = item.expect("item") {
+            outer = Some(r.output().to_owned());
+        }
+        if inner.is_none() {
+            // The outer run holds the driver; the clone's run queues on it
+            // and is served by the outer run's polling.
+            let response = within(clone.prompt("nested").using_model("unary").run())
+                .await
+                .expect("the nested run is served by the driving run");
+            inner = Some(response.output);
+        }
+    }
+    assert_eq!(outer.as_deref(), Some("outer"));
+    assert_eq!(inner.as_deref(), Some("inner"));
+}
+
+/// A tool that never answers; its drop is the observable cancellation.
+#[derive(Clone, Default)]
+struct Hanging {
+    dropped: Arc<AtomicBool>,
+}
+
+struct DropFlag(Arc<AtomicBool>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+impl Tool for Hanging {
+    const NAME: &'static str = "hanging";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "never answers".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: serde_json::Value,
+    ) -> Result<String, Self::Error> {
+        let _flag = DropFlag(self.dropped.clone());
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        Ok("never".into())
+    }
+}
+
+fn one_tool_call(name: &str) -> MockCompletionModel {
+    MockCompletionModel::from_turns([
+        MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
+            rig_core::message::ToolCall::from_wire(
+                "tc-1",
+                rig_core::message::ToolFunction::new(name.to_owned(), json!({})),
+            ),
+        )]),
+        MockTurn::text("done"),
+    ])
+}
+
+#[tokio::test]
+async fn a_run_dropped_mid_flight_cancels_the_tool_immediately() {
+    let tool = Hanging::default();
+    let agent = AgentBuilder::new(one_tool_call("hanging"))
+        .tool(tool.clone())
+        .build();
+    let run = agent.prompt("go").max_turns(2).run();
+    // Dropping the timed-out future drops the run mid-tool.
+    let timed_out = tokio::time::timeout(Duration::from_millis(50), run)
+        .await
+        .is_err();
+    assert!(timed_out, "the tool never answers");
+    assert!(
+        tool.dropped.load(Ordering::SeqCst),
+        "dropping the run gave the driver its last poll and the tool future was dropped with it"
+    );
+    // The agent is usable afterwards: nothing holds the driver.
+    let again = AgentBuilder::new(MockCompletionModel::text("fresh")).build();
+    let _ = again;
+    let response = within(agent.prompt("again").max_turns(1).run()).await;
+    // The scripted model has one turn left ("done") for this run.
+    assert_eq!(response.expect("run after a dropped one").output, "done");
+}
+
+/// A tool that runs a nested prompt on a clone of the agent it belongs to.
+#[derive(Clone, Default)]
+struct Nested {
+    agent: Arc<OnceLock<Agent>>,
+}
+
+impl Tool for Nested {
+    const NAME: &'static str = "nested";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "asks the agent again".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: serde_json::Value,
+    ) -> Result<String, Self::Error> {
+        let agent = self.agent.get().expect("set after build").clone();
+        let response = agent
+            .prompt("nested")
+            .max_turns(1)
+            .run()
+            .await
+            .map_err(|err| {
+                ToolExecutionError::new(rig_agent::tool::ToolErrorKind::Other, err.to_string())
+            })?;
+        Ok(response.output)
+    }
+}
+
+#[tokio::test]
+async fn a_nested_agent_call_from_a_tool_is_served_by_the_driving_run() {
+    // Script order: the outer turn calls the tool, the nested run takes the
+    // next turn, the outer run's second turn ends it.
+    let tool = Nested::default();
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
+            rig_core::message::ToolCall::from_wire(
+                "tc-1",
+                rig_core::message::ToolFunction::new("nested".to_owned(), json!({})),
+            ),
+        )]),
+        MockTurn::text("inner-done"),
+        MockTurn::text("done"),
+    ]))
+    .tool(tool.clone())
+    .build();
+    tool.agent.set(agent.clone()).ok().expect("unset");
+    let response = within(agent.prompt("go").max_turns(3).run())
+        .await
+        .expect("the nested run is served while the outer run drives");
+    assert_eq!(response.output, "done");
 }
 
 fn _assertions(agent: Agent, driver: BusDriver) {
