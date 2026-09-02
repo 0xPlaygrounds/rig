@@ -133,7 +133,7 @@ client::impl_default_provider_builder!(
     base_url = OLLAMA_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<OllamaExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OllamaExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OllamaBuilder, OllamaApiKey, H>;
 
@@ -233,7 +233,7 @@ impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
 // ---------- Embedding Model ----------
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = crate::http_client::BoxedHttpClient> {
     client: Client<T>,
     pub model: String,
     ndims: usize,
@@ -645,7 +645,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<T> {
+pub struct CompletionModel<T = crate::http_client::BoxedHttpClient> {
     client: Client<T>,
     pub model: String,
 }
@@ -1088,7 +1088,7 @@ impl From<ListModelEntry> for Model {
 
 /// [`ModelLister`] implementation for the Ollama API (`GET /api/tags`).
 #[derive(Clone)]
-pub struct OllamaModelLister<H> {
+pub struct OllamaModelLister<H = crate::http_client::BoxedHttpClient> {
     client: Client<H>,
 }
 

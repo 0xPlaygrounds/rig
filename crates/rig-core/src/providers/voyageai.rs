@@ -42,7 +42,7 @@ client::impl_default_provider_builder!(
     base_url = VOYAGEAI_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<VoyageExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<VoyageExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<VoyageBuilder, VoyageApiKey, H>;
 
@@ -211,7 +211,7 @@ pub struct EmbeddingOptions {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = crate::http_client::BoxedHttpClient> {
     client: Client<T>,
     pub model: String,
     ndims: usize,
@@ -407,7 +407,7 @@ pub struct RerankApiData {
 }
 
 #[derive(Clone)]
-pub struct RerankModel<T> {
+pub struct RerankModel<T = crate::http_client::BoxedHttpClient> {
     client: Client<T>,
     pub model: String,
     pub top_k: Option<usize>,

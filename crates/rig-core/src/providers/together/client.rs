@@ -12,7 +12,7 @@ pub struct TogetherExtBuilder;
 
 type TogetherApiKey = BearerAuth;
 
-pub type Client<H> = client::Client<TogetherExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<TogetherExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<TogetherExtBuilder, TogetherApiKey, H>;
 

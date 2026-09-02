@@ -113,7 +113,7 @@ Rig is split up into multiple crates in a monorepo structure:
 - `crates/rig-derive`: derive macros.
 - `crates/rig-*`: first-party provider, vector-store, memory, and companion integration crates.
 - `examples/*`: workspace example packages.
-- `xtask/`: workspace maintenance tasks, run as `cargo xtask <task>`. This is where anything that *generates* a checked-in file lives, so the file can name the command that produces it and CI can assert it has not drifted. Today: `cargo xtask generate-provider-aliases`, which regenerates `crates/rig-reqwest/src/providers.rs` from rig-core's own rustdoc output. Not a default workspace member, so it is not built by `cargo test`.
+- `xtask/`: workspace maintenance tasks, run as `cargo xtask <task>`. This is where source-tree checks that need a real parser rather than a grep live. Today: `cargo xtask check-test-layout`, which fails on any inline `#[cfg(test)] mod x { }` (test modules are sibling files). Not a default workspace member, so it is not built by `cargo test`.
 - `tests/*.rs`: root integration test targets.
 - `tests/providers/<provider>/`: provider-specific test modules.
 - `tests/cassettes/<provider>/`: committed HTTP cassette fixtures for replayable provider tests.

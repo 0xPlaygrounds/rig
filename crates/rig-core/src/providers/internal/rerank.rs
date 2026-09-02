@@ -115,7 +115,7 @@ impl NormalizeRerankResponse for JinaRerankResponse {
 
 /// A rerank model on a Jina-shaped `/rerank` endpoint.
 #[derive(Clone)]
-pub struct GenericRerankModel<Ext, H> {
+pub struct GenericRerankModel<Ext, H = crate::http_client::BoxedHttpClient> {
     client: Client<Ext, H>,
     /// Identifier the request carries in its `model` field.
     pub model: String,

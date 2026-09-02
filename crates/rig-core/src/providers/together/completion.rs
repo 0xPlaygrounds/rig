@@ -121,7 +121,8 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 // =================================================================
 
 /// Together AI completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H> = openai::completion::GenericCompletionModel<TogetherExt, H>;
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
+    openai::completion::GenericCompletionModel<TogetherExt, H>;
 
 #[cfg(test)]
 mod tests;

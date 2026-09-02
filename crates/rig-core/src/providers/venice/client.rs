@@ -22,7 +22,7 @@ pub struct VeniceBuilder;
 type VeniceApiKey = BearerAuth;
 
 /// Venice client.
-pub type Client<H> = client::Client<VeniceExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<VeniceExt, H>;
 /// Builder for the Venice [`Client`].
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<VeniceBuilder, VeniceApiKey, H>;

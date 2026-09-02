@@ -12,17 +12,18 @@
 //! The bundled `reqwest` transport for Rig.
 //!
 //! `rig-core` is transport-agnostic: every provider client is generic over an
-//! `H: HttpClientExt`, and rig-core itself names no default transport and
-//! depends on neither reqwest nor tokio. This crate supplies:
+//! `H: HttpClientExt`, defaulting to the erased
+//! [`BoxedHttpClient`], and rig-core
+//! itself depends on neither reqwest nor tokio. This crate supplies:
 //!
 //! - [`ReqwestClient`], a newtype over [`reqwest::Client`] implementing
 //!   [`HttpClientExt`] (and, behind the `reqwest-middleware` feature,
 //!   [`ReqwestMiddlewareClient`] over `reqwest_middleware::ClientWithMiddleware`).
-//! - The default-transport conveniences the `rig` facade re-exports:
-//!   [`client::DefaultTransportClient`] / [`client::DefaultTransportBuilder`]
-//!   (so `Client::new(key)`, `Client::from_env()`, `builder().…build()` work
-//!   without naming a transport) and the [`providers`] alias tree (so
-//!   `openai::CompletionModel` means `…<reqwest::Client>` in type position).
+//! - The construction conveniences the `rig` facade re-exports:
+//!   [`client::DefaultTransportClient`] / [`client::DefaultTransportBuilder`],
+//!   which build the erased default over a `ReqwestClient` so
+//!   `Client::new(key)`, `Client::from_env()`, and `builder().…build()` work
+//!   without naming a transport.
 //! # Running without a tokio runtime
 //!
 //! Async reqwest needs a tokio reactor on native targets. Inside a tokio
@@ -146,11 +147,10 @@ impl AsRef<reqwest_middleware::ClientWithMiddleware> for ReqwestMiddlewareClient
 }
 
 pub mod client;
-pub mod providers;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
 
-/// Bring the default-transport traits into scope.
+/// Bring the construction traits into scope.
 pub mod prelude {
     pub use crate::client::{DefaultTransportBuilder, DefaultTransportClient};
 }

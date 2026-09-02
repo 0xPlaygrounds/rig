@@ -5,7 +5,7 @@ pub use crate::providers::openai::responses_api::CompletionResponse;
 use super::client::XAiExt;
 
 /// xAI completion model, driven by the shared Responses implementation.
-pub type CompletionModel<H> =
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     crate::providers::openai::responses_api::GenericResponsesCompletionModel<XAiExt, H>;
 
 /// xAI completion models.

@@ -32,4 +32,5 @@ impl OpenAIEmbeddingsCompatible for VeniceExt {
 
 /// Venice embedding model, driven by the shared OpenAI-compatible
 /// embeddings path.
-pub type EmbeddingModel<T> = GenericEmbeddingModel<VeniceExt, T>;
+pub type EmbeddingModel<T = crate::http_client::BoxedHttpClient> =
+    GenericEmbeddingModel<VeniceExt, T>;

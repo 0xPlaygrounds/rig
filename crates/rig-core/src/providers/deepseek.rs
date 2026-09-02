@@ -130,12 +130,13 @@ client::impl_default_provider_builder!(
     base_url = DEEPSEEK_API_BASE_URL,
 );
 
-pub type Client<H> = client::Client<DeepSeekExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<DeepSeekExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<DeepSeekExtBuilder, DeepSeekApiKey, H>;
 
 /// DeepSeek completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H> = openai::completion::GenericCompletionModel<DeepSeekExt, H>;
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
+    openai::completion::GenericCompletionModel<DeepSeekExt, H>;
 
 /// DeepSeek's provider-native terminal streaming record: the value carried by
 /// the final item of the stream returned by `CompletionModel::raw_stream`.

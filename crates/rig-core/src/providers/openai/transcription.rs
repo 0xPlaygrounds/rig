@@ -126,11 +126,11 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
 }
 
 /// OpenAI transcription model using the shared OpenAI-style implementation.
-pub type TranscriptionModel<T> =
+pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
 /// OpenAI transcription model for a client using Chat Completions.
-pub type CompletionsTranscriptionModel<T> =
+pub type CompletionsTranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<CompletionsClient<T>>;
 
 impl<T> OpenAiTranscriptionClient for Client<T>

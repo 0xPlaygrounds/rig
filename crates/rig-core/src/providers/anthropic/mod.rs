@@ -18,3 +18,5 @@ pub mod model_listing;
 pub mod streaming;
 
 pub use client::{Client, ClientBuilder};
+pub use completion::CompletionModel;
+pub use model_listing::AnthropicModelLister;

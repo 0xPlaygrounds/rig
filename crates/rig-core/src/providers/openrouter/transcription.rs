@@ -70,7 +70,7 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
     }
 }
 
-pub type TranscriptionModel<T> =
+pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
         crate::providers::openrouter::client::OpenRouterExt,
         T,

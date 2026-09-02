@@ -14,7 +14,7 @@ pub struct MistralBuilder;
 
 type MistralApiKey = BearerAuth;
 
-pub type Client<H> = client::Client<MistralExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<MistralExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<MistralBuilder, MistralApiKey, H>;
 

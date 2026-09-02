@@ -10,7 +10,7 @@ pub struct XAiExtBuilder;
 
 type XAiApiKey = BearerAuth;
 
-pub type Client<H> = client::Client<XAiExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<XAiExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<XAiExtBuilder, XAiApiKey, H>;
 

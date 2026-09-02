@@ -1536,8 +1536,8 @@ impl TryFrom<Message> for message::Message {
 
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericCompletionModel<Ext, T> {
-    pub(crate) client: crate::client::Client<Ext, T>,
+pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> {
+    pub(crate) client: crate::client::Client<Ext, H>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
     /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
@@ -1562,11 +1562,12 @@ pub struct GenericCompletionModel<Ext, T> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type CompletionModel<T> = GenericCompletionModel<super::client::AnthropicExt, T>;
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
+    GenericCompletionModel<super::client::AnthropicExt, H>;
 
-impl<Ext, T> GenericCompletionModel<Ext, T>
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
-    T: HttpClientExt,
+    H: HttpClientExt,
     Ext: AnthropicCompatibleProvider + Clone + 'static,
 {
     /// The request prelude both the unary and the streaming path run: resolve
@@ -1625,7 +1626,7 @@ where
     /// A model with every caching / strictness knob off, differing from its
     /// siblings only in how `default_max_tokens` was resolved.
     fn with_defaults(
-        client: crate::client::Client<Ext, T>,
+        client: crate::client::Client<Ext, H>,
         model: String,
         default_max_tokens: Option<u64>,
     ) -> Self {
@@ -1641,14 +1642,14 @@ where
         }
     }
 
-    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
+    pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
         let model = model.into();
         let default_max_tokens = Ext::default_max_tokens(&model);
 
         Self::with_defaults(client, model, default_max_tokens)
     }
 
-    pub fn with_model(client: crate::client::Client<Ext, T>, model: &str) -> Self {
+    pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
         let default_max_tokens = Ext::default_max_tokens(model)
             .or_else(|| Some(default_max_tokens_with_fallback(model)));
 
@@ -1773,9 +1774,9 @@ where
     }
 }
 
-impl<T> GenericCompletionModel<super::client::AnthropicExt, T>
+impl<H> GenericCompletionModel<super::client::AnthropicExt, H>
 where
-    T: HttpClientExt,
+    H: HttpClientExt,
 {
     /// Enable Anthropic strict tool use for every Rig-generated tool.
     ///
@@ -2952,9 +2953,9 @@ where
     Ok(tools)
 }
 
-impl<Ext, T> GenericCompletionModel<Ext, T>
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
-    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Execute a completion and return Anthropic's own wire response.
@@ -3005,9 +3006,9 @@ where
     }
 }
 
-impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
+impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
 where
-    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     // Anthropic's native structured outputs (constrained decoding) are designed
@@ -3035,14 +3036,14 @@ where
     }
 }
 
-impl<Ext, T> crate::client::ConstructCompletionModel<crate::client::Client<Ext, T>>
-    for GenericCompletionModel<Ext, T>
+impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
+    for GenericCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, T>: Clone,
-    T: HttpClientExt,
+    crate::client::Client<Ext, H>: Clone,
+    H: HttpClientExt,
     Ext: AnthropicCompatibleProvider + Clone + 'static,
 {
-    fn construct(client: &crate::client::Client<Ext, T>, model: String) -> Self {
+    fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
         Self::new(client.clone(), model)
     }
 }

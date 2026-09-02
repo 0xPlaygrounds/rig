@@ -215,7 +215,7 @@ impl ResponsesWebSocketEvent {
 ///
 /// The default builder applies a 30 second connection timeout and leaves the
 /// per-event timeout disabled.
-pub struct ResponsesWebSocketSessionBuilder<H> {
+pub struct ResponsesWebSocketSessionBuilder<H = crate::http_client::BoxedHttpClient> {
     model: ResponsesCompletionModel<H>,
     connect_timeout: Option<Duration>,
     event_timeout: Option<Duration>,
@@ -295,7 +295,7 @@ where
 ///
 /// Call [`ResponsesWebSocketSession::close`] when you are finished with the
 /// session so the websocket can complete a close handshake cleanly.
-pub struct ResponsesWebSocketSession<H> {
+pub struct ResponsesWebSocketSession<H = crate::http_client::BoxedHttpClient> {
     model: ResponsesCompletionModel<H>,
     previous_response_id: Option<String>,
     pending_done_response_id: Option<String>,

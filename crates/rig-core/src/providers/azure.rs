@@ -74,7 +74,7 @@ impl Default for AzureExtBuilder {
     }
 }
 
-pub type Client<H> = client::Client<AzureExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<AzureExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H>;
 
@@ -345,7 +345,8 @@ pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 /// embeddings path. `EmbeddingModel::make` (and the client's
 /// `embedding_model` helpers) default unknown dimensions from the model
 /// identifier, exactly like OpenAI.
-pub type EmbeddingModel<T> = openai::embedding::GenericEmbeddingModel<AzureExt, T>;
+pub type EmbeddingModel<T = crate::http_client::BoxedHttpClient> =
+    openai::embedding::GenericEmbeddingModel<AzureExt, T>;
 
 impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
     const PROVIDER_NAME: &'static str = "azure.openai";
@@ -401,7 +402,8 @@ pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 /// on [`AzureExt`], pinned to the deployment this model handle was created
 /// with (a per-request `model` override changes only the request body, as
 /// before the migration).
-pub type CompletionModel<H> = openai::completion::GenericCompletionModel<AzureExt, H>;
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
+    openai::completion::GenericCompletionModel<AzureExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for AzureExt {
     const PROVIDER_NAME: &'static str = "azure.openai";
@@ -428,7 +430,7 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
 // ================================================================
 
 /// Azure OpenAI transcription model; `model` identifies the Azure deployment.
-pub type TranscriptionModel<T> =
+pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
 impl<T> OpenAiTranscriptionClient for Client<T>
@@ -465,7 +467,8 @@ mod image_generation {
     use serde_json::json;
 
     /// Azure OpenAI image generation model; `model` identifies the deployment.
-    pub type ImageGenerationModel<T> = GenericImageGenerationModel<AzureExt, T>;
+    pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
+        GenericImageGenerationModel<AzureExt, T>;
 
     impl JsonImageGenerationProvider for AzureExt {
         const IMAGE_GENERATION_PATH: &'static str = "";
@@ -514,7 +517,8 @@ mod audio_generation {
     };
 
     /// Azure OpenAI audio generation model; `model` identifies the deployment.
-    pub type AudioGenerationModel<T> = GenericAudioGenerationModel<AzureExt, T>;
+    pub type AudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
+        GenericAudioGenerationModel<AzureExt, T>;
 
     impl RawAudioGenerationProvider for AzureExt {
         const AUDIO_GENERATION_PATH: &'static str = "";

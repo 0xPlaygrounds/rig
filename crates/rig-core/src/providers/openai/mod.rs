@@ -33,6 +33,7 @@ pub use client::*;
 pub use completion::*;
 pub use embedding::*;
 pub use model_listing::*;
+pub use responses_api::ResponsesCompletionModel;
 
 /// Recursively ensures all object schemas in a JSON schema respect OpenAI structured output restrictions.
 /// Nested arrays, schema $defs, object properties and enums should be handled through this method
@@ -72,7 +73,9 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
 }
 
 #[cfg(feature = "audio")]
-pub use audio_generation::{TTS_1, TTS_1_HD};
+pub use audio_generation::{
+    AudioGenerationModel, CompletionsAudioGenerationModel, TTS_1, TTS_1_HD,
+};
 
 pub use streaming::*;
 pub use transcription::*;

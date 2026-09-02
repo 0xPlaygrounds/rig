@@ -138,7 +138,7 @@ where
 
 /// [`ModelLister`] implementation for Gemini GenerateContent clients.
 #[derive(Clone)]
-pub struct GeminiModelLister<H> {
+pub struct GeminiModelLister<H = crate::http_client::BoxedHttpClient> {
     client: Client<H>,
 }
 
@@ -166,7 +166,7 @@ mod tests;
 
 /// [`ModelLister`] implementation for Gemini Interactions API clients.
 #[derive(Clone)]
-pub struct GeminiInteractionsModelLister<H> {
+pub struct GeminiInteractionsModelLister<H = crate::http_client::BoxedHttpClient> {
     client: InteractionsClient<H>,
 }
 
