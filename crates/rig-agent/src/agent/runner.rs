@@ -59,7 +59,7 @@ pub(crate) enum UnhandledInvalidToolCallPolicy {
 /// [`add_hook`](Self::add_hook), then call
 /// [`run`](Self::run) (blocking) or
 /// [`stream`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
-/// (incremental). Hooks are held in a [`HookStack`], an ordered,
+/// (incremental). Hooks are held in a [`HookStack`](super::hook::HookStack), an ordered,
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
