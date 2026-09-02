@@ -45,7 +45,12 @@ macro_rules! kind_defaults {
                 match self { $(Self::$variant => $name,)+ }
             }
 
-            const fn default_retryable(self) -> Option<bool> {
+            /// The kind's default retryability: `Some(true)`/`Some(false)`
+            /// when the kind decides, `None` when only the tool can know —
+            /// on the wire that reads as not retryable. This is the one
+            /// table; `ToolExecutionError::is_retryable` and the wire
+            /// `ErrorReport` both derive from it.
+            pub const fn default_retryable(self) -> Option<bool> {
                 match self { $(Self::$variant => $retryable,)+ }
             }
 
