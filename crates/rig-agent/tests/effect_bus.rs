@@ -13,8 +13,14 @@ use std::{
 use futures::StreamExt;
 use rig_agent::{
     Agent, AgentBuilder,
-    agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, OutcomeAction, OutcomeEvent},
-    tool::{Tool, ToolContext, ToolExecutionError},
+    agent::{
+        AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
+        HookContext, InvalidToolCallAction, InvalidToolCallContext, ModelSelection,
+        ModelSelectionAction, ModelTurnAction, ModelTurnFinished, ObservationAction, OutcomeAction,
+        OutcomeEvent, ReasoningDelta, RunSettled, RunStart, RunStartAction, StepEventKind,
+        TextDelta, ToolCallDelta,
+    },
+    tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
 use rig_core::{
     bus::{Bus, BusConfig, BusDriver, EffectLogReplayer, adapters::CompletionAdapter},
@@ -767,6 +773,419 @@ async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
         *tool.inner_outputs.lock().expect("lock"),
         vec!["inner-done".to_string()]
     );
+}
+
+// ---------------------------------------------------------------------------
+// The hook invocation sequence: every hook, every run shape, pinned exactly.
+// Before the collapse a model turn read `on_completion_call → on_model_select
+// → on_dispatch(completion) → on_outcome(completion) → on_completion_response
+// → on_model_turn_finished` and a tool call `on_tool_call →
+// on_dispatch(tool_call) → on_outcome(tool_call) → on_tool_result`; the
+// vectors below are those sequences with the collapsed entries removed.
+// ---------------------------------------------------------------------------
+
+/// Records every hook invocation, in order, and opts into every family.
+#[derive(Clone, Default)]
+struct Sequence(Arc<Mutex<Vec<String>>>);
+
+impl Sequence {
+    fn push(&self, entry: impl Into<String>) {
+        self.0.lock().expect("lock").push(entry.into());
+    }
+
+    fn take(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.lock().expect("lock"))
+    }
+}
+
+impl AgentHook for Sequence {
+    async fn on_run_start(&self, _ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        self.push("on_run_start");
+        RunStartAction::Continue
+    }
+
+    async fn on_run_settled(&self, _ctx: &HookContext, _event: RunSettled<'_>) {
+        self.push("on_run_settled");
+    }
+
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        self.push("on_model_select");
+        ModelSelectionAction::Continue
+    }
+
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        self.push("on_completion_call");
+        CompletionCallAction::Continue
+    }
+
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelTurnFinished<'_>,
+    ) -> ModelTurnAction {
+        self.push("on_model_turn_finished");
+        ModelTurnAction::Continue
+    }
+
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        _event: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        self.push("on_invalid_tool_call");
+        None
+    }
+
+    async fn on_text_delta(&self, _ctx: &HookContext, _event: TextDelta<'_>) -> ObservationAction {
+        self.push("on_text_delta");
+        ObservationAction::Continue
+    }
+
+    async fn on_reasoning_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ReasoningDelta<'_>,
+    ) -> ObservationAction {
+        self.push("on_reasoning_delta");
+        ObservationAction::Continue
+    }
+
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        self.push("on_tool_call_delta");
+        ObservationAction::Continue
+    }
+
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        self.push(format!("on_dispatch({})", event.kind.name()));
+        DispatchAction::Proceed
+    }
+
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        self.push(format!("on_outcome({})", event.kind.name()));
+        OutcomeAction::Proceed
+    }
+
+    fn observes(&self, _kind: StepEventKind) -> bool {
+        true
+    }
+}
+
+fn strings(entries: &[&str]) -> Vec<String> {
+    entries.iter().map(|entry| (*entry).to_owned()).collect()
+}
+
+#[tokio::test]
+async fn hook_sequence_unary_turn_without_tools() {
+    let sequence = Sequence::default();
+    let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+        .add_hook(sequence.clone())
+        .build();
+    let response = within(agent.prompt("go").run()).await.expect("run");
+    assert_eq!(response.output, "done");
+    assert_eq!(
+        sequence.take(),
+        strings(&[
+            "on_run_start",
+            "on_completion_call",
+            "on_model_select",
+            "on_dispatch(completion)",
+            "on_outcome(completion)",
+            "on_model_turn_finished",
+            "on_run_settled",
+        ])
+    );
+}
+
+#[tokio::test]
+async fn hook_sequence_unary_turn_with_one_tool_call() {
+    let sequence = Sequence::default();
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc-1", "slow", json!({"delay_ms": 0, "tag": "t"})),
+        MockTurn::text("done"),
+    ]))
+    .tool(Slow::default())
+    .add_hook(sequence.clone())
+    .build();
+    let response = within(agent.prompt("go").max_turns(3).run())
+        .await
+        .expect("run");
+    assert_eq!(response.output, "done");
+    assert_eq!(
+        sequence.take(),
+        strings(&[
+            "on_run_start",
+            "on_completion_call",
+            "on_model_select",
+            "on_dispatch(completion)",
+            "on_outcome(completion)",
+            "on_model_turn_finished",
+            "on_dispatch(tool_call)",
+            "on_outcome(tool_call)",
+            "on_completion_call",
+            "on_model_select",
+            "on_dispatch(completion)",
+            "on_outcome(completion)",
+            "on_model_turn_finished",
+            "on_run_settled",
+        ])
+    );
+}
+
+#[tokio::test]
+async fn hook_sequence_streaming_turn_with_one_tool_call() {
+    let sequence = Sequence::default();
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            rig_core::test_utils::MockStreamEvent::tool_call(
+                "tc-1",
+                "slow",
+                json!({"delay_ms": 0, "tag": "t"}),
+            ),
+            rig_core::test_utils::MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+        vec![
+            rig_core::test_utils::MockStreamEvent::text("do"),
+            rig_core::test_utils::MockStreamEvent::text("ne"),
+            rig_core::test_utils::MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+    ]))
+    .tool(Slow::default())
+    .add_hook(sequence.clone())
+    .build();
+    let mut stream = agent.stream_prompt("go").max_turns(3).stream().await;
+    assert_eq!(drain(&mut stream).await.as_deref(), Some("done"));
+    let recorded = sequence.take();
+    // Deltas are provisional observations between a completion's dispatch
+    // and its folded outcome; the lifecycle sequence is asserted without
+    // them, and their placement separately.
+    let lifecycle: Vec<String> = recorded
+        .iter()
+        .filter(|entry| !entry.ends_with("_delta"))
+        .cloned()
+        .collect();
+    assert_eq!(
+        lifecycle,
+        strings(&[
+            "on_run_start",
+            "on_completion_call",
+            "on_model_select",
+            "on_dispatch(completion)",
+            "on_outcome(completion)",
+            "on_model_turn_finished",
+            "on_dispatch(tool_call)",
+            "on_outcome(tool_call)",
+            "on_completion_call",
+            "on_model_select",
+            "on_dispatch(completion)",
+            "on_outcome(completion)",
+            "on_model_turn_finished",
+            "on_run_settled",
+        ])
+    );
+    let text_deltas: Vec<usize> = recorded
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| *entry == "on_text_delta")
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(text_deltas.len(), 2, "{recorded:?}");
+    let second_dispatch = recorded
+        .iter()
+        .rposition(|entry| entry == "on_dispatch(completion)")
+        .expect("second completion dispatch");
+    let second_outcome = recorded
+        .iter()
+        .rposition(|entry| entry == "on_outcome(completion)")
+        .expect("second completion outcome");
+    assert!(
+        text_deltas
+            .iter()
+            .all(|index| *index > second_dispatch && *index < second_outcome),
+        "deltas fire between the dispatch and its folded outcome: {recorded:?}"
+    );
+}
+
+/// A retrieval index that always names the `slow` tool.
+struct AlwaysSlow;
+
+impl rig_core::vector_store::VectorStoreIndex for AlwaysSlow {
+    type Filter = rig_core::vector_store::request::Filter<serde_json::Value>;
+
+    async fn top_n<T: serde::de::DeserializeOwned + Send>(
+        &self,
+        _req: rig_core::vector_store::request::VectorSearchRequest<Self::Filter>,
+    ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn top_n_ids(
+        &self,
+        _req: rig_core::vector_store::request::VectorSearchRequest<Self::Filter>,
+    ) -> Result<Vec<(f64, String)>, rig_core::vector_store::VectorStoreError> {
+        Ok(vec![(1.0, "slow".to_owned())])
+    }
+}
+
+#[tokio::test]
+async fn hook_sequence_with_memory_and_tool_retrieval_when_a_hook_opts_in() {
+    let sequence = Sequence::default();
+    let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+        .memory(rig_core::memory::InMemoryConversationMemory::new())
+        .conversation("c-1")
+        .retrieved_tools(1, AlwaysSlow, ToolSet::from_tools(vec![Slow::default()]))
+        .add_hook(sequence.clone())
+        .build();
+    let response = within(agent.prompt("go").run()).await.expect("run");
+    assert_eq!(response.output, "done");
+    assert_eq!(
+        sequence.take(),
+        strings(&[
+            "on_dispatch(memory)",
+            "on_outcome(memory)",
+            "on_run_start",
+            "on_completion_call",
+            "on_model_select",
+            "on_dispatch(retrieve)",
+            "on_outcome(retrieve)",
+            "on_dispatch(completion)",
+            "on_outcome(completion)",
+            "on_model_turn_finished",
+            "on_dispatch(memory)",
+            "on_outcome(memory)",
+            "on_run_settled",
+        ]),
+        "the memory load precedes the run, tool retrieval precedes the request, the append precedes settlement"
+    );
+}
+
+/// Opts into nothing extra: the internal families stay invisible.
+#[derive(Clone, Default)]
+struct DefaultObserver(Sequence);
+
+impl AgentHook for DefaultObserver {
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        self.0.push(format!("on_dispatch({})", event.kind.name()));
+        DispatchAction::Proceed
+    }
+
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        self.0.push(format!("on_outcome({})", event.kind.name()));
+        OutcomeAction::Proceed
+    }
+}
+
+#[tokio::test]
+async fn internal_families_are_observe_only_unless_a_hook_opts_in() {
+    let observer = DefaultObserver::default();
+    let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+        .memory(rig_core::memory::InMemoryConversationMemory::new())
+        .conversation("c-1")
+        .add_hook(observer.clone())
+        .record_effects()
+        .build();
+    let response = within(agent.prompt("go").run()).await.expect("run");
+    assert_eq!(response.output, "done");
+    assert_eq!(
+        observer.0.take(),
+        strings(&["on_dispatch(completion)", "on_outcome(completion)"]),
+        "memory dispatches did not reach a hook that did not opt in"
+    );
+    let log = agent.effect_log().expect("recording");
+    assert_eq!(
+        log.iter()
+            .map(|record| record.kind.name().to_owned())
+            .collect::<Vec<_>>(),
+        strings(&["memory", "completion", "memory"]),
+        "…but the recorder saw every one of them"
+    );
+}
+
+/// Stops the run from the completion's outcome.
+struct StopOnAnswer;
+
+impl AgentHook for StopOnAnswer {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some() {
+            OutcomeAction::stop("seen enough")
+        } else {
+            OutcomeAction::proceed()
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_cancelling_replacement_on_a_completion_outcome_stops_the_run_on_both_media() {
+    let unary = AgentBuilder::new(MockCompletionModel::text("done"))
+        .add_hook(StopOnAnswer)
+        .build();
+    let err = within(unary.prompt("go").run()).await.expect_err("stopped");
+    assert!(
+        matches!(
+            err,
+            rig_agent::run::response::PromptError::PromptCancelled { .. }
+        ),
+        "{err:?}"
+    );
+
+    let streaming = AgentBuilder::new(MockCompletionModel::from_stream_turns([streamed_text(
+        "done",
+    )]))
+    .add_hook(StopOnAnswer)
+    .build();
+    let mut stream = streaming.stream_prompt("go").stream().await;
+    let mut cancelled = false;
+    while let Some(item) = within(stream.next()).await {
+        if let Err(rig_agent::agent::StreamingError::Prompt(err)) = item
+            && matches!(
+                *err,
+                rig_agent::run::response::PromptError::PromptCancelled { .. }
+            )
+        {
+            cancelled = true;
+        }
+    }
+    assert!(
+        cancelled,
+        "the streamed completion's outcome stopped the run"
+    );
+}
+
+/// Replaces the streamed completion's content.
+struct ReplaceAnswer;
+
+impl AgentHook for ReplaceAnswer {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
+        assert!(ctx.is_streaming(), "this test streams");
+        let mut replaced = response.clone();
+        replaced.choice = vec![rig_core::message::AssistantContent::text("replaced")];
+        OutcomeAction::replace(Ok(rig_core::effect::Outcome::Completion(replaced)))
+    }
+}
+
+#[tokio::test]
+async fn a_replacement_on_a_streamed_completion_is_what_the_run_keeps() {
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([streamed_text(
+        "streamed",
+    )]))
+    .add_hook(ReplaceAnswer)
+    .build();
+    let mut stream = agent.stream_prompt("go").stream().await;
+    assert_eq!(drain(&mut stream).await.as_deref(), Some("replaced"));
 }
 
 fn _assertions(agent: Agent, driver: BusDriver) {

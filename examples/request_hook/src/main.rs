@@ -22,8 +22,8 @@
 
 use anyhow::Result;
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    ObservationAction, RequestPatch,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, OutcomeAction, OutcomeEvent,
+    RequestPatch,
 };
 use rig::completion::{Document, Message};
 use rig::message::UserContent;
@@ -64,19 +64,18 @@ impl AgentHook for LoggingHook {
         CompletionCallAction::continue_run()
     }
 
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        println!(
-            "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
-            ctx.run_id(),
-            event.usage,
-            event.identity.message_id,
-            event.content
-        );
-        ObservationAction::continue_run()
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        // `on_outcome` fires for every effect family; only report completions.
+        if let Some(response) = event.completion() {
+            println!(
+                "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
+                ctx.run_id(),
+                response.usage,
+                response.message_id,
+                response.choice
+            );
+        }
+        OutcomeAction::proceed()
     }
 }
 

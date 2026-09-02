@@ -10,9 +10,10 @@
 //!
 //! So every attempt's provider response — the value `raw_completion` /
 //! `raw_stream` would have returned, serialized — travels as `raw` on the
-//! `CompletionResponse` hook event (fired on both the blocking and the
-//! streamed surface), on the medium-neutral `ModelTurnFinished` event, and on
-//! each `CompletionCall` in the run's record. Nothing to switch on: it is the
+//! `CompletionResponse` an `on_outcome` hook sees for a completion effect
+//! (fired on both the blocking and the streamed surface), on the
+//! medium-neutral `ModelTurnFinished` event, and on each `CompletionCall` in
+//! the run's record. Nothing to switch on: it is the
 //! same parity the pre-normalization `raw_response` had.
 //!
 //! The hook below runs unchanged on both surfaces. It recovers OpenAI's own
@@ -28,7 +29,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig_agent::{
-    agent::{CompletionResponseEvent, ObservationAction},
+    agent::{OutcomeAction, OutcomeEvent},
     prelude::*,
 };
 use rig_core::providers::openai;
@@ -45,13 +46,12 @@ impl AgentHook for PrintOpenAiFields {
     /// stream's *terminal record* as OpenAI's wire type accumulated it — the
     /// top-level chunk fields Rig does not normalize land in its
     /// `additional_params`.
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
         if ctx.is_streaming() {
-            match openai::StreamingCompletionResponse::<openai::Usage>::deserialize(event.raw) {
+            match openai::StreamingCompletionResponse::<openai::Usage>::deserialize(&response.raw) {
                 Ok(terminal) => {
                     let extra = |key: &str| {
                         terminal
@@ -70,7 +70,7 @@ impl AgentHook for PrintOpenAiFields {
                 Err(err) => println!("  raw is not an OpenAI terminal: {err}"),
             }
         } else {
-            match openai::CompletionResponse::deserialize(event.raw) {
+            match openai::CompletionResponse::deserialize(&response.raw) {
                 Ok(response) => println!(
                     "  id {} · system_fingerprint {:?} · service_tier {:?}",
                     response.id, response.system_fingerprint, response.service_tier
@@ -78,7 +78,7 @@ impl AgentHook for PrintOpenAiFields {
                 Err(err) => println!("  raw is not an OpenAI response: {err}"),
             }
         }
-        ObservationAction::continue_run()
+        OutcomeAction::proceed()
     }
 }
 

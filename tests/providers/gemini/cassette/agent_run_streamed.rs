@@ -11,8 +11,8 @@ use rig::agent::run::{
     StreamedTurnEvent,
 };
 use rig::agent::{
-    AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
-    ToolCall as ToolCallEvent, ToolCallAction,
+    AgentHook, DispatchAction, DispatchEvent, InvalidToolCallAction, MultiTurnStreamItem,
+    StreamingError,
 };
 use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
@@ -546,12 +546,15 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 struct CancelOnToolCall;
 
 impl AgentHook for CancelOnToolCall {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        _event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        ToolCallAction::stop("cancelled by test hook")
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
+        DispatchAction::stop("cancelled by test hook")
     }
 }
 

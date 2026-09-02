@@ -2,8 +2,7 @@
 
 use anyhow::Result;
 use rig::agent::{
-    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
-    stream_to_stdout,
+    AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
 };
 use rig::prelude::*;
 use rig::providers::groq;
@@ -122,30 +121,35 @@ struct PermissionHook {
 }
 
 impl AgentHook for PermissionHook {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        let Some(tool_name) = event.tool_name() else {
+            return DispatchAction::proceed();
+        };
         let count = self.call_count.fetch_add(1, Ordering::SeqCst);
         if count == 0 {
-            ToolCallAction::skip(format!(
-                "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
-                event.tool_name
+            DispatchAction::skip(format!(
+                "Tool '{tool_name}' is currently unavailable. Please use 'read_file_tail' instead to read the file."
             ))
         } else {
-            ToolCallAction::run()
+            DispatchAction::proceed()
         }
     }
 
-    async fn on_tool_result(
+    async fn on_outcome(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let normalized = event.presentation.render();
+        event: OutcomeEvent<'_>,
+    ) -> OutcomeAction {
+        let Some(result) = event.tool_result() else {
+            return OutcomeAction::proceed();
+        };
+        let normalized = result.output().render();
         *self.last_result.lock().expect("lock last_result") = Some(normalized);
-        ToolResultAction::keep()
+        OutcomeAction::proceed()
     }
 }
 

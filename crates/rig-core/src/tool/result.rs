@@ -487,6 +487,23 @@ impl ToolResult {
         }
     }
 
+    /// The same result with its model-visible output replaced, keeping its
+    /// disposition: a success or a skip carries the new output; a failure or
+    /// refusal keeps its error and presents the new output to the model.
+    pub fn with_output(self, output: ToolOutput) -> Self {
+        let disposition = match self.disposition {
+            ToolDisposition::Success(_) => ToolDisposition::Success(output),
+            ToolDisposition::Skipped(_) => ToolDisposition::Skipped(output),
+            ToolDisposition::Error(error) => {
+                ToolDisposition::Error(error.with_model_output(output))
+            }
+            ToolDisposition::Refused(error) => {
+                ToolDisposition::Refused(error.with_model_output(output))
+            }
+        };
+        Self { disposition }
+    }
+
     /// Canonical model-visible output before any presentation-only hook rewrite.
     pub fn output(&self) -> &ToolOutput {
         match &self.disposition {

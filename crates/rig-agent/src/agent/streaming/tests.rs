@@ -1,7 +1,7 @@
 use crate::agent::{
-    CompletionResponseEvent, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction,
-    ModelTurnFinished, ObservationAction, ReasoningDelta, StepEventKind, TextDelta, ToolCall,
-    ToolCallAction, ToolCallDelta,
+    DispatchAction, DispatchEvent, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction,
+    ModelTurnFinished, ObservationAction, OutcomeAction, OutcomeEvent, ReasoningDelta,
+    StepEventKind, TextDelta, ToolCallDelta,
 };
 
 use super::*;
@@ -463,15 +463,17 @@ impl AgentHook for PanicOnUnknownToolHook {
     async fn on_tool_call_delta(&self, _: &HookContext, _: ToolCallDelta<'_>) -> ObservationAction {
         panic!("unknown tool call delta should fail before delta hooks run")
     }
-    async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
-        panic!("unknown tool call should fail before tool hooks run")
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_some() {
+            panic!("unknown tool call should fail before tool hooks run")
+        }
+        DispatchAction::proceed()
     }
-    async fn on_completion_response(
-        &self,
-        _: &HookContext,
-        _: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        panic!("unknown tool call should fail before completion response hooks run")
+    async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some() {
+            panic!("unknown tool call should fail before completion outcome hooks run")
+        }
+        OutcomeAction::proceed()
     }
 }
 
@@ -1597,15 +1599,14 @@ fn streaming_final_only_model() -> MockCompletionModel {
 }
 
 #[derive(Clone)]
-struct TerminateOnCompletionResponse;
+struct TerminateOnCompletionOutcome;
 
-impl AgentHook for TerminateOnCompletionResponse {
-    async fn on_completion_response(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        ObservationAction::stop("stop after completion call")
+impl AgentHook for TerminateOnCompletionOutcome {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_none() {
+            return OutcomeAction::proceed();
+        }
+        OutcomeAction::stop("stop after completion call")
     }
 }
 
@@ -4765,7 +4766,7 @@ async fn stream_prompt_emits_completion_call_before_finish_hook_termination() {
 
     let mut stream = agent
         .stream_prompt("say done")
-        .add_hook(TerminateOnCompletionResponse)
+        .add_hook(TerminateOnCompletionOutcome)
         .stream()
         .await;
     let mut completion_calls = Vec::new();

@@ -1275,16 +1275,18 @@ impl IdentityProbe {
 }
 
 impl rig::agent::AgentHook for IdentityProbe {
-    async fn on_completion_response(
+    async fn on_outcome(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: rig::agent::CompletionResponseEvent<'_>,
-    ) -> rig::agent::ObservationAction {
-        self.responses
-            .lock()
-            .expect("response identities")
-            .push(event.identity.clone());
-        rig::agent::ObservationAction::continue_run()
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        if let Some(response) = event.completion() {
+            self.responses
+                .lock()
+                .expect("response identities")
+                .push(response.identity());
+        }
+        rig::agent::OutcomeAction::proceed()
     }
 
     async fn on_model_turn_finished(

@@ -147,6 +147,59 @@ async fn nested_completion_patches_compose() {
     ));
 }
 
+/// Builds a dispatch event for `kind` answering the shared test block.
+fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
+    DispatchEvent {
+        id: EffectId::from_raw(1),
+        kind,
+        turn: 1,
+        block_id: Some(&BLOCK),
+    }
+}
+
+/// Builds an outcome event for `kind` that resolved to `outcome`.
+fn outcome_event<'a>(
+    kind: &'a EffectKind,
+    outcome: &'a Result<Outcome, ErrorReport>,
+) -> OutcomeEvent<'a> {
+    OutcomeEvent {
+        id: EffectId::from_raw(1),
+        kind,
+        outcome,
+        turn: 1,
+        block_id: Some(&BLOCK),
+    }
+}
+
+/// The arguments a `Patch` carries, parsed; `None` for anything else.
+fn patched_args(action: &DispatchAction) -> Option<Value> {
+    match action {
+        DispatchAction::Patch(EffectKind::ToolCall { args, .. }) => {
+            Some(serde_json::from_str(args).expect("patched args are JSON"))
+        }
+        _ => None,
+    }
+}
+
+/// Asserts `action` skips the tool call with `reason`.
+fn assert_skipped(action: &DispatchAction, reason: &str) {
+    match action {
+        DispatchAction::Deny(report) => {
+            assert_eq!(report.kind, ErrorKind::Other);
+            assert_eq!(report.message, reason);
+        }
+        other => panic!("expected a skip, got {other:?}"),
+    }
+}
+
+/// The tool result a `Replace` carries; `None` for anything else.
+fn replaced_result(action: &OutcomeAction) -> Option<&ToolResult> {
+    match action {
+        OutcomeAction::Replace(Ok(Outcome::ToolResult { result, .. })) => Some(result),
+        _ => None,
+    }
+}
+
 #[derive(Clone)]
 struct CallRewriter {
     seen: Arc<std::sync::Mutex<Vec<String>>>,
@@ -154,9 +207,12 @@ struct CallRewriter {
 }
 
 impl AgentHook for CallRewriter {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-        self.seen.lock().unwrap().push(event.args.to_string());
-        ToolCallAction::rewrite(self.replacement.clone())
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let Some(args) = event.tool_args() else {
+            return DispatchAction::proceed();
+        };
+        self.seen.lock().unwrap().push(args.to_string());
+        DispatchAction::rewrite_tool_args(event.kind, self.replacement.clone())
     }
 }
 
@@ -172,26 +228,20 @@ async fn tool_call_rewrites_chain_in_registration_order() {
         replacement: serde_json::json!({"step": 2}),
     });
 
+    let kind = EffectKind::ToolCall {
+        name: "tool".into(),
+        args: r#"{"step":0}"#.into(),
+        context: ToolContext::new(),
+    };
     let action = stack
-        .on_tool_call(
-            &HookContext::new(false, None, None),
-            ToolCall {
-                tool_name: "tool",
-                tool_call_id: Some("provider-id"),
-                block_id: &BLOCK,
-                args: r#"{"step":0}"#,
-            },
-        )
+        .on_dispatch(&HookContext::new(false, None, None), dispatch_event(&kind))
         .await;
 
     assert_eq!(
         *seen.lock().unwrap(),
         vec![r#"{"step":0}"#.to_string(), r#"{"step":1}"#.to_string()]
     );
-    assert_eq!(
-        action,
-        ToolCallAction::rewrite(serde_json::json!({"step": 2}))
-    );
+    assert_eq!(patched_args(&action), Some(serde_json::json!({"step": 2})));
 }
 
 #[derive(Clone)]
@@ -201,17 +251,16 @@ struct ResultRewriter {
 }
 
 impl AgentHook for ResultRewriter {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(result) = event.tool_result() else {
+            return OutcomeAction::proceed();
+        };
         self.seen.lock().unwrap().push((
-            event.presentation.render(),
-            event.raw_result.error().unwrap().kind(),
-            event.tool_context.result::<String>().unwrap(),
+            result.output().render(),
+            result.error().unwrap().kind(),
+            event.tool_context().unwrap().result::<String>().unwrap(),
         ));
-        ToolResultAction::rewrite(self.replacement.clone())
+        OutcomeAction::rewrite_tool_result(&event, self.replacement.clone())
     }
 }
 
@@ -232,22 +281,22 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
         .insert_result("request-metadata".to_string())
         .unwrap();
 
+    let kind = tool_call_kind();
+    let outcome = Ok(Outcome::ToolResult {
+        result: raw.clone(),
+        context: context.clone(),
+    });
     let action = stack
-        .on_tool_result(
+        .on_outcome(
             &HookContext::new(false, None, None),
-            ToolResultEvent {
-                tool_name: "tool",
-                tool_call_id: None,
-                block_id: &BLOCK,
-                args: "{}",
-                presentation: raw.output(),
-                raw_result: &raw,
-                tool_context: &context,
-            },
+            outcome_event(&kind, &outcome),
         )
         .await;
 
-    assert_eq!(action, ToolResultAction::rewrite("truncated"));
+    let replaced = replaced_result(&action).expect("a rewritten tool result");
+    assert_eq!(replaced.output().as_text(), Some("truncated"));
+    // The rewrite keeps the result's status.
+    assert_eq!(replaced.error().unwrap().kind(), ToolErrorKind::Timeout);
     assert_eq!(
         *seen.lock().unwrap(),
         vec![
@@ -273,53 +322,67 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
 struct StopThenCount {
     stop: bool,
     calls: Arc<AtomicUsize>,
+    seen_cancelled: Arc<AtomicUsize>,
 }
 
 impl AgentHook for StopThenCount {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        _event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         self.calls.fetch_add(1, Ordering::Relaxed);
+        if matches!(
+            event.outcome,
+            Err(ErrorReport {
+                kind: ErrorKind::Cancelled,
+                ..
+            })
+        ) {
+            self.seen_cancelled.fetch_add(1, Ordering::Relaxed);
+        }
         if self.stop {
-            ToolResultAction::stop("terminal")
+            OutcomeAction::stop("terminal")
         } else {
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
     }
 }
 
 #[tokio::test]
-async fn terminal_result_action_short_circuits_later_hooks() {
+async fn stop_outcome_threads_to_later_hooks_and_surfaces_as_cancelled() {
     let calls = Arc::new(AtomicUsize::new(0));
+    let seen_cancelled = Arc::new(AtomicUsize::new(0));
     let mut stack = HookStack::with(StopThenCount {
         stop: true,
         calls: calls.clone(),
+        seen_cancelled: seen_cancelled.clone(),
     });
     stack.push(StopThenCount {
         stop: false,
         calls: calls.clone(),
+        seen_cancelled: seen_cancelled.clone(),
     });
-    let raw = ToolResult::success(ToolOutput::text("ok"));
-    let context = ToolContext::new();
+    let kind = tool_call_kind();
+    let outcome = Ok(Outcome::ToolResult {
+        result: ToolResult::success(ToolOutput::text("ok")),
+        context: ToolContext::new(),
+    });
     let action = stack
-        .on_tool_result(
+        .on_outcome(
             &HookContext::new(false, None, None),
-            ToolResultEvent {
-                tool_name: "tool",
-                tool_call_id: None,
-                block_id: &BLOCK,
-                args: "{}",
-                presentation: raw.output(),
-                raw_result: &raw,
-                tool_context: &context,
-            },
+            outcome_event(&kind, &outcome),
         )
         .await;
 
-    assert_eq!(action, ToolResultAction::stop("terminal"));
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert!(matches!(
+        action,
+        OutcomeAction::Replace(Err(ErrorReport {
+            kind: ErrorKind::Cancelled,
+            ref message,
+            ..
+        })) if message == "terminal"
+    ));
+    // A stop is a replacement like any other: the later hook sees it as the
+    // outcome instead of being short-circuited.
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert_eq!(seen_cancelled.load(Ordering::Relaxed), 1);
 }
 
 // ---- hook stack composition and model-selection routing ----
@@ -564,12 +627,15 @@ struct ToolRecorder {
     stop: bool,
 }
 impl AgentHook for ToolRecorder {
-    async fn on_tool_call(&self, _ctx: &HookContext, _event: ToolCall<'_>) -> ToolCallAction {
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
         self.log.lock().expect("log").push(self.label);
         if self.stop {
-            ToolCallAction::stop("stop")
+            DispatchAction::stop("stop")
         } else {
-            ToolCallAction::run()
+            DispatchAction::proceed()
         }
     }
 }
@@ -646,12 +712,11 @@ impl AgentHook for Patcher {
     }
 }
 
-fn tool_call_event() -> ToolCall<'static> {
-    ToolCall {
-        tool_name: "add",
-        tool_call_id: Some("tc1"),
-        block_id: &BLOCK,
-        args: "{}",
+fn tool_call_kind() -> EffectKind {
+    EffectKind::ToolCall {
+        name: "add".into(),
+        args: "{}".into(),
+        context: ToolContext::new(),
     }
 }
 fn completion_call_event() -> CompletionCall<'static> {
@@ -690,15 +755,16 @@ async fn runs_hooks_in_registration_order_and_consults_all_on_continue() {
         log: log.clone(),
         stop: false,
     });
-    assert_eq!(
-        stack.on_tool_call(&ctx(), tool_call_event()).await,
-        ToolCallAction::run()
-    );
+    let kind = tool_call_kind();
+    assert!(matches!(
+        stack.on_dispatch(&ctx(), dispatch_event(&kind)).await,
+        DispatchAction::Proceed
+    ));
     assert_eq!(*log.lock().unwrap(), vec![1, 2]);
 }
 
 #[tokio::test]
-async fn first_stop_short_circuits_on_chained_tool_call() {
+async fn first_stop_short_circuits_on_chained_tool_dispatch() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let mut stack = HookStack::with(ToolRecorder {
         label: 1,
@@ -710,9 +776,13 @@ async fn first_stop_short_circuits_on_chained_tool_call() {
         log: log.clone(),
         stop: false,
     });
+    let kind = tool_call_kind();
     assert!(matches!(
-        stack.on_tool_call(&ctx(), tool_call_event()).await,
-        ToolCallAction::Stop(_)
+        stack.on_dispatch(&ctx(), dispatch_event(&kind)).await,
+        DispatchAction::Deny(ErrorReport {
+            kind: ErrorKind::Cancelled,
+            ..
+        })
     ));
     assert_eq!(*log.lock().unwrap(), vec![1]);
 }
@@ -909,15 +979,15 @@ async fn nested_stack_composes_patches() {
 
 #[test]
 fn stack_observes_is_the_or_of_members() {
-    let mut stack = HookStack::with(ObservesOnly(StepEventKind::ToolCall));
-    stack.push(ObservesOnly(StepEventKind::ToolResult));
+    let mut stack = HookStack::with(ObservesOnly(StepEventKind::ToolDispatch));
+    stack.push(ObservesOnly(StepEventKind::CompletionDispatch));
     assert!(<HookStack as AgentHook>::observes(
         &stack,
-        StepEventKind::ToolCall
+        StepEventKind::ToolDispatch
     ));
     assert!(<HookStack as AgentHook>::observes(
         &stack,
-        StepEventKind::ToolResult
+        StepEventKind::CompletionDispatch
     ));
     assert!(!<HookStack as AgentHook>::observes(
         &stack,
@@ -931,22 +1001,27 @@ fn empty_stack_observes_nothing() {
     assert!(empty.is_empty());
     assert!(!<HookStack as AgentHook>::observes(
         &empty,
-        StepEventKind::ToolCall
+        StepEventKind::ToolDispatch
     ));
 }
 
 #[test]
 fn unit_hook_observes_no_event_kind() {
     for kind in [
+        StepEventKind::RunStart,
+        StepEventKind::RunSettled,
         StepEventKind::CompletionCall,
-        StepEventKind::CompletionResponse,
         StepEventKind::ModelTurnFinished,
         StepEventKind::InvalidToolCall,
-        StepEventKind::ToolCall,
-        StepEventKind::ToolResult,
         StepEventKind::TextDelta,
         StepEventKind::ReasoningDelta,
         StepEventKind::ToolCallDelta,
+        StepEventKind::CompletionDispatch,
+        StepEventKind::ToolDispatch,
+        StepEventKind::EmbedDispatch,
+        StepEventKind::MemoryDispatch,
+        StepEventKind::RetrieveDispatch,
+        StepEventKind::CustomDispatch,
     ] {
         assert!(!<() as AgentHook>::observes(&(), kind));
     }
@@ -1044,68 +1119,58 @@ fn hook_context_reports_identity_and_turn() {
 
 struct RewriteHook(Value);
 impl AgentHook for RewriteHook {
-    async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
-        ToolCallAction::rewrite(self.0.clone())
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
+        DispatchAction::rewrite_tool_args(event.kind, self.0.clone())
     }
 }
 struct SkipHook;
 impl AgentHook for SkipHook {
-    async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
-        ToolCallAction::skip("denied")
-    }
-}
-struct StopHook;
-impl AgentHook for StopHook {
-    async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
-        ToolCallAction::stop("stop")
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
+        DispatchAction::skip("denied")
     }
 }
 #[derive(Clone, Default)]
 struct ArgsSpy(Arc<Mutex<Vec<String>>>);
 impl AgentHook for ArgsSpy {
-    async fn on_tool_call(&self, _: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-        self.0.lock().unwrap().push(event.args.into());
-        ToolCallAction::run()
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let Some(args) = event.tool_args() else {
+            return DispatchAction::proceed();
+        };
+        self.0.lock().unwrap().push(args.into());
+        DispatchAction::proceed()
     }
 }
 
-struct OnToolCallOnly(Arc<AtomicUsize>);
-impl AgentHook for OnToolCallOnly {
-    async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
+struct OnDispatchOnly(Arc<AtomicUsize>);
+impl AgentHook for OnDispatchOnly {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
         self.0.fetch_add(1, Ordering::Relaxed);
-        ToolCallAction::skip("called")
+        DispatchAction::skip("called")
     }
 }
 
-struct YieldingRewriteFromCallId;
-impl AgentHook for YieldingRewriteFromCallId {
-    async fn on_tool_call(&self, _: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-        tokio::task::yield_now().await;
-        ToolCallAction::rewrite(json!({"call_id": event.block_id}))
-    }
-}
-
-struct YieldingSkip;
-impl AgentHook for YieldingSkip {
-    async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
-        tokio::task::yield_now().await;
-        ToolCallAction::skip("denied")
-    }
-}
-
-async fn resolve(stack: &HookStack) -> (ToolCallAction, Option<Value>) {
-    stack.resolve_tool_call(&ctx(), tool_call_event()).await
+async fn resolve(stack: &HookStack) -> DispatchAction {
+    let kind = tool_call_kind();
+    stack.on_dispatch(&ctx(), dispatch_event(&kind)).await
 }
 
 #[tokio::test]
-async fn erased_dispatch_uses_the_public_on_tool_call_method() {
+async fn erased_dispatch_uses_the_public_on_dispatch_method() {
     let calls = Arc::new(AtomicUsize::new(0));
-    let stack = HookStack::with(OnToolCallOnly(calls.clone()));
+    let stack = HookStack::with(OnDispatchOnly(calls.clone()));
 
-    let (action, salvaged) = resolve(&stack).await;
+    let action = resolve(&stack).await;
 
-    assert_eq!(action, ToolCallAction::skip("called"));
-    assert_eq!(salvaged, None);
+    assert_skipped(&action, "called");
     assert_eq!(calls.load(Ordering::Relaxed), 1);
 }
 
@@ -1117,10 +1182,9 @@ async fn string_rewrite_is_json_encoded_for_later_hook_in_same_stack() {
     stack.push(RewriteHook(replacement.clone()));
     stack.push(spy.clone());
 
-    let (action, salvaged) = resolve(&stack).await;
+    let action = resolve(&stack).await;
 
-    assert_eq!(action, ToolCallAction::rewrite(replacement.clone()));
-    assert_eq!(salvaged, None);
+    assert_eq!(patched_args(&action), Some(replacement.clone()));
     assert_eq!(
         spy.0.lock().unwrap().as_slice(),
         [serde_json::to_string(&replacement).unwrap()]
@@ -1136,14 +1200,57 @@ async fn string_rewrite_is_json_encoded_for_hook_in_nested_stack() {
     outer.push(RewriteHook(replacement.clone()));
     outer.push(inner);
 
-    let (action, salvaged) = resolve(&outer).await;
+    let action = resolve(&outer).await;
 
-    assert_eq!(action, ToolCallAction::rewrite(replacement.clone()));
-    assert_eq!(salvaged, None);
+    assert_eq!(patched_args(&action), Some(replacement.clone()));
     assert_eq!(
         spy.0.lock().unwrap().as_slice(),
         [serde_json::to_string(&replacement).unwrap()]
     );
+}
+
+#[tokio::test]
+async fn outer_rewrite_threads_into_nested_stack() {
+    let spy = ArgsSpy::default();
+    let mut inner = HookStack::new();
+    inner.push(spy.clone());
+    inner.push(SkipHook);
+    let mut outer = HookStack::new();
+    outer.push(RewriteHook(json!({"x":1})));
+    outer.push(inner);
+    let action = resolve(&outer).await;
+    assert_skipped(&action, "denied");
+    assert_eq!(
+        spy.0.lock().unwrap().as_slice(),
+        [serde_json::to_string(&json!({"x":1})).unwrap()]
+    );
+}
+
+#[tokio::test]
+async fn nested_proceeding_rewrite_surfaces_as_patch_action() {
+    let mut proceed = HookStack::new();
+    proceed.push(RewriteHook(json!({"x":5})));
+    let action = resolve(&proceed).await;
+    assert_eq!(patched_args(&action), Some(json!({"x":5})));
+}
+
+struct StopHook;
+impl AgentHook for StopHook {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
+        DispatchAction::stop("halt")
+    }
+}
+
+/// The patch a stack had accumulated when it denied: what the engine reads
+/// for the skipped result's arguments (`HookContext::take_salvaged_patch`).
+fn salvaged_args(context: &HookContext, id: EffectId) -> Option<Value> {
+    context.take_salvaged_patch(id).and_then(|kind| match kind {
+        EffectKind::ToolCall { args, .. } => serde_json::from_str(&args).ok(),
+        _ => None,
+    })
 }
 
 #[tokio::test]
@@ -1153,9 +1260,12 @@ async fn nested_rewrite_then_skip_preserves_rewrite() {
     inner.push(SkipHook);
     let mut outer = HookStack::new();
     outer.push(inner);
-    let (action, salvaged) = resolve(&outer).await;
-    assert!(matches!(action, ToolCallAction::Skip(_)));
-    assert_eq!(salvaged, Some(json!({"x":41})));
+    let context = ctx();
+    let kind = tool_call_kind();
+    let event = dispatch_event(&kind);
+    let action = outer.on_dispatch(&context, event).await;
+    assert_skipped(&action, "denied");
+    assert_eq!(salvaged_args(&context, event.id), Some(json!({"x":41})));
 }
 
 #[tokio::test]
@@ -1165,9 +1275,15 @@ async fn nested_rewrite_then_stop_preserves_rewrite() {
     inner.push(StopHook);
     let mut outer = HookStack::new();
     outer.push(inner);
-    let (action, salvaged) = resolve(&outer).await;
-    assert!(matches!(action, ToolCallAction::Stop(_)));
-    assert_eq!(salvaged, Some(json!({"x":41})));
+    let context = ctx();
+    let kind = tool_call_kind();
+    let event = dispatch_event(&kind);
+    let action = outer.on_dispatch(&context, event).await;
+    assert!(
+        matches!(&action, DispatchAction::Deny(report) if report.kind == ErrorKind::Cancelled),
+        "{action:?}"
+    );
+    assert_eq!(salvaged_args(&context, event.id), Some(json!({"x":41})));
 }
 
 #[tokio::test]
@@ -1184,70 +1300,56 @@ async fn deeply_nested_terminal_action_preserves_the_last_rewrite() {
     outer.push(RewriteHook(json!({"x":1})));
     outer.push(middle);
 
-    let (action, salvaged) = resolve(&outer).await;
+    let context = ctx();
+    let kind = tool_call_kind();
+    let event = dispatch_event(&kind);
+    let action = outer.on_dispatch(&context, event).await;
+    assert_skipped(&action, "denied");
+    assert_eq!(salvaged_args(&context, event.id), Some(json!({"x":3})));
+}
 
-    assert_eq!(action, ToolCallAction::skip("denied"));
-    assert_eq!(salvaged, Some(json!({"x":3})));
+/// Rewrites the arguments to the dispatch's own id, yielding first so two
+/// concurrent resolutions interleave.
+struct YieldingRewriteFromId;
+impl AgentHook for YieldingRewriteFromId {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        tokio::task::yield_now().await;
+        DispatchAction::rewrite_tool_args(event.kind, json!({"id": event.id.as_u64()}))
+    }
+}
+
+struct YieldingSkip;
+impl AgentHook for YieldingSkip {
+    async fn on_dispatch(&self, _: &HookContext, _: DispatchEvent<'_>) -> DispatchAction {
+        tokio::task::yield_now().await;
+        DispatchAction::skip("denied")
+    }
 }
 
 #[tokio::test]
-async fn concurrent_nested_resolutions_keep_rewrites_isolated_by_call() {
+async fn concurrent_nested_resolutions_keep_rewrites_isolated_by_dispatch() {
     let mut inner = HookStack::new();
-    inner.push(YieldingRewriteFromCallId);
+    inner.push(YieldingRewriteFromId);
     inner.push(YieldingSkip);
     let outer = HookStack::with(inner);
     let context = ctx();
-
-    let first_id = BlockId::wire("first");
-    let second_id = BlockId::wire("second");
-    let first = outer.resolve_tool_call(
-        &context,
-        ToolCall {
-            block_id: &first_id,
-            ..tool_call_event()
-        },
+    let kind = tool_call_kind();
+    let first = DispatchEvent {
+        id: EffectId::from_raw(7),
+        ..dispatch_event(&kind)
+    };
+    let second = DispatchEvent {
+        id: EffectId::from_raw(8),
+        ..dispatch_event(&kind)
+    };
+    let (first_action, second_action) = tokio::join!(
+        outer.on_dispatch(&context, first),
+        outer.on_dispatch(&context, second)
     );
-    let second = outer.resolve_tool_call(
-        &context,
-        ToolCall {
-            block_id: &second_id,
-            ..tool_call_event()
-        },
-    );
-    let ((first_action, first_rewrite), (second_action, second_rewrite)) =
-        tokio::join!(first, second);
-
-    assert_eq!(first_action, ToolCallAction::skip("denied"));
-    assert_eq!(first_rewrite, Some(json!({"call_id": first_id})));
-    assert_eq!(second_action, ToolCallAction::skip("denied"));
-    assert_eq!(second_rewrite, Some(json!({"call_id": second_id})));
-}
-
-#[tokio::test]
-async fn outer_rewrite_threads_into_nested_stack() {
-    let spy = ArgsSpy::default();
-    let mut inner = HookStack::new();
-    inner.push(spy.clone());
-    inner.push(SkipHook);
-    let mut outer = HookStack::new();
-    outer.push(RewriteHook(json!({"x":1})));
-    outer.push(inner);
-    let (action, salvaged) = resolve(&outer).await;
-    assert!(matches!(action, ToolCallAction::Skip(_)));
-    assert_eq!(salvaged, Some(json!({"x":1})));
-    assert_eq!(
-        spy.0.lock().unwrap().as_slice(),
-        [serde_json::to_string(&json!({"x":1})).unwrap()]
-    );
-}
-
-#[tokio::test]
-async fn nested_proceeding_rewrite_surfaces_as_rewrite_action() {
-    let mut proceed = HookStack::new();
-    proceed.push(RewriteHook(json!({"x":5})));
-    let (action, salvaged) = resolve(&proceed).await;
-    assert_eq!(action, ToolCallAction::rewrite(json!({"x":5})));
-    assert_eq!(salvaged, None);
+    assert_skipped(&first_action, "denied");
+    assert_skipped(&second_action, "denied");
+    assert_eq!(salvaged_args(&context, first.id), Some(json!({"id": 7})));
+    assert_eq!(salvaged_args(&context, second.id), Some(json!({"id": 8})));
 }
 
 #[test]
@@ -1256,16 +1358,16 @@ fn action_types_are_event_specific() {
     fn completion(_: CompletionCallAction) {}
     fn model_turn(_: ModelTurnAction) {}
     fn retry_request(_: RetryRequest) {}
-    fn call(_: ToolCallAction) {}
-    fn result(_: ToolResultAction) {}
+    fn dispatch(_: DispatchAction) {}
+    fn outcome(_: OutcomeAction) {}
     fn invalid(_: InvalidToolCallAction) {}
     fn observation(_: ObservationAction) {}
     model_selection(ModelSelectionAction::continue_run());
     completion(CompletionCallAction::continue_run());
     model_turn(ModelTurnAction::retry_with_feedback("try again"));
     retry_request(RetryRequest::Repeat);
-    call(ToolCallAction::run());
-    result(ToolResultAction::keep());
+    dispatch(DispatchAction::proceed());
+    outcome(OutcomeAction::proceed());
     invalid(InvalidToolCallAction::fail());
     observation(ObservationAction::continue_run());
     let calls = AtomicUsize::new(0);

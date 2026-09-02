@@ -342,9 +342,10 @@ pub enum ModelTurnOutcome {
     ///
     /// `response_hook_suppressed` is set when invalid tool-call recovery
     /// (repair or skip) modified the turn, matching the agent loop's behavior
-    /// of not invoking `on_completion_response` for recovered turns.
+    /// of not firing the completion's outcome hook (`on_outcome`) for
+    /// recovered turns.
     Continue {
-        /// Whether the driver should suppress its completion-response hook.
+        /// Whether the driver should suppress the completion's outcome hook.
         response_hook_suppressed: bool,
     },
     /// The model emitted a tool call that is unknown or disallowed for this
@@ -808,6 +809,39 @@ impl AgentRun {
             return None;
         }
         Some(turn.items.clone())
+    }
+
+    /// Replace the accepted model turn's content while it is parked — what a
+    /// completion outcome hook's [`OutcomeAction::Replace`]
+    /// (crate::agent::OutcomeAction::Replace) lands as. The turn has not
+    /// entered history yet, so the replacement is what history keeps. Like a
+    /// retry, this does not support tool-bearing turns: neither the parked
+    /// turn nor the replacement may carry tool calls.
+    pub fn replace_accepted_turn_choice(
+        &mut self,
+        choice: Vec<AssistantContent>,
+    ) -> Result<(), PromptError> {
+        let replacement_has_tool_calls = choice
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+        let parked_has_tool_calls = match &self.state {
+            RunState::AwaitingAdvance(turn) => turn.has_tool_calls,
+            _ => {
+                return Err(self.protocol_violation(
+                    "replace_accepted_turn_choice called without an accepted turn awaiting advancement",
+                ));
+            }
+        };
+        if parked_has_tool_calls || replacement_has_tool_calls {
+            return Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "a completion outcome replacement does not support tool-bearing model turns; patch or deny the tool dispatches instead",
+            ));
+        }
+        if let RunState::AwaitingAdvance(turn) = &mut self.state {
+            turn.items = choice;
+        }
+        Ok(())
     }
 
     /// Reject the accepted, tool-free model turn and prepare another model call.

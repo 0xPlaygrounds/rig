@@ -13,10 +13,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
-    TextDelta, ToolCall as ToolCallEvent, ToolCallAction, ToolCallDelta, ToolResultAction,
-    ToolResultEvent,
+    AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
+    HookContext, InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction,
+    OutcomeAction, OutcomeEvent, RequestPatch, TextDelta, ToolCallDelta,
 };
 use rig::completion::Document;
 use rig::tool::Tool;
@@ -199,14 +198,6 @@ impl AgentHook for EventTap {
         self.record(ctx, "CompletionCall");
         CompletionCallAction::continue_run()
     }
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "CompletionResponse");
-        ObservationAction::continue_run()
-    }
     async fn on_model_turn_finished(
         &self,
         ctx: &HookContext,
@@ -223,27 +214,33 @@ impl AgentHook for EventTap {
         self.record(ctx, "InvalidToolCall");
         None
     }
-    async fn on_tool_call(&self, ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
+    async fn on_dispatch(&self, ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
         self.record(ctx, "ToolCall");
         self.call_ids
             .lock()
             .expect("call_ids")
-            .push(event.block_id.to_string());
+            .push(event.block_id.map(ToString::to_string).unwrap_or_default());
         ctx.scratchpad()
             .update(|tally: &mut ToolCallTally| tally.0 += 1);
-        ToolCallAction::run()
+        DispatchAction::proceed()
     }
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some() {
+            self.record(ctx, "CompletionResponse");
+            return OutcomeAction::proceed();
+        }
+        if event.tool_name().is_none() {
+            return OutcomeAction::proceed();
+        }
         self.record(ctx, "ToolResult");
         self.result_ids
             .lock()
             .expect("result_ids")
-            .push(event.block_id.to_string());
-        ToolResultAction::keep()
+            .push(event.block_id.map(ToString::to_string).unwrap_or_default());
+        OutcomeAction::proceed()
     }
     async fn on_text_delta(&self, ctx: &HookContext, _event: TextDelta<'_>) -> ObservationAction {
         self.record(ctx, "TextDelta");
@@ -345,14 +342,15 @@ pub(crate) struct SetArg {
 }
 
 impl AgentHook for SetArg {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        if event.tool_name == self.tool {
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name() == Some(self.tool) {
             let mut parsed: serde_json::Value =
-                serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
+                serde_json::from_str(event.tool_args().unwrap_or_default())
+                    .unwrap_or_else(|_| json!({}));
             parsed[self.key] = self.value.clone();
-            ToolCallAction::rewrite(parsed)
+            DispatchAction::rewrite_tool_args(event.kind, parsed)
         } else {
-            ToolCallAction::run()
+            DispatchAction::proceed()
         }
     }
 }
@@ -379,22 +377,21 @@ pub(crate) struct RewriteToolResult {
 }
 
 impl AgentHook for RewriteToolResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name != self.tool {
-            return ToolResultAction::keep();
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() != Some(self.tool) {
+            return OutcomeAction::proceed();
         }
+        let Some(result) = event.tool_result() else {
+            return OutcomeAction::proceed();
+        };
         let new = match &self.rewrite {
             ResultRewrite::Replace(marker) => (*marker).to_string(),
             ResultRewrite::Wrap { prefix, suffix } => {
-                format!("{prefix}{}{suffix}", event.presentation.render())
+                format!("{prefix}{}{suffix}", result.output().render())
             }
-            ResultRewrite::Truncate(n) => event.presentation.render().chars().take(*n).collect(),
+            ResultRewrite::Truncate(n) => result.output().render().chars().take(*n).collect(),
         };
-        ToolResultAction::rewrite(new)
+        OutcomeAction::rewrite_tool_result(&event, new)
     }
 }
 
@@ -406,15 +403,11 @@ pub(crate) struct TerminateOnResult {
 }
 
 impl AgentHook for TerminateOnResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == self.tool {
-            ToolResultAction::stop(self.reason)
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some(self.tool) {
+            OutcomeAction::stop(self.reason)
         } else {
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
     }
 }

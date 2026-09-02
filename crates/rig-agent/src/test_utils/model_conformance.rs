@@ -19,10 +19,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{
-        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent,
-        CompletionResponseEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem,
-        NoToolConfig, ObservationAction, OutputMode, RequestPatch, StreamingError,
-        ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
+        DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
+        OutcomeAction, OutcomeEvent, OutputMode, RequestPatch, StreamingError,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
@@ -543,18 +542,21 @@ struct RewriteArgument {
 }
 
 impl AgentHook for RewriteArgument {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        if event.tool_name != CountingAdd::NAME {
-            return ToolCallAction::run();
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let (Some(name), Some(args)) = (event.tool_name(), event.tool_args()) else {
+            return DispatchAction::proceed();
+        };
+        if name != CountingAdd::NAME {
+            return DispatchAction::proceed();
         }
-        let Ok(mut arguments) = serde_json::from_str::<serde_json::Value>(event.args) else {
-            return ToolCallAction::run();
+        let Ok(mut arguments) = serde_json::from_str::<serde_json::Value>(args) else {
+            return DispatchAction::proceed();
         };
         let Some(object) = arguments.as_object_mut() else {
-            return ToolCallAction::run();
+            return DispatchAction::proceed();
         };
         object.insert(self.key.to_string(), self.value.clone());
-        ToolCallAction::rewrite(arguments)
+        DispatchAction::rewrite_tool_args(event.kind, arguments)
     }
 }
 
@@ -562,11 +564,13 @@ impl AgentHook for RewriteArgument {
 struct ObserveArguments(Arc<Mutex<Vec<serde_json::Value>>>);
 
 impl AgentHook for ObserveArguments {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        let value = serde_json::from_str(event.args)
-            .unwrap_or_else(|_| serde_json::Value::String(event.args.to_string()));
-        lock_recover(&self.0).push(value);
-        ToolCallAction::run()
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if let Some(args) = event.tool_args() {
+            let value = serde_json::from_str(args)
+                .unwrap_or_else(|_| serde_json::Value::String(args.to_string()));
+            lock_recover(&self.0).push(value);
+        }
+        DispatchAction::proceed()
     }
 }
 
@@ -574,15 +578,11 @@ impl AgentHook for ObserveArguments {
 struct ReplaceResult(&'static str);
 
 impl AgentHook for ReplaceResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::rewrite(self.0)
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some(CountingAdd::NAME) {
+            OutcomeAction::rewrite_tool_result(&event, self.0)
         } else {
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
     }
 }
@@ -591,15 +591,15 @@ impl AgentHook for ReplaceResult {
 struct WrapResult;
 
 impl AgentHook for WrapResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::rewrite(format!("[{}]", event.presentation.render()))
-        } else {
-            ToolResultAction::keep()
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        match (event.tool_name(), event.tool_result()) {
+            (Some(name), Some(result)) if name == CountingAdd::NAME => {
+                OutcomeAction::rewrite_tool_result(
+                    &event,
+                    format!("[{}]", result.output().render()),
+                )
+            }
+            _ => OutcomeAction::proceed(),
         }
     }
 }
@@ -625,15 +625,11 @@ impl AgentHook for FirstTurnPatch {
 struct StopAfterResult(&'static str);
 
 impl AgentHook for StopAfterResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::stop(self.0)
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some(CountingAdd::NAME) {
+            OutcomeAction::stop(self.0)
         } else {
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
     }
 }
@@ -1400,19 +1396,18 @@ where
     struct CaptureTurn(Arc<Mutex<Option<ModelTurn>>>);
 
     impl AgentHook for CaptureTurn {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
+        async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            let Some(response) = event.completion() else {
+                return OutcomeAction::proceed();
+            };
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                event.identity.message_id.clone(),
-                event.content.clone(),
-                event.usage,
+                response.message_id.clone(),
+                response.choice.clone(),
+                response.usage,
                 BTreeSet::new(),
                 BTreeSet::new(),
             ));
-            ObservationAction::stop("captured conformance model turn")
+            OutcomeAction::stop("captured conformance model turn")
         }
     }
 

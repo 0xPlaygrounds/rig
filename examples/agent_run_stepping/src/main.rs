@@ -21,9 +21,7 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::{
-    AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
-};
+use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
 use rig::completion::CompletionModel;
 use rig::message::UserContent;
 use rig::prelude::*;
@@ -82,9 +80,12 @@ impl Tool for Add {
 struct ToolLoggerHook;
 
 impl AgentHook for ToolLoggerHook {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        println!("[hook] tool call: {}({})", event.tool_name, event.args);
-        ToolCallAction::run()
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        // `on_dispatch` fires for every effect family; only log tool calls.
+        if let (Some(name), Some(args)) = (event.tool_name(), event.tool_args()) {
+            println!("[hook] tool call: {name}({args})");
+        }
+        DispatchAction::proceed()
     }
 }
 

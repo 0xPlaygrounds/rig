@@ -15,10 +15,10 @@ use futures::{Stream, StreamExt, stream};
 use rig_agent::{
     Agent, AgentBuilder, ModelRef,
     agent::{
-        AgentHook, AgentRunner, CompletionCallAction, HookContext, InvalidToolCallAction,
-        ModelSelection, ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig,
-        RequestPatch, StreamingError, StreamingResult, ToolCall as ToolCallEvent, ToolCallAction,
-        ToolResultAction, ToolResultEvent,
+        AgentHook, AgentRunner, CompletionCallAction, DispatchAction, DispatchEvent, HookContext,
+        InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
+        ModelTurnFinished, NoToolConfig, OutcomeAction, OutcomeEvent, RequestPatch, StreamingError,
+        StreamingResult,
     },
     completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message,
@@ -869,22 +869,22 @@ impl AgentHook for LifecycleLog {
         ModelTurnAction::continue_run()
     }
 
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _context: &HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        self.push(format!("tool-call:{}", event.tool_name));
-        ToolCallAction::run()
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if let Some(name) = event.tool_name() {
+            self.push(format!("tool-call:{name}"));
+        }
+        DispatchAction::proceed()
     }
 
-    async fn on_tool_result(
-        &self,
-        _context: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        self.push(format!("tool-result:{}", event.tool_name));
-        ToolResultAction::keep()
+    async fn on_outcome(&self, _context: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if let Some(name) = event.tool_name() {
+            self.push(format!("tool-result:{name}"));
+        }
+        OutcomeAction::proceed()
     }
 }
 

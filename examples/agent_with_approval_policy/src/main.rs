@@ -4,10 +4,10 @@
 //! SDK's `needsApproval(({input}) => ...)`, and LangGraph's `interrupt_on`
 //! predicates: a person encodes the policy once, and the agent runs within it.
 //!
-//! The [`ApprovalPolicy`] hook fires on [`ToolCallEvent`] and returns:
-//! - [`ToolCallAction::run`] to allow a tool that is on the safe allow-list, or a
+//! The [`ApprovalPolicy`] hook fires on the [`DispatchEvent`] for each tool call and returns:
+//! - [`DispatchAction::proceed`] to allow a tool that is on the safe allow-list, or a
 //!   guarded tool whose arguments satisfy the rule;
-//! - [`ToolCallAction::skip`] to **deny** otherwise — the denial reason is fed back to the
+//! - [`DispatchAction::skip`] to **deny** otherwise — the denial reason is fed back to the
 //!   model as the tool result, so it can adjust (e.g. transfer a smaller amount
 //!   or ask the user) rather than the run simply failing.
 //!
@@ -20,7 +20,7 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
+use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -118,14 +118,18 @@ struct ApprovalPolicy {
 }
 
 impl AgentHook for ApprovalPolicy {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        let tool_name = event.tool_name;
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        // `on_dispatch` fires for every effect family (completions included);
+        // the policy only governs tool calls.
+        let (Some(tool_name), Some(args)) = (event.tool_name(), event.tool_args()) else {
+            return DispatchAction::proceed();
+        };
         if self.auto_approve.contains(tool_name) {
             println!("[policy] auto-approve `{tool_name}` (safe)");
-            return ToolCallAction::run();
+            return DispatchAction::proceed();
         }
         if tool_name == TransferFunds::NAME {
-            let amount = serde_json::from_str::<serde_json::Value>(event.args)
+            let amount = serde_json::from_str::<serde_json::Value>(args)
                 .ok()
                 .and_then(|value| value.get("amount").and_then(serde_json::Value::as_u64));
             return match amount {
@@ -134,18 +138,18 @@ impl AgentHook for ApprovalPolicy {
                         "[policy] approve transfer ${amount} (<= ${})",
                         self.max_auto_transfer
                     );
-                    ToolCallAction::run()
+                    DispatchAction::proceed()
                 }
-                Some(amount) => ToolCallAction::skip(format!(
+                Some(amount) => DispatchAction::skip(format!(
                     "denied by policy: transfers over ${} require human approval; ${amount} exceeds the limit",
                     self.max_auto_transfer
                 )),
                 None => {
-                    ToolCallAction::skip("denied by policy: could not read the transfer amount")
+                    DispatchAction::skip("denied by policy: could not read the transfer amount")
                 }
             };
         }
-        ToolCallAction::skip(format!(
+        DispatchAction::skip(format!(
             "denied by policy: `{tool_name}` is not on the approved tool list"
         ))
     }

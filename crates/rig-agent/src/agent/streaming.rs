@@ -75,7 +75,7 @@ pub enum MultiTurnStreamItem {
     /// Correlate it with the model call and result through `block_id`.
     ToolExecutionCommitted {
         /// The tool call as **executed**: the model's call with any
-        /// [`ToolCallAction::Rewrite`](crate::agent::ToolCallAction::Rewrite) hook rewrite
+        /// [`DispatchAction::Patch`](crate::agent::DispatchAction::Patch) hook rewrite
         /// applied (so a redaction rewrite is reflected here, not leaked). The
         /// model's *original* call is reported via
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
@@ -265,8 +265,9 @@ impl AgentRunner {
         let (agent_span, created_agent_span) = self.open_agent_span();
 
         let bus = self.config.bus.clone();
+        let hook_ctx = self.hook_context(true);
         let resolved = {
-            let resolve = self.resolve_history_and_memory();
+            let resolve = self.resolve_history_and_memory(&hook_ctx);
             futures::pin_mut!(resolve);
             let mut driven = bus.drive(futures::stream::once(resolve));
             driven.next().await.unwrap_or(Ok((None, None)))
@@ -301,7 +302,7 @@ impl AgentRunner {
             agent_span.clone(),
             created_agent_span,
             memory_handle,
-            true,
+            hook_ctx,
         )
         .filter_map(|item| {
             std::future::ready(match item {

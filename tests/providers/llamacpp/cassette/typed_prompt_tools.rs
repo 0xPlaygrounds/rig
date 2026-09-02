@@ -7,9 +7,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
-    ObservationAction, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
-    ToolResultEvent,
+    AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
+    OutcomeAction, OutcomeEvent,
 };
 use rig::prelude::*;
 use rig::tool::Tool;
@@ -72,45 +71,44 @@ impl AgentHook for StepLogger {
         CompletionCallAction::continue_run()
     }
 
-    async fn on_completion_response(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        let call_no = self.current_completion_call();
-        println!("\n=== completion response #{call_no}: normalized choice ===");
-        println!("{}", pretty_json(event.content));
-        println!("usage: {:?}", event.usage);
-        println!("message_id: {:?}", event.identity.message_id);
-        ObservationAction::continue_run()
-    }
-
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        let Some(tool_name) = event.tool_name() else {
+            return DispatchAction::proceed();
+        };
         let tool_no = self.next_tool_call();
         println!("\n=== tool call #{tool_no}: model requested tool ===");
-        println!("tool_name: {}", event.tool_name);
-        println!("tool_call_id: {:?}", event.tool_call_id);
-        println!("block_id: {}", event.block_id);
-        println!("args: {}", event.args);
-        ToolCallAction::run()
+        println!("tool_name: {tool_name}");
+        println!("block_id: {:?}", event.block_id);
+        println!("args: {}", event.tool_args().unwrap_or_default());
+        DispatchAction::proceed()
     }
 
-    async fn on_tool_result(
+    async fn on_outcome(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
+        event: OutcomeEvent<'_>,
+    ) -> OutcomeAction {
+        if let Some(response) = event.completion() {
+            let call_no = self.current_completion_call();
+            println!("\n=== completion response #{call_no}: normalized choice ===");
+            println!("{}", pretty_json(&response.choice));
+            println!("usage: {:?}", response.usage);
+            println!("message_id: {:?}", response.message_id);
+            return OutcomeAction::proceed();
+        }
+        let (Some(tool_name), Some(result)) = (event.tool_name(), event.tool_result()) else {
+            return OutcomeAction::proceed();
+        };
         println!("\n=== tool result: tool returned ===");
-        println!("tool_name: {}", event.tool_name);
-        println!("tool_call_id: {:?}", event.tool_call_id);
-        println!("block_id: {}", event.block_id);
-        println!("args: {}", event.args);
-        println!("result: {}", event.presentation.render());
-        ToolResultAction::keep()
+        println!("tool_name: {tool_name}");
+        println!("block_id: {:?}", event.block_id);
+        println!("args: {}", event.tool_args().unwrap_or_default());
+        println!("result: {}", result.output().render());
+        OutcomeAction::proceed()
     }
 }
 

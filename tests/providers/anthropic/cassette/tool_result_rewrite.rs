@@ -1,8 +1,8 @@
-//! Verifies that a `ToolResultAction::Rewrite` hook redacts a tool's output before the
+//! Verifies that an `OutcomeAction::Replace` hook redacts a tool's output before the
 //! model sees it, end-to-end through a real Anthropic round-trip.
 //!
 //! The `get_user_record` tool returns a record containing a (fake) SSN. A default
-//! hook redacts the SSN on the `ToolResult` event via `ToolResultAction::rewrite`, so
+//! hook redacts the SSN on the `Outcome` event via `OutcomeAction::rewrite_tool_result`, so
 //! the value the tool actually produced never reaches the model. The tool records
 //! its real output; the assertions check that the tool DID produce the secret but
 //! the model's answer never contains it — and the blocking and streaming tests
@@ -10,7 +10,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, ToolResultAction, ToolResultEvent};
+use rig::agent::{AgentHook, OutcomeAction, OutcomeEvent};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -107,20 +107,21 @@ fn redact_ssn(record: &str) -> String {
 }
 
 /// A guardrail hook that redacts the SSN from `get_user_record` output on the
-/// `ToolResult` event, before the model ever sees it — the post-tool redaction
-/// use case `ToolResultAction::Rewrite` exists for.
+/// `Outcome` event, before the model ever sees it — the post-tool redaction
+/// use case `OutcomeAction::Replace` exists for.
 struct RedactSsnFromResult;
 
 impl AgentHook for RedactSsnFromResult {
-    async fn on_tool_result(
+    async fn on_outcome(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == GetUserRecord::NAME {
-            ToolResultAction::rewrite(redact_ssn(&event.presentation.render()))
-        } else {
-            ToolResultAction::keep()
+        event: OutcomeEvent<'_>,
+    ) -> OutcomeAction {
+        match (event.tool_name(), event.tool_result()) {
+            (Some(name), Some(result)) if name == GetUserRecord::NAME => {
+                OutcomeAction::rewrite_tool_result(&event, redact_ssn(&result.output().render()))
+            }
+            _ => OutcomeAction::proceed(),
         }
     }
 }
