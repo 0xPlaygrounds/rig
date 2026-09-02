@@ -6,8 +6,10 @@ use crate::agent::{
 
 use super::*;
 use crate::agent::AgentBuilder;
+use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::prompt_request::tool_result_output;
+use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::client::AgentClientExt;
 use crate::completion::{
     CompletionRequest, FinishReason, Prompt, PromptError, ToolDefinition, Usage,

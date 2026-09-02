@@ -2495,6 +2495,7 @@ mod structured_tool_results {
 /// later refactor onto a shared engine cannot silently drift it. The
 /// streaming side is already pinned by `assert_stream_usage_recorded_on_chat_spans`.
 mod span_safety_net {
+    use crate::agent::telemetry::build_chat_span;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
 

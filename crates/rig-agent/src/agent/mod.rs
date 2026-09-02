@@ -103,10 +103,12 @@
 //! ```
 mod builder;
 mod completion;
+mod engine;
 pub mod hook;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
+mod telemetry;
 mod tool;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no

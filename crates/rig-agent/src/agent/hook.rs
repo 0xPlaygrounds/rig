@@ -1676,6 +1676,3 @@ impl AgentHook for HookStack {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod migrated_tests;
