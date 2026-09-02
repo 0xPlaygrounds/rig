@@ -5395,8 +5395,7 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 
     // Make streaming request WITHOUT an outer span so rig creates its own invoke_agent span
     // (rig reuses current span if one exists, so we need to ensure there's no current span)
-    let client =
-        <anthropic::Client<rig_reqwest::ReqwestClient> as rig_reqwest::client::DefaultTransportClient>::from_env()?;
+    let client = <anthropic::Client as rig_reqwest::client::DefaultTransportClient>::from_env()?;
     let agent = client
         .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
         .preamble("You are a helpful assistant.")
@@ -5453,8 +5452,7 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
 async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     use rig_core::message::Message;
 
-    let client =
-        <anthropic::Client<rig_reqwest::ReqwestClient> as rig_reqwest::client::DefaultTransportClient>::from_env()?;
+    let client = <anthropic::Client as rig_reqwest::client::DefaultTransportClient>::from_env()?;
     let agent = client
         .agent(anthropic::completion::CLAUDE_HAIKU_4_5)
         .preamble("You are a helpful assistant. Keep responses brief.")

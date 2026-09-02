@@ -38,13 +38,16 @@
 
 pub use rig_core::*;
 
-/// The bundled `reqwest` transport and its default-transport conveniences
-/// (`rig-reqwest`). With the default `reqwest` feature, [`providers`] is the
-/// aliased tree whose types default to [`rig_reqwest::ReqwestClient`], and
-/// [`prelude`] carries [`rig_reqwest::client::DefaultTransportClient`] /
-/// [`rig_reqwest::client::DefaultTransportBuilder`]. Without it, rig has no
-/// default transport: construct clients with `new_with(..)` / `.http_client(..)`
-/// and any `HttpClientExt` implementation.
+/// The bundled `reqwest` transport and its construction conveniences
+/// (`rig-reqwest`). Provider types default to the erased
+/// [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient) in every
+/// configuration; with the default `reqwest` feature, [`prelude`] carries
+/// [`rig_reqwest::client::DefaultTransportClient`] /
+/// [`rig_reqwest::client::DefaultTransportBuilder`], which fill that default
+/// with a [`rig_reqwest::ReqwestClient`] so `Client::new(key)` and
+/// `Client::from_env()` work without naming a transport. Without the feature,
+/// construct clients with `new_with(..)` / `.http_client(..)` and any
+/// `HttpClientExt` implementation.
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
 pub use rig_reqwest;
@@ -60,12 +63,11 @@ pub use rig_reqwest;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
-/// Provider clients and models, with the transport defaulted to the bundled
-/// `reqwest` one.
-#[cfg(feature = "reqwest")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+/// Provider clients and models. Every transport-generic type defaults to the
+/// erased [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient); the
+/// `reqwest` feature supplies the value behind it.
 pub mod providers {
-    pub use rig_reqwest::providers::*;
+    pub use rig_core::providers::*;
 }
 
 /// Transport-agnostic HTTP contracts, plus the bundled reqwest transport type.

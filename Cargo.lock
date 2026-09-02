@@ -14273,7 +14273,6 @@ name = "xtask"
 version = "0.42.0"
 dependencies = [
  "proc-macro2",
- "serde_json",
  "syn 2.0.117",
 ]
 
