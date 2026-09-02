@@ -1,4 +1,5 @@
 mod agent_run_stepper;
+mod bevy_bus_host;
 mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;
