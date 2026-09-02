@@ -1578,7 +1578,7 @@ pub struct CompletionModelOptions {
     pub prompt_caching: bool,
 }
 
-/// Contract for provider extensions that speak the OpenAI Chat Completions wire
+/// Contract for provider types that speak the OpenAI Chat Completions wire
 /// format through [`GenericCompletionModel`]. Mirrors
 /// [`AnthropicCompatibleProvider`](crate::providers::anthropic::completion::AnthropicCompatibleProvider)
 /// on the Anthropic-compatible side.
@@ -1898,7 +1898,7 @@ pub(crate) fn request_body(
     Ok(body)
 }
 
-/// A chat-completions model over any [`OpenAICompatibleProvider`] extension.
+/// A chat-completions model over any [`OpenAICompatibleProvider`] provider.
 /// This is the advertised path for OpenAI-compatible providers; see the
 /// provider checklist in [`crate::providers`].
 #[derive(Clone)]

@@ -20,7 +20,7 @@ use crate::http_client::HttpClientExt;
 use crate::rerank::{NormalizeRerankResponse, RerankError, RerankResponse, RerankResult};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
-/// Contract for provider extensions that speak the Jina-shaped rerank wire
+/// Contract for provider types that speak the Jina-shaped rerank wire
 /// through [`GenericRerankModel`].
 #[doc(hidden)]
 pub trait JinaCompatibleRerank: crate::client::Provider {

@@ -70,7 +70,7 @@ pub trait RawAudioGenerationProvider: Provider {
 /// Shared model shell for providers whose audio endpoint returns raw bytes.
 ///
 /// Public provider modules expose this through their own `AudioGenerationModel`
-/// aliases; request routing and JSON shape remain on the provider extension.
+/// aliases; request routing and JSON shape remain on the provider type.
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct GenericAudioGenerationModel<Ext, H = crate::http_client::BoxedHttpClient> {

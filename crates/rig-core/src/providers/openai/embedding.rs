@@ -98,7 +98,7 @@ pub enum EmbeddingDimensions {
     OutputDimension(usize),
 }
 
-/// Contract for provider extensions that speak an OpenAI-compatible embeddings
+/// Contract for provider types that speak an OpenAI-compatible embeddings
 /// wire format through [`GenericEmbeddingModel`].
 #[doc(hidden)]
 pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {

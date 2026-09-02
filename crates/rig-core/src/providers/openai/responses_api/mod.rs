@@ -1218,9 +1218,9 @@ pub enum SystemInstructionsPlacement {
     InputSystemMessages,
 }
 
-/// Provider extensions that drive the OpenAI Responses request conversion.
+/// Provider types that drive the OpenAI Responses request conversion.
 ///
-/// Implemented by the `Ext` type of a [`crate::client::Client`] used with
+/// Implemented by the provider type of a [`crate::client::Client`] used with
 /// [`GenericResponsesCompletionModel`], so a client-level configuration can
 /// control request shaping for every model created from that client.
 pub trait ResponsesProviderExt {

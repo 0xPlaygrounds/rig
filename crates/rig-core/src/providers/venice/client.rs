@@ -1,4 +1,4 @@
-//! Venice client, provider extension, and capability wiring.
+//! Venice client, provider type, and capability wiring.
 
 #[cfg(feature = "audio")]
 use crate::client::HasAudioGeneration;
@@ -19,11 +19,10 @@ use crate::model::Model;
 /// Venice's API base URL.
 pub const VENICE_API_BASE_URL: &str = "https://api.venice.ai/api/v1";
 
-/// Provider extension type for Venice.
+/// The Venice provider.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Venice;
 
-/// Builder state for [`Venice`].
 type VeniceApiKey = BearerAuth;
 
 /// Venice client.
