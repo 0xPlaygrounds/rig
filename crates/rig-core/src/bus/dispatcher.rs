@@ -42,9 +42,25 @@ pub(super) struct Shared {
     /// Live `Dispatcher` clones. The driver ends when this reaches zero with
     /// nothing queued or in flight.
     dispatchers: AtomicUsize,
+    /// Serial serving (one command in flight per key), copied from the
+    /// config so a dispatch can refuse to queue behind itself.
+    serial_per_handler: bool,
+    /// The key whose handler the driver is polling *right now*, on which
+    /// thread. A dispatch to that key made during that poll, on that thread,
+    /// comes from inside the handler (a tool running a nested prompt); under
+    /// serial serving it would queue behind the very command that waits on
+    /// it, so it is refused instead of hung.
+    serving: Mutex<Option<(HandlerKey, std::thread::ThreadId)>>,
     /// Set by the driver's drop guard: every reply that comes back
     /// `Canceled` after this is `BusClosed`, not a handler defect.
     closed: AtomicBool,
+}
+
+/// What became of an offered command.
+pub(super) enum Enqueue {
+    Sent,
+    Parked(Box<Command>),
+    Refused(Box<Command>),
 }
 
 /// The bounded command buffer and the wakers on either side of it.
@@ -60,8 +76,10 @@ struct CommandQueue {
 }
 
 impl Shared {
-    pub(super) fn new(command_capacity: usize) -> Self {
+    pub(super) fn new(command_capacity: usize, serial_per_handler: bool) -> Self {
         Self {
+            serial_per_handler,
+            serving: Mutex::new(None),
             next_id: AtomicU64::new(1),
             handlers: RwLock::new(BTreeMap::new()),
             queue: Mutex::new(CommandQueue {
@@ -96,26 +114,26 @@ impl Shared {
     }
 
     /// Offer `command` to the buffer. A full buffer hands the command back
-    /// and parks `cx`'s waker until the driver drains; the caller keeps the
-    /// command and retries when woken.
-    pub(super) fn enqueue(
-        &self,
-        command: Box<Command>,
-        cx: &Context<'_>,
-    ) -> Result<(), Box<Command>> {
+    /// (`Parked`) and parks `cx`'s waker until the driver drains; the caller
+    /// keeps the command and retries when woken. A dispatch that would queue
+    /// behind the handler that is making it is `Refused`.
+    pub(super) fn enqueue(&self, command: Box<Command>, cx: &Context<'_>) -> Enqueue {
+        if self.is_reentrant(&command.key) {
+            return Enqueue::Refused(command);
+        }
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         if queue.commands.len() >= queue.capacity {
             let waker = cx.waker();
             if !queue.senders.iter().any(|parked| parked.will_wake(waker)) {
                 queue.senders.push(waker.clone());
             }
-            return Err(command);
+            return Enqueue::Parked(command);
         }
         queue.commands.push_back(command);
         if let Some(driver) = queue.driver.take() {
             driver.wake();
         }
-        Ok(())
+        Enqueue::Sent
     }
 
     /// Take every buffered command (the driver's side), registering `cx` as
@@ -155,15 +173,7 @@ impl Shared {
     pub(super) fn dispatcher_closed(&self) {
         if self.dispatchers.fetch_sub(1, Ordering::SeqCst) == 1 {
             // The driver may be waiting for exactly this to end.
-            let driver = self
-                .queue
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .driver
-                .take();
-            if let Some(driver) = driver {
-                driver.wake();
-            }
+            self.wake_driver();
         }
     }
 
@@ -183,11 +193,42 @@ impl Shared {
     }
 
     pub(super) fn deregister(&self, key: &HandlerKey) -> bool {
-        self.handlers
+        let removed = self
+            .handlers
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(key)
-            .is_some()
+            .is_some();
+        // Under serial serving the driver may hold commands queued for this
+        // key; it drains them with `HandlerUnavailable` on its next poll.
+        self.wake_driver();
+        removed
+    }
+
+    fn wake_driver(&self) {
+        let driver = self
+            .queue
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .driver
+            .take();
+        if let Some(driver) = driver {
+            driver.wake();
+        }
+    }
+
+    /// Mark (or clear) the key whose handler the driver is polling.
+    pub(super) fn set_serving(&self, key: Option<HandlerKey>) {
+        *self.serving.lock().unwrap_or_else(PoisonError::into_inner) =
+            key.map(|key| (key, std::thread::current().id()));
+    }
+
+    fn is_reentrant(&self, key: &HandlerKey) -> bool {
+        self.serial_per_handler
+            && matches!(
+                &*self.serving.lock().unwrap_or_else(PoisonError::into_inner),
+                Some((serving, thread)) if serving == key && *thread == std::thread::current().id()
+            )
     }
 
     pub(super) fn handler(&self, key: &HandlerKey) -> Option<ErasedHandler> {
@@ -452,6 +493,16 @@ fn bus_closed() -> ErrorReport {
     ErrorReport::new(ErrorKind::BusClosed, "the bus driver is gone").with_retryable(false)
 }
 
+fn reentrant(key: &HandlerKey) -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Request,
+        format!(
+            "re-entrant dispatch: the handler serving `{key}` dispatched to its own key under serial serving and would wait on itself"
+        ),
+    )
+    .with_retryable(false)
+}
+
 pub(super) fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::HandlerUnavailable,
@@ -519,10 +570,13 @@ impl Future for Pending {
                         )));
                     };
                     match this.shared.enqueue(taken, cx) {
-                        Ok(()) => this.state = PendingState::Waiting,
-                        Err(kept) => {
+                        Enqueue::Sent => this.state = PendingState::Waiting,
+                        Enqueue::Parked(kept) => {
                             *command = Some(kept);
                             return Poll::Pending;
+                        }
+                        Enqueue::Refused(refused) => {
+                            return Poll::Ready(Err(reentrant(&refused.key)));
                         }
                     }
                 }
@@ -608,10 +662,14 @@ impl Stream for EffectStream {
                         ))));
                     };
                     match this.shared.enqueue(taken, cx) {
-                        Ok(()) => {}
-                        Err(kept) => {
+                        Enqueue::Sent => {}
+                        Enqueue::Parked(kept) => {
                             *command = Some(kept);
                             return Poll::Pending;
+                        }
+                        Enqueue::Refused(refused) => {
+                            this.state = StreamState::Done;
+                            return Poll::Ready(Some(Err(reentrant(&refused.key))));
                         }
                     }
                     let Some(receiver) = receiver.take() else {
