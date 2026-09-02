@@ -18,11 +18,13 @@
 //! cargo xtask generate-provider-aliases          # rewrite the file
 //! cargo xtask generate-provider-aliases --check  # fail if it would change
 //! cargo xtask check-test-layout                  # fail on inline `mod tests { }`
+//! cargo xtask check-sorted-blocks                # fail on an out-of-order marked list
 //! ```
 
 mod aliases;
 mod reachable;
 mod rustdoc;
+mod sorted_blocks;
 mod test_layout;
 
 use std::path::{Path, PathBuf};
@@ -39,6 +41,7 @@ fn main() -> ExitCode {
     let result = match task.as_deref() {
         Some("generate-provider-aliases") => generate_provider_aliases(check),
         Some("check-test-layout") => test_layout::check(&workspace_root()),
+        Some("check-sorted-blocks") => sorted_blocks::check(&workspace_root()),
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
         None => Err(format!("no task given\n{USAGE}")),
     };
@@ -60,6 +63,8 @@ tasks:
                               from rig-core's rustdoc output
   check-test-layout           fail if any crates/*/src file has an inline
                               test-gated `mod x { }` instead of `mod x;`
+  check-sorted-blocks         fail if a list between `sorted: start` and
+                              `sorted: end` markers is not in byte order
 ";
 
 fn generate_provider_aliases(check: bool) -> Result<(), String> {

@@ -107,6 +107,7 @@
 //! # Ok(())
 //! # }
 //! ```
+// sorted: start
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;
@@ -134,3 +135,4 @@ pub mod voyageai;
 pub mod xai;
 pub mod xiaomimimo;
 pub mod zai;
+// sorted: end

@@ -155,6 +155,7 @@ The root `rig` facade exposes companion crates behind one feature per integratio
 rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 ```
 
+<!-- sorted: start -->
 | Integration | Crate | Feature | Module path |
 | --- | --- | --- | --- |
 | AWS Bedrock | [`rig-bedrock`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-bedrock) | `bedrock` | `rig::bedrock` |
@@ -175,6 +176,7 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | ScyllaDB | [`rig-scylladb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-scylladb) | `scylladb` | `rig::scylladb` |
 | SQLite | [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite) | `sqlite` | `rig::sqlite` |
 | SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
+<!-- sorted: end -->
 
 `rig::memory` is available without the `memory` feature; it contains the core
 conversation memory traits and in-memory backend re-exported from `rig-core`.

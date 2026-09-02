@@ -110,24 +110,30 @@ edition = "2024"
 #
 # The `rig` facade is the workspace-root package; examples depend on it via
 # `rig.workspace = true` (add per-example features at the use site).
+# sorted: start
 rig = { path = ".", version = "0.42.0" }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0" }
+rig-core = { path = "crates/rig-core", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
-rig-core = { path = "crates/rig-core", version = "0.42.0" }
+# sorted: end
+
+# sorted: start
 anyhow = "1"
 arrow-array = "58"
 as-any = "0.3"
 assert_fs = "1"
 async-stream = "0.3"
-axum = "0.8"
 aws-config = { version = "1", default-features = false }
 # 1.124: `OutputConfig`/`ServiceTier`/citations types rig-bedrock maps.
 aws-sdk-bedrockruntime = { version = "1.124", default-features = false }
 aws-smithy-eventstream = "0.60"
 aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
+axum = "0.8"
 base64 = "0.22"
+# Runtime-agnostic executor used by the `agent_no_tokio` example.
+bevy_tasks = { version = "0.19", features = ["multi_threaded"] }
 bytes = "1"
 candle-core = "0.11"
 candle-nn = "0.11"
@@ -143,15 +149,13 @@ eventsource-stream = "0.2.3"
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
-# Runtime-agnostic executor used by the `agent_no_tokio` example.
-bevy_tasks = { version = "0.19", features = ["multi_threaded"] }
 futures-timer = "3"
 glob = "0.3"
-google-cloud-auth = "1"
 # 1.7: `ThinkingLevel`, `ImageConfig`, `FunctionResponse{Blob,FileData}`.
 google-cloud-aiplatform-v1 = { version = "1.7", default-features = false, features = [
     "prediction-service",
 ] }
+google-cloud-auth = "1"
 http = "1"
 # 0.8.2: `Recording::export_async` (cassette harness).
 httpmock = "0.8.2"
@@ -175,6 +179,7 @@ ordered-float = "5"
 pgvector = "0.4.2"
 pin-project-lite = "0.2"
 proc-macro2 = "1"
+prost = "0.14"
 # 1.10: the `Qdrant` client, `Payload`, and the query/upsert builders.
 qdrant-client = { version = "1.10", default-features = false, features = [
     "serde",
@@ -187,17 +192,16 @@ reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"
 rmcp = "2"
-url = "2"
 rusqlite = "0.32"
-scylla = "1"
+safetensors = "0.8"
 schemars = "1"
+scylla = "1"
 serde = "1"
-serde_yaml = "0.9"
 # 1.0.54: the `float_roundtrip` feature.
 serde_json = "1.0.54"
-safetensors = "0.8"
-sha2 = "0.10"
 serde_path_to_error = "0.1"
+serde_yaml = "0.9"
+sha2 = "0.10"
 sqlite-vec = "0.1"
 sqlx = "0.9"
 # 3.2: 3.0/3.1 no longer build against `surrealdb-core ^3` as published.
@@ -207,27 +211,28 @@ term_size = "0.3"
 testcontainers = "0.27"
 textwrap = "0.16"
 thiserror = "2"
+tokenizers = { version = "0.22", default-features = false }
 tokio = "1"
 tokio-rusqlite = { version = "0.6", default-features = false }
-tokio-test = "0.4"
 tokio-stream = "0.1"
+tokio-test = "0.4"
 tokio-tungstenite = { version = "0.29", default-features = false }
-tokenizers = { version = "0.22", default-features = false }
 tonic = "0.14"
 tonic-build = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
-prost = "0.14"
 tracing = "0.1"
 # 0.2.5: `Instrumented<S>: Stream` under `futures-03` for futures 0.3 stable.
 tracing-futures = "0.2.5"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = "0.3"
+url = "2"
 uuid = "1"
-wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
 web-time = "1"
 zerocopy = "0.8"
+# sorted: end
 
 [workspace.metadata.cargo-autoinherit]
 # Skip cargo-autoinherit for these packages
@@ -241,15 +246,16 @@ rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = fa
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0", optional = true }
+rig-derive = { path = "crates/rig-derive", version = "0.42.0", optional = true }
+# Companion crates, one optional dependency per `crates/rig-*` integration.
+# sorted: start
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.42.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.42.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.42.0", optional = true, default-features = false }
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.42.0", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.42.0", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.42.0", optional = true, default-features = false }
-lancedb = { workspace = true, optional = true }
 rig-memory = { path = "crates/rig-memory", version = "0.42.0", optional = true, default-features = false }
-rig-derive = { path = "crates/rig-derive", version = "0.42.0", optional = true }
 rig-milvus = { path = "crates/rig-milvus", version = "0.42.0", optional = true, default-features = false }
 rig-mongodb = { path = "crates/rig-mongodb", version = "0.42.0", optional = true, default-features = false }
 rig-neo4j = { path = "crates/rig-neo4j", version = "0.42.0", optional = true, default-features = false }
@@ -261,6 +267,10 @@ rig-sqlite = { path = "crates/rig-sqlite", version = "0.42.0", optional = true, 
 rig-surrealdb = { path = "crates/rig-surrealdb", version = "0.42.0", optional = true, default-features = false }
 rig-vectorize = { path = "crates/rig-vectorize", version = "0.42.0", optional = true, default-features = false }
 rig-vertexai = { path = "crates/rig-vertexai", version = "0.42.0", optional = true, default-features = false }
+# sorted: end
+# Re-exported beside `rig-lancedb` for the `lancedb` feature; not a companion
+# crate itself, so it sits outside the sorted block.
+lancedb = { workspace = true, optional = true }
 
 # The bundled websocket backend is native-only (tungstenite needs a tokio
 # reactor and raises a `compile_error!` on wasm), so it is scoped to non-wasm
@@ -280,6 +290,7 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.42.0", optional = tr
 rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optional = true }
 
 [dev-dependencies]
+# sorted: start
 anyhow = { workspace = true }
 arrow-array = { workspace = true }
 assert_fs = { workspace = true }
@@ -289,25 +300,19 @@ aws-sdk-bedrockruntime = { workspace = true }
 aws-smithy-eventstream = { workspace = true }
 aws-smithy-runtime-api = { workspace = true }
 aws-smithy-types = { workspace = true }
-rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false, features = [
-  "test-utils",
-] }
-rig-agent = { path = "crates/rig-agent", version = "0.42.0", default-features = false, features = [
-  "test-utils",
-] }
-tokio = { workspace = true, features = ["full"] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tokio-test = { workspace = true }
-redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
-serde_path_to_error = { workspace = true }
+axum = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true, features = ["record", "proxy"] }
+hyper-util = { workspace = true, features = ["service", "server"] }
 mongodb = { workspace = true }
 neo4rs = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 qdrant-client = { workspace = true }
-reqwest-retry = { workspace = true }
+redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 reqwest-middleware = { workspace = true, features = [
   "json",
@@ -316,22 +321,13 @@ reqwest-middleware = { workspace = true, features = [
   "http2",
   "rustls",
 ] }
-schemars = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-sha2 = { workspace = true }
-# float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
-# (e.g. embedding vectors): without it, parse→print can oscillate between two
-# representations of the same decimal and the recorded YAML never stabilizes.
-serde_json = { workspace = true, features = ["float_roundtrip"] }
-serde_yaml = { workspace = true }
-syn = { workspace = true, features = ["full", "visit"] }
-rusqlite = { workspace = true, features = ["bundled"] }
-sqlite-vec = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
-testcontainers = { workspace = true }
-thiserror = { workspace = true }
-tokio-rusqlite = { workspace = true, features = ["bundled"] }
-hyper-util = { workspace = true, features = ["service", "server"] }
+reqwest-retry = { workspace = true }
+rig-agent = { path = "crates/rig-agent", version = "0.42.0", default-features = false, features = [
+  "test-utils",
+] }
+rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false, features = [
+  "test-utils",
+] }
 rmcp = { workspace = true, features = [
   "client",
   "macros",
@@ -342,13 +338,29 @@ rmcp = { workspace = true, features = [
   "transport-streamable-http-server",
   "transport-worker",
 ] }
-axum = { workspace = true }
-opentelemetry = { workspace = true }
-opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
-opentelemetry-otlp = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+# float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
+# (e.g. embedding vectors): without it, parse→print can oscillate between two
+# representations of the same decimal and the recorded YAML never stabilizes.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+serde_path_to_error = { workspace = true }
+serde_yaml = { workspace = true }
+sha2 = { workspace = true }
+sqlite-vec = { workspace = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
+syn = { workspace = true, features = ["full", "visit"] }
+testcontainers = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-rusqlite = { workspace = true, features = ["bundled"] }
+tokio-test = { workspace = true }
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
+# sorted: end
 
 [features]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
@@ -358,6 +370,8 @@ test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
 # lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.
 facade-build-tests = []
+# Companion-crate features, one per optional dependency above.
+# sorted: start
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [
@@ -382,6 +396,7 @@ sqlite = ["dep:rig-sqlite"]
 surrealdb = ["dep:rig-surrealdb"]
 vectorize = ["dep:rig-vectorize"]
 vertexai = ["dep:rig-vertexai"]
+# sorted: end
 audio = ["rig-core/audio", "rig-agent?/audio", "rig-reqwest?/audio"]
 image = ["rig-core/image", "rig-agent?/image", "rig-reqwest?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
