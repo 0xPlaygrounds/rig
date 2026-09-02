@@ -289,6 +289,11 @@ pub enum FamilyDescriptor {
     Memory {},
     /// A vector-store index.
     Retrieve {},
+    /// A handler for an out-of-tree kind: the label it serves.
+    Custom {
+        /// The [`EffectKind::Custom`] kind label this handler answers.
+        kind: String,
+    },
 }
 
 impl FamilyDescriptor {
@@ -300,6 +305,7 @@ impl FamilyDescriptor {
             Self::Embed { .. } => EffectFamily::Embed,
             Self::Memory {} => EffectFamily::Memory,
             Self::Retrieve {} => EffectFamily::Retrieve,
+            Self::Custom { .. } => EffectFamily::Custom,
         }
     }
 }

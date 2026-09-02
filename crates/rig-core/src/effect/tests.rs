@@ -86,6 +86,12 @@ fn descriptor_variant_is_the_family() {
         ),
         (FamilyDescriptor::Memory {}, EffectFamily::Memory),
         (FamilyDescriptor::Retrieve {}, EffectFamily::Retrieve),
+        (
+            FamilyDescriptor::Custom {
+                kind: "host:tick".into(),
+            },
+            EffectFamily::Custom,
+        ),
     ];
     for (family, expected) in cases {
         assert_eq!(family.family(), expected);

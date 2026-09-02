@@ -17,8 +17,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::CompletionError,
+    embeddings::EmbeddingError,
     memory::MemoryError,
     tool::{ToolErrorKind, ToolExecutionError},
+    vector_store::VectorStoreError,
 };
 
 /// Normalized classification of an [`ErrorReport`].
@@ -58,6 +60,14 @@ pub enum ErrorKind {
     Cancelled,
     /// The operation exceeded its deadline.
     Timeout,
+    /// The effect bus's driver is gone: the owner dropped it, so nothing can
+    /// serve a dispatch. A lifecycle event; never retryable on the same bus.
+    BusClosed,
+    /// The bus is alive but no handler serves the requested key — it was
+    /// never registered, was deregistered, or is of another family than the
+    /// typed view asked for. A wiring or liveness event; the key is in the
+    /// message.
+    HandlerUnavailable,
     /// Anything else.
     Other,
 }
@@ -298,6 +308,105 @@ impl From<&MemoryError> for ErrorReport {
 
 impl From<MemoryError> for ErrorReport {
     fn from(error: MemoryError) -> Self {
+        Self::from(&error)
+    }
+}
+
+impl From<&EmbeddingError> for ErrorReport {
+    fn from(error: &EmbeddingError) -> Self {
+        let (kind, http_status) = match error {
+            EmbeddingError::HttpError(inner) => {
+                let status = inner.non_success_status().map(|s| s.as_u16());
+                (ErrorKind::Http { status }, status)
+            }
+            EmbeddingError::JsonError(_) => (ErrorKind::Json, None),
+            EmbeddingError::UrlError(_) => (ErrorKind::Url, None),
+            EmbeddingError::DocumentError(_) => (ErrorKind::Request, None),
+            EmbeddingError::ResponseError(_) => (ErrorKind::Response, None),
+            EmbeddingError::UnsupportedParameter { .. }
+            | EmbeddingError::InvalidParameterValue { .. } => (ErrorKind::Request, None),
+            EmbeddingError::UnsupportedResponseEncoding { .. }
+            | EmbeddingError::MissingUsage { .. }
+            | EmbeddingError::MismatchedDimensions { .. } => (ErrorKind::Response, None),
+            EmbeddingError::ProviderError(_) => (ErrorKind::Provider, None),
+            EmbeddingError::ProviderResponse(response) => {
+                let status = response.status.map(|s| s.as_u16());
+                (ErrorKind::ProviderResponse, status)
+            }
+        };
+        let retryable = match kind {
+            ErrorKind::Http { status } => retryable_status(status),
+            ErrorKind::ProviderResponse => retryable_status(http_status),
+            ErrorKind::Json
+            | ErrorKind::Url
+            | ErrorKind::Request
+            | ErrorKind::Response
+            | ErrorKind::Provider
+            | ErrorKind::Tool(_)
+            | ErrorKind::MemoryBackend
+            | ErrorKind::MemoryPolicy
+            | ErrorKind::Internal
+            | ErrorKind::Cancelled
+            | ErrorKind::Timeout
+            | ErrorKind::BusClosed
+            | ErrorKind::HandlerUnavailable
+            | ErrorKind::Other => false,
+        };
+        ErrorReport {
+            kind,
+            retryable,
+            message: error.to_string(),
+            code: None,
+            http_status,
+            refusal: false,
+            source_chain: source_chain(error),
+        }
+    }
+}
+
+impl From<EmbeddingError> for ErrorReport {
+    fn from(error: EmbeddingError) -> Self {
+        Self::from(&error)
+    }
+}
+
+impl From<&VectorStoreError> for ErrorReport {
+    fn from(error: &VectorStoreError) -> Self {
+        let (kind, http_status) = match error {
+            VectorStoreError::EmbeddingError(inner) => {
+                let report = ErrorReport::from(inner);
+                (report.kind, report.http_status)
+            }
+            VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
+            VectorStoreError::DatastoreError(_) => (ErrorKind::Provider, None),
+            VectorStoreError::FilterError(_) | VectorStoreError::BuilderError(_) => {
+                (ErrorKind::Request, None)
+            }
+            VectorStoreError::MissingIdError(_) => (ErrorKind::Response, None),
+            VectorStoreError::Http(inner) => {
+                let status = inner.non_success_status().map(|s| s.as_u16());
+                (ErrorKind::Http { status }, status)
+            }
+            VectorStoreError::ExternalAPIError(status, _) => {
+                let status = Some(status.as_u16());
+                (ErrorKind::Http { status }, status)
+            }
+        };
+        let retryable = matches!(kind, ErrorKind::Http { .. }) && retryable_status(http_status);
+        ErrorReport {
+            kind,
+            retryable,
+            message: error.to_string(),
+            code: None,
+            http_status,
+            refusal: false,
+            source_chain: source_chain(error),
+        }
+    }
+}
+
+impl From<VectorStoreError> for ErrorReport {
+    fn from(error: VectorStoreError) -> Self {
         Self::from(&error)
     }
 }

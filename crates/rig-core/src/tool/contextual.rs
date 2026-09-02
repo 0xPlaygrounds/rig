@@ -271,6 +271,26 @@ where
 /// Output conversion happens here rather than in each [`ErasedTool::execute`] so
 /// a conversion failure and an execution failure reach the runtime as the same
 /// kind of failed result.
+/// Run a runtime-defined tool callback over raw JSON arguments: the parse
+/// and result-shaping every tool shares, for the bus's `ToolFn` handler.
+pub(crate) async fn execute_callback<F>(
+    callback: &F,
+    args: String,
+    context: &mut ToolContext,
+) -> ToolResult
+where
+    F: for<'a> Fn(
+        &'a mut ToolContext,
+        serde_json::Value,
+    ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>,
+{
+    let args = match parse_tool_args::<serde_json::Value>(&args) {
+        Ok(args) => args,
+        Err(error) => return ToolResult::failed(error),
+    };
+    tool_result_from(callback(context, args).await)
+}
+
 fn tool_result_from<O>(outcome: Result<O, ToolExecutionError>) -> ToolResult
 where
     O: IntoToolOutput,
