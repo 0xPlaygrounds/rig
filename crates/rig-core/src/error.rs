@@ -204,13 +204,39 @@ impl std::error::Error for ErrorReport {}
 ///
 /// Request Timeout (408), Too Early (425), Too Many Requests (429) and every
 /// server error (5xx) are retryable; every other status is not. A missing
-/// status (a response-less transport failure: connect, decode, timeout) is
-/// retryable — the request never reached a decision.
+/// status decides nothing here: a failure with no status is classified by
+/// what it is ([`transient_transport`]), not by what it lacks.
 pub const fn retryable_status(status: Option<u16>) -> bool {
     match status {
-        None => true,
+        None => false,
         Some(408 | 425 | 429) => true,
         Some(s) => s >= 500 && s <= 599,
+    }
+}
+
+/// The one transport-failure → retryable table, for the failures that
+/// carry no HTTP status.
+///
+/// Transient: the stream ended before its terminal (`StreamEnded`) and the
+/// backend's own transport errors (`Instance`: a connect reset, a DNS or
+/// TLS failure, a timeout — the client could not classify them further, and
+/// the request never reached a decision). Permanent: a request the client
+/// could not even form or a response it could not read — a protocol error,
+/// an illegal header value, missing headers, an unexpected content type.
+/// A failure that does carry a status is classified by
+/// [`retryable_status`].
+pub fn transient_transport(error: &crate::http_client::Error) -> bool {
+    match error {
+        crate::http_client::Error::StreamEnded | crate::http_client::Error::Instance(_) => true,
+        crate::http_client::Error::Protocol(_)
+        | crate::http_client::Error::InvalidHeaderValue(_)
+        | crate::http_client::Error::NoHeaders
+        | crate::http_client::Error::InvalidContentType(_) => false,
+        crate::http_client::Error::InvalidStatusCode(status)
+        | crate::http_client::Error::InvalidStatusCodeWithMessage(status, _)
+        | crate::http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
+            retryable_status(Some(status.as_u16()))
+        }
     }
 }
 
@@ -232,9 +258,7 @@ impl CompletionError {
     /// else is a fault in the request or the response and is not retried.
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::HttpError(error) => {
-                retryable_status(error.non_success_status().map(|s| s.as_u16()))
-            }
+            Self::HttpError(error) => transient_transport(error),
             Self::ProviderResponse(response) => {
                 retryable_status(response.status.map(|s| s.as_u16()))
             }
@@ -331,17 +355,13 @@ impl ToolExecutionError {
 
 impl ToolExecutionError {
     /// Whether the tool may reasonably be re-run: the explicit override when
-    /// one was set, else the kind's own default.
+    /// one was set, else the kind's own default
+    /// ([`ToolErrorKind::default_retryable`]); a kind that leaves it to the
+    /// tool (`None`) is not retryable on the wire.
     pub fn is_retryable(&self) -> bool {
-        self.retryable().unwrap_or_else(|| {
-            matches!(
-                self.kind(),
-                ToolErrorKind::Timeout
-                    | ToolErrorKind::RateLimited
-                    | ToolErrorKind::Network
-                    | ToolErrorKind::Provider
-            )
-        })
+        self.retryable()
+            .or_else(|| self.kind().default_retryable())
+            .unwrap_or(false)
     }
 }
 

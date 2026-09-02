@@ -30,7 +30,7 @@ fn retry_table_per_status() {
         (Some(504), true),
         (Some(599), true),
         (Some(600), false),
-        (None, true),
+        (None, false),
     ];
     for (status, expected) in rows {
         assert_eq!(retryable_status(status), expected, "status {status:?}");
@@ -51,12 +51,80 @@ fn completion_http_error_reports_status_and_retryability() {
 }
 
 #[test]
-fn completion_transport_failure_without_status_is_retryable() {
-    let error = CompletionError::HttpError(http_client::Error::StreamEnded);
-    assert!(error.is_retryable());
-    let report = error.report();
-    assert_eq!(report.kind, ErrorKind::Http { status: None });
-    assert_eq!(report.http_status, None);
+fn transport_failures_without_a_status_classify_by_what_they_are() {
+    // The sign-off table for response-less transport failures: transient
+    // when the request never reached a decision, permanent when the client
+    // could not form the request or read the response.
+    let transient = [
+        http_client::Error::StreamEnded,
+        http_client::Error::Instance("connection reset by peer".into()),
+    ];
+    for error in transient {
+        let error = CompletionError::HttpError(error);
+        assert!(error.is_retryable(), "{error}");
+        let report = error.report();
+        assert_eq!(report.kind, ErrorKind::Http { status: None });
+        assert_eq!(report.http_status, None);
+        assert!(report.retryable, "{report:?}");
+    }
+    let permanent = [
+        http_client::Error::NoHeaders,
+        http_client::Error::InvalidContentType(http::HeaderValue::from_static("text/html")),
+        http_client::Error::InvalidHeaderValue(
+            http::HeaderValue::from_bytes(b"\x00").expect_err("illegal header value"),
+        ),
+    ];
+    for error in permanent {
+        let error = CompletionError::HttpError(error);
+        assert!(!error.is_retryable(), "{error}");
+        assert!(!error.report().retryable, "{error}");
+    }
+    // A status-carrying transport failure follows the status table.
+    assert!(
+        CompletionError::HttpError(http_client::Error::InvalidStatusCode(
+            StatusCode::SERVICE_UNAVAILABLE
+        ))
+        .is_retryable()
+    );
+    // A provider response without a status decides nothing either.
+    assert!(
+        !CompletionError::ProviderResponse(ProviderResponseError::without_status("body"))
+            .is_retryable()
+    );
+}
+
+#[test]
+fn tool_retryability_has_one_answer_on_every_surface() {
+    // The kind default is the table: `retryable()`, `is_retryable()` and the
+    // wire report agree for every kind, including the ones whose default is
+    // `None` (not retryable on the wire).
+    for kind in [
+        ToolErrorKind::InvalidArgs,
+        ToolErrorKind::Timeout,
+        ToolErrorKind::Cancelled,
+        ToolErrorKind::NotFound,
+        ToolErrorKind::PermissionDenied,
+        ToolErrorKind::RateLimited,
+        ToolErrorKind::Provider,
+        ToolErrorKind::Network,
+        ToolErrorKind::Other,
+    ] {
+        let error = ToolExecutionError::new(kind, "x");
+        let expected = kind.default_retryable().unwrap_or(false);
+        assert_eq!(error.retryable(), kind.default_retryable(), "{kind:?}");
+        assert_eq!(error.is_retryable(), expected, "{kind:?}");
+        assert_eq!(error.report().retryable, expected, "{kind:?}");
+    }
+    let provider = ToolExecutionError::new(ToolErrorKind::Provider, "x");
+    assert_eq!(provider.retryable(), None);
+    assert!(
+        !provider.is_retryable(),
+        "a kind that leaves it to the tool is not retryable on the wire"
+    );
+    assert!(
+        provider.with_retryable(true).is_retryable(),
+        "the override wins"
+    );
 }
 
 #[test]
