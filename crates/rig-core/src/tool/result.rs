@@ -8,7 +8,8 @@ use crate::{
 };
 
 /// Normalized classification for a tool execution error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ToolErrorKind {
     /// Arguments could not be decoded or validated.
     InvalidArgs,

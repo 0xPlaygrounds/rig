@@ -150,6 +150,7 @@ pub mod audio_generation;
 pub mod client;
 pub mod completion;
 pub mod embeddings;
+pub mod error;
 pub mod http_client;
 pub mod id;
 #[cfg(feature = "image")]
@@ -184,6 +185,7 @@ pub mod ws_client;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
+pub use error::{ErrorKind, ErrorReport};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of
