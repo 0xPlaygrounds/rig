@@ -404,23 +404,26 @@ fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
     let key = HandlerKey::from("echo");
-    // Nobody drives; fill the channel by polling pendings once each.
+    // Nobody drives; the first poll buffers the first command and the bound
+    // is reached. Every later dispatch parks at its send stage: the call
+    // returns immediately (this is a synchronous, non-async context) and
+    // the pressure lives on the pending.
     let mut first = dispatcher.dispatch(&key, custom(json!(1)));
     assert!(first.poll_unpin(&mut cx).is_pending());
-    let mut second = dispatcher.dispatch(&key, custom(json!(2)));
-    assert!(second.poll_unpin(&mut cx).is_pending());
-    // The channel is full (capacity + one slot per sender is futures' rule;
-    // keep dispatching until a poll stays at the send stage).
+    assert_eq!(dispatcher.buffered(), 1);
     let mut pressured = Vec::new();
-    for n in 3..20 {
+    for n in 2..20 {
         let mut pending = dispatcher.dispatch(&key, custom(json!(n)));
-        // Returns immediately: this is a synchronous call from a non-async context.
-        let poll = pending.poll_unpin(&mut cx);
-        assert!(poll.is_pending());
+        assert!(pending.poll_unpin(&mut cx).is_pending());
         pressured.push(pending);
     }
-    // The dispatch call itself never awaited; the pressure lives on the
-    // pendings, which resolve only once someone drives (or closes) the bus.
+    assert_eq!(
+        dispatcher.buffered(),
+        1,
+        "the bound is bus-wide: eighteen parked dispatches buffered nothing"
+    );
+    // The dispatch call itself never awaited; the pendings resolve only once
+    // someone drives (or closes) the bus.
     drop(driver);
     for mut pending in pressured {
         match pending.poll_unpin(&mut cx) {
@@ -428,6 +431,88 @@ fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
             other => panic!("expected BusClosed after the driver dropped, got {other:?}"),
         }
     }
+}
+
+#[test]
+fn a_dispatch_parked_on_the_bound_is_sent_once_the_driver_drains() {
+    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+        command_capacity: 1,
+        ..BusConfig::default()
+    });
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo);
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let key = HandlerKey::from("echo");
+    let mut first = dispatcher.dispatch(&key, custom(json!(1)));
+    let mut second = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(first.poll_unpin(&mut cx).is_pending());
+    assert!(second.poll_unpin(&mut cx).is_pending());
+    assert_eq!(
+        dispatcher.buffered(),
+        1,
+        "the second is parked, not buffered"
+    );
+    // One driver poll drains the first; the parked second is woken and its
+    // next poll sends.
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert_eq!(dispatcher.buffered(), 0);
+    assert!(second.poll_unpin(&mut cx).is_pending());
+    assert_eq!(
+        dispatcher.buffered(),
+        1,
+        "the parked dispatch sent after the drain"
+    );
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(served.load(Ordering::SeqCst), 2);
+    assert!(first.poll_unpin(&mut cx).is_ready());
+    assert!(second.poll_unpin(&mut cx).is_ready());
+}
+
+#[test]
+fn a_buffered_dispatch_answers_bus_closed_when_the_driver_drops_before_taking_it() {
+    // The buffer lives on the shared half, not in the driver: dropping the
+    // driver must fail what it never took, or the pending waits forever.
+    let (dispatcher, driver) = Bus::channel();
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    assert_eq!(dispatcher.buffered(), 1);
+    drop(driver);
+    match pending.poll_unpin(&mut cx) {
+        Poll::Ready(Err(report)) => assert_eq!(report.kind, ErrorKind::BusClosed),
+        other => panic!("expected BusClosed, got {other:?}"),
+    }
+    assert_eq!(dispatcher.buffered(), 0);
+}
+
+#[test]
+fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
+    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+        command_capacity: 1,
+        ..BusConfig::default()
+    });
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo);
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let key = HandlerKey::from("echo");
+    let mut first = dispatcher.dispatch(&key, custom(json!(1)));
+    let mut parked = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(first.poll_unpin(&mut cx).is_pending());
+    assert!(parked.poll_unpin(&mut cx).is_pending());
+    drop(parked);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(first.poll_unpin(&mut cx).is_ready());
+    assert_eq!(
+        served.load(Ordering::SeqCst),
+        1,
+        "the handler never saw the dispatch dropped before it was sent"
+    );
 }
 
 #[test]

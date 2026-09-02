@@ -314,12 +314,15 @@ fn main() {
             started.elapsed() < Duration::from_secs(1),
             "proof 5: dispatch stalled the caller"
         );
+        // The bound is bus-wide: one command buffered, sixty-three parked at
+        // their send stage with the pressure on the pendings.
+        assert_eq!(dispatcher.buffered(), 1, "proof 5: the bound did not hold");
         drop(driver);
         for mut pending in pendings {
             let outcome = guarded("proof 5", || block_on(poll_once(&mut pending)));
             assert_eq!(outcome.expect_err("closed").kind, ErrorKind::BusClosed);
         }
-        println!("proof 5: 64 dispatches returned immediately with the pressure on the pendings");
+        println!("proof 5: 64 dispatches returned immediately; one buffered, the rest parked");
     }
 
     // ---- proof 6: a stream consumed across ticks, dropped mid-stream ----

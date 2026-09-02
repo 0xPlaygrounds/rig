@@ -9,8 +9,7 @@ use std::{
 };
 
 use futures::{
-    Stream, StreamExt,
-    channel::mpsc,
+    StreamExt,
     stream::{FusedStream, FuturesUnordered},
 };
 use tracing::Instrument;
@@ -30,8 +29,10 @@ use super::{
 /// Bus sizing and serving policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BusConfig {
-    /// Commands the channel buffers before a `Pending`/`EffectStream` stalls
-    /// on its first poll.
+    /// Commands the bus buffers, **bus-wide**, before a `Pending`/
+    /// `EffectStream` parks at its send stage (its poll stays `Pending`
+    /// until the driver drains). The bound holds across every `Dispatcher`
+    /// clone and every dispatch; the caller of `dispatch` is never blocked.
     pub command_capacity: usize,
     /// Stream events buffered per streaming dispatch before the handler
     /// stalls (the client-side pause point).
@@ -112,7 +113,6 @@ type InFlight = WasmBoxedFuture<'static, HandlerKey>;
 /// spawn it, drive it inline (`select(pending, &mut driver)`), or hand it
 /// over together with the dispatcher.
 pub struct BusDriver {
-    rx: mpsc::Receiver<Command>,
     shared: Arc<Shared>,
     config: BusConfig,
     in_flight: FuturesUnordered<InFlight>,
@@ -137,9 +137,8 @@ impl fmt::Debug for BusDriver {
 }
 
 impl BusDriver {
-    pub(super) fn new(rx: mpsc::Receiver<Command>, shared: Arc<Shared>, config: BusConfig) -> Self {
+    pub(super) fn new(shared: Arc<Shared>, config: BusConfig) -> Self {
         Self {
-            rx,
             shared,
             config,
             in_flight: FuturesUnordered::new(),
@@ -251,13 +250,17 @@ impl Future for BusDriver {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
         let this = self.get_mut();
         loop {
-            // Take every command that is ready; each becomes an in-flight
-            // task or a queued one.
-            while !this.commands_closed {
-                match Pin::new(&mut this.rx).poll_next(cx) {
-                    Poll::Ready(Some(command)) => this.accept(command),
-                    Poll::Ready(None) => this.commands_closed = true,
-                    Poll::Pending => break,
+            // Take every buffered command; each becomes an in-flight task or
+            // a queued one. Draining registers this poll's waker for the
+            // next enqueue and releases any dispatch parked on the bound.
+            if !this.commands_closed {
+                for command in this.shared.drain(cx) {
+                    this.accept(*command);
+                }
+                // The bus is closed for commands once every dispatcher has
+                // dropped and nothing it enqueued remains.
+                if this.shared.dispatchers() == 0 && this.shared.buffered() == 0 {
+                    this.commands_closed = true;
                 }
             }
             // Drive the tasks. A completion may release a queued command,

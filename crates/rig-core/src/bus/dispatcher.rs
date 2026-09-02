@@ -2,14 +2,14 @@
 //! values a dispatch returns.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     fmt,
     pin::Pin,
     sync::{
-        Arc, PoisonError, RwLock,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex, PoisonError, RwLock,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
 };
 
 use futures::{
@@ -33,22 +33,142 @@ pub(super) struct Shared {
     /// driving (an MCP reconcile, a sync `add_tool`) never waits on the
     /// driver — and the driver reads it when it serves a command.
     handlers: RwLock<BTreeMap<HandlerKey, ErasedHandler>>,
+    /// The command queue: one bounded buffer for the whole bus. The bound is
+    /// bus-wide on purpose — a per-sender channel would hand every
+    /// `Dispatcher` clone (and every dispatch, if each cloned a sender) a
+    /// guaranteed slot of its own, and `command_capacity` would bound
+    /// nothing.
+    queue: Mutex<CommandQueue>,
+    /// Live `Dispatcher` clones. The driver ends when this reaches zero with
+    /// nothing queued or in flight.
+    dispatchers: AtomicUsize,
     /// Set by the driver's drop guard: every reply that comes back
     /// `Canceled` after this is `BusClosed`, not a handler defect.
     closed: AtomicBool,
 }
 
+/// The bounded command buffer and the wakers on either side of it.
+struct CommandQueue {
+    commands: VecDeque<Box<Command>>,
+    capacity: usize,
+    /// The driver's waker, refreshed on every driver poll; woken when a
+    /// command is enqueued or the last dispatcher drops.
+    driver: Option<Waker>,
+    /// The wakers of `Pending`/`EffectStream` values parked at the send
+    /// stage because the buffer was full; all woken when the driver drains.
+    senders: Vec<Waker>,
+}
+
 impl Shared {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(command_capacity: usize) -> Self {
         Self {
             next_id: AtomicU64::new(1),
             handlers: RwLock::new(BTreeMap::new()),
+            queue: Mutex::new(CommandQueue {
+                commands: VecDeque::new(),
+                capacity: command_capacity.max(1),
+                driver: None,
+                senders: Vec::new(),
+            }),
+            dispatchers: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
         }
     }
 
     pub(super) fn mark_closed(&self) {
         self.closed.store(true, Ordering::SeqCst);
+        // Commands the driver never took fail now — their reply halves live
+        // in this buffer, not in the driver, so nothing else would close
+        // them — and parked senders wake to observe the close.
+        let (commands, senders) = {
+            let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+            (
+                std::mem::take(&mut queue.commands),
+                std::mem::take(&mut queue.senders),
+            )
+        };
+        for command in commands {
+            command.reply.fail(bus_closed());
+        }
+        for waker in senders {
+            waker.wake();
+        }
+    }
+
+    /// Offer `command` to the buffer. A full buffer hands the command back
+    /// and parks `cx`'s waker until the driver drains; the caller keeps the
+    /// command and retries when woken.
+    pub(super) fn enqueue(
+        &self,
+        command: Box<Command>,
+        cx: &Context<'_>,
+    ) -> Result<(), Box<Command>> {
+        let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if queue.commands.len() >= queue.capacity {
+            let waker = cx.waker();
+            if !queue.senders.iter().any(|parked| parked.will_wake(waker)) {
+                queue.senders.push(waker.clone());
+            }
+            return Err(command);
+        }
+        queue.commands.push_back(command);
+        if let Some(driver) = queue.driver.take() {
+            driver.wake();
+        }
+        Ok(())
+    }
+
+    /// Take every buffered command (the driver's side), registering `cx` as
+    /// the waker to wake on the next enqueue, and release any parked sender.
+    pub(super) fn drain(&self, cx: &Context<'_>) -> VecDeque<Box<Command>> {
+        let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        let commands = std::mem::take(&mut queue.commands);
+        match &mut queue.driver {
+            Some(driver) if driver.will_wake(cx.waker()) => {}
+            slot => *slot = Some(cx.waker().clone()),
+        }
+        let senders = if commands.is_empty() {
+            Vec::new()
+        } else {
+            std::mem::take(&mut queue.senders)
+        };
+        drop(queue);
+        for waker in senders {
+            waker.wake();
+        }
+        commands
+    }
+
+    /// Commands buffered and not yet taken by the driver.
+    pub(super) fn buffered(&self) -> usize {
+        self.queue
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .commands
+            .len()
+    }
+
+    pub(super) fn dispatcher_opened(&self) {
+        self.dispatchers.fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub(super) fn dispatcher_closed(&self) {
+        if self.dispatchers.fetch_sub(1, Ordering::SeqCst) == 1 {
+            // The driver may be waiting for exactly this to end.
+            let driver = self
+                .queue
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .driver
+                .take();
+            if let Some(driver) = driver {
+                driver.wake();
+            }
+        }
+    }
+
+    pub(super) fn dispatchers(&self) -> usize {
+        self.dispatchers.load(Ordering::SeqCst)
     }
 
     pub(super) fn is_closed(&self) -> bool {
@@ -147,14 +267,36 @@ impl Reply {
 /// A dispatcher never blocks and never awaits: [`Dispatcher::dispatch`] and
 /// [`Dispatcher::dispatch_stream`] return immediately, and the *first poll*
 /// of the returned [`Pending`]/[`EffectStream`] performs the (possibly
-/// back-pressured) send. A full command channel therefore lands its pressure
-/// on the value being polled, never on the caller — a system that dispatches
-/// from inside a frame cannot deadlock the app.
-#[derive(Clone)]
+/// back-pressured) send. The command buffer is bounded **bus-wide** by
+/// [`BusConfig::command_capacity`](super::BusConfig::command_capacity):
+/// a full buffer lands its pressure on the value being polled, never on the
+/// caller — a system that dispatches from inside a frame cannot deadlock the
+/// app, and a burst of dispatches cannot grow the buffer past the bound.
 pub struct Dispatcher {
-    pub(super) tx: mpsc::Sender<Command>,
     pub(super) shared: Arc<Shared>,
     pub(super) stream_capacity: usize,
+}
+
+impl Dispatcher {
+    pub(super) fn open(shared: Arc<Shared>, stream_capacity: usize) -> Self {
+        shared.dispatcher_opened();
+        Self {
+            shared,
+            stream_capacity,
+        }
+    }
+}
+
+impl Clone for Dispatcher {
+    fn clone(&self) -> Self {
+        Self::open(Arc::clone(&self.shared), self.stream_capacity)
+    }
+}
+
+impl Drop for Dispatcher {
+    fn drop(&mut self) {
+        self.shared.dispatcher_closed();
+    }
 }
 
 impl fmt::Debug for Dispatcher {
@@ -195,7 +337,6 @@ impl Dispatcher {
         Pending {
             id,
             state: PendingState::Sending {
-                tx: self.tx.clone(),
                 command: Some(Box::new(Command {
                     id,
                     key: key.clone(),
@@ -246,7 +387,6 @@ impl Dispatcher {
         EffectStream {
             id,
             state: StreamState::Sending {
-                tx: self.tx.clone(),
                 command: Some(Box::new(Command {
                     id,
                     key: key.clone(),
@@ -295,7 +435,16 @@ impl Dispatcher {
     /// Whether the driver has been dropped. A dispatch on a closed bus
     /// resolves `BusClosed` on first poll.
     pub fn is_closed(&self) -> bool {
-        self.shared.is_closed() || self.tx.is_closed()
+        self.shared.is_closed()
+    }
+
+    /// Commands buffered on the bus and not yet taken by the driver — at
+    /// most [`BusConfig::command_capacity`](super::BusConfig::command_capacity).
+    /// A dispatch that finds the buffer full parks at its send stage (its
+    /// poll stays `Pending`) until the driver drains; the pressure is on the
+    /// `Pending`/`EffectStream`, never on the caller.
+    pub fn buffered(&self) -> usize {
+        self.shared.buffered()
     }
 }
 
@@ -323,10 +472,7 @@ fn reply_dropped(shared: &Shared) -> ErrorReport {
 }
 
 enum PendingState {
-    Sending {
-        tx: mpsc::Sender<Command>,
-        command: Option<Box<Command>>,
-    },
+    Sending { command: Option<Box<Command>> },
     Waiting,
 }
 
@@ -362,25 +508,23 @@ impl Future for Pending {
         let this = self.get_mut();
         loop {
             match &mut this.state {
-                PendingState::Sending { tx, command } => {
+                PendingState::Sending { command } => {
                     if this.shared.is_closed() {
                         return Poll::Ready(Err(bus_closed()));
                     }
-                    match tx.poll_ready(cx) {
-                        Poll::Pending => return Poll::Pending,
-                        Poll::Ready(Err(_)) => return Poll::Ready(Err(bus_closed())),
-                        Poll::Ready(Ok(())) => {}
-                    }
-                    let Some(command) = command.take() else {
+                    let Some(taken) = command.take() else {
                         return Poll::Ready(Err(ErrorReport::new(
                             ErrorKind::Internal,
                             "a dispatch was sent twice",
                         )));
                     };
-                    if tx.start_send(*command).is_err() {
-                        return Poll::Ready(Err(bus_closed()));
+                    match this.shared.enqueue(taken, cx) {
+                        Ok(()) => this.state = PendingState::Waiting,
+                        Err(kept) => {
+                            *command = Some(kept);
+                            return Poll::Pending;
+                        }
                     }
-                    this.state = PendingState::Waiting;
                 }
                 PendingState::Waiting => {
                     return match Pin::new(&mut this.receiver).poll(cx) {
@@ -398,7 +542,6 @@ impl Future for Pending {
 
 enum StreamState {
     Sending {
-        tx: mpsc::Sender<Command>,
         command: Option<Box<Command>>,
         receiver: Option<mpsc::Receiver<Result<StreamEvent, ErrorReport>>>,
     },
@@ -452,34 +595,32 @@ impl Stream for EffectStream {
                     return Poll::Ready(report.map(Err));
                 }
                 StreamState::Done => return Poll::Ready(None),
-                StreamState::Sending {
-                    tx,
-                    command,
-                    receiver,
-                } => {
+                StreamState::Sending { command, receiver } => {
                     if this.shared.is_closed() {
                         this.state = StreamState::Done;
                         return Poll::Ready(Some(Err(bus_closed())));
                     }
-                    match tx.poll_ready(cx) {
-                        Poll::Pending => return Poll::Pending,
-                        Poll::Ready(Err(_)) => {
-                            this.state = StreamState::Done;
-                            return Poll::Ready(Some(Err(bus_closed())));
-                        }
-                        Poll::Ready(Ok(())) => {}
-                    }
-                    let (Some(command), Some(receiver)) = (command.take(), receiver.take()) else {
+                    let Some(taken) = command.take() else {
                         this.state = StreamState::Done;
                         return Poll::Ready(Some(Err(ErrorReport::new(
                             ErrorKind::Internal,
                             "a stream dispatch was sent twice",
                         ))));
                     };
-                    if tx.start_send(*command).is_err() {
-                        this.state = StreamState::Done;
-                        return Poll::Ready(Some(Err(bus_closed())));
+                    match this.shared.enqueue(taken, cx) {
+                        Ok(()) => {}
+                        Err(kept) => {
+                            *command = Some(kept);
+                            return Poll::Pending;
+                        }
                     }
+                    let Some(receiver) = receiver.take() else {
+                        this.state = StreamState::Done;
+                        return Poll::Ready(Some(Err(ErrorReport::new(
+                            ErrorKind::Internal,
+                            "a stream dispatch was sent twice",
+                        ))));
+                    };
                     this.state = StreamState::Receiving {
                         receiver,
                         saw_terminal: false,
