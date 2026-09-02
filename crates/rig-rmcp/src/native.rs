@@ -9,7 +9,9 @@ use rmcp::model::{
 use rmcp::service::PeerRequestOptions;
 
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
-use rig_core::tool::{PortableDynamicTool, ToolContext, ToolExecutionError, ToolOutput};
+use rig_core::tool::{
+    PortableDynamicTool, ToolContext, ToolContextError, ToolExecutionError, ToolOutput,
+};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
 /// Re-export of [`rmcp::model::Meta`]: place one in the per-call [`ToolContext`]
@@ -438,14 +440,18 @@ pub fn tools_from_server(
 /// result hooks: the `structuredContent` value, the response [`Meta`], and the
 /// untouched [`CallToolResult`]. Host-only; the model sees only the ordered
 /// presentation content.
-pub fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
+pub fn preserve_mcp_result(
+    context: &mut ToolContext,
+    result: CallToolResult,
+) -> Result<(), ToolContextError> {
     if let Some(structured) = result.structured_content.clone() {
-        context.insert_result(structured);
+        context.insert_result(structured)?;
     }
     if let Some(meta) = result.meta.clone() {
-        context.insert_result(meta);
+        context.insert_result(meta)?;
     }
-    context.insert_result(result);
+    context.insert_result(result)?;
+    Ok(())
 }
 
 /// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
@@ -475,12 +481,12 @@ impl From<McpTool> for PortableDynamicTool {
             parameters,
             move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
-                let meta = context.get::<rmcp::model::Meta>().cloned();
+                let meta = context.get::<rmcp::model::Meta>();
                 Box::pin(async move {
                     let result = tool.execute_mcp(args.to_string(), meta).await?;
                     let is_error = result.is_error == Some(true);
                     let output = mcp_result_output(&result);
-                    preserve_mcp_result(context, result);
+                    preserve_mcp_result(context, result)?;
                     let output = output?;
                     if is_error {
                         Err(ToolExecutionError::other(format!(

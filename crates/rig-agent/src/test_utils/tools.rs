@@ -67,7 +67,7 @@ impl Tool for MockAddTool {
 
 /// A caller-injected context value, like a session id or auth token carried in
 /// a [`ToolContext`](crate::tool::ToolContext).
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionId(pub String);
 
 /// A mock tool that records whatever it observed in its per-call
@@ -616,7 +616,7 @@ impl Tool for MockDeniedTool {
 
 /// Cloneable metadata a [`MockMetadataTool`] attaches to its result, used to
 /// verify that result metadata reaches hooks without being sent to the model.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MockRequestId(pub String);
 
 /// A tool whose success carries a [`MockRequestId`] in its result metadata.
@@ -643,7 +643,9 @@ impl Tool for MockMetadataTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        context.insert_result(MockRequestId("req-7".to_string()));
+        context
+            .insert_result(MockRequestId("req-7".to_string()))
+            .expect("a string newtype encodes");
         Ok("done".to_string())
     }
 }

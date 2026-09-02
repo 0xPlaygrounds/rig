@@ -62,10 +62,10 @@ struct ProbeArgs {
     operation: Operation,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct FailureSite {
     operation: Operation,
-    resource: &'static str,
+    resource: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -128,18 +128,20 @@ impl Tool for SystemProbe {
                 ProbeError::DiskIo,
                 FailureSite {
                     operation: args.operation,
-                    resource: "/data/archive.bin",
+                    resource: "/data/archive.bin".to_string(),
                 },
             ),
             Operation::ConnectNetwork => (
                 ProbeError::NetworkUnreachable,
                 FailureSite {
                     operation: args.operation,
-                    resource: "backup.example.net",
+                    resource: "backup.example.net".to_string(),
                 },
             ),
         };
-        context.insert_result(site);
+        context
+            .insert_result(site)
+            .expect("an enum and a string encode as JSON");
         Err(error)
     }
 }
@@ -174,7 +176,7 @@ struct FailureRecord {
     kind: ToolErrorKind,
     code: Option<String>,
     operation: Operation,
-    resource: &'static str,
+    resource: String,
 }
 
 #[derive(Clone, Default)]
@@ -387,9 +389,9 @@ mod tests {
         assert_eq!(result.output().as_text(), error.model_feedback());
         assert_eq!(
             context.result::<FailureSite>(),
-            Some(&FailureSite {
+            Some(FailureSite {
                 operation: Operation::ConnectNetwork,
-                resource: "backup.example.net",
+                resource: "backup.example.net".to_string(),
             })
         );
     }
@@ -456,7 +458,7 @@ mod tests {
             kind: ToolErrorKind::Other,
             code: Some("EIO".to_string()),
             operation: Operation::ReadDisk,
-            resource: "/stale",
+            resource: "/stale".to_string(),
         }]);
         assert_eq!(
             policy_action(Some(&stale), rig::id::InternalCallId::new()),

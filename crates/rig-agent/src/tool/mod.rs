@@ -26,7 +26,7 @@
 //!     value: i64,
 //! }
 //!
-//! #[derive(Clone, Debug, PartialEq)]
+//! #[derive(Serialize, Deserialize)]
 //! struct AuditRecord(i64);
 //!
 //! struct Add;
@@ -58,7 +58,7 @@
 //!         args: Self::Args,
 //!     ) -> Result<Self::Output, Self::Error> {
 //!         let value = args.left + args.right;
-//!         context.insert_result(AuditRecord(value));
+//!         let _ = context.insert_result(AuditRecord(value));
 //!         Ok(Sum { value })
 //!     }
 //! }
@@ -115,7 +115,7 @@ pub use rig_core::tool::{
     RegisteredTool, Tool, ToolCatalog, ToolDispatch, ToolEmbedding, ToolErrorKind,
     ToolExecutionError, ToolOutput, ToolResult, ToolSet, dispatch_tool, tool_definition,
 };
-pub use rig_core::tool::{MissingToolContext, ToolContext};
+pub use rig_core::tool::{ToolContext, ToolContextError};
 
 #[cfg(test)]
 mod toolset_clone_tests;
