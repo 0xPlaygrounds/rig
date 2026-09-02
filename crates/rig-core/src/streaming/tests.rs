@@ -131,8 +131,8 @@ async fn stream_identity_prefers_an_explicit_message_id_event() {
 
 fn create_reasoning_stream() -> StreamingCompletionResponse {
     let stream = stream! {
-        yield Ok(RawStreamingChoice::Reasoning {                id: StreamPartId::wire("rs_1"),
-            provider_id: WireId::new("rs_1"),
+        yield Ok(RawStreamingChoice::Reasoning {                id: BlockId::wire("rs_1"),
+            provider_id: non_empty_id("rs_1"),
             content: ReasoningContent::Text {
                 text: "step one".to_string(),
                 signature: Some("sig_1".to_string()),
@@ -147,8 +147,8 @@ fn create_reasoning_stream() -> StreamingCompletionResponse {
 
 fn create_reasoning_only_stream() -> StreamingCompletionResponse {
     let stream = stream! {
-        yield Ok(RawStreamingChoice::Reasoning {                id: StreamPartId::wire("rs_only"),
-            provider_id: WireId::new("rs_only"),
+        yield Ok(RawStreamingChoice::Reasoning {                id: BlockId::wire("rs_only"),
+            provider_id: non_empty_id("rs_only"),
             content: ReasoningContent::Summary("hidden summary".to_string()),
         });
         yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
@@ -159,8 +159,8 @@ fn create_reasoning_only_stream() -> StreamingCompletionResponse {
 
 fn create_interleaved_stream() -> StreamingCompletionResponse {
     let stream = stream! {
-        yield Ok(RawStreamingChoice::Reasoning {                id: StreamPartId::wire("rs_interleaved"),
-            provider_id: WireId::new("rs_interleaved"),
+        yield Ok(RawStreamingChoice::Reasoning {                id: BlockId::wire("rs_interleaved"),
+            provider_id: non_empty_id("rs_interleaved"),
             content: ReasoningContent::Text {
                 text: "chain-of-thought".to_string(),
                 signature: None,
@@ -200,7 +200,7 @@ fn create_text_tool_text_stream() -> StreamingCompletionResponse {
 fn create_text_metadata_stream() -> StreamingCompletionResponse {
     let stream = stream! {
         yield Ok(RawStreamingChoice::TextStart {
-            id: StreamPartId::wire("block-0"),
+            id: BlockId::wire("block-0"),
             additional_params: None,
         });
         yield Ok(RawStreamingChoice::Message("first".to_string()));
@@ -223,7 +223,7 @@ fn create_text_metadata_stream() -> StreamingCompletionResponse {
             }]
         }))));
         yield Ok(RawStreamingChoice::TextStart {
-            id: StreamPartId::wire("block-1"),
+            id: BlockId::wire("block-1"),
             additional_params: crate::message::AdditionalParams::try_from_value(serde_json::json!({
                 "block": 2
             })).expect("object params"),
@@ -340,10 +340,9 @@ async fn normalize_stream_upgrades_a_stop_that_carried_a_tool_call() {
     // streaming path must reconcile it exactly as the unary path does.
     let raw: RawStreamingResult<Usage> = Box::pin(stream! {
         yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall {
-            tool_id: WireId::new("call_1"),
-            id: StreamPartId::wire("call_1"),
+            tool_id: non_empty_id("call_1"),
+            id: BlockId::wire("call_1"),
             call_id: None,
-            internal_call_id: InternalCallId::new(),
             name: "lookup".to_string(),
             arguments: serde_json::json!({}),
             signature: None,
@@ -510,10 +509,9 @@ async fn normalize_stream_captures_the_terminal_record() {
 async fn normalize_stream_reconciles_finish_reason_with_raw_attached() {
     let raw: RawStreamingResult<Usage> = Box::pin(stream! {
         yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall {
-            tool_id: WireId::new("call_1"),
-            id: StreamPartId::wire("call_1"),
+            tool_id: non_empty_id("call_1"),
+            id: BlockId::wire("call_1"),
             call_id: None,
-            internal_call_id: InternalCallId::new(),
             name: "lookup".to_string(),
             arguments: serde_json::json!({}),
             signature: None,
@@ -634,18 +632,16 @@ async fn test_stream_cancellation() {
             }
             Ok(StreamedAssistantContent::ToolCall {
                 tool_call,
-                internal_call_id,
+                id: block_id,
             }) => {
-                println!("\nTool Call: {tool_call:?}, internal_call_id={internal_call_id:?}");
+                println!("\nTool Call: {tool_call:?}, block_id={block_id:?}");
                 chunk_count += 1;
             }
             Ok(StreamedAssistantContent::ToolCallDelta {
-                internal_call_id,
+                id: block_id,
                 content,
             }) => {
-                println!(
-                    "\nTool Call delta: internal_call_id={internal_call_id:?}, content={content:?}"
-                );
+                println!("\nTool Call delta: block_id={block_id:?}, content={content:?}");
                 chunk_count += 1;
             }
             Ok(StreamedAssistantContent::Final(res)) => {
@@ -837,11 +833,11 @@ async fn a_full_tool_call_correlates_with_the_deltas_of_the_same_id() {
         TEST_PROVIDER,
         to_stream_result(stream! {
             yield Ok(RawStreamingChoice::ToolCallDelta {
-                id: StreamPartId::wire("tc1"),
+                id: BlockId::wire("tc1"),
                 content: ToolCallDeltaContent::Name("add".to_string()),
             });
             yield Ok(RawStreamingChoice::ToolCallDelta {
-                id: StreamPartId::wire("tc1"),
+                id: BlockId::wire("tc1"),
                 content: ToolCallDeltaContent::Delta("{\"x\":1}".to_string()),
             });
             yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
@@ -861,21 +857,17 @@ async fn a_full_tool_call_correlates_with_the_deltas_of_the_same_id() {
     let mut completed_ids = Vec::new();
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::ToolCallDelta {
-                internal_call_id, ..
-            } => delta_ids.push(internal_call_id),
-            StreamedAssistantContent::ToolCall {
-                internal_call_id, ..
-            } => completed_ids.push(internal_call_id),
+            StreamedAssistantContent::ToolCallDelta { id, .. } => delta_ids.push(id),
+            StreamedAssistantContent::ToolCall { id, .. } => completed_ids.push(id),
             _ => {}
         }
     }
 
     assert_eq!(delta_ids.len(), 2);
-    assert_eq!(delta_ids[0], delta_ids[1], "one call, one internal id");
+    assert_eq!(delta_ids[0], delta_ids[1], "one call, one block id");
     assert_eq!(
         completed_ids,
-        vec![delta_ids[0]],
+        vec![delta_ids[0].clone()],
         "the completed call must carry the id its deltas published"
     );
 
@@ -924,12 +916,12 @@ async fn full_reasoning_block_supersedes_its_accumulated_deltas() {
         TEST_PROVIDER,
         to_stream_result(stream! {
             yield Ok(RawStreamingChoice::ReasoningDelta {
-                id: StreamPartId::wire("rs_1"),
-            provider_id: WireId::new("rs_1"),
+                id: BlockId::wire("rs_1"),
+            provider_id: non_empty_id("rs_1"),
                 reasoning: "partial ".to_string(),
             });
-            yield Ok(RawStreamingChoice::Reasoning {                    id: StreamPartId::wire("rs_1"),
-            provider_id: WireId::new("rs_1"),
+            yield Ok(RawStreamingChoice::Reasoning {                    id: BlockId::wire("rs_1"),
+            provider_id: non_empty_id("rs_1"),
                 content: ReasoningContent::Text {
                     text: "the complete chain".to_string(),
                     signature: Some("sig_1".to_string()),
@@ -967,12 +959,12 @@ async fn full_reasoning_block_with_a_different_id_appends() {
         TEST_PROVIDER,
         to_stream_result(stream! {
             yield Ok(RawStreamingChoice::ReasoningDelta {
-                id: StreamPartId::wire("rs_1"),
-            provider_id: WireId::new("rs_1"),
+                id: BlockId::wire("rs_1"),
+            provider_id: non_empty_id("rs_1"),
                 reasoning: "first item deltas".to_string(),
             });
-            yield Ok(RawStreamingChoice::Reasoning {                    id: StreamPartId::wire("rs_2"),
-            provider_id: WireId::new("rs_2"),
+            yield Ok(RawStreamingChoice::Reasoning {                    id: BlockId::wire("rs_2"),
+            provider_id: non_empty_id("rs_2"),
                 content: ReasoningContent::Text {
                     text: "a different item".to_string(),
                     signature: None,
@@ -1006,12 +998,12 @@ async fn wire_sent_bare_end_yields_the_completed_block_synthesized_stays_silent(
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: StreamPartId::minted(MintKind::Block, 0),
+                    id: BlockId::minted(MintKind::Block, 0),
                     provider_id: None,
                     reasoning: "unsigned thoughts".to_string(),
                 });
                 yield Ok(RawStreamingChoice::ReasoningEnd {
-                    id: StreamPartId::minted(MintKind::Block, 0),
+                    id: BlockId::minted(MintKind::Block, 0),
                     reasoning: None,
                     signature: None,
                     wire_sent,
@@ -1042,58 +1034,13 @@ async fn wire_sent_bare_end_yields_the_completed_block_synthesized_stays_silent(
     );
 }
 
-/// The public delta correlator is unique per *part*, not per key: when a
-/// constant minted key (boundary-less wires) is reused for a new block
-/// after the previous one ended, the new block's deltas carry a fresh
-/// correlator.
-#[tokio::test]
-async fn reused_key_after_end_mints_a_fresh_delta_correlator() {
-    let key = || StreamPartId::minted(MintKind::Reasoning, 0);
-    let mut stream = StreamingCompletionResponse::stream(
-        TEST_PROVIDER,
-        to_stream_result(stream! {
-            yield Ok(RawStreamingChoice::ReasoningDelta {
-                id: key(),
-                provider_id: None,
-                reasoning: "block A".to_string(),
-            });
-            yield Ok(RawStreamingChoice::ReasoningEnd {
-                id: key(),
-                reasoning: None,
-                signature: None,
-                wire_sent: false,
-            });
-            yield Ok(RawStreamingChoice::Message("interleaved".to_string()));
-            yield Ok(RawStreamingChoice::ReasoningDelta {
-                id: key(),
-                provider_id: None,
-                reasoning: "block B".to_string(),
-            });
-            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
-        }),
-    );
-
-    let mut delta_ids = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let Ok(StreamedAssistantContent::ReasoningDelta { id, .. }) = item {
-            delta_ids.push(id);
-        }
-    }
-
-    assert_eq!(delta_ids.len(), 2, "one delta per block");
-    assert_ne!(
-        delta_ids[0], delta_ids[1],
-        "distinct parts must not share a correlator"
-    );
-}
-
 /// The completed reasoning event restates the correlator its deltas
 /// carried (the anthropic shape: id-less deltas, wire-sent bare stop),
 /// keeping it distinct from the durable provider handle, which stays
 /// absent.
 #[tokio::test]
 async fn completed_reasoning_restates_the_delta_correlator() {
-    let key = || StreamPartId::minted(MintKind::Block, 0);
+    let key = || BlockId::minted(MintKind::Block, 0);
     let mut stream = StreamingCompletionResponse::stream(
         TEST_PROVIDER,
         to_stream_result(stream! {
@@ -1145,12 +1092,12 @@ async fn completed_reasoning_keeps_correlator_and_provider_handle_distinct() {
         TEST_PROVIDER,
         to_stream_result(stream! {
             yield Ok(RawStreamingChoice::ReasoningDelta {
-                id: StreamPartId::wire("rs_1"),
-                provider_id: WireId::new("rs_1"),
+                id: BlockId::wire("rs_1"),
+                provider_id: non_empty_id("rs_1"),
                 reasoning: "signed thoughts".to_string(),
             });
             yield Ok(RawStreamingChoice::ReasoningEnd {
-                id: StreamPartId::wire("rs_1"),
+                id: BlockId::wire("rs_1"),
                 reasoning: None,
                 signature: Some("sig_1".to_string()),
                 wire_sent: true,
@@ -1171,13 +1118,13 @@ async fn completed_reasoning_keeps_correlator_and_provider_handle_distinct() {
         }
     }
 
-    let (reasoning, correlator) = completed.first().expect("one completed block");
-    assert_eq!(Some(correlator), delta_ids.first());
+    let (reasoning, block) = completed.first().expect("one completed block");
+    assert_eq!(Some(block), delta_ids.first());
     assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
-    assert_ne!(
-        correlator.as_str(),
-        "rs_1",
-        "the rig correlator and the provider handle are separate values"
+    assert_eq!(
+        *block,
+        BlockId::wire("rs_1"),
+        "the block id is the wire id the deltas streamed under"
     );
 }
 
@@ -1189,7 +1136,7 @@ async fn completed_reasoning_keeps_correlator_and_provider_handle_distinct() {
 /// streamed-turn assembler cannot match it, duplicating the part.
 #[tokio::test]
 async fn late_signature_after_synthesized_end_restates_the_delta_correlator() {
-    let key = || StreamPartId::minted(MintKind::Reasoning, 0);
+    let key = || BlockId::minted(MintKind::Reasoning, 0);
     let mut stream = StreamingCompletionResponse::stream(
         TEST_PROVIDER,
         to_stream_result(stream! {
@@ -1252,8 +1199,8 @@ async fn late_signature_after_synthesized_end_restates_the_delta_correlator() {
 /// finished map must never leak the previous part's identity onto a
 /// distinct part).
 #[tokio::test]
-async fn a_delta_less_start_under_a_reused_key_mints_a_fresh_correlator() {
-    let key = || StreamPartId::minted(MintKind::Reasoning, 0);
+async fn a_delta_less_start_under_a_reused_key_opens_a_new_part() {
+    let key = || BlockId::minted(MintKind::Reasoning, 0);
     let mut stream = StreamingCompletionResponse::stream(
         TEST_PROVIDER,
         to_stream_result(stream! {
@@ -1290,10 +1237,11 @@ async fn a_delta_less_start_under_a_reused_key_mints_a_fresh_correlator() {
     }
 
     assert_eq!(completed_ids.len(), 2, "two distinct parts complete");
-    assert_ne!(
+    assert_eq!(
         completed_ids.first(),
         completed_ids.get(1),
-        "distinct parts must not share a public correlator"
+        "both parts carry the key they streamed under; a wire that wants distinct \
+         ids mints one per block at the adapter (MintedReasoningLifecycle)"
     );
 }
 
@@ -1301,8 +1249,8 @@ async fn a_delta_less_start_under_a_reused_key_mints_a_fresh_correlator() {
 /// key opens a NEW part: the second part's correlator is fresh, never
 /// the finished part's retained identity.
 #[tokio::test]
-async fn reused_accumulation_key_mints_a_fresh_correlator_after_an_end() {
-    let key = || StreamPartId::minted(MintKind::Reasoning, 0);
+async fn reused_accumulation_key_opens_a_new_part_after_an_end() {
+    let key = || BlockId::minted(MintKind::Reasoning, 0);
     let mut stream = StreamingCompletionResponse::stream(
         TEST_PROVIDER,
         to_stream_result(stream! {
@@ -1340,31 +1288,31 @@ async fn reused_accumulation_key_mints_a_fresh_correlator_after_an_end() {
     }
 
     assert_eq!(completed_ids.len(), 2, "two parts under the reused key");
-    assert_ne!(
+    assert_eq!(
         completed_ids.first(),
         completed_ids.get(1),
-        "a reused key opens a new part with a fresh correlator"
+        "a reused key opens a new part under the same key"
     );
 }
 
 /// A whole-block reasoning event with no prior deltas still carries a
 /// non-empty correlator, and two such parts never share one.
 #[tokio::test]
-async fn whole_block_reasoning_mints_a_unique_correlator() {
+async fn whole_block_reasoning_carries_its_wire_id() {
     let mut stream = StreamingCompletionResponse::stream(
         TEST_PROVIDER,
         to_stream_result(stream! {
             yield Ok(RawStreamingChoice::Reasoning {
-                id: StreamPartId::wire("rs_1"),
-                provider_id: WireId::new("rs_1"),
+                id: BlockId::wire("rs_1"),
+                provider_id: non_empty_id("rs_1"),
                 content: ReasoningContent::Text {
                     text: "first".to_string(),
                     signature: None,
                 },
             });
             yield Ok(RawStreamingChoice::Reasoning {
-                id: StreamPartId::wire("rs_2"),
-                provider_id: WireId::new("rs_2"),
+                id: BlockId::wire("rs_2"),
+                provider_id: non_empty_id("rs_2"),
                 content: ReasoningContent::Text {
                     text: "second".to_string(),
                     signature: None,
@@ -1382,7 +1330,6 @@ async fn whole_block_reasoning_mints_a_unique_correlator() {
     }
 
     assert_eq!(correlators.len(), 2);
-    assert!(correlators.iter().all(|id| !id.is_empty()));
     assert_ne!(
         correlators[0], correlators[1],
         "distinct parts must not share a correlator"
@@ -1399,8 +1346,8 @@ async fn full_reasoning_block_supersedes_deltas_across_interleaved_output() {
         TEST_PROVIDER,
         to_stream_result(stream! {
             yield Ok(RawStreamingChoice::ReasoningDelta {
-                id: StreamPartId::wire("rs_1"),
-            provider_id: WireId::new("rs_1"),
+                id: BlockId::wire("rs_1"),
+            provider_id: non_empty_id("rs_1"),
                 reasoning: "partial ".to_string(),
             });
             yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
@@ -1408,8 +1355,8 @@ async fn full_reasoning_block_supersedes_deltas_across_interleaved_output() {
                 "probe".to_string(),
                 serde_json::json!({}),
             )));
-            yield Ok(RawStreamingChoice::Reasoning {                    id: StreamPartId::wire("rs_1"),
-            provider_id: WireId::new("rs_1"),
+            yield Ok(RawStreamingChoice::Reasoning {                    id: BlockId::wire("rs_1"),
+            provider_id: non_empty_id("rs_1"),
                 content: ReasoningContent::Text {
                     text: "the full block".to_string(),
                     signature: None,
@@ -1455,13 +1402,13 @@ async fn minted_id_full_reasoning_block_does_not_clobber_a_wire_id_item() {
         TEST_PROVIDER,
         to_stream_result(stream! {
             yield Ok(RawStreamingChoice::ReasoningDelta {
-                id: StreamPartId::wire("rs_1"),
-            provider_id: WireId::new("rs_1"),
+                id: BlockId::wire("rs_1"),
+            provider_id: non_empty_id("rs_1"),
                 reasoning: "identified deltas".to_string(),
             });
             yield Ok(RawStreamingChoice::Reasoning {
-                id: StreamPartId::wire("reasoning-0"),
-            provider_id: WireId::new("reasoning-0"),
+                id: BlockId::wire("reasoning-0"),
+            provider_id: non_empty_id("reasoning-0"),
                 content: ReasoningContent::Text {
                     text: "anonymous block".to_string(),
                     signature: None,

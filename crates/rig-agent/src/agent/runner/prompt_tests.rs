@@ -1017,7 +1017,7 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
     let context = &contexts[0];
     assert_eq!(context.tool_name, "default_api");
     assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
-    assert_eq!(context.internal_call_id, None);
+    assert_eq!(context.block_id, None);
     assert!(!context.is_streaming);
 }
 

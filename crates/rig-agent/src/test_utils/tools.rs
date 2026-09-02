@@ -645,7 +645,7 @@ impl Tool for MockMetadataTool {
     ) -> Result<Self::Output, Self::Error> {
         context
             .insert_result(MockRequestId("req-7".to_string()))
-            .expect("a string newtype encodes");
+            .map_err(|_| MockToolError)?;
         Ok("done".to_string())
     }
 }

@@ -138,7 +138,7 @@ fn function_call_part(name: &str, id: &str) -> proto::Part {
 // That is all this pins. The per-stream minter also gives each call its own
 // stream key now, where the fixed `Tool.for_wire_index(0)` key gave both the
 // same one — but no assertion here can tell the two apart: a whole tool call
-// is emitted immediately with a freshly generated `internal_call_id`, so the
+// is emitted immediately under its own block id, so the
 // shared key never collided anything downstream. It was a latent identity
 // bug, not an observable one, and pinning it would mean asserting on
 // internal keys.
@@ -155,13 +155,11 @@ async fn two_id_less_function_calls_stay_distinct() {
     let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
     let mut correlators = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id,
-        } = item.expect("stream item should be ok")
+        if let StreamedAssistantContent::ToolCall { tool_call, .. } =
+            item.expect("stream item should be ok")
         {
             assert_eq!(tool_call.function.name, "get_weather");
-            correlators.push(internal_call_id);
+            correlators.push(tool_call.id.clone());
         }
     }
 

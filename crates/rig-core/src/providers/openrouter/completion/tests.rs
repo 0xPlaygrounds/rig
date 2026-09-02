@@ -2058,7 +2058,7 @@ fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
 
     let messages = assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(
         message::Reasoning {
-            id: provider_id.map(|id| id.into_string()),
+            id: provider_id,
             content: vec![content],
         },
     )])

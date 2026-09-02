@@ -149,7 +149,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                                 "no recovery happened, so no call should be preresolved"
                             );
                             assert!(
-                                call.internal_call_id.is_none(),
+                                call.block_id.is_none(),
                                 "non-streamed turns carry no internal call ids"
                             );
                             executed_tools.push(call.tool_call.function.name.clone());

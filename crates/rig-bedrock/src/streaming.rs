@@ -63,7 +63,7 @@ struct ReasoningState {
 /// negative index yields a distinct, well-formed minted identity instead of
 /// a rendering the identity machinery could disagree about — the mint stays
 /// total instead of trusting the wire.
-fn block_id(content_block_index: i32) -> rig_core::streaming::StreamPartId {
+fn block_id(content_block_index: i32) -> rig_core::streaming::BlockId {
     let index = (i64::from(content_block_index) - i64::from(i32::MIN)) as u64;
     rig_core::streaming::MintKind::Block.for_wire_index(index)
 }

@@ -1786,8 +1786,8 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         &self,
         detail: &serde_json::Value,
     ) -> Option<(
-        crate::streaming::StreamPartId,
-        Option<crate::streaming::WireId>,
+        crate::streaming::BlockId,
+        Option<String>,
         crate::message::ReasoningContent,
     )> {
         let _ = detail;

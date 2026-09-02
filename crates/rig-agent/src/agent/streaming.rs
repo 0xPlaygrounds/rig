@@ -1,4 +1,4 @@
-use rig_core::id::InternalCallId;
+use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
@@ -57,7 +57,7 @@ pub enum MultiTurnStreamItem {
     /// This item is emitted only for a tool whose body actually ran (it passed
     /// its `ToolCall` hook checks), never for a call dropped by a sibling's
     /// termination, skipped by a hook, or resolved by invalid-call recovery.
-    /// Correlate it with the model call and result through `internal_call_id`.
+    /// Correlate it with the model call and result through `block_id`.
     ToolExecutionCommitted {
         /// The tool call as **executed**: the model's call with any
         /// [`ToolCallAction::Rewrite`](crate::agent::ToolCallAction::Rewrite) hook rewrite
@@ -66,9 +66,9 @@ pub enum MultiTurnStreamItem {
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
         tool_call: rig_core::message::ToolCall,
         /// Rig-generated id correlating this execution with the model tool call
-        /// ([`StreamedAssistantContent::ToolCall::internal_call_id`]) and the
+        /// ([`StreamedAssistantContent::ToolCall::block_id`]) and the
         /// resulting [`StreamedUserContent::ToolResult`].
-        internal_call_id: InternalCallId,
+        block_id: BlockId,
     },
     /// A streamed user content item: the **result** of an executed (or
     /// hook-skipped) tool call. The tool batch commits and surfaces atomically at

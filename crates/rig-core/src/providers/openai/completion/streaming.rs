@@ -516,8 +516,8 @@ where
         &self,
         detail: &Self::Detail,
     ) -> Option<(
-        crate::streaming::StreamPartId,
-        Option<crate::streaming::WireId>,
+        crate::streaming::BlockId,
+        Option<String>,
         crate::message::ReasoningContent,
     )> {
         self.provider.streaming_detail_reasoning(detail)

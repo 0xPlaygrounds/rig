@@ -212,7 +212,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
                             assert!(
-                                call.internal_call_id.is_some(),
+                                call.block_id.is_some(),
                                 "streamed turns persist internal call ids: {call:?}"
                             );
                         }

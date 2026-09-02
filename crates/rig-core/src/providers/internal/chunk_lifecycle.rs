@@ -36,7 +36,7 @@
 //! wire quirks (slot eviction, encrypted reasoning details, tool-call
 //! decorations) this declarative shape does not model.
 
-use crate::streaming::{RawStreamingChoice, StreamPartId};
+use crate::streaming::{BlockId, MintKind, RawStreamingChoice, SyntheticIds};
 
 use super::adapter::AdapterOutput;
 
@@ -65,20 +65,41 @@ impl<R> ChunkParts<R> {
     }
 }
 
-/// The lifecycle state for one stream's constant-key reasoning block.
+/// The lifecycle state for one stream's minted-key reasoning blocks.
 ///
 /// Owns the open/close bookkeeping the adapters used to hand-roll; an
 /// adapter never touches a `reasoning_open` flag or emits a lifecycle event
-/// directly.
+/// directly. Every block gets its own minted key: the key is the block's
+/// public identity for the life of the stream, so a wire that reasons,
+/// interleaves other content, then reasons again yields two blocks with two
+/// distinct ids. A trailing close (a late `thoughtSignature` after a
+/// synthesized boundary) still addresses the block that streamed, because
+/// the next key is minted only when reasoning resumes.
 pub struct MintedReasoningLifecycle {
-    key: StreamPartId,
+    ids: SyntheticIds,
+    key: BlockId,
     open: bool,
+    /// Whether `key`'s block has been closed, so the next reasoning delta
+    /// opens a new block under a fresh key.
+    closed: bool,
 }
 
 impl MintedReasoningLifecycle {
-    /// A lifecycle for the given per-stream constant minted key.
-    pub fn new(key: StreamPartId) -> Self {
-        Self { key, open: false }
+    /// A lifecycle minting per-block keys of `kind`.
+    pub fn new(kind: MintKind) -> Self {
+        let mut ids = SyntheticIds::new(kind);
+        let key = ids.mint();
+        Self {
+            ids,
+            key,
+            open: false,
+            closed: false,
+        }
+    }
+
+    /// The key of the block currently (or most recently) streaming.
+    pub fn key(&self) -> &BlockId {
+        &self.key
     }
 
     /// Emit one declared chunk as the canonical event sequence.
@@ -96,6 +117,10 @@ impl MintedReasoningLifecycle {
             .as_ref()
             .filter(|reasoning| !reasoning.is_empty())
         {
+            if self.closed {
+                self.key = self.ids.mint();
+                self.closed = false;
+            }
             self.open = true;
             out.push(Ok(RawStreamingChoice::ReasoningDelta {
                 id: self.key.clone(),
@@ -110,6 +135,7 @@ impl MintedReasoningLifecycle {
             // chain-of-thought, or a signature-only part when nothing
             // streamed — the shared accumulator owns the per-case behavior.
             self.open = false;
+            self.closed = true;
             out.push(Ok(RawStreamingChoice::ReasoningEnd {
                 id: self.key.clone(),
                 reasoning: None,
@@ -123,6 +149,7 @@ impl MintedReasoningLifecycle {
             // boundary these wires never announce, synthesized once here
             // instead of once per adapter.
             self.open = false;
+            self.closed = true;
             out.push(Ok(RawStreamingChoice::ReasoningEnd {
                 id: self.key.clone(),
                 reasoning: None,

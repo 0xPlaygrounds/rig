@@ -44,19 +44,12 @@ struct GrpcAdapter {
 impl Default for GrpcAdapter {
     fn default() -> Self {
         Self {
-            reasoning: MintedReasoningLifecycle::new(REASONING_ID),
+            reasoning: MintedReasoningLifecycle::new(streaming::MintKind::Reasoning),
             tool_ids: streaming::SyntheticIds::tool(),
             failed: false,
         }
     }
 }
-
-/// Gemini thought parts carry no id or block boundaries; a per-stream constant
-/// minted identity keeps every thought delta merging into one item, and the
-/// core accumulator's minted-id boundary splits items around other output.
-/// Minted, so it can never reach a request.
-const REASONING_ID: streaming::StreamPartId =
-    streaming::StreamPartId::minted(streaming::MintKind::Reasoning, 0);
 
 impl WireAdapter for GrpcAdapter {
     type Frame = proto::GenerateContentResponse;
@@ -162,8 +155,8 @@ impl GrpcAdapter {
                 // turn. An id-less call keys the stream by a minted identity,
                 // counted up per stream so two id-less calls stay distinct,
                 // and its durable id stays absent.
-                let key = match streaming::WireId::new(function_call.id.clone()) {
-                    Some(wire_id) => streaming::StreamPartId::wire(wire_id.into_string()),
+                let key = match streaming::non_empty_id(function_call.id.clone()) {
+                    Some(wire_id) => streaming::BlockId::wire(wire_id),
                     None => self.tool_ids.mint(),
                 };
 

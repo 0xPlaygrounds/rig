@@ -371,8 +371,9 @@ pub struct EmptyToolCallId;
 /// Rig's tool-call correlation handle: non-empty by construction, minted at
 /// the provider boundary when the provider issued no identifier.
 ///
-/// Mirrors the streaming layer's `WireId` idiom — one idiom, not two —
-/// except that it is *required and minted* rather than optional: correlation
+/// Like the streaming layer's [`non_empty_id`](crate::streaming::non_empty_id)
+/// rule — an empty string is never an id — except that it is *required and
+/// minted* rather than optional: correlation
 /// must always work, since a [`ToolResult`] must always name the call it
 /// answers. Provider provenance lives on [`ToolCall::provider`], so a
 /// consumer can still see that the provider issued nothing.

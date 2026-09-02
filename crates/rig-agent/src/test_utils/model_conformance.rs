@@ -1815,15 +1815,11 @@ where
     while let Some(item) = stream.next().await {
         match item? {
             MultiTurnStreamItem::StreamAssistantItem(
-                crate::streaming::StreamedAssistantContent::ToolCall {
-                    internal_call_id, ..
-                },
-            ) => streamed_call_ids.push(internal_call_id),
+                crate::streaming::StreamedAssistantContent::ToolCall { id, .. },
+            ) => streamed_call_ids.push(id),
             MultiTurnStreamItem::StreamUserItem(
-                crate::streaming::StreamedUserContent::ToolResult {
-                    internal_call_id, ..
-                },
-            ) => streamed_result_ids.push(internal_call_id),
+                crate::streaming::StreamedUserContent::ToolResult { id, .. },
+            ) => streamed_result_ids.push(id),
             MultiTurnStreamItem::CompletionCall(call) => completion_usage += call.usage,
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_count += 1;

@@ -216,7 +216,7 @@ impl Default for InteractionsAdapter {
     fn default() -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                shared_parts::REASONING_ID,
+                crate::streaming::MintKind::Reasoning,
             ),
             failed: false,
             open_function_steps: ToolCallBridge::new(),

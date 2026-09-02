@@ -8,7 +8,7 @@ use crate::reasoning::collect_stream_stats;
 
 #[tokio::test]
 async fn collect_stream_stats_tracks_only_final_turn_text() {
-    let internal_call_id = rig::id::InternalCallId::new();
+    let block_id = rig::streaming::BlockId::wire("tool_1");
     let tool_call = ToolCall::from_wire(
         "tool_1",
         ToolFunction::new(
@@ -30,11 +30,11 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
         Ok(MultiTurnStreamItem::StreamAssistantItem(
             StreamedAssistantContent::ToolCall {
                 tool_call,
-                internal_call_id,
+                id: block_id.clone(),
             },
         )),
         Ok(MultiTurnStreamItem::StreamUserItem(
-            StreamedUserContent::tool_result(tool_result, internal_call_id),
+            StreamedUserContent::tool_result(tool_result, block_id),
         )),
         Ok(MultiTurnStreamItem::StreamAssistantItem(
             StreamedAssistantContent::text("It's 72F and sunny in Tokyo."),

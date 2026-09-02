@@ -85,23 +85,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionError, CompletionResponse, FinishReason, ToolDefinition};
-use rig_core::id::InternalCallId;
+use rig_core::streaming::BlockId;
 
-/// Deserialize a persisted internal call id, advancing this process's mint
-/// counter past it so ids minted after a resume cannot collide with ids the
-/// run's consumers already saw in tool-call deltas.
-fn de_persisted_internal_call_id<'de, D>(
-    deserializer: D,
-) -> Result<Option<InternalCallId>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let id = <Option<InternalCallId> as serde::Deserialize>::deserialize(deserializer)?;
-    if let Some(id) = id {
-        InternalCallId::advance_past(id.to_raw());
-    }
-    Ok(id)
-}
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
@@ -213,12 +198,13 @@ pub struct PendingToolCall {
     /// recovery. When set, the driver must return this content as the tool
     /// result without executing the tool or invoking tool hooks.
     pub preresolved_result: Option<UserContent>,
-    /// Rig-generated identifier correlating this call's stream items, when
-    /// the call arrived via a streamed turn. Persisted with the run state so
-    /// a resumed process keeps emitting the IDs consumers already saw in
-    /// tool-call deltas. Drivers generate a fresh ID when absent.
-    #[serde(default, deserialize_with = "de_persisted_internal_call_id")]
-    pub internal_call_id: Option<InternalCallId>,
+    /// The stream block this call arrived under, when the call arrived via
+    /// a streamed turn. Persisted with the run state so a resumed process
+    /// keeps emitting the ids consumers already saw in tool-call deltas.
+    /// Drivers key a buffered turn's call by its durable `tool_call.id`
+    /// when absent.
+    #[serde(default)]
+    pub block_id: Option<BlockId>,
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -423,10 +409,10 @@ struct TurnState {
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
     skipped: BTreeMap<usize, UserContent>,
-    /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
+    /// `(tool_call_id, block_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
     #[serde(default)]
-    internal_call_ids: Vec<(String, InternalCallId)>,
+    block_ids: Vec<(String, BlockId)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -919,7 +905,7 @@ impl AgentRun {
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.clone(),
             tool_call_id: Some(tool_call.id.as_str().to_owned()),
-            internal_call_id: None,
+            block_id: None,
             args: Some(json_utils::serialize_json_value(
                 &tool_call.function.arguments,
             )),
@@ -975,7 +961,7 @@ impl AgentRun {
                     items,
                     has_tool_calls,
                     skipped,
-                    mut internal_call_ids,
+                    mut block_ids,
                 } = *turn_state;
                 // Tool output mode (#1928): a call to the synthetic output tool
                 // finalizes the run with the call's arguments as the response,
@@ -1129,14 +1115,14 @@ impl AgentRun {
                                 // Consume pairs positionally so duplicate
                                 // provider IDs within one turn stay
                                 // distinguishable.
-                                let internal_call_id = internal_call_ids
+                                let block_id = block_ids
                                     .iter()
                                     .position(|(id, _)| tool_call.id == id.as_str())
-                                    .map(|pair| internal_call_ids.remove(pair).1);
+                                    .map(|pair| block_ids.remove(pair).1);
                                 Some(PendingToolCall {
                                     tool_call: tool_call.clone(),
                                     preresolved_result: skipped.get(&index).cloned(),
-                                    internal_call_id,
+                                    block_id,
                                 })
                             }
                             _ => None,
@@ -1317,21 +1303,21 @@ impl AgentRun {
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
     /// ingestion paths converge here, differing only in the `skipped` map and
-    /// the streamed `internal_call_ids`.
+    /// the streamed `block_ids`.
     fn finalize_turn(
         &mut self,
         message_id: Option<String>,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        internal_call_ids: Vec<(String, InternalCallId)>,
+        block_ids: Vec<(String, BlockId)>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
             message_id,
             items,
             has_tool_calls,
             skipped,
-            internal_call_ids,
+            block_ids,
         }));
     }
 
@@ -1690,7 +1676,7 @@ impl AgentRun {
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.clone(),
             tool_call_id: Some(invalid.tool_call.id.as_str().to_owned()),
-            internal_call_id: Some(invalid.internal_call_id),
+            block_id: Some(invalid.block_id.clone()),
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),
             allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
@@ -1865,7 +1851,7 @@ impl AgentRun {
             turn.choice,
             has_tool_calls,
             BTreeMap::new(),
-            turn.internal_call_ids,
+            turn.block_ids,
         );
         Ok(())
     }

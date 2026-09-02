@@ -85,7 +85,7 @@ impl AgentHook for ReasoningDeltaHookRecorder {
             .lock()
             .expect("reasoning delta timeline lock")
             .push(ReasoningDeltaTimelineItem::Hook(ReasoningDeltaSnapshot {
-                id: event.id.to_owned(),
+                id: event.id.to_string(),
                 provider_id: event.provider_id.map(str::to_owned),
                 delta: event.delta.to_owned(),
                 aggregated: Some(event.aggregated.to_owned()),
@@ -130,7 +130,7 @@ pub(crate) async fn run_reasoning_delta_hook_streaming<M>(
                     provider_id,
                     reasoning,
                 },
-            ) => probe.record_stream_delta(id, provider_id, reasoning),
+            ) => probe.record_stream_delta(id.to_string(), provider_id, reasoning),
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_text = Some(response.output().to_owned());
             }

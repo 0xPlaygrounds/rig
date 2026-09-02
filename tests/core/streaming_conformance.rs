@@ -711,7 +711,7 @@ mod interleaved_constant_id_reasoning {
         for item in drained.items.iter().flatten() {
             if let StreamedAssistantContent::ToolCall {
                 tool_call,
-                internal_call_id,
+                id: block_id,
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
@@ -720,7 +720,7 @@ mod interleaved_constant_id_reasoning {
                     "id-less calls surface a minted durable id"
                 );
                 assert_eq!(tool_call.provider, None, "no fabricated provider id");
-                internal_ids.push(*internal_call_id);
+                internal_ids.push(block_id.clone());
                 minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
@@ -730,7 +730,7 @@ mod interleaved_constant_id_reasoning {
         assert_eq!(
             internal_ids.len(),
             2,
-            "same-name calls must stay correlatable via distinct internal ids"
+            "same-name calls must stay correlatable via distinct block ids"
         );
         minted_ids.dedup();
         assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
@@ -846,7 +846,7 @@ mod interleaved_constant_id_reasoning {
         for item in drained.items.iter().flatten() {
             if let StreamedAssistantContent::ToolCall {
                 tool_call,
-                internal_call_id,
+                id: block_id,
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
@@ -858,7 +858,7 @@ mod interleaved_constant_id_reasoning {
                     tool_call.provider, None,
                     "no name-as-id provider-id fallback"
                 );
-                internal_ids.push(*internal_call_id);
+                internal_ids.push(block_id.clone());
                 minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }

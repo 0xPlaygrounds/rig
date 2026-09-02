@@ -280,11 +280,11 @@ fn stream_from_script(
             // a tool-input end; the shared accumulator assembles the call and
             // mints the correlation id at the first fragment.
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
+                id: rig_agent::streaming::BlockId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Name(name.clone()),
             }));
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
+                id: rig_agent::streaming::BlockId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
             }));
             events.push(Ok(RawStreamingChoice::ToolInputEnd(
@@ -960,7 +960,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         Vec<CompletionRequest>,
         Vec<usize>,
         Vec<&'static str>,
-        Vec<rig_core::id::InternalCallId>,
+        Vec<rig_core::streaming::BlockId>,
     ) {
         let (alpha, beta) = routing_models();
         let beta_script = beta.0.clone();
@@ -996,39 +996,32 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             .await;
         let mut final_response = None;
         let mut events = Vec::new();
-        let mut internal_call_ids = Vec::new();
+        let mut block_ids = Vec::new();
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
                 rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::ToolCallDelta {
-                        internal_call_id, ..
-                    },
+                    StreamedAssistantContent::ToolCallDelta { id: block_id, .. },
                 ) => {
                     events.push("tool-delta");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::ToolCall {
-                        internal_call_id, ..
-                    },
+                    StreamedAssistantContent::ToolCall { id: block_id, .. },
                 ) => {
                     events.push("tool-call");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::ToolExecutionCommitted {
-                    internal_call_id,
-                    ..
+                    block_id, ..
                 } => {
                     events.push("tool-commit");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::StreamUserItem(
-                    rig_agent::streaming::StreamedUserContent::ToolResult {
-                        internal_call_id, ..
-                    },
+                    rig_agent::streaming::StreamedUserContent::ToolResult { id: block_id, .. },
                 ) => {
                     events.push("tool-result");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
                     final_response = Some(response);
@@ -1043,7 +1036,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             beta_script.requests(),
             selected.lock().expect("selection lock").clone(),
             events,
-            internal_call_ids,
+            block_ids,
         )
     }
 
@@ -1056,7 +1049,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         streaming_beta,
         streaming_selected,
         stream_events,
-        stream_internal_call_ids,
+        stream_block_ids,
     ) = run_streaming().await;
 
     assert_eq!(blocking.output, "synthesized answer");
@@ -1083,11 +1076,12 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
     );
     // The correlation id is minted by the shared accumulator when the call's
     // first fragment arrives; every downstream stage must carry that one id.
-    let correlation = *stream_internal_call_ids
+    let correlation = stream_block_ids
         .first()
-        .expect("at least one correlated event");
+        .expect("at least one correlated event")
+        .clone();
     assert_eq!(
-        stream_internal_call_ids,
+        stream_block_ids,
         vec![correlation; 5],
         "deltas, the completed call, execution, and result retain one correlation id"
     );

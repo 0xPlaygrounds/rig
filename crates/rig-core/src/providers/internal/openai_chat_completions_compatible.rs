@@ -18,7 +18,7 @@ use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::streaming::{
-    self, MintKind, RawStreamingChoice, StreamPartId, ToolCallDecoration, ToolCallDeltaContent,
+    self, BlockId, MintKind, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent,
     UnparseableToolInput,
 };
 use crate::wasm_compat::WasmCompatSend;
@@ -467,11 +467,7 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     fn detail_reasoning(
         &self,
         _detail: &Self::Detail,
-    ) -> Option<(
-        StreamPartId,
-        Option<crate::streaming::WireId>,
-        crate::message::ReasoningContent,
-    )> {
+    ) -> Option<(BlockId, Option<String>, crate::message::ReasoningContent)> {
         None
     }
 
@@ -563,7 +559,7 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
     fn new(profile: P) -> Self {
         Self {
             profile,
-            reasoning: MintedReasoningLifecycle::new(StreamPartId::minted(MintKind::Reasoning, 0)),
+            reasoning: MintedReasoningLifecycle::new(MintKind::Reasoning),
             open_tool_calls: ToolCallBridge::new(),
             final_usage: None,
             final_finish_reason: None,

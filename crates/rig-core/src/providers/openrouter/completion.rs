@@ -1596,8 +1596,8 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouter {
         &self,
         detail: &serde_json::Value,
     ) -> Option<(
-        crate::streaming::StreamPartId,
-        Option<crate::streaming::WireId>,
+        crate::streaming::BlockId,
+        Option<String>,
         message::ReasoningContent,
     )> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
@@ -1615,13 +1615,10 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouter {
         // under `Minted { Reasoning, 0 }`, and a whole block under that same
         // key would restate — i.e. replace — the open text part. Distinct
         // content classes get distinct minted keys.
-        let provider_id = id.and_then(crate::streaming::WireId::new);
+        let provider_id = id.and_then(crate::streaming::non_empty_id);
         let key = provider_id.as_ref().map_or(
-            crate::streaming::StreamPartId::minted(
-                crate::streaming::MintKind::EncryptedReasoning,
-                0,
-            ),
-            |id| crate::streaming::StreamPartId::wire(id.as_str()),
+            crate::streaming::BlockId::minted(crate::streaming::MintKind::EncryptedReasoning, 0),
+            |id| crate::streaming::BlockId::wire(id.as_str()),
         );
         Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
     }

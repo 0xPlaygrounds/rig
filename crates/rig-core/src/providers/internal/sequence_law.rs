@@ -71,7 +71,7 @@ fn is_boundary_content<R>(choice: &RawStreamingChoice<R>) -> bool {
 /// Cross-frame validator state: which minted reasoning keys are open.
 #[derive(Default)]
 pub(crate) struct SequenceLaws {
-    open_minted_reasoning: std::collections::HashSet<crate::streaming::StreamPartId>,
+    open_minted_reasoning: std::collections::HashSet<crate::streaming::BlockId>,
 }
 
 impl SequenceLaws {

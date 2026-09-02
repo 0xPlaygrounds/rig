@@ -107,28 +107,6 @@ fn entries_never_reach_the_protocol_steps() {
     assert_eq!(plain_turn, logged_turn);
 }
 
-#[test]
-fn deserializing_a_persisted_internal_call_id_advances_the_mint_counter() {
-    // A run persisted by an earlier process may carry ids far ahead of
-    // this process's counter; loading it must advance the counter so
-    // fresh mints cannot collide with ids consumers already saw.
-    let seen = InternalCallId::new().to_raw() + 50_000;
-    let json = format!(
-        r#"{{"tool_call":{},"preresolved_result":null,"internal_call_id":{seen}}}"#,
-        serde_json::to_string(&ToolCall::from_wire(
-            "call_1",
-            ToolFunction::new("add".to_string(), json!({"x": 1})),
-        ))
-        .expect("serialize call")
-    );
-    let restored: PendingToolCall = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(
-        restored.internal_call_id.map(InternalCallId::to_raw),
-        Some(seen)
-    );
-    assert!(InternalCallId::new().to_raw() > seen);
-}
-
 /// The step and outcome types round-trip: a host caching an in-flight
 /// step in serializable state (a saved world) can restore it.
 #[test]
@@ -1003,7 +981,7 @@ fn agent_run_deserializes_suspended_state() {
     // A suspended run persisted mid-`ExecutingTools` restores and resumes:
     // the recorded call's usage loads, the pending tool call is re-issued,
     // and the run advances to the next model call after results arrive.
-    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
+    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":null}]}}"#;
 
     let mut restored: AgentRun =
         serde_json::from_str(fixture).expect("old-format suspended run should deserialize");

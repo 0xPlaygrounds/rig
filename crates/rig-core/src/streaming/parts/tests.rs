@@ -1,8 +1,9 @@
 use super::*;
+use crate::streaming::non_empty_id;
 
 /// Test-side key syntax: legacy minted renderings decode to minted
 /// keys; anything else is wire-derived.
-fn pid(id: &str) -> StreamPartId {
+fn pid(id: &str) -> BlockId {
     use crate::streaming::MintKind;
     for (namespace, kind) in [
         ("reasoning-", MintKind::Reasoning),
@@ -17,18 +18,18 @@ fn pid(id: &str) -> StreamPartId {
             return kind.for_wire_index(index);
         }
     }
-    StreamPartId::wire(id)
+    BlockId::wire(id)
 }
 
 /// Provider handle matching the key syntax: wire-shaped ids carry
 /// themselves; minted renderings carry none.
-fn wid(id: &str) -> Option<WireId> {
-    pid(id).wire_str().and_then(|_| WireId::new(id))
+fn wid(id: &str) -> Option<String> {
+    pid(id).wire_str().and_then(|_| non_empty_id(id))
 }
 
 fn full(id: &str, content: ReasoningContent) -> Reasoning {
     Reasoning {
-        id: wid(id).map(|id| id.into_string()),
+        id: wid(id),
         content: vec![content],
     }
 }
@@ -83,8 +84,8 @@ fn call_named(id: &str, name: &str) -> ToolCall {
 #[test]
 fn an_end_restatement_replaces_its_delta_accumulation() {
     let mut accumulator = PartsAccumulator::new();
-    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_ref(), "partial ");
-    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_ref(), "thought");
+    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_deref(), "partial ");
+    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_deref(), "thought");
     accumulator.reasoning_end(
         &pid("rs_1"),
         Some(full("rs_1", reasoning_text("the complete chain"))),
@@ -102,7 +103,7 @@ fn an_end_restatement_replaces_its_delta_accumulation() {
 #[test]
 fn an_id_less_restatement_keeps_the_open_parts_provider_handle() {
     let mut accumulator = PartsAccumulator::new();
-    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_ref(), "partial");
+    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_deref(), "partial");
     let completed = accumulator
         .reasoning_end(
             &pid("rs_1"),
@@ -120,7 +121,7 @@ fn an_id_less_restatement_keeps_the_open_parts_provider_handle() {
     );
 
     let mut accumulator = PartsAccumulator::new();
-    accumulator.reasoning_delta(&pid("rs_2"), wid("rs_2").as_ref(), "partial");
+    accumulator.reasoning_delta(&pid("rs_2"), wid("rs_2").as_deref(), "partial");
     let completed = accumulator
         .reasoning_end(
             &pid("rs_2"),
@@ -141,12 +142,8 @@ fn an_id_less_restatement_keeps_the_open_parts_provider_handle() {
 #[test]
 fn an_open_part_collapses_across_interleaved_output() {
     let mut accumulator = PartsAccumulator::new();
-    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_ref(), "thinking");
-    accumulator.tool_call(
-        &pid("call_1"),
-        call_named("call_1", "probe"),
-        InternalCallId::new(),
-    );
+    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_deref(), "thinking");
+    accumulator.tool_call(&pid("call_1"), call_named("call_1", "probe"));
     accumulator.reasoning_end(
         &pid("rs_1"),
         Some(full("rs_1", reasoning_text("full reasoning"))),
@@ -252,7 +249,7 @@ fn same_key_whole_blocks_are_siblings_and_all_survive() {
 #[test]
 fn deltas_then_sibling_whole_blocks_keep_each_part_once() {
     let mut accumulator = PartsAccumulator::new();
-    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_ref(), "s1");
+    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_deref(), "s1");
     for content in [
         summary("s1"),
         summary("s2"),
@@ -268,7 +265,7 @@ fn deltas_then_sibling_whole_blocks_keep_each_part_once() {
 #[test]
 fn distinct_keys_never_interact() {
     let mut accumulator = PartsAccumulator::new();
-    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_ref(), "first item deltas");
+    accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_deref(), "first item deltas");
     accumulator.reasoning_end(
         &pid("rs_2"),
         Some(full("rs_2", reasoning_text("a different item"))),
@@ -455,18 +452,16 @@ fn finish_on_an_empty_stream_yields_no_parts() {
 // --- tool-call lifecycle (the settled semantics) ---
 
 #[test]
-fn fragments_assemble_into_a_completed_tool_call_with_a_stable_internal_id() {
+fn fragments_assemble_into_a_completed_tool_call() {
     let mut accumulator = PartsAccumulator::new();
-    let first = accumulator.tool_name_delta(&pid("call_1"), "get_weather");
-    let second = accumulator.tool_args_delta(&pid("call_1"), "{\"location\":");
+    accumulator.tool_name_delta(&pid("call_1"), "get_weather");
+    accumulator.tool_args_delta(&pid("call_1"), "{\"location\":");
     accumulator.tool_args_delta(&pid("call_1"), "\"Paris\"}");
-    assert_eq!(first, second);
 
-    let (tool_call, internal_call_id) = accumulator
+    let tool_call = accumulator
         .tool_input_end(end("call_1", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("call must finalize");
-    assert_eq!(internal_call_id, first, "internal id is minted at start");
     assert_eq!(tool_call.id, "call_1");
     assert_eq!(tool_call.function.name, "get_weather");
     assert!(accumulator.saw_tool_call());
@@ -479,7 +474,7 @@ fn an_empty_name_fragment_does_not_erase_an_established_name() {
     accumulator.tool_name_delta(&pid("call_1"), "");
     accumulator.tool_args_delta(&pid("call_1"), "{}");
 
-    let (tool_call, _) = accumulator
+    let tool_call = accumulator
         .tool_input_end(end("call_1", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("call must finalize under the established name");
@@ -490,7 +485,7 @@ fn an_empty_name_fragment_does_not_erase_an_established_name() {
 fn a_call_with_no_streamed_arguments_is_a_parameterless_invocation() {
     let mut accumulator = PartsAccumulator::new();
     accumulator.tool_name_delta(&pid("call_1"), "ping");
-    let (tool_call, _) = accumulator
+    let tool_call = accumulator
         .tool_input_end(end("call_1", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("parameterless calls are preserved");
@@ -533,7 +528,7 @@ fn error_mode_surfaces_malformed_input_as_an_error() {
 #[test]
 fn keep_mode_leaves_the_call_open_for_later_fragments() {
     let mut accumulator = PartsAccumulator::new();
-    let internal = accumulator.tool_name_delta(&pid("call_1"), "search");
+    accumulator.tool_name_delta(&pid("call_1"), "search");
     accumulator.tool_args_delta(&pid("call_1"), "{\"q\":\"ru");
     assert!(
         accumulator
@@ -542,11 +537,10 @@ fn keep_mode_leaves_the_call_open_for_later_fragments() {
             .is_none()
     );
     accumulator.tool_args_delta(&pid("call_1"), "st\"}");
-    let (tool_call, internal_after) = accumulator
+    let tool_call = accumulator
         .tool_input_end(end("call_1", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("extended call finalizes");
-    assert_eq!(internal_after, internal);
     assert_eq!(
         tool_call.function.arguments,
         serde_json::json!({"q": "rust"})
@@ -556,18 +550,17 @@ fn keep_mode_leaves_the_call_open_for_later_fragments() {
 #[test]
 fn authoritative_end_fields_supersede_assembly() {
     let mut accumulator = PartsAccumulator::new();
-    let internal = accumulator.tool_name_delta(&pid("fc_1"), "provisional");
+    accumulator.tool_name_delta(&pid("fc_1"), "provisional");
     accumulator.tool_args_delta(&pid("fc_1"), "{\"partial\":");
 
     let mut done = end("fc_1", UnparseableToolInput::Drop);
     done.name = Some("final_name".to_owned());
     done.arguments = Some(serde_json::json!({"x": 1}));
     done.call_id = Some("call_abc".to_owned());
-    let (tool_call, internal_after) = accumulator
+    let tool_call = accumulator
         .tool_input_end(done)
         .expect("no error")
         .expect("authoritative payload finalizes");
-    assert_eq!(internal_after, internal);
     // The authoritative correlator drives rig's id; the wire-derived
     // assembly key rides along as the provider item id.
     assert_eq!(tool_call.id, "call_abc");
@@ -583,7 +576,7 @@ fn an_end_with_no_open_call_creates_the_call_from_its_payload() {
     let mut done = end("fc_1", UnparseableToolInput::Drop);
     done.name = Some("add".to_owned());
     done.arguments = Some(serde_json::json!({"x": 2}));
-    let (tool_call, _) = accumulator
+    let tool_call = accumulator
         .tool_input_end(done)
         .expect("no error")
         .expect("whole done items finalize");
@@ -720,7 +713,7 @@ fn null_placeholder_is_replaced_by_following_json_fragments() {
     accumulator.tool_args_delta(&pid("call_123"), "null");
     accumulator.tool_args_delta(&pid("call_123"), "{\"query\": \"META");
     accumulator.tool_args_delta(&pid("call_123"), " Platforms news\"}");
-    let (tool_call, _) = accumulator
+    let tool_call = accumulator
         .tool_input_end(end("call_123", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("call must finalize");
@@ -737,11 +730,11 @@ fn parallel_calls_assemble_independently() {
     accumulator.tool_name_delta(&pid("call_b"), "get_time");
     accumulator.tool_args_delta(&pid("call_a"), "{\"location\":\"Paris\"}");
     accumulator.tool_args_delta(&pid("call_b"), "{\"zone\":\"UTC\"}");
-    let (call_b, _) = accumulator
+    let call_b = accumulator
         .tool_input_end(end("call_b", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("finalizes");
-    let (call_a, _) = accumulator
+    let call_a = accumulator
         .tool_input_end(end("call_a", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("finalizes");
@@ -764,11 +757,11 @@ fn minted_keys_keep_id_less_parallel_calls_distinct() {
     accumulator.tool_args_delta(&pid("tool-1"), "{\"zone\":");
     accumulator.tool_args_delta(&pid("tool-0"), "\"Tokyo\"}");
     accumulator.tool_args_delta(&pid("tool-1"), "\"UTC\"}");
-    let (first, _) = accumulator
+    let first = accumulator
         .tool_input_end(end("tool-0", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("finalizes");
-    let (second, _) = accumulator
+    let second = accumulator
         .tool_input_end(end("tool-1", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("finalizes");
@@ -807,8 +800,8 @@ fn the_tool_id_override_supersedes_the_assembly_key() {
     let mut accumulator = PartsAccumulator::new();
     accumulator.tool_name_delta(&pid("tool-0"), "ping");
     let mut done = end("tool-0", UnparseableToolInput::Drop);
-    done.tool_id = WireId::new("call_late");
-    let (tool_call, _) = accumulator
+    done.tool_id = non_empty_id("call_late");
+    let tool_call = accumulator
         .tool_input_end(done)
         .expect("no error")
         .expect("finalizes");
@@ -816,13 +809,13 @@ fn the_tool_id_override_supersedes_the_assembly_key() {
 }
 
 #[test]
-fn a_full_call_adopts_the_internal_id_its_deltas_published() {
+fn a_full_call_adopts_the_block_id_its_deltas_published() {
     let mut accumulator = PartsAccumulator::new();
-    let published = accumulator.tool_name_delta(&pid("tc1"), "add");
+    let published = pid("tc1");
+    accumulator.tool_name_delta(&pid("tc1"), "add");
     accumulator.tool_args_delta(&pid("tc1"), "{\"x\":1}");
 
-    let adopted =
-        accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"), InternalCallId::new());
+    let adopted = accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"));
     assert_eq!(adopted, published);
     assert_eq!(
         accumulator
@@ -838,7 +831,7 @@ fn a_full_call_adopts_the_internal_id_its_deltas_published() {
 fn an_end_after_a_full_call_for_the_same_key_is_a_no_op() {
     let mut accumulator = PartsAccumulator::new();
     accumulator.tool_name_delta(&pid("tc1"), "add");
-    accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"), InternalCallId::new());
+    accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"));
     let mut done = end("tc1", UnparseableToolInput::Drop);
     done.name = Some("add".to_owned());
     done.arguments = Some(serde_json::json!({"x": 1}));
@@ -861,23 +854,31 @@ fn an_end_after_a_full_call_for_the_same_key_is_a_no_op() {
 #[test]
 fn fragments_reusing_a_finished_key_open_a_fresh_call() {
     let mut accumulator = PartsAccumulator::new();
-    let first = accumulator.tool_name_delta(&pid("tc1"), "add");
-    accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"), InternalCallId::new());
-    let second = accumulator.tool_name_delta(&pid("tc1"), "subtract");
-    assert_ne!(second, first);
+    accumulator.tool_name_delta(&pid("tc1"), "add");
+    accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"));
+    accumulator.tool_name_delta(&pid("tc1"), "subtract");
     accumulator.tool_args_delta(&pid("tc1"), "{\"y\":2}");
-    let (tool_call, internal) = accumulator
+    let tool_call = accumulator
         .tool_input_end(end("tc1", UnparseableToolInput::Drop))
         .expect("no error")
         .expect("the reused key's call finalizes");
-    assert_eq!(internal, second);
     assert_eq!(tool_call.function.name, "subtract");
+    assert_eq!(
+        accumulator
+            .finish()
+            .iter()
+            .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+            .count(),
+        2,
+        "the reused key opened a second, distinct call"
+    );
 }
 
 #[test]
 fn a_wire_restatement_adopts_the_single_open_minted_assembly() {
     let mut accumulator = PartsAccumulator::new();
-    let published = accumulator.tool_name_delta(&pid("tool-0"), "add");
+    let published = pid("tool-0");
+    accumulator.tool_name_delta(&pid("tool-0"), "add");
     accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
     // A genuine restatement: same tool, arguments covering the
     // streamed fragments.
@@ -888,7 +889,7 @@ fn a_wire_restatement_adopts_the_single_open_minted_assembly() {
             arguments: serde_json::json!({"x": 1}),
         },
     );
-    let adopted = accumulator.tool_call(&pid("call_late"), restated, InternalCallId::new());
+    let adopted = accumulator.tool_call(&pid("call_late"), restated);
     assert_eq!(adopted, published);
     assert!(
         accumulator
@@ -907,7 +908,8 @@ fn a_wire_restatement_adopts_the_single_open_minted_assembly() {
 #[test]
 fn a_wire_restatement_adopts_a_nameless_args_only_assembly() {
     let mut accumulator = PartsAccumulator::new();
-    let published = accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
+    let published = pid("tool-0");
+    accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
     let restated = ToolCall::from_wire(
         "call_late",
         crate::message::ToolFunction {
@@ -915,7 +917,7 @@ fn a_wire_restatement_adopts_a_nameless_args_only_assembly() {
             arguments: serde_json::json!({"x": 1}),
         },
     );
-    let adopted = accumulator.tool_call(&pid("call_late"), restated, InternalCallId::new());
+    let adopted = accumulator.tool_call(&pid("call_late"), restated);
     assert_eq!(adopted, published);
     assert!(
         accumulator
@@ -933,7 +935,8 @@ fn a_wire_restatement_adopts_a_nameless_args_only_assembly() {
 #[test]
 fn a_wire_restatement_adopts_an_assembly_holding_the_null_placeholder() {
     let mut accumulator = PartsAccumulator::new();
-    let published = accumulator.tool_name_delta(&pid("tool-0"), "add");
+    let published = pid("tool-0");
+    accumulator.tool_name_delta(&pid("tool-0"), "add");
     accumulator.tool_args_delta(&pid("tool-0"), "null");
     let restated = ToolCall::from_wire(
         "call_late",
@@ -942,7 +945,7 @@ fn a_wire_restatement_adopts_an_assembly_holding_the_null_placeholder() {
             arguments: serde_json::json!({"x": 1}),
         },
     );
-    let adopted = accumulator.tool_call(&pid("call_late"), restated, InternalCallId::new());
+    let adopted = accumulator.tool_call(&pid("call_late"), restated);
     assert_eq!(adopted, published);
     assert!(
         accumulator
@@ -960,7 +963,8 @@ fn a_wire_restatement_adopts_an_assembly_holding_the_null_placeholder() {
 #[test]
 fn an_unrelated_wire_keyed_call_does_not_steal_the_open_assembly() {
     let mut accumulator = PartsAccumulator::new();
-    let published = accumulator.tool_name_delta(&pid("tool-0"), "get_weather");
+    let published = pid("tool-0");
+    accumulator.tool_name_delta(&pid("tool-0"), "get_weather");
     accumulator.tool_args_delta(&pid("tool-0"), "{\"city\":\"Paris\"}");
 
     let unrelated = ToolCall::from_wire(
@@ -970,16 +974,19 @@ fn an_unrelated_wire_keyed_call_does_not_steal_the_open_assembly() {
             arguments: serde_json::json!({"zone": "UTC"}),
         },
     );
-    let fresh = InternalCallId::new();
-    let adopted = accumulator.tool_call(&pid("call_other"), unrelated, fresh);
-    assert_eq!(adopted, fresh, "an unrelated call has nothing to adopt");
+    let adopted = accumulator.tool_call(&pid("call_other"), unrelated);
+    assert_eq!(
+        adopted,
+        pid("call_other"),
+        "an unrelated call has nothing to adopt"
+    );
+    assert_ne!(adopted, published);
 
     // The assembly still finalizes from its own end, streamed args intact.
-    let (weather, internal) = accumulator
+    let weather = accumulator
         .tool_input_end(end("tool-0", UnparseableToolInput::Error))
         .expect("no error")
         .expect("the open assembly must finalize");
-    assert_eq!(internal, published);
     assert_eq!(weather.function.name, "get_weather");
     assert_eq!(
         weather.function.arguments,
@@ -1009,9 +1016,8 @@ fn a_same_name_call_with_foreign_arguments_does_not_adopt() {
             arguments: serde_json::json!({"x": 99}),
         },
     );
-    let fresh = InternalCallId::new();
-    let adopted = accumulator.tool_call(&pid("call_other"), second_invocation, fresh);
-    assert_eq!(adopted, fresh);
+    let adopted = accumulator.tool_call(&pid("call_other"), second_invocation);
+    assert_eq!(adopted, pid("call_other"));
     assert!(
         accumulator
             .tool_input_end(end("tool-0", UnparseableToolInput::Error))
@@ -1024,14 +1030,12 @@ fn a_same_name_call_with_foreign_arguments_does_not_adopt() {
 #[test]
 fn a_wire_restatement_never_guesses_between_two_minted_assemblies() {
     let mut accumulator = PartsAccumulator::new();
-    let first = accumulator.tool_name_delta(&pid("tool-0"), "add");
-    let second = accumulator.tool_name_delta(&pid("tool-1"), "subtract");
-    let minted = InternalCallId::new();
-    let published =
-        accumulator.tool_call(&pid("call_late"), call_named("call_late", "add"), minted);
-    assert_eq!(published, minted);
-    assert_ne!(published, first);
-    assert_ne!(published, second);
+    accumulator.tool_name_delta(&pid("tool-0"), "add");
+    accumulator.tool_name_delta(&pid("tool-1"), "subtract");
+    let published = accumulator.tool_call(&pid("call_late"), call_named("call_late", "add"));
+    assert_eq!(published, pid("call_late"));
+    assert_ne!(published, pid("tool-0"));
+    assert_ne!(published, pid("tool-1"));
 }
 
 #[test]
