@@ -348,3 +348,28 @@ fn display_goldens_for_error_shapes() {
         assert_eq!(with_headers.to_string(), bare_text);
     }
 }
+
+#[test]
+fn provider_response_error_round_trips_through_serde_losslessly() {
+    use super::ProviderResponseError;
+    let mut headers = http::HeaderMap::new();
+    headers.append("retry-after", http::HeaderValue::from_static("7"));
+    headers.append(
+        "x-bin",
+        http::HeaderValue::from_bytes(&[0xff, 0xfe]).unwrap(),
+    );
+    let error = ProviderResponseError::new(http::StatusCode::TOO_MANY_REQUESTS, "slow")
+        .with_provider_request_id(Some("req-1".into()))
+        .with_headers(Some(Box::new(headers)));
+    let json = serde_json::to_string(&error).unwrap();
+    let back: ProviderResponseError = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, error);
+
+    let bare = ProviderResponseError::without_status("gone");
+    let back: ProviderResponseError =
+        serde_json::from_str(&serde_json::to_string(&bare).unwrap()).unwrap();
+    assert_eq!(back, bare);
+
+    let bad = r#"{"status":99,"body":"","provider_request_id":null,"headers":null}"#;
+    assert!(serde_json::from_str::<ProviderResponseError>(bad).is_err());
+}

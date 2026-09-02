@@ -218,3 +218,31 @@ async fn stream_error_event_is_returned() {
         CompletionError::ProviderError(message) if message == "boom"
     ));
 }
+
+#[test]
+fn a_script_is_serde_in_and_serde_out() {
+    let turns = vec![
+        MockTurn::text("hello"),
+        MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 1})),
+        MockTurn::error("boom"),
+    ];
+    let json = serde_json::to_string(&turns).expect("turns serialize");
+    let restored: Vec<MockTurn> = serde_json::from_str(&json).expect("turns deserialize");
+    assert_eq!(restored, turns);
+
+    let model = MockCompletionModel::from_turns(restored);
+    assert_eq!(model.script(), turns);
+    assert_eq!(model.stream_script(), Vec::<Vec<MockStreamEvent>>::new());
+
+    let stream_turns = vec![vec![
+        MockStreamEvent::Text("hi".into()),
+        MockStreamEvent::FinalResponse(super::super::streaming::mock_final(Usage::new())),
+    ]];
+    let json = serde_json::to_string(&stream_turns).expect("stream turns serialize");
+    let restored: Vec<Vec<MockStreamEvent>> =
+        serde_json::from_str(&json).expect("stream turns deserialize");
+    assert_eq!(restored, stream_turns);
+    let model = MockCompletionModel::from_stream_turns(restored);
+    assert_eq!(model.stream_script(), stream_turns);
+    assert!(model.script().is_empty());
+}

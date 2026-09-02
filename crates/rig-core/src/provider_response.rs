@@ -84,6 +84,65 @@ impl std::fmt::Display for ProviderResponseError {
 
 impl std::error::Error for ProviderResponseError {}
 
+/// The wire shape of [`ProviderResponseError`]: the status as its number and
+/// every header as a `(name, bytes)` pair, so a response is preserved
+/// losslessly through serde (header values need not be UTF-8).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ProviderResponseErrorWire {
+    status: Option<u16>,
+    body: String,
+    provider_request_id: Option<String>,
+    headers: Option<Vec<(String, Vec<u8>)>>,
+}
+
+impl serde::Serialize for ProviderResponseError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        ProviderResponseErrorWire {
+            status: self.status.map(|status| status.as_u16()),
+            body: self.body.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+            headers: self.headers.as_ref().map(|headers| {
+                headers
+                    .iter()
+                    .map(|(name, value)| (name.as_str().to_string(), value.as_bytes().to_vec()))
+                    .collect()
+            }),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ProviderResponseError {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let wire = ProviderResponseErrorWire::deserialize(deserializer)?;
+        let status = wire
+            .status
+            .map(StatusCode::from_u16)
+            .transpose()
+            .map_err(D::Error::custom)?;
+        let headers = wire
+            .headers
+            .map(|pairs| {
+                let mut map = http::HeaderMap::with_capacity(pairs.len());
+                for (name, value) in pairs {
+                    let name = http::header::HeaderName::from_bytes(name.as_bytes())
+                        .map_err(D::Error::custom)?;
+                    let value = http::HeaderValue::from_bytes(&value).map_err(D::Error::custom)?;
+                    map.append(name, value);
+                }
+                Ok(Box::new(map))
+            })
+            .transpose()?;
+        Ok(Self {
+            status,
+            body: wire.body,
+            provider_request_id: wire.provider_request_id,
+            headers,
+        })
+    }
+}
+
 /// Parses an optional response body as JSON.
 ///
 /// Returns:

@@ -35,7 +35,7 @@ pub fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
 }
 
 /// Scripted streaming event yielded by [`MockCompletionModel`](super::MockCompletionModel).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MockStreamEvent {
     /// Text chunk.
     Text(String),
