@@ -156,8 +156,8 @@ pub fn normalize_responses_stream(
 /// encrypted). `None` when the item carries no blocks — an empty done item
 /// says nothing at the boundary.
 pub(crate) fn reasoning_end_from_done_item(
-    id: &crate::streaming::StreamPartId,
-    provider_id: Option<&crate::streaming::WireId>,
+    id: &crate::streaming::BlockId,
+    provider_id: Option<&str>,
     summary: Vec<ReasoningSummary>,
     content: Vec<String>,
     encrypted_content: Option<String>,
@@ -173,7 +173,7 @@ pub(crate) fn reasoning_end_from_done_item(
     Some(RawStreamingChoice::ReasoningEnd {
         id: id.clone(),
         reasoning: Some(crate::message::Reasoning {
-            id: provider_id.map(|provider_id| provider_id.as_str().to_owned()),
+            id: provider_id.map(str::to_owned),
             content: blocks,
         }),
         signature: None,
@@ -404,7 +404,7 @@ pub struct RawChoiceAccumulator {
     /// superseded only one of them — the other survived as an orphaned
     /// partial part carrying the same provider id (#2258 F3 and its mixed
     /// generalization).
-    reasoning_slots: std::collections::HashMap<u64, crate::streaming::StreamPartId>,
+    reasoning_slots: std::collections::HashMap<u64, crate::streaming::BlockId>,
     /// Tool-call identities minted for function-call items whose wire events
     /// carried no `fc_*` id (gateways and the ChatGPT envelope-less replay
     /// bodies), keyed by output slot. Mirrors `minted_reasoning_ids`: the
@@ -463,7 +463,7 @@ impl RawChoiceAccumulator {
         {
             self.current_text_item = Some(item_id.to_string());
             immediate.push(streaming::RawStreamingChoice::TextStart {
-                id: crate::streaming::StreamPartId::wire(item_id.to_string()),
+                id: crate::streaming::BlockId::wire(item_id.to_string()),
                 additional_params: None,
             });
         }
@@ -481,7 +481,7 @@ impl RawChoiceAccumulator {
         &mut self,
         output_index: u64,
         item_id: Option<&str>,
-    ) -> crate::streaming::StreamPartId {
+    ) -> crate::streaming::BlockId {
         if let Some(key) = self.reasoning_slots.get(&output_index) {
             return key.clone();
         }
@@ -492,7 +492,7 @@ impl RawChoiceAccumulator {
         // stable across the slot's frames.
         let key = item_id.map_or_else(
             || self.tool_slots.minted_ids().mint(),
-            crate::streaming::StreamPartId::wire,
+            crate::streaming::BlockId::wire,
         );
         self.reasoning_slots.insert(output_index, key.clone());
         key
@@ -576,7 +576,7 @@ impl RawChoiceAccumulator {
                     id,
                     provider_id: outer_item_id
                         .clone()
-                        .and_then(crate::streaming::WireId::new),
+                        .and_then(crate::streaming::non_empty_id),
                     reasoning: delta,
                 });
             }
@@ -700,7 +700,7 @@ impl RawChoiceAccumulator {
                     // the same value for, consuming that assembly under the
                     // wrong call.
                     None if func.id.is_empty() => self.tool_slots.minted_ids().mint(),
-                    None => crate::streaming::StreamPartId::wire(func.id.clone()),
+                    None => crate::streaming::BlockId::wire(func.id.clone()),
                 };
                 let mut end = streaming::ToolInputEnd::new(
                     item_id.clone(),
@@ -710,7 +710,7 @@ impl RawChoiceAccumulator {
                 // The finalized call reports the authoritative wire id even
                 // when assembly keyed on a minted slot identity (the
                 // accumulator honors the override).
-                end.tool_id = crate::streaming::WireId::new(func.id.clone());
+                end.tool_id = crate::streaming::non_empty_id(func.id.clone());
                 // The restated arguments are authoritative when they parse. A
                 // turn cut by `max_output_tokens` mid-tool-call restates them
                 // truncated mid-JSON (item status `incomplete`); routing the
@@ -765,14 +765,14 @@ impl RawChoiceAccumulator {
                 // A slot with no established identity keeps the wire id
                 // (the pure-replay shape). The durable handle is the item's
                 // real `rs_*` id regardless of the accumulation key.
-                let provider_id = crate::streaming::WireId::new(id.clone());
+                let provider_id = crate::streaming::non_empty_id(id.clone());
                 let key = self
                     .reasoning_slots
                     .remove(&output_index)
-                    .unwrap_or(crate::streaming::StreamPartId::wire(id));
+                    .unwrap_or(crate::streaming::BlockId::wire(id));
                 immediate.extend(reasoning_end_from_done_item(
                     &key,
-                    provider_id.as_ref(),
+                    provider_id.as_deref(),
                     summary,
                     content,
                     encrypted_content,

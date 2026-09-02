@@ -817,11 +817,7 @@ async fn test_duplicate_index_different_id_tool_calls() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id: _,
-        } = chunk.unwrap()
-        {
+        if let streaming::StreamedAssistantContent::ToolCall { tool_call, .. } = chunk.unwrap() {
             collected_tool_calls.push(tool_call);
         }
     }
@@ -868,11 +864,7 @@ async fn test_tool_call_id_chunk_without_function_is_preserved() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id: _,
-        } = chunk.unwrap()
-        {
+        if let streaming::StreamedAssistantContent::ToolCall { tool_call, .. } = chunk.unwrap() {
             collected_tool_calls.push(tool_call);
         }
     }
@@ -918,11 +910,7 @@ async fn test_unique_id_per_chunk_single_tool_call() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id: _,
-        } = chunk.unwrap()
-        {
+        if let streaming::StreamedAssistantContent::ToolCall { tool_call, .. } = chunk.unwrap() {
             collected_tool_calls.push(tool_call);
         }
     }

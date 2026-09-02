@@ -1,6 +1,6 @@
 use super::super::adapter::{AdapterOutput, WireAdapter, run_wire_buffered};
 use super::super::wire::WireEvent;
-use crate::streaming::{MintKind, RawStreamingChoice, StreamPartId};
+use crate::streaming::{BlockId, MintKind, RawStreamingChoice};
 
 /// A scripted adapter: each frame index replays its preloaded batch.
 struct Scripted {
@@ -32,7 +32,7 @@ fn drive(batches: Vec<Vec<RawStreamingChoice<()>>>) {
 
 fn minted_delta() -> RawStreamingChoice<()> {
     RawStreamingChoice::ReasoningDelta {
-        id: StreamPartId::minted(MintKind::Reasoning, 0),
+        id: BlockId::minted(MintKind::Reasoning, 0),
         provider_id: None,
         reasoning: "thinking".to_owned(),
     }
@@ -40,7 +40,7 @@ fn minted_delta() -> RawStreamingChoice<()> {
 
 fn minted_end() -> RawStreamingChoice<()> {
     RawStreamingChoice::ReasoningEnd {
-        id: StreamPartId::minted(MintKind::Reasoning, 0),
+        id: BlockId::minted(MintKind::Reasoning, 0),
         reasoning: None,
         signature: None,
         wire_sent: false,
@@ -62,7 +62,7 @@ fn tool_content_while_a_minted_reasoning_part_is_open_panics() {
     drive(vec![
         vec![minted_delta()],
         vec![RawStreamingChoice::ToolCallDelta {
-            id: StreamPartId::minted(MintKind::Tool, 0),
+            id: BlockId::minted(MintKind::Tool, 0),
             content: crate::streaming::ToolCallDeltaContent::Name("probe".to_owned()),
         }],
     ]);
@@ -83,8 +83,8 @@ fn a_synthesized_end_before_text_satisfies_the_boundary_law() {
 fn a_wire_keyed_part_may_stay_open_across_interleaving() {
     drive(vec![
         vec![RawStreamingChoice::ReasoningDelta {
-            id: StreamPartId::wire("rs_1"),
-            provider_id: crate::streaming::WireId::new("rs_1"),
+            id: BlockId::wire("rs_1"),
+            provider_id: crate::streaming::non_empty_id("rs_1"),
             reasoning: "thinking".to_owned(),
         }],
         vec![RawStreamingChoice::Message("visible".to_owned())],
@@ -99,7 +99,7 @@ fn wire_order_within_a_batch_is_not_a_violation() {
     drive(vec![vec![
         RawStreamingChoice::Message("visible".to_owned()),
         RawStreamingChoice::Reasoning {
-            id: StreamPartId::minted(MintKind::EncryptedReasoning, 0),
+            id: BlockId::minted(MintKind::EncryptedReasoning, 0),
             provider_id: None,
             content: crate::message::ReasoningContent::Text {
                 text: "late".to_owned(),
@@ -115,7 +115,7 @@ fn wire_order_within_a_batch_is_not_a_violation() {
 /// under the same key), so following text is legal.
 #[test]
 fn a_same_key_whole_block_closes_the_open_reasoning_part() {
-    let key = || StreamPartId::minted(MintKind::Block, 0);
+    let key = || BlockId::minted(MintKind::Block, 0);
     drive(vec![
         vec![RawStreamingChoice::ReasoningDelta {
             id: key(),
@@ -141,7 +141,7 @@ fn lifecycle_bookkeeping_is_not_boundary_content() {
     drive(vec![vec![
         RawStreamingChoice::Message("visible".to_owned()),
         RawStreamingChoice::ToolInputEnd(crate::streaming::ToolInputEnd {
-            id: StreamPartId::minted(MintKind::Tool, 0),
+            id: BlockId::minted(MintKind::Tool, 0),
             tool_id: None,
             call_id: None,
             name: None,

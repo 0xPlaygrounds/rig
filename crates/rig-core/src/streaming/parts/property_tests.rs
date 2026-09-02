@@ -42,7 +42,7 @@ proptest! {
         payload in ".{1,60}",
         points in proptest::collection::vec(0usize..1000, 0..6),
     ) {
-        let key = StreamPartId::wire("rs_1");
+        let key = BlockId::wire("rs_1");
         let mut whole = PartsAccumulator::new();
         whole.reasoning_delta(&key, None, &payload);
         let completed_whole = whole.reasoning_end(&key, None, None);
@@ -69,7 +69,7 @@ proptest! {
         let payload = format!("{{\"q\":\"{value}\"}}");
         let finalize = |fragments: &[String]| {
             let mut accumulator = PartsAccumulator::new();
-            let key = StreamPartId::wire("call_1");
+            let key = BlockId::wire("call_1");
             accumulator.tool_name_delta(&key, "probe");
             for fragment in fragments {
                 accumulator.tool_args_delta(&key, fragment);
@@ -77,7 +77,7 @@ proptest! {
             accumulator
                 .tool_input_end(ToolInputEnd::new(key, UnparseableToolInput::Drop))
                 .expect("no error")
-                .map(|(call, _)| call.function.arguments)
+                .map(|call| call.function.arguments)
         };
         let whole = finalize(std::slice::from_ref(&payload));
         let split = finalize(&split_fragments(&payload, &points));
@@ -93,7 +93,7 @@ proptest! {
         authoritative in proptest::bool::ANY,
     ) {
         let mut accumulator = PartsAccumulator::new();
-        let key = StreamPartId::wire("call_1");
+        let key = BlockId::wire("call_1");
         accumulator.tool_name_delta(&key, "probe");
         accumulator.tool_args_delta(&key, "{}");
         accumulator
@@ -125,7 +125,7 @@ proptest! {
     #[test]
     fn stale_reasoning_ends_are_idempotent(extra_ends in 1usize..5) {
         let mut accumulator = PartsAccumulator::new();
-        let key = StreamPartId::wire("rs_1");
+        let key = BlockId::wire("rs_1");
         accumulator.reasoning_delta(&key, None, "thought");
         accumulator.reasoning_end(&key, None, None);
         for _ in 0..extra_ends {

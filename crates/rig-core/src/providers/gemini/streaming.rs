@@ -24,13 +24,7 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 pub(crate) mod shared_parts {
     use serde_json::Value;
 
-    use crate::streaming::{MintKind, RawStreamingChoice, RawStreamingToolCall, StreamPartId};
-
-    /// Gemini thought parts carry no id or block boundaries; a per-stream
-    /// constant minted identity keeps all thought deltas merging into one
-    /// item, and the core accumulator's minted-id boundary splits items
-    /// around other output. Minted, so it can never reach a request.
-    pub(crate) const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
+    use crate::streaming::{BlockId, RawStreamingChoice, RawStreamingToolCall};
 
     /// A whole function-call part as a canonical tool call (Gemini never
     /// streams arguments incrementally).
@@ -48,15 +42,14 @@ pub(crate) mod shared_parts {
         // collide on one key — and replays with the id absent. The tool
         // *name* is never an identity — two calls to the same tool in one
         // turn must stay distinct, correlated by order and by the
-        // rig-internal call id.
-        let tool_id = wire_id.and_then(crate::streaming::WireId::new);
+        // block id.
+        let tool_id = wire_id.and_then(crate::streaming::non_empty_id);
         let id = tool_id
             .as_ref()
-            .map_or_else(|| tool_ids.mint(), |id| StreamPartId::wire(id.as_str()));
+            .map_or_else(|| tool_ids.mint(), |id| BlockId::wire(id.as_str()));
         let tool_call = RawStreamingToolCall {
             id,
             tool_id,
-            internal_call_id: crate::id::InternalCallId::new(),
             // Gemini is a single-identifier wire: its one id travels as
             // `tool_id` and `call_id` stays unset. Filling both from the same
             // id would take the dual-wire arm downstream and fabricate an
@@ -184,7 +177,7 @@ impl Default for GeminiRestAdapter {
     fn default() -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                shared_parts::REASONING_ID,
+                crate::streaming::MintKind::Reasoning,
             ),
             tool_ids: crate::streaming::SyntheticIds::tool(),
             final_usage: None,

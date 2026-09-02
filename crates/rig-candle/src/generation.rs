@@ -643,16 +643,16 @@ pub(crate) fn stream_generate(
                         // Local generation has no wire id; fall back to a
                         // per-stream constant minted identity.
                         id: reasoning.id.clone().map_or(
-                            rig_core::streaming::StreamPartId::minted(
+                            rig_core::streaming::BlockId::minted(
                                 rig_core::streaming::MintKind::Reasoning,
                                 0,
                             ),
-                            rig_core::streaming::StreamPartId::wire,
+                            rig_core::streaming::BlockId::wire,
                         ),
                         provider_id: reasoning
                             .id
                             .clone()
-                            .and_then(rig_core::streaming::WireId::new),
+                            .and_then(rig_core::streaming::non_empty_id),
                         content,
                     })?;
                 }

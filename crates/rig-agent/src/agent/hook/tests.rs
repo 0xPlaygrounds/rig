@@ -1,4 +1,6 @@
 use super::*;
+
+static BLOCK: BlockId = BlockId::Wire(String::new());
 use crate::tool::{ToolErrorKind, ToolExecutionError};
 
 /// Rewrites the run-start prompt by appending its tag; used to observe
@@ -176,7 +178,7 @@ async fn tool_call_rewrites_chain_in_registration_order() {
             ToolCall {
                 tool_name: "tool",
                 tool_call_id: Some("provider-id"),
-                internal_call_id: InternalCallId::new(),
+                block_id: &BLOCK,
                 args: r#"{"step":0}"#,
             },
         )
@@ -236,7 +238,7 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
             ToolResultEvent {
                 tool_name: "tool",
                 tool_call_id: None,
-                internal_call_id: InternalCallId::new(),
+                block_id: &BLOCK,
                 args: "{}",
                 presentation: raw.output(),
                 raw_result: &raw,
@@ -307,7 +309,7 @@ async fn terminal_result_action_short_circuits_later_hooks() {
             ToolResultEvent {
                 tool_name: "tool",
                 tool_call_id: None,
-                internal_call_id: InternalCallId::new(),
+                block_id: &BLOCK,
                 args: "{}",
                 presentation: raw.output(),
                 raw_result: &raw,
@@ -648,7 +650,7 @@ fn tool_call_event() -> ToolCall<'static> {
     ToolCall {
         tool_name: "add",
         tool_call_id: Some("tc1"),
-        internal_call_id: InternalCallId::new(),
+        block_id: &BLOCK,
         args: "{}",
     }
 }
@@ -665,7 +667,7 @@ fn invalid_tool_call_context() -> InvalidToolCallContext {
     InvalidToolCallContext {
         tool_name: "unknown".into(),
         tool_call_id: Some("tc1".into()),
-        internal_call_id: Some(InternalCallId::new()),
+        block_id: Some(BlockId::wire("tc1")),
         args: Some("{}".into()),
         available_tools: vec!["add".into()],
         allowed_tools: vec!["add".into()],
@@ -768,7 +770,7 @@ async fn reasoning_delta_observation_preserves_nested_order_and_stop() {
             .on_reasoning_delta(
                 &ctx(),
                 ReasoningDelta {
-                    id: "corr_1",
+                    id: &BlockId::wire("corr_1"),
                     provider_id: Some("rs_1"),
                     delta: "think",
                     aggregated: "think",
@@ -1079,7 +1081,7 @@ struct YieldingRewriteFromCallId;
 impl AgentHook for YieldingRewriteFromCallId {
     async fn on_tool_call(&self, _: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
         tokio::task::yield_now().await;
-        ToolCallAction::rewrite(json!({"call_id": event.internal_call_id}))
+        ToolCallAction::rewrite(json!({"call_id": event.block_id}))
     }
 }
 
@@ -1196,19 +1198,19 @@ async fn concurrent_nested_resolutions_keep_rewrites_isolated_by_call() {
     let outer = HookStack::with(inner);
     let context = ctx();
 
-    let first_id = InternalCallId::new();
-    let second_id = InternalCallId::new();
+    let first_id = BlockId::wire("first");
+    let second_id = BlockId::wire("second");
     let first = outer.resolve_tool_call(
         &context,
         ToolCall {
-            internal_call_id: first_id,
+            block_id: &first_id,
             ..tool_call_event()
         },
     );
     let second = outer.resolve_tool_call(
         &context,
         ToolCall {
-            internal_call_id: second_id,
+            block_id: &second_id,
             ..tool_call_event()
         },
     );

@@ -4,14 +4,14 @@ use super::*;
 fn wire_id_becomes_the_assembly_key() {
     let mut bridge = ToolCallBridge::<usize>::new();
     let slot = bridge.open(0, Some("call_abc"), Some("get_weather"));
-    assert_eq!(slot.key(), &StreamPartId::wire("call_abc"));
+    assert_eq!(slot.key(), &BlockId::wire("call_abc"));
     assert_eq!(slot.id, "call_abc");
     assert_eq!(slot.name, "get_weather");
 
     // The established id rides the end event as the override.
     let end = slot.end_event(UnparseableToolInput::Drop);
-    assert_eq!(end.id, StreamPartId::wire("call_abc"));
-    assert_eq!(end.tool_id.as_ref().map(|id| id.as_str()), Some("call_abc"));
+    assert_eq!(end.id, BlockId::wire("call_abc"));
+    assert_eq!(end.tool_id.as_deref(), Some("call_abc"));
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn evict_if_takes_the_slot_only_when_the_predicate_says_so() {
     let evicted = bridge
         .evict_if(0, |slot| slot.id == "call_a")
         .expect("predicate matched: slot must be evicted");
-    assert_eq!(evicted.key(), &StreamPartId::wire("call_a"));
+    assert_eq!(evicted.key(), &BlockId::wire("call_a"));
     assert!(bridge.get(0).is_none());
 }
 
@@ -148,7 +148,7 @@ fn drain_ordered_preserves_wire_index_order() {
     bridge.open(0, Some("call_a"), None);
     bridge.open(1, Some("call_b"), None);
 
-    let keys: Vec<StreamPartId> = bridge
+    let keys: Vec<BlockId> = bridge
         .drain_ordered()
         .into_iter()
         .map(|slot| slot.key().clone())
@@ -156,9 +156,9 @@ fn drain_ordered_preserves_wire_index_order() {
     assert_eq!(
         keys,
         vec![
-            StreamPartId::wire("call_a"),
-            StreamPartId::wire("call_b"),
-            StreamPartId::wire("call_c")
+            BlockId::wire("call_a"),
+            BlockId::wire("call_b"),
+            BlockId::wire("call_c")
         ]
     );
     assert!(bridge.is_empty());

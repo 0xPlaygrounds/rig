@@ -15,7 +15,7 @@ use crate::providers::internal::sse_transport::{
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
-    self, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
+    self, BlockId, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal,
     ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, SpanCombinator};
@@ -657,7 +657,7 @@ fn handle_event(
                     // Emit the delta so UI can show progress; the shared
                     // accumulator assembles the fragments.
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: StreamPartId::wire(id.clone()),
+                        id: BlockId::wire(id.clone()),
                         content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
@@ -746,7 +746,7 @@ fn handle_event(
             Content::ToolUse { id, name, .. } => {
                 *current_tool_call = Some(id.clone());
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: StreamPartId::wire(id.clone()),
+                    id: BlockId::wire(id.clone()),
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }

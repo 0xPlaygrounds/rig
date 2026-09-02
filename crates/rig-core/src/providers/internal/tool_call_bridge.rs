@@ -8,7 +8,7 @@
 //! so the mandatory-identity invariant on
 //! [`RawStreamingChoice::ToolCallDelta`](crate::streaming::RawStreamingChoice)
 //! is enforced in exactly one place: when the wire supplies no id, the slot's
-//! grammar id is a `StreamPartId::Minted` from the bridge's [`SyntheticIds`]
+//! grammar id is a `BlockId::Minted` from the bridge's [`SyntheticIds`]
 //! counter, so parallel id-less calls can never share an assembly key
 //! downstream — and a minted id structurally cannot serialize upstream as a
 //! wire-genuine one.
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use crate::streaming::{
-    StreamPartId, SyntheticIds, ToolCallDecoration, ToolInputEnd, UnparseableToolInput,
+    BlockId, SyntheticIds, ToolCallDecoration, ToolInputEnd, UnparseableToolInput,
 };
 
 /// Wire identity of a tool call whose input is streaming, as tracked by an
@@ -33,7 +33,7 @@ pub struct ToolCallSlot {
     /// Fixed at open: the first-seen provider id, or a minted identity when
     /// the wire omits one — so parallel id-less calls can never share an
     /// assembly key downstream.
-    key: StreamPartId,
+    key: BlockId,
     /// Established provider id: updated when a later chunk carries one.
     /// Empty until the wire supplies one.
     pub id: String,
@@ -64,7 +64,7 @@ pub struct ToolCallSlot {
 
 impl ToolCallSlot {
     /// The assembly id this call's fragments are emitted under.
-    pub fn key(&self) -> &StreamPartId {
+    pub fn key(&self) -> &BlockId {
         &self.key
     }
 
@@ -87,8 +87,8 @@ impl ToolCallSlot {
         let mut end = ToolInputEnd::new(self.key.clone(), on_unparseable);
         // Only an established provider id overrides the assembly key; a
         // call whose wire never supplied one carries no durable handle at
-        // all (`WireId::new` rejects the empty string by construction).
-        end.tool_id = crate::streaming::WireId::new(self.id.clone());
+        // all (`non_empty_id` rejects the empty string by construction).
+        end.tool_id = crate::streaming::non_empty_id(self.id.clone());
         end.signature.clone_from(&self.signature);
         end.additional_params.clone_from(&self.additional_params);
         if !self.saw_arguments_delta {
@@ -157,7 +157,7 @@ where
         let minted = &mut self.minted;
         let slot = self.slots.entry(index).or_insert_with(|| ToolCallSlot {
             key: match wire_id {
-                Some(id) if !id.is_empty() => StreamPartId::wire(id),
+                Some(id) if !id.is_empty() => BlockId::wire(id),
                 // Id-less wires (several llama.cpp/vllm-style gateways) key
                 // tool calls by index alone; the slot identity is minted so
                 // it can never collide with a wire-genuine id — and can

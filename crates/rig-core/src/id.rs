@@ -139,17 +139,6 @@ counter_id! {
     RunId
 }
 
-counter_id! {
-    /// Rig-generated correlator for one tool call across its stream items:
-    /// the id that ties a call's argument deltas to its completed call and
-    /// its execution/result items. Minted by the streaming assembler when a
-    /// call opens (never provider-supplied); unique and increasing within
-    /// the process. Persisted with run state so a resumed run keeps emitting
-    /// the ids consumers already saw — a loader of persisted ids must call
-    /// [`InternalCallId::advance_past`] so fresh mints cannot collide.
-    InternalCallId
-}
-
 /// Identifier of a conversation, scoping [`ConversationMemory`] persistence
 /// and threading provider-side conversation state across runs.
 ///

@@ -473,7 +473,7 @@ fn test_content_delta_function_call_event() {
             // Single-identifier wire: the id travels as `tool_id` only.
             // Filling `call_id` too would take the dual-wire arm and
             // fabricate an item id the wire never issued.
-            assert_eq!(call.tool_id.as_ref().map(|id| id.as_str()), Some("call-1"));
+            assert_eq!(call.tool_id.as_deref(), Some("call-1"));
             assert_eq!(call.call_id, None);
         }
         other => panic!("unexpected choice: {other:?}"),

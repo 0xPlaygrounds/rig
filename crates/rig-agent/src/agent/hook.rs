@@ -193,7 +193,7 @@
 //! against a credential-free scripted model whose output genuinely depends on
 //! the cap, on both surfaces.
 
-use rig_core::id::InternalCallId;
+use rig_core::streaming::BlockId;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{future::Future, sync::Arc};
@@ -300,7 +300,7 @@ impl std::fmt::Debug for Scratchpad {
     }
 }
 
-type ToolCallRewriteFrameMap = HashMap<InternalCallId, Vec<Option<serde_json::Value>>>;
+type ToolCallRewriteFrameMap = HashMap<BlockId, Vec<Option<serde_json::Value>>>;
 
 // A nested `HookStack` can terminate after rewriting arguments, but the public
 // action only carries the terminal reason. Resolution frames transfer that
@@ -318,36 +318,33 @@ impl ToolCallRewriteFrames {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn begin(&self, internal_call_id: InternalCallId) -> ToolCallResolutionFrame<'_> {
-        self.lock().entry(internal_call_id).or_default().push(None);
+    fn begin(&self, block_id: &BlockId) -> ToolCallResolutionFrame<'_> {
+        self.lock().entry(block_id.clone()).or_default().push(None);
         ToolCallResolutionFrame {
             frames: self,
-            internal_call_id,
+            block_id: block_id.clone(),
             active: true,
         }
     }
 
-    fn record(&self, internal_call_id: InternalCallId, rewrite: serde_json::Value) {
+    fn record(&self, block_id: &BlockId, rewrite: serde_json::Value) {
         if let Some(frame) = self
             .lock()
-            .get_mut(&internal_call_id)
+            .get_mut(block_id)
             .and_then(|frames| frames.last_mut())
         {
             *frame = Some(rewrite);
         }
     }
 
-    fn finish(&self, internal_call_id: InternalCallId) -> Option<serde_json::Value> {
+    fn finish(&self, block_id: &BlockId) -> Option<serde_json::Value> {
         let mut frames = self.lock();
-        let (rewrite, remove_entry) =
-            frames
-                .get_mut(&internal_call_id)
-                .map_or((None, false), |frames| {
-                    let rewrite = frames.pop().flatten();
-                    (rewrite, frames.is_empty())
-                });
+        let (rewrite, remove_entry) = frames.get_mut(block_id).map_or((None, false), |frames| {
+            let rewrite = frames.pop().flatten();
+            (rewrite, frames.is_empty())
+        });
         if remove_entry {
-            frames.remove(&internal_call_id);
+            frames.remove(block_id);
         }
         rewrite
     }
@@ -362,21 +359,21 @@ impl std::fmt::Debug for ToolCallRewriteFrames {
 
 struct ToolCallResolutionFrame<'a> {
     frames: &'a ToolCallRewriteFrames,
-    internal_call_id: InternalCallId,
+    block_id: BlockId,
     active: bool,
 }
 
 impl ToolCallResolutionFrame<'_> {
     fn finish(mut self) -> Option<serde_json::Value> {
         self.active = false;
-        self.frames.finish(self.internal_call_id)
+        self.frames.finish(&self.block_id)
     }
 }
 
 impl Drop for ToolCallResolutionFrame<'_> {
     fn drop(&mut self) {
         if self.active {
-            self.frames.finish(self.internal_call_id);
+            self.frames.finish(&self.block_id);
         }
     }
 }
@@ -529,20 +526,12 @@ impl HookContext {
             .cloned()
     }
 
-    fn begin_tool_call_resolution(
-        &self,
-        internal_call_id: InternalCallId,
-    ) -> ToolCallResolutionFrame<'_> {
-        self.tool_call_rewrite_frames.begin(internal_call_id)
+    fn begin_tool_call_resolution(&self, block_id: &BlockId) -> ToolCallResolutionFrame<'_> {
+        self.tool_call_rewrite_frames.begin(block_id)
     }
 
-    fn record_tool_call_rewrite(
-        &self,
-        internal_call_id: InternalCallId,
-        rewrite: serde_json::Value,
-    ) {
-        self.tool_call_rewrite_frames
-            .record(internal_call_id, rewrite);
+    fn record_tool_call_rewrite(&self, block_id: &BlockId, rewrite: serde_json::Value) {
+        self.tool_call_rewrite_frames.record(block_id, rewrite);
     }
 }
 
@@ -784,8 +773,10 @@ pub struct ToolCall<'a> {
     /// Durable tool-call id: the provider's when it issued one, else rig's
     /// minted handle.
     pub tool_call_id: Option<&'a str>,
-    /// Rig correlation id.
-    pub internal_call_id: InternalCallId,
+    /// The stream block the call arrived under (a buffered turn's call is
+    /// keyed by its durable id): equal on this call's deltas, its result,
+    /// and its execution commit.
+    pub block_id: &'a BlockId,
     /// Effective JSON arguments, including earlier rewrites.
     pub args: &'a str,
 }
@@ -801,8 +792,8 @@ pub struct ToolResultEvent<'a> {
     /// Durable tool-call id: the provider's when it issued one, else rig's
     /// minted handle.
     pub tool_call_id: Option<&'a str>,
-    /// Rig correlation id.
-    pub internal_call_id: InternalCallId,
+    /// The stream block of the answered call (see [`ToolCall::block_id`]).
+    pub block_id: &'a BlockId,
     /// Effective arguments used for execution.
     pub args: &'a str,
     /// Current model-visible presentation, including earlier rewrites.
@@ -825,10 +816,10 @@ pub struct TextDelta<'a> {
 /// Streaming reasoning delta.
 #[derive(Clone, Copy)]
 pub struct ReasoningDelta<'a> {
-    /// Rig-generated correlator for this reasoning part. It is stable across
-    /// the part's deltas and eventual completed reasoning item, but is never
-    /// persisted as a provider-issued reasoning id.
-    pub id: &'a str,
+    /// The stream block this reasoning part streams under: stable across
+    /// the part's deltas and its eventual completed reasoning item. A minted
+    /// block id is never persisted as a provider-issued reasoning id.
+    pub id: &'a BlockId,
     /// Provider-issued durable reasoning item id, when the wire provides one.
     pub provider_id: Option<&'a str>,
     /// Newly received reasoning fragment.
@@ -840,11 +831,10 @@ pub struct ReasoningDelta<'a> {
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
-    /// Rig correlation id — stable across this call's fragments and its
-    /// completed [`ToolCall`], unique per run. Provider-issued ids arrive on
-    /// the completed call; no provider id (and no stream-internal key) is
-    /// available or rendered at delta time.
-    pub internal_call_id: InternalCallId,
+    /// The stream block this fragment extends — stable across this call's
+    /// fragments and equal to the `block_id` of its completed [`ToolCall`].
+    /// Provider-issued ids arrive on the completed call.
+    pub block_id: &'a BlockId,
     /// Tool name on the first delta.
     pub tool_name: Option<&'a str>,
     /// Newly received argument fragment.
@@ -1405,7 +1395,7 @@ where
         Box::pin(async move {
             // Only `on_tool_call` is public dispatch. A nested `HookStack`
             // records terminal-path rewrite state into this private frame.
-            let frame = ctx.begin_tool_call_resolution(event.internal_call_id);
+            let frame = ctx.begin_tool_call_resolution(event.block_id);
             let action = self.on_tool_call(ctx, event).await;
             (action, frame.finish())
         })
@@ -1641,12 +1631,12 @@ impl AgentHook for HookStack {
         None
     }
     async fn on_tool_call(&self, ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-        let internal_call_id = event.internal_call_id;
+        let block_id = event.block_id;
         let (action, salvaged) = self.resolve_tool_call(ctx, event).await;
         // This is a no-op for direct calls. Under private erased dispatch it
         // returns a nested stack's terminal-path rewrite to its parent stack.
         if let Some(rewrite) = salvaged {
-            ctx.record_tool_call_rewrite(internal_call_id, rewrite);
+            ctx.record_tool_call_rewrite(block_id, rewrite);
         }
         action
     }

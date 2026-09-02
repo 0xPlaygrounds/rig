@@ -5,19 +5,18 @@
 //! Provider implementations use these types to expose raw streamed completion
 //! events without depending on a runtime.
 
-mod identity;
+mod block_id;
 mod parts;
 
 use crate::completion::{CompletionError, CompletionResponse, Usage};
-use crate::id::InternalCallId;
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
 };
 use crate::wasm_compat::WasmCompatSend;
+pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
 use futures::stream::{AbortHandle, Abortable};
 use futures::task::AtomicWaker;
 use futures::{Stream, StreamExt};
-pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
 use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
@@ -118,11 +117,11 @@ pub enum UnparseableToolInput {
 #[derive(Debug, Clone)]
 pub struct ToolInputEnd {
     /// Assembly identity: the id the call's fragments were emitted under.
-    pub id: StreamPartId,
+    pub id: BlockId,
     /// Authoritative provider-issued tool id, when one exists (e.g. an id
     /// that arrived after the call opened id-less). The durable handle;
-    /// absence is `None`, never an empty string.
-    pub tool_id: Option<WireId>,
+    /// absence is `None`, never an empty string (see [`non_empty_id`]).
+    pub tool_id: Option<String>,
     /// Authoritative tool name from the wire's completed item.
     pub name: Option<String>,
     /// Authoritative parsed arguments from the wire's completed item.
@@ -154,7 +153,7 @@ pub struct ToolCallDecoration {
 impl ToolInputEnd {
     /// End the call identified by `id`, finalizing from assembled fragments
     /// with the given unparseable-input policy.
-    pub fn new(id: impl Into<StreamPartId>, on_unparseable: UnparseableToolInput) -> Self {
+    pub fn new(id: impl Into<BlockId>, on_unparseable: UnparseableToolInput) -> Self {
         Self {
             id: id.into(),
             tool_id: None,
@@ -446,13 +445,13 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// must aggregate as distinct text parts (two OpenAI Responses
         /// `message` items must not concatenate), so the accumulator keys
         /// text blocks by identity. Providers propagate the wire's item
-        /// identity (`StreamPartId::Wire`: the Responses `item_id`, Anthropic's
+        /// identity (`BlockId::Wire`: the Responses `item_id`, Anthropic's
         /// block index) when it exists, or mint one at the boundary
-        /// (`StreamPartId::Minted`, via [`SyntheticIds`]). A wire that never
+        /// (`BlockId::Minted`, via [`SyntheticIds`]). A wire that never
         /// announces text boundaries may skip `TextStart` entirely: a bare
         /// [`RawStreamingChoice::Message`] with no open block opens a
         /// boundary-minted block.
-        id: StreamPartId,
+        id: BlockId,
         /// Provider-specific metadata attached to this text block.
         additional_params: Option<crate::message::AdditionalParams>,
     },
@@ -485,13 +484,13 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// [`RawStreamingChoice::Reasoning::id`]: parallel calls interleave
         /// their fragments on real wires, so the accumulator must key
         /// assembly by identity. Providers propagate the wire's tool-call id
-        /// (`StreamPartId::Wire`), or mint one at the boundary from the wire's
-        /// own index (`StreamPartId::Minted`, via [`SyntheticIds`]) when the wire
+        /// (`BlockId::Wire`), or mint one at the boundary from the wire's
+        /// own index (`BlockId::Minted`, via [`SyntheticIds`]) when the wire
         /// omits it — a shared identity would collapse parallel calls into
         /// one corrupted assembly. A minted identity keys assembly only; it
         /// never becomes the completed call's durable
         /// [`ToolCall::id`](crate::message::ToolCall::id).
-        id: StreamPartId,
+        id: BlockId,
         content: ToolCallDeltaContent,
     },
     /// End of a streamed tool call's input: the shared accumulator finalizes
@@ -506,17 +505,17 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// (OpenAI Responses emits the completed item after tool calls), so
         /// the accumulator must key by identity rather than guess by
         /// adjacency. Providers propagate the wire's item id
-        /// (`StreamPartId::Wire`: `item_id` on Responses events) or mint a
-        /// stream-scoped id at the boundary (`StreamPartId::Minted`, via
+        /// (`BlockId::Wire`: `item_id` on Responses events) or mint a
+        /// stream-scoped id at the boundary (`BlockId::Minted`, via
         /// [`SyntheticIds`]) when the wire has none. Deltas and the full
         /// block for the same item MUST carry the same key.
-        id: StreamPartId,
+        id: BlockId,
         /// The provider-issued reasoning item id, when one exists — the
         /// durable handle that becomes
         /// [`Reasoning::id`](crate::message::Reasoning::id) and round-trips
         /// upstream. Carried separately from the accumulation key: the key
         /// is opaque and can never leak; the handle is data.
-        provider_id: Option<WireId>,
+        provider_id: Option<String>,
         /// Complete reasoning content block.
         content: ReasoningContent,
     },
@@ -529,9 +528,9 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// new part (key reuse). Not yielded to public stream consumers.
     ReasoningStart {
         /// Accumulation key of the reasoning part being opened.
-        id: StreamPartId,
+        id: BlockId,
         /// The provider-issued reasoning item id, when one exists.
-        provider_id: Option<WireId>,
+        provider_id: Option<String>,
     },
 
     /// Close the reasoning part identified by `id` — the lifecycle
@@ -559,7 +558,7 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// sent would change what downstream history builders observe.
     ReasoningEnd {
         /// Accumulation key of the reasoning part being closed.
-        id: StreamPartId,
+        id: BlockId,
         /// The wire's authoritative completed block, when it restates one.
         reasoning: Option<Reasoning>,
         /// A provider signature closing the block.
@@ -578,7 +577,7 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// to public stream consumers.
     TextEnd {
         /// Accumulation key of the text block being closed.
-        id: StreamPartId,
+        id: BlockId,
     },
 
     /// A reasoning partial/delta
@@ -586,11 +585,11 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// Accumulation key of the reasoning item this delta extends. Same
         /// contract as [`RawStreamingChoice::Reasoning::id`]; all deltas of
         /// one block share one key.
-        id: StreamPartId,
+        id: BlockId,
         /// The provider-issued reasoning item id, when one exists (see
         /// [`RawStreamingChoice::Reasoning::provider_id`]) — what a
         /// delta-built part records as its durable id.
-        provider_id: Option<WireId>,
+        provider_id: Option<String>,
         /// Partial reasoning text.
         reasoning: String,
     },
@@ -678,17 +677,15 @@ impl<R> RawStreamingChoice<R> {
 #[derive(Debug, Clone)]
 pub struct RawStreamingToolCall {
     /// Accumulation/reconciliation key of the tool call —
-    /// `StreamPartId::Wire`-derived when the provider supplied an id,
+    /// `BlockId::Wire`-derived when the provider supplied an id,
     /// minted when the wire omitted one. A key only; the durable id is
     /// [`RawStreamingToolCall::tool_id`].
-    pub id: StreamPartId,
+    pub id: BlockId,
     /// The provider-issued tool id, when one exists — the durable handle
     /// that becomes [`ToolCall::id`](crate::message::ToolCall::id). Absent
     /// means absent: serializers omit the field, and nothing fabricated can
     /// take its place.
-    pub tool_id: Option<WireId>,
-    /// Rig-generated unique identifier for this tool call.
-    pub internal_call_id: InternalCallId,
+    pub tool_id: Option<String>,
     /// Provider-specific call ID used by some APIs for tool result correlation.
     pub call_id: Option<String>,
     /// Tool/function name.
@@ -708,9 +705,8 @@ impl RawStreamingToolCall {
             // A parser-accumulator placeholder key; providers overwrite it
             // with the wire's key before emitting. Deliberately minted: an
             // unset key must never read as wire-derived.
-            id: StreamPartId::minted(MintKind::Tool, u64::MAX),
+            id: BlockId::minted(MintKind::Tool, u64::MAX),
             tool_id: None,
-            internal_call_id: InternalCallId::new(),
             call_id: None,
             name: String::new(),
             arguments: serde_json::Value::Null,
@@ -719,16 +715,15 @@ impl RawStreamingToolCall {
         }
     }
 
-    /// Create a complete tool call with a generated internal call ID.
-    pub fn new(id: impl Into<StreamPartId>, name: String, arguments: serde_json::Value) -> Self {
+    /// Create a complete tool call keyed by `id`.
+    pub fn new(id: impl Into<BlockId>, name: String, arguments: serde_json::Value) -> Self {
         let id = id.into();
         // A wire-derived key doubles as the durable id (the common case:
         // providers key by the id the wire issued); minted keys carry none.
-        let tool_id = id.wire_str().and_then(WireId::new);
+        let tool_id = id.wire_str().and_then(non_empty_id);
         Self {
             id,
             tool_id,
-            internal_call_id: InternalCallId::new(),
             call_id: None,
             name,
             arguments,
@@ -764,7 +759,7 @@ impl From<RawStreamingToolCall> for ToolCall {
         // `provider` records the absence — never an empty sentinel.
         let provider = crate::message::ProviderCallId::from_optional_wire(
             tool_call.call_id,
-            tool_call.tool_id.map(WireId::into_string),
+            tool_call.tool_id,
         );
         let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         ToolCall {
@@ -807,7 +802,7 @@ impl From<RawStreamingToolCall> for ToolCall {
 /// (openai-agents' canonical grammar is one vendor's schema; rig normalizes
 /// 14 wire families through one accumulator), and centralizing the
 /// accumulator is what forces cross-provider identity — hence the
-/// provenance-typed [`StreamPartId`]. What rig does copy from that precedent is
+/// provenance-carrying [`BlockId`]. What rig does copy from that precedent is
 /// the raw channel itself and provenance-as-data rather than naming
 /// convention.
 pub type RawStreamingResult<R> =
@@ -898,16 +893,6 @@ pub struct StreamingCompletionResponse {
     /// stream — which `Stream` permits and combinators do — would otherwise
     /// replace a fully aggregated `choice` with empty text (#2258 H6).
     finished: bool,
-    /// Rig-generated public correlators for reasoning parts, one per
-    /// accumulation key: stable across a part's deltas, unique per run, and
-    /// carrying nothing an accumulation key could leak.
-    reasoning_correlators: std::collections::HashMap<StreamPartId, String>,
-    /// Correlators of finished reasoning parts, kept for the stream's
-    /// lifetime (mirroring the accumulator's `finished_reasoning`): a
-    /// trailing signature-only end — Gemini's `thoughtSignature` after a
-    /// synthesized silent boundary — must restate the identity its part's
-    /// deltas carried, not mint a fresh one the assembler cannot match.
-    finished_reasoning_correlators: std::collections::HashMap<StreamPartId, String>,
     /// The provider's normalized terminal record, may be `None`
     /// if the provider didn't yield it during the stream
     pub response: Option<StreamFinal>,
@@ -938,8 +923,6 @@ impl StreamingCompletionResponse {
             // empty text block the model had emitted.
             choice: Vec::new(),
             finished: false,
-            reasoning_correlators: std::collections::HashMap::new(),
-            finished_reasoning_correlators: std::collections::HashMap::new(),
             response: None,
             final_response_yielded: AtomicBool::new(false),
             message_id: None,
@@ -949,38 +932,6 @@ impl StreamingCompletionResponse {
     /// Stable descriptor name of the provider producing this stream.
     pub fn provider(&self) -> &str {
         &self.provider
-    }
-
-    /// Resolve the public correlator for a reasoning part that just ended,
-    /// keeping the identity available for the part's afterlife.
-    ///
-    /// An end always clears the live delta map — a reused accumulation key
-    /// opens a NEW part whose deltas must mint fresh — but the taken
-    /// correlator moves to the finished map rather than dying, so trailing
-    /// metadata (a late signature after a synthesized silent end) restates
-    /// the identity the part's deltas carried. A restatement under a spent
-    /// key is a new sibling part: it mints fresh and overwrites the entry,
-    /// exactly as the accumulator overwrites its finished index. Entries
-    /// live until the stream is dropped, matching `finished_reasoning`.
-    fn reasoning_end_correlator(&mut self, id: StreamPartId, restated: bool) -> String {
-        match self.reasoning_correlators.remove(&id) {
-            Some(taken) => {
-                self.finished_reasoning_correlators
-                    .insert(id, taken.clone());
-                taken
-            }
-            None if restated => {
-                let minted = crate::id::generate();
-                self.finished_reasoning_correlators
-                    .insert(id, minted.clone());
-                minted
-            }
-            None => self
-                .finished_reasoning_correlators
-                .entry(id)
-                .or_insert_with(crate::id::generate)
-                .clone(),
-        }
     }
 
     /// Cancel the stream and immediately drop the provider's inner stream.
@@ -1145,37 +1096,38 @@ impl Stream for StreamingCompletionResponse {
                         continue;
                     }
                     RawStreamingChoice::ToolCallDelta { id, content } => {
-                        // The accumulator owns assembly; it mints the internal
-                        // correlation id when the call opens and returns it for
-                        // every fragment, so the public delta stays correlated
-                        // with the eventual completed call.
-                        let internal_call_id = match &content {
+                        // The accumulator owns assembly; the block id the
+                        // fragment arrived under is the id the public delta
+                        // and the eventual completed call both carry.
+                        match &content {
                             ToolCallDeltaContent::Name(name) => {
                                 stream.parts.tool_name_delta(&id, name)
                             }
                             ToolCallDeltaContent::Delta(fragment) => {
                                 stream.parts.tool_args_delta(&id, fragment)
                             }
-                        };
+                        }
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
-                            internal_call_id,
+                            id,
                             content,
                         })))
                     }
-                    RawStreamingChoice::ToolInputEnd(end) => match stream.parts.tool_input_end(end)
-                    {
-                        Ok(Some((tool_call, internal_call_id))) => {
-                            Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
-                                tool_call,
-                                internal_call_id,
-                            })))
+                    RawStreamingChoice::ToolInputEnd(end) => {
+                        let id = end.id.clone();
+                        match stream.parts.tool_input_end(end) {
+                            Ok(Some(tool_call)) => {
+                                Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
+                                    tool_call,
+                                    id,
+                                })))
+                            }
+                            // Dropped (nameless or partial input): not content.
+                            Ok(None) => continue,
+                            // Malformed complete input surfaces in-band; the stream
+                            // keeps consuming, matching the malformed-frame contract.
+                            Err(err) => Poll::Ready(Some(Err(err))),
                         }
-                        // Dropped (nameless or partial input): not content.
-                        Ok(None) => continue,
-                        // Malformed complete input surfaces in-band; the stream
-                        // keeps consuming, matching the malformed-frame contract.
-                        Err(err) => Poll::Ready(Some(Err(err))),
-                    },
+                    }
                     RawStreamingChoice::Reasoning {
                         id,
                         provider_id,
@@ -1187,36 +1139,22 @@ impl Stream for StreamingCompletionResponse {
                         // accumulation key is opaque and cannot reach the
                         // replayable message.
                         let restatement = Reasoning {
-                            id: provider_id.map(WireId::into_string),
+                            id: provider_id,
                             content: vec![content],
                         };
                         let completed = stream.parts.reasoning_end(&id, Some(restatement), None);
-                        // The part is finished: its delta correlator (fresh-
-                        // minted for a block with no prior deltas) is restated
-                        // on the completed event and retained for trailing
-                        // metadata under the same key.
-                        let correlator = stream.reasoning_end_correlator(id, true);
                         match completed {
                             Some(completed) => {
                                 Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning {
                                     reasoning: completed,
-                                    id: correlator,
+                                    id,
                                 })))
                             }
                             None => continue,
                         }
                     }
                     RawStreamingChoice::ReasoningStart { id, provider_id } => {
-                        // A start that genuinely opened a part installs a
-                        // fresh live correlator: without it, a part that
-                        // closes with no deltas (a signature-only end under
-                        // a reused key) would fall back to the finished map
-                        // and inherit the PREVIOUS part's public identity.
-                        if stream.parts.reasoning_start(&id, provider_id.as_ref()) {
-                            stream
-                                .reasoning_correlators
-                                .insert(id, crate::id::generate());
-                        }
+                        stream.parts.reasoning_start(&id, provider_id.as_deref());
                         continue;
                     }
                     RawStreamingChoice::ReasoningEnd {
@@ -1236,21 +1174,12 @@ impl Stream for StreamingCompletionResponse {
                         // never sent would change what downstream history
                         // builders observe.
                         let authoritative = reasoning.is_some() || signature.is_some() || wire_sent;
-                        let restated = reasoning.is_some();
                         let completed = stream.parts.reasoning_end(&id, reasoning, signature);
-                        // The part is finished: the live delta map is cleared
-                        // unconditionally — a suppressed synthesized end must
-                        // still make a reused key mint fresh — but the
-                        // correlator survives in the finished map, so a
-                        // trailing signature-bearing end for this key restates
-                        // the identity its deltas carried instead of minting
-                        // one the assembler cannot match.
-                        let correlator = stream.reasoning_end_correlator(id, restated);
                         match completed {
                             Some(completed) if authoritative => {
                                 Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning {
                                     reasoning: completed,
-                                    id: correlator,
+                                    id,
                                 })))
                             }
                             _ => continue,
@@ -1267,40 +1196,29 @@ impl Stream for StreamingCompletionResponse {
                     } => {
                         stream
                             .parts
-                            .reasoning_delta(&id, provider_id.as_ref(), &reasoning);
-                        // The public delta carries a rig-generated correlator
-                        // (stable per part, unique per run) plus the durable
-                        // provider id when one exists. The opaque
-                        // accumulation key is never observable.
-                        let correlator = stream
-                            .reasoning_correlators
-                            .entry(id)
-                            .or_insert_with(crate::id::generate)
-                            .clone();
+                            .reasoning_delta(&id, provider_id.as_deref(), &reasoning);
+                        // The public delta carries the block id (stable per
+                        // part for the life of the stream) plus the durable
+                        // provider id when one exists.
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
-                            id: correlator,
-                            provider_id: provider_id.map(WireId::into_string),
+                            id,
+                            provider_id,
                             reasoning,
                         })))
                     }
                     RawStreamingChoice::ToolCall(raw_tool_call) => {
-                        let minted_internal_call_id = raw_tool_call.internal_call_id;
                         let part_id = raw_tool_call.id.clone();
                         let tool_call: ToolCall = raw_tool_call.into();
                         // A wire that fragmented this call's input already
-                        // published an internal id on its deltas; the
-                        // accumulator adopts it so the completed call stays
+                        // published a block id on its deltas; the accumulator
+                        // adopts that key so the completed call stays
                         // correlated with them (the contract on
                         // `StreamedAssistantContent::ToolCall`). With no open
-                        // assembly the emitter's minted id is kept.
-                        let internal_call_id = stream.parts.tool_call(
-                            &part_id,
-                            tool_call.clone(),
-                            minted_internal_call_id,
-                        );
+                        // assembly the emitter's own key is kept.
+                        let id = stream.parts.tool_call(&part_id, tool_call.clone());
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
                             tool_call,
-                            internal_call_id,
+                            id,
                         })))
                     }
                     RawStreamingChoice::FinalResponse(mut response) => {
@@ -1368,18 +1286,18 @@ pub enum StreamedAssistantContent {
     /// Complete tool call emitted by the assistant.
     ToolCall {
         tool_call: ToolCall,
-        /// Rig-generated unique identifier for this tool call.
-        /// Use this to correlate with ToolCallDelta events.
-        internal_call_id: InternalCallId,
+        /// The block this call streamed under: equal to the `id` on every
+        /// [`StreamedAssistantContent::ToolCallDelta`] of the call. The
+        /// durable, replayable identifier is `tool_call.id`.
+        id: BlockId,
     },
     /// Partial tool call data emitted by the assistant.
     ToolCallDelta {
-        /// Rig-generated correlator for this call: stable across the call's
-        /// fragments, matches the eventual
-        /// [`StreamedAssistantContent::ToolCall`], and unique per run.
-        /// Provider-issued ids arrive on the completed [`ToolCall`]; no
-        /// stream-internal key is ever rendered here.
-        internal_call_id: InternalCallId,
+        /// The block this fragment extends: stable across the call's
+        /// fragments and equal to the `id` on the eventual
+        /// [`StreamedAssistantContent::ToolCall`]. Provider-issued ids
+        /// arrive on the completed [`ToolCall`].
+        id: BlockId,
         content: ToolCallDeltaContent,
     },
     /// Complete reasoning block emitted by the assistant.
@@ -1392,19 +1310,17 @@ pub enum StreamedAssistantContent {
     /// applies this replacement.
     Reasoning {
         reasoning: Reasoning,
-        /// Rig-generated correlator: matches the `id` on this part's prior
-        /// [`StreamedAssistantContent::ReasoningDelta`]s and is unique per
-        /// run. The durable provider handle is `reasoning.id`; this value
+        /// The block this part streamed under: matches the `id` on this
+        /// part's prior [`StreamedAssistantContent::ReasoningDelta`]s. The
+        /// durable provider handle is `reasoning.id`; a minted block id
         /// never enters replayable history.
-        id: String,
+        id: BlockId,
     },
     /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {
-        /// Rig-generated correlator for the reasoning part this delta
-        /// extends: stable across the part's deltas and unique per run.
-        /// Never a stream-internal key and never a fabricated provider
-        /// value.
-        id: String,
+        /// The block this delta extends: stable across the part's deltas
+        /// for the life of the stream.
+        id: BlockId,
         /// The provider-issued reasoning item id, when one exists — the
         /// durable handle the aggregated
         /// [`Reasoning::id`](crate::message::Reasoning::id) will carry
@@ -1445,19 +1361,16 @@ pub enum StreamedUserContent {
     /// Tool result emitted during a multi-turn streaming agent loop.
     ToolResult {
         tool_result: ToolResult,
-        /// Rig-generated unique identifier for the tool call this result
-        /// belongs to. Use this to correlate with the originating
-        /// [`StreamedAssistantContent::ToolCall::internal_call_id`].
-        internal_call_id: InternalCallId,
+        /// The block of the originating
+        /// [`StreamedAssistantContent::ToolCall`]; `tool_result.call` is
+        /// the durable identifier of the answered call.
+        id: BlockId,
     },
 }
 
 impl StreamedUserContent {
-    /// Create a streamed tool result correlated to an internal tool call ID.
-    pub fn tool_result(tool_result: ToolResult, internal_call_id: InternalCallId) -> Self {
-        Self::ToolResult {
-            tool_result,
-            internal_call_id,
-        }
+    /// Create a streamed tool result correlated to the block of its call.
+    pub fn tool_result(tool_result: ToolResult, id: BlockId) -> Self {
+        Self::ToolResult { tool_result, id }
     }
 }

@@ -1609,8 +1609,8 @@ impl AgentHook for TerminateOnCompletionResponse {
     }
 }
 
-type RecordedToolCallDelta = (InternalCallId, Option<String>, String);
-type RecordedReasoningDelta = (String, Option<String>, String, String);
+type RecordedToolCallDelta = (BlockId, Option<String>, String);
+type RecordedReasoningDelta = (BlockId, Option<String>, String, String);
 
 #[derive(Clone)]
 struct RepairDefaultApiHook;
@@ -1727,12 +1727,12 @@ impl AgentHook for RecordingToolCallDeltaHook {
     ) -> ObservationAction {
         match event {
             ToolCallDelta {
-                internal_call_id,
+                block_id,
                 tool_name,
                 delta,
             } => {
                 let record = (
-                    internal_call_id,
+                    block_id.clone(),
                     tool_name.map(str::to_string),
                     delta.to_string(),
                 );
@@ -1798,7 +1798,7 @@ impl AgentHook for RecordingReasoningDeltaHook {
         event: ReasoningDelta<'_>,
     ) -> ObservationAction {
         let record = (
-            event.id.to_string(),
+            event.id.clone(),
             event.provider_id.map(str::to_string),
             event.delta.to_string(),
             event.aggregated.to_string(),
@@ -1983,12 +1983,12 @@ impl AgentHook for TerminatingToolCallDeltaHook {
     ) -> ObservationAction {
         match event {
             ToolCallDelta {
-                internal_call_id,
+                block_id,
                 tool_name,
                 delta,
             } => {
                 let record = (
-                    internal_call_id,
+                    block_id.clone(),
                     tool_name.map(str::to_string),
                     delta.to_string(),
                 );
@@ -2374,7 +2374,7 @@ async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_i
     // ("provider_call_1") drives rig's durable id, which is what the
     // context reports; the wire's item id travels on `provider`.
     assert_eq!(context.tool_call_id.as_deref(), Some("provider_call_1"));
-    assert!(context.internal_call_id.is_some());
+    assert!(context.block_id.is_some());
     assert!(context.is_streaming);
 }
 
@@ -2417,9 +2417,9 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
         match item {
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,
-                internal_call_id,
+                id: block_id,
             })) => {
-                let _ = internal_call_id;
+                let _ = block_id;
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -3060,7 +3060,7 @@ async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_cal
     // The invalid name delta never completed, so no PROVIDER id exists —
     // the durable id the context reports is rig's minted handle (always
     // present and non-empty, never an empty sentinel), and correlation
-    // with stream events is by internal_call_id.
+    // with stream events is by block_id.
     assert!(
         context
             .tool_call_id
@@ -3070,7 +3070,7 @@ async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_cal
         context.tool_call_id
     );
     assert!(
-        context.internal_call_id.is_some(),
+        context.block_id.is_some(),
         "internal call id is minted by the shared accumulator"
     );
     assert!(context.is_streaming);
@@ -3176,9 +3176,9 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
             )) => panic!("invalid tool-call delta should not be emitted"),
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,
-                internal_call_id,
+                id: block_id,
             })) => {
-                let _ = internal_call_id;
+                let _ = block_id;
                 skipped_tool_result = Some(tool_result);
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -4062,11 +4062,11 @@ async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::ToolCallDelta {
-                    internal_call_id,
+                    id: block_id,
                     content,
                 },
             )) => {
-                stream_deltas.push((internal_call_id, content));
+                stream_deltas.push((block_id, content));
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
@@ -4079,22 +4079,31 @@ async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order
     // rather than a scripted literal.
     let internal = stream_deltas
         .first()
-        .map(|delta| delta.0)
+        .map(|delta| delta.0.clone())
         .expect("at least one delta");
     assert_eq!(
         hook.observed(),
         vec![
-            (internal, Some("add".to_string()), String::new()),
-            (internal, None, "{\"x\":".to_string()),
-            (internal, None, "1}".to_string()),
+            (internal.clone(), Some("add".to_string()), String::new()),
+            (internal.clone(), None, "{\"x\":".to_string()),
+            (internal.clone(), None, "1}".to_string()),
         ]
     );
     assert_eq!(
         stream_deltas,
         vec![
-            (internal, ToolCallDeltaContent::Name("add".to_string())),
-            (internal, ToolCallDeltaContent::Delta("{\"x\":".to_string())),
-            (internal, ToolCallDeltaContent::Delta("1}".to_string())),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Name("add".to_string())
+            ),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Delta("{\"x\":".to_string())
+            ),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Delta("1}".to_string())
+            ),
         ]
     );
 }
@@ -4158,7 +4167,7 @@ async fn tool_call_args_delta_without_name_errors_at_stream_end() {
             );
             // The diagnostic names the rig correlator (present and
             // non-empty); no stream key or fabricated provider id.
-            assert!(message.contains("internal_call_id"), "{message}");
+            assert!(message.contains("block"), "{message}");
         }
         other => panic!("expected completion response error, got {other:?}"),
     }
@@ -4271,8 +4280,6 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
     assert_eq!(stream_deltas.len(), 3);
     let first_id = stream_deltas[0].0.clone();
     let second_id = stream_deltas[1].0.clone();
-    assert!(!first_id.is_empty());
-    assert!(!second_id.is_empty());
     assert_ne!(first_id, second_id);
     assert_eq!(stream_deltas[2].0, first_id);
     assert_eq!(stream_deltas[0].1, None);
@@ -4456,11 +4463,11 @@ async fn stream_prompt_emits_tool_call_deltas_without_hook() {
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::ToolCallDelta {
-                    internal_call_id,
+                    id: block_id,
                     content,
                 },
             )) => {
-                deltas.push((internal_call_id, content));
+                deltas.push((block_id, content));
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
@@ -4473,14 +4480,23 @@ async fn stream_prompt_emits_tool_call_deltas_without_hook() {
     // rather than a scripted literal.
     let internal = deltas
         .first()
-        .map(|delta| delta.0)
+        .map(|delta| delta.0.clone())
         .expect("at least one delta");
     assert_eq!(
         deltas,
         vec![
-            (internal, ToolCallDeltaContent::Name("add".to_string())),
-            (internal, ToolCallDeltaContent::Delta("{\"x\":".to_string())),
-            (internal, ToolCallDeltaContent::Delta("1}".to_string())),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Name("add".to_string())
+            ),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Delta("{\"x\":".to_string())
+            ),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Delta("1}".to_string())
+            ),
         ]
     );
 }
@@ -4507,11 +4523,11 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::ToolCallDelta {
-                    internal_call_id,
+                    id: block_id,
                     content,
                 },
             )) => {
-                stream_deltas.push((internal_call_id, content));
+                stream_deltas.push((block_id, content));
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
@@ -4524,22 +4540,31 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
     // rather than a scripted literal.
     let internal = stream_deltas
         .first()
-        .map(|delta| delta.0)
+        .map(|delta| delta.0.clone())
         .expect("at least one delta");
     assert_eq!(
         hook.observed(),
         vec![
-            (internal, Some("add".to_string()), String::new()),
-            (internal, None, "{\"x\":".to_string()),
-            (internal, None, "1}".to_string()),
+            (internal.clone(), Some("add".to_string()), String::new()),
+            (internal.clone(), None, "{\"x\":".to_string()),
+            (internal.clone(), None, "1}".to_string()),
         ]
     );
     assert_eq!(
         stream_deltas,
         vec![
-            (internal, ToolCallDeltaContent::Name("add".to_string())),
-            (internal, ToolCallDeltaContent::Delta("{\"x\":".to_string())),
-            (internal, ToolCallDeltaContent::Delta("1}".to_string())),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Name("add".to_string())
+            ),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Delta("{\"x\":".to_string())
+            ),
+            (
+                internal.clone(),
+                ToolCallDeltaContent::Delta("1}".to_string())
+            ),
         ]
     );
 }

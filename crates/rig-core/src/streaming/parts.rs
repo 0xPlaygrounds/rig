@@ -4,7 +4,7 @@
 //! Every part runs open → mutate → close (review 84a43e9e root cause A):
 //!
 //! - **open** registers the part in `parts` once, fixing arrival order, and
-//!   tracks it in an open-set keyed by its opaque [`StreamPartId`];
+//!   tracks it in an open-set keyed by its opaque [`BlockId`];
 //! - **deltas** mutate the open part in place through that handle;
 //! - **close** applies the end event's authoritative payload (a whole-block
 //!   restatement supersedes the delta accumulation; a trailing signature
@@ -31,9 +31,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::completion::CompletionError;
-use crate::id::InternalCallId;
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
-use crate::streaming::identity::{StreamPartId, SyntheticIds, WireId};
+use crate::streaming::block_id::{BlockId, SyntheticIds};
 use crate::streaming::{ToolInputEnd, UnparseableToolInput};
 
 /// Accumulates the streamed parts of one assistant choice, in arrival order.
@@ -47,24 +46,24 @@ pub(crate) struct PartsAccumulator {
     parts: Vec<AssistantContent>,
     /// Open reasoning entities: key → index in `parts`. Invariant: every
     /// mapped index holds an `AssistantContent::Reasoning` part.
-    open_reasoning: HashMap<StreamPartId, usize>,
+    open_reasoning: HashMap<BlockId, usize>,
     /// Finished reasoning entities: key → index of the latest finished part
     /// under that key. Repeated ends are no-ops; a trailing signature
     /// (`reasoning_end` with no restatement) attaches here — the block that
     /// holds the chain-of-thought, wherever it sits.
-    finished_reasoning: HashMap<StreamPartId, usize>,
+    finished_reasoning: HashMap<BlockId, usize>,
     /// Text-block identity → index in `parts`: a `TextStart` whose key was
     /// already seen reactivates that block, so a wire item's text keeps
     /// collapsing across interleaved output. Invariant: every mapped index
     /// holds an `AssistantContent::Text` part.
-    text_ids: HashMap<StreamPartId, usize>,
+    text_ids: HashMap<BlockId, usize>,
     /// The block receiving bare text deltas and metadata, until a text
     /// start/end switches it.
-    active_text: Option<StreamPartId>,
+    active_text: Option<BlockId>,
     /// Identity announced by the latest `TextStart` whose block has not yet
     /// opened; blocks open lazily on the first delta or metadata so a
     /// content-less `TextStart` never leaves an empty text part behind.
-    pending_text_id: Option<StreamPartId>,
+    pending_text_id: Option<BlockId>,
     /// Mints keys for blocks a bare `Message` opens on wires that never
     /// announce text boundaries. Purely internal bookkeeping: text parts
     /// carry no id in the aggregated choice.
@@ -76,7 +75,7 @@ pub(crate) struct PartsAccumulator {
     /// (fragment-assembled ends, authoritative-payload ends, whole-call
     /// adoption), so a repeated end cannot duplicate a call whatever payload
     /// it carries (84a43e9e #1). Cleared for a key when fragments reopen it.
-    finished_tools: HashSet<StreamPartId>,
+    finished_tools: HashSet<BlockId>,
     /// Whether any completed tool call was recorded; the streaming
     /// counterpart of the unary path's finish-reason reconciliation input.
     saw_tool_call: bool,
@@ -90,9 +89,7 @@ pub(crate) struct PartsAccumulator {
 /// a provider.
 struct OpenToolInput {
     /// Assembly key: every fragment of one call carries this key.
-    id: StreamPartId,
-    /// Rig-minted correlation id, created when the call opens.
-    internal_call_id: InternalCallId,
+    id: BlockId,
     /// Tool name; a later non-empty name fragment replaces it.
     name: String,
     /// Concatenated raw argument fragments. `None` until a fragment arrives —
@@ -153,7 +150,7 @@ impl PartsAccumulator {
     /// metadata.
     pub(crate) fn text_start(
         &mut self,
-        id: &StreamPartId,
+        id: &BlockId,
         additional_params: Option<crate::message::AdditionalParams>,
     ) {
         match self.text_ids.get(id) {
@@ -175,7 +172,7 @@ impl PartsAccumulator {
     /// fresh block instead of extending this one. (A later `TextStart` with
     /// the same key still reactivates it — reactivation is the keyed
     /// collapse, and it is explicit.)
-    pub(crate) fn text_end(&mut self, id: &StreamPartId) {
+    pub(crate) fn text_end(&mut self, id: &BlockId) {
         if self.active_text.as_ref() == Some(id) {
             self.active_text = None;
         }
@@ -231,11 +228,7 @@ impl PartsAccumulator {
     /// (key reuse) — the `true` return tells the stream handler to mint a
     /// fresh public correlator, so the new part never inherits the finished
     /// part's identity.
-    pub(crate) fn reasoning_start(
-        &mut self,
-        id: &StreamPartId,
-        provider_id: Option<&WireId>,
-    ) -> bool {
+    pub(crate) fn reasoning_start(&mut self, id: &BlockId, provider_id: Option<&str>) -> bool {
         if self.open_reasoning.contains_key(id) {
             return false;
         }
@@ -247,12 +240,7 @@ impl PartsAccumulator {
     /// none is open — the lenient bare-delta rule. A delta after the
     /// entity finished opens a new part (key reuse), never resurrects the
     /// finished one.
-    pub(crate) fn reasoning_delta(
-        &mut self,
-        id: &StreamPartId,
-        provider_id: Option<&WireId>,
-        text: &str,
-    ) {
+    pub(crate) fn reasoning_delta(&mut self, id: &BlockId, provider_id: Option<&str>, text: &str) {
         if let Some(&index) = self.open_reasoning.get(id) {
             if let Some(AssistantContent::Reasoning(existing)) = self.parts.get_mut(index) {
                 if let Some(ReasoningContent::Text {
@@ -300,7 +288,7 @@ impl PartsAccumulator {
     /// provider state still reaches history.
     pub(crate) fn reasoning_end(
         &mut self,
-        id: &StreamPartId,
+        id: &BlockId,
         restatement: Option<Reasoning>,
         signature: Option<String>,
     ) -> Option<Reasoning> {
@@ -382,7 +370,7 @@ impl PartsAccumulator {
     /// Record a whole reasoning block as a finished part under `id`.
     fn finish_restated(
         &mut self,
-        id: &StreamPartId,
+        id: &BlockId,
         mut restatement: Reasoning,
         signature: Option<String>,
     ) -> Option<Reasoning> {
@@ -396,7 +384,7 @@ impl PartsAccumulator {
 
     /// Record a signature with no chain-of-thought as its own finished part
     /// under `id`.
-    fn finish_signature_only(&mut self, id: &StreamPartId, signature: String) -> Option<Reasoning> {
+    fn finish_signature_only(&mut self, id: &BlockId, signature: String) -> Option<Reasoning> {
         let index = self.push_reasoning_part(Reasoning {
             id: None,
             content: vec![ReasoningContent::Text {
@@ -410,12 +398,12 @@ impl PartsAccumulator {
 
     fn open_fresh_reasoning(
         &mut self,
-        id: &StreamPartId,
-        provider_id: Option<&WireId>,
+        id: &BlockId,
+        provider_id: Option<&str>,
         content: Vec<ReasoningContent>,
     ) {
         let index = self.push_reasoning_part(Reasoning {
-            id: provider_id.map(|id| id.as_str().to_owned()),
+            id: provider_id.map(str::to_owned),
             content,
         });
         self.open_reasoning.insert(id.clone(), index);
@@ -442,20 +430,15 @@ impl PartsAccumulator {
     // --- tool-call lifecycle --------------------------------------------
 
     /// Append a tool call the wire delivered whole, reconciling it with an
-    /// open delta assembly of the same key. Returns the internal correlation
-    /// id the completed call must be published under.
+    /// open delta assembly of the same key. Returns the block id the
+    /// completed call must be published under.
     ///
-    /// The assembly's internal id is **adopted**, never replaced
+    /// The assembly's key is **adopted**, never replaced
     /// ([`StreamedAssistantContent::ToolCall`](crate::streaming::StreamedAssistantContent::ToolCall)
-    /// promises delta/completion correlation); `minted_internal_call_id` is
-    /// returned only when there was nothing to adopt. Adoption finishes the
-    /// entity, so a trailing end event for the key finalizes nothing.
-    pub(crate) fn tool_call(
-        &mut self,
-        id: &StreamPartId,
-        tool_call: ToolCall,
-        minted_internal_call_id: InternalCallId,
-    ) -> InternalCallId {
+    /// promises delta/completion correlation); `id` itself is returned only
+    /// when there was nothing to adopt. Adoption finishes the entity, so a
+    /// trailing end event for the key finalizes nothing.
+    pub(crate) fn tool_call(&mut self, id: &BlockId, tool_call: ToolCall) -> BlockId {
         let position = self
             .open_tool_inputs
             .iter()
@@ -493,12 +476,12 @@ impl PartsAccumulator {
             });
         let adopted = position.map(|index| {
             let input = self.open_tool_inputs.remove(index);
-            self.finished_tools.insert(input.id);
-            input.internal_call_id
+            self.finished_tools.insert(input.id.clone());
+            input.id
         });
         self.finished_tools.insert(id.clone());
         self.push_tool_call(tool_call);
-        adopted.unwrap_or(minted_internal_call_id)
+        adopted.unwrap_or_else(|| id.clone())
     }
 
     /// Append a completed tool call as the next part.
@@ -519,70 +502,58 @@ impl PartsAccumulator {
     }
 
     /// Record a streamed tool name fragment, opening the call if `id` has no
-    /// open call. Returns the call's minted internal id.
+    /// open call.
     ///
     /// A later non-empty name replaces the recorded one (OpenAI-compatible
     /// wire semantics: the established name is the last non-empty value).
-    pub(crate) fn tool_name_delta(&mut self, id: &StreamPartId, name: &str) -> InternalCallId {
+    pub(crate) fn tool_name_delta(&mut self, id: &BlockId, name: &str) {
         let index = self.ensure_open_tool_input(id);
-        match self.open_tool_inputs.get_mut(index) {
-            Some(input) => {
-                // Last-*non-empty* semantics: an empty fragment must not
-                // erase an established name, or finalization would drop the
-                // call as nameless.
-                if !name.is_empty() {
-                    name.clone_into(&mut input.name);
-                }
-                input.internal_call_id
-            }
-            // Unreachable (`ensure` returns a live index); degrade to a
-            // fresh id rather than panic.
-            None => InternalCallId::new(),
+        // Last-*non-empty* semantics: an empty fragment must not erase an
+        // established name, or finalization would drop the call as nameless.
+        if let Some(input) = self.open_tool_inputs.get_mut(index)
+            && !name.is_empty()
+        {
+            name.clone_into(&mut input.name);
         }
     }
 
     /// Append a streamed argument fragment to the call's buffer, opening the
-    /// call if `id` has no open call. Returns the call's minted internal id.
-    pub(crate) fn tool_args_delta(&mut self, id: &StreamPartId, fragment: &str) -> InternalCallId {
+    /// call if `id` has no open call.
+    pub(crate) fn tool_args_delta(&mut self, id: &BlockId, fragment: &str) {
         let index = self.ensure_open_tool_input(id);
-        match self.open_tool_inputs.get_mut(index) {
-            Some(input) => {
-                // The first fragment takes the same guarded path as every
-                // later one — an oversized single fragment must trip the
-                // bound, not bypass it.
-                let buffer = input.buffer.get_or_insert_with(String::new);
-                // Some OpenAI-compatible gateways emit a literal
-                // `null` placeholder before streaming the real JSON
-                // argument fragments; a later non-empty fragment
-                // supersedes it.
-                if buffer.trim() == "null" && !fragment.trim().is_empty() {
-                    buffer.clear();
-                }
-                if buffer.len().saturating_add(fragment.len()) > MAX_TOOL_INPUT_BYTES {
-                    if !input.overflowed {
-                        input.overflowed = true;
-                        tracing::warn!(
-                            tool = %input.name,
-                            "streamed tool-call input exceeded the accumulation bound; \
-                             truncating — the call will finalize through the wire's \
-                             unparseable-input policy"
-                        );
-                    }
-                } else {
-                    buffer.push_str(fragment);
-                }
-                input.internal_call_id
+        // `ensure` returns a live index.
+        if let Some(input) = self.open_tool_inputs.get_mut(index) {
+            // The first fragment takes the same guarded path as every
+            // later one — an oversized single fragment must trip the
+            // bound, not bypass it.
+            let buffer = input.buffer.get_or_insert_with(String::new);
+            // Some OpenAI-compatible gateways emit a literal
+            // `null` placeholder before streaming the real JSON
+            // argument fragments; a later non-empty fragment
+            // supersedes it.
+            if buffer.trim() == "null" && !fragment.trim().is_empty() {
+                buffer.clear();
             }
-            // Unreachable (`ensure` returns a live index); degrade to a
-            // fresh id rather than panic.
-            None => InternalCallId::new(),
+            if buffer.len().saturating_add(fragment.len()) > MAX_TOOL_INPUT_BYTES {
+                if !input.overflowed {
+                    input.overflowed = true;
+                    tracing::warn!(
+                        tool = %input.name,
+                        "streamed tool-call input exceeded the accumulation bound; \
+                         truncating — the call will finalize through the wire's \
+                         unparseable-input policy"
+                    );
+                }
+            } else {
+                buffer.push_str(fragment);
+            }
         }
     }
 
     /// Close a streamed tool call's input and finalize it into a completed
     /// call.
     ///
-    /// Returns the completed call and its internal id, `None` when the call
+    /// Returns the completed call, `None` when the call
     /// is dropped (nameless, unparseable under [`UnparseableToolInput::Drop`],
     /// or a repeated end for an already-finished entity — whatever payload
     /// it carries), or an error item under [`UnparseableToolInput::Error`].
@@ -592,7 +563,7 @@ impl PartsAccumulator {
     pub(crate) fn tool_input_end(
         &mut self,
         end: ToolInputEnd,
-    ) -> Result<Option<(ToolCall, InternalCallId)>, CompletionError> {
+    ) -> Result<Option<ToolCall>, CompletionError> {
         let position = self
             .open_tool_inputs
             .iter()
@@ -620,14 +591,9 @@ impl PartsAccumulator {
             }
         };
 
-        let (internal_call_id, opened_id, mut name, buffer) = match open.as_ref() {
-            Some(input) => (
-                input.internal_call_id,
-                input.id.clone(),
-                input.name.clone(),
-                input.buffer.clone(),
-            ),
-            None => (InternalCallId::new(), end.id.clone(), String::new(), None),
+        let (opened_id, mut name, buffer) = match open.as_ref() {
+            Some(input) => (input.id.clone(), input.name.clone(), input.buffer.clone()),
+            None => (end.id.clone(), String::new(), None),
         };
         let overflowed = open.as_ref().is_some_and(|input| input.overflowed);
         // The assembly key is opaque; a wire-derived key doubles as the
@@ -715,7 +681,7 @@ impl PartsAccumulator {
         // assembly key). With none, the correlation handle is minted and
         // `provider` stays `None` — the empty-string sentinel is
         // unrepresentable here.
-        let wire_tool_id = end.tool_id.map(WireId::into_string).or(opened_wire_id);
+        let wire_tool_id = end.tool_id.or(opened_wire_id);
         let provider =
             crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
         let id = crate::message::ToolCallId::for_provider(provider.as_ref());
@@ -729,11 +695,11 @@ impl PartsAccumulator {
         // Every finalization route records the finished entity.
         self.finished_tools.insert(end.id);
         self.push_tool_call(tool_call.clone());
-        Ok(Some((tool_call, internal_call_id)))
+        Ok(Some(tool_call))
     }
 
     /// Index of the open call for `id`, opening one if none exists.
-    fn ensure_open_tool_input(&mut self, id: &StreamPartId) -> usize {
+    fn ensure_open_tool_input(&mut self, id: &BlockId) -> usize {
         match self
             .open_tool_inputs
             .iter()
@@ -747,7 +713,6 @@ impl PartsAccumulator {
                 self.finished_tools.remove(id);
                 self.open_tool_inputs.push(OpenToolInput {
                     id: id.clone(),
-                    internal_call_id: InternalCallId::new(),
                     name: String::new(),
                     buffer: None,
                     overflowed: false,

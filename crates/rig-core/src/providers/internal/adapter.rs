@@ -81,10 +81,10 @@ pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
 ///   driver (module policy table); adapters contain no `match WireEvent`.
 /// - **Mandatory identity**: every `Reasoning`/`ReasoningDelta`,
 ///   `ToolCallDelta`, and `TextStart` event carries a
-///   [`StreamPartId`](crate::streaming::StreamPartId) — the wire's own identity
-///   (`StreamPartId::Wire`) when it exists, else
+///   [`BlockId`](crate::streaming::BlockId) — the wire's own identity
+///   (`BlockId::Wire`) when it exists, else
 ///   an identity minted via [`SyntheticIds`]
-///   (`StreamPartId::Minted`). Provenance
+///   (`BlockId::Minted`). Provenance
 ///   travels in the type: a minted identity keys stream accumulation and
 ///   structurally cannot become a durable provider handle or reach a request
 ///   serializer, so no per-provider gate exists or is needed.

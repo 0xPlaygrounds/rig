@@ -43,7 +43,7 @@ fn assembler_round_trips_mid_stream() {
     let direct = uninterrupted.finish(Some("msg".to_string()), &final_choice);
     let resumed = restored.finish(Some("msg".to_string()), &final_choice);
     assert_eq!(resumed.choice, direct.choice);
-    assert_eq!(resumed.internal_call_ids, direct.internal_call_ids);
+    assert_eq!(resumed.block_ids, direct.block_ids);
     assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
     assert_eq!(resumed.allowed_tool_names, direct.allowed_tool_names);
 }
@@ -56,15 +56,9 @@ fn text_item(text: &str) -> StreamedAssistantContent {
     StreamedAssistantContent::Text(Text::new(text.to_string()))
 }
 
-/// Deterministic test-only internal id derived from a wire id, so a
-/// delta and its completed call correlate without threading state.
-fn iid_for(id: &str) -> InternalCallId {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in id.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x100_0000_01b3);
-    }
-    InternalCallId::from_raw(hash | 1).expect("non-zero")
+/// The block a call streams under: its wire id.
+fn iid_for(id: &str) -> BlockId {
+    BlockId::wire(id)
 }
 
 fn tool_call(id: &str, name: &str) -> ToolCall {
@@ -76,7 +70,7 @@ fn tool_call(id: &str, name: &str) -> ToolCall {
 fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent {
     StreamedAssistantContent::ToolCall {
         tool_call: tool_call(id, name),
-        internal_call_id: iid_for(id),
+        id: iid_for(id),
     }
 }
 
@@ -86,14 +80,14 @@ fn final_item() -> StreamedAssistantContent {
 
 fn name_delta(id: &str, name: &str) -> StreamedAssistantContent {
     StreamedAssistantContent::ToolCallDelta {
-        internal_call_id: iid_for(id),
+        id: iid_for(id),
         content: ToolCallDeltaContent::Name(name.to_string()),
     }
 }
 
 fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent {
     StreamedAssistantContent::ToolCallDelta {
-        internal_call_id: iid_for(id),
+        id: iid_for(id),
         content: ToolCallDeltaContent::Delta(arguments.to_string()),
     }
 }
@@ -368,7 +362,7 @@ fn buffered_arguments_without_validated_name_error_at_final() {
 fn finish_orders_reasoning_text_then_tool_calls() {
     let mut asm = assembler();
     asm.ingest(&StreamedAssistantContent::ReasoningDelta {
-        id: "corr_1".to_string(),
+        id: BlockId::wire("corr_1"),
         provider_id: Some("rs_1".to_string()),
         reasoning: "think".to_string(),
     })
@@ -402,7 +396,7 @@ fn reasoning_delta(
     text: &str,
 ) -> StreamedAssistantContent {
     StreamedAssistantContent::ReasoningDelta {
-        id: correlator.to_string(),
+        id: BlockId::wire(correlator),
         provider_id: provider_id.map(str::to_string),
         reasoning: text.to_string(),
     }
@@ -420,7 +414,7 @@ fn completed_reasoning(
     }
     StreamedAssistantContent::Reasoning {
         reasoning,
-        id: correlator.to_string(),
+        id: BlockId::wire(correlator),
     }
 }
 
@@ -433,17 +427,29 @@ fn aggregated_reasoning_delta_is_scoped_to_each_interleaved_part() {
     let mut asm = assembler();
     asm.ingest(&reasoning_delta("corr_a", None, "first "))
         .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first "));
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_a")),
+        Some("first ")
+    );
 
     asm.ingest(&reasoning_delta("corr_b", Some("rs_b"), "second"))
         .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_b")),
+        Some("second")
+    );
 
     asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "part"))
         .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first part"));
-    assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
-    assert_eq!(asm.aggregated_reasoning("missing"), None);
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_a")),
+        Some("first part")
+    );
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_b")),
+        Some("second")
+    );
+    assert_eq!(asm.aggregated_reasoning(&BlockId::wire("missing")), None);
 
     let reasoning = assembled_reasoning_of(&asm);
     assert_eq!(reasoning[0].id.as_deref(), Some("rs_a"));
@@ -462,11 +468,14 @@ fn aggregated_reasoning_delta_uses_a_new_pending_part_after_completion() {
         Some("sig"),
     ))
     .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), None);
+    assert_eq!(asm.aggregated_reasoning(&BlockId::wire("corr_a")), None);
 
     asm.ingest(&reasoning_delta("corr_a", Some("rs_new"), "new"))
         .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), Some("new"));
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_a")),
+        Some("new")
+    );
 }
 
 #[test]
@@ -770,7 +779,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
         panic!("expected CallTools");
     };
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].internal_call_id, Some(iid_for("tc_1")));
+    assert_eq!(calls[0].block_id, Some(iid_for("tc_1")));
     run.tool_results(vec![UserContent::tool_result(
         "tc_1",
         "add",
@@ -831,7 +840,7 @@ fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
     assert!(context.is_streaming);
     assert_eq!(context.tool_name, "default_api");
-    assert_eq!(context.internal_call_id, Some(iid_for("tc_1")));
+    assert_eq!(context.block_id, Some(iid_for("tc_1")));
 
     let resolution = run
         .resolve_streamed_invalid_tool_call(
@@ -1026,7 +1035,7 @@ fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
         choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
         executable_tool_names: tool_names(&["add"]),
         allowed_tool_names: tool_names(&["add"]),
-        internal_call_ids: Vec::new(),
+        block_ids: Vec::new(),
         finish_reason: None,
     };
     let err = run
@@ -1072,12 +1081,12 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
     let mut asm = assembler();
     asm.ingest(&StreamedAssistantContent::ToolCall {
         tool_call: tool_call("tc_1", "add"),
-        internal_call_id: iid_for("a"),
+        id: iid_for("a"),
     })
     .expect("ingest should succeed");
     asm.ingest(&StreamedAssistantContent::ToolCall {
         tool_call: tool_call("tc_1", "add"),
-        internal_call_id: iid_for("b"),
+        id: iid_for("b"),
     })
     .expect("ingest should succeed");
     run.record_streamed_completion_call(
@@ -1103,8 +1112,8 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
         panic!("expected CallTools");
     };
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].internal_call_id, Some(iid_for("a")));
-    assert_eq!(calls[1].internal_call_id, Some(iid_for("b")));
+    assert_eq!(calls[0].block_id, Some(iid_for("a")));
+    assert_eq!(calls[1].block_id, Some(iid_for("b")));
 }
 
 #[test]

@@ -38,10 +38,10 @@ use std::collections::{BTreeSet, HashMap};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::FinishReason;
-use rig_core::id::InternalCallId;
 use rig_core::message::{
     AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
+use rig_core::streaming::BlockId;
 
 use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
 use rig_core::completion::{CompletionError, Message, Usage};
@@ -138,7 +138,7 @@ pub struct StreamedInvalidToolCall {
     /// assembled from the streamed name and any buffered argument deltas.
     pub tool_call: ToolCall,
     /// Rig-generated identifier correlating this call's stream items.
-    pub internal_call_id: InternalCallId,
+    pub block_id: BlockId,
     /// Raw argument payload for diagnostics, when available.
     pub args: Option<String>,
     /// Executable Rig tools advertised to the provider for this turn.
@@ -251,11 +251,11 @@ pub struct StreamedTurn {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active tool choice for this turn.
     pub allowed_tool_names: BTreeSet<String>,
-    /// `(tool_call_id, internal_call_id)` pairs for this turn's tool calls,
+    /// `(tool_call_id, block_id)` pairs for this turn's tool calls,
     /// in emission order. Carried into the run state so a resumed process
     /// keeps the IDs consumers already saw in tool-call deltas.
     #[serde(default)]
-    pub internal_call_ids: Vec<(String, InternalCallId)>,
+    pub block_ids: Vec<(String, BlockId)>,
     /// Why the provider stopped generating this turn, when it reported a
     /// reason — the streamed analogue of `ModelTurn::finish_reason`, so a
     /// driver that feeds turns through `streamed_turn` records the same
@@ -301,7 +301,7 @@ pub enum StreamedTurnEvent {
     /// name awaited validation are replayed through this event.
     EmitToolCallDelta {
         /// Rig-generated identifier correlating this call's stream items.
-        internal_call_id: InternalCallId,
+        block_id: BlockId,
         /// The (possibly repaired) name or argument delta.
         content: ToolCallDeltaContent,
     },
@@ -339,12 +339,12 @@ struct ToolCallDeltaState {
 }
 
 /// One reasoning part of the turn, in first-arrival order. A part opens as
-/// delta text keyed by the stream's rig-generated correlator and is
+/// delta text keyed by the stream's block id and is
 /// superseded in place when a completed block restating the same part
 /// arrives; a completed block matching no open part occupies its own slot.
 #[derive(Clone, Serialize, Deserialize)]
 struct ReasoningPart {
-    correlator: Option<String>,
+    correlator: Option<BlockId>,
     provider_id: Option<String>,
     state: ReasoningPartState,
 }
@@ -382,10 +382,10 @@ enum PendingInvalid {
     /// A complete tool call with a disallowed name.
     FullCall {
         tool_call: Box<ToolCall>,
-        internal_call_id: InternalCallId,
+        block_id: BlockId,
     },
     /// A streamed tool-name delta with a disallowed name.
-    NameDelta { internal_call_id: InternalCallId },
+    NameDelta { block_id: BlockId },
 }
 
 /// Sans-IO accumulator that assembles one streamed model turn. See the
@@ -403,8 +403,8 @@ pub struct StreamedTurnAssembler {
     text: String,
     saw_text: bool,
     reasoning_parts: Vec<ReasoningPart>,
-    pending_tool_calls: Vec<(ToolCall, InternalCallId)>,
-    delta_states: HashMap<InternalCallId, ToolCallDeltaState>,
+    pending_tool_calls: Vec<(ToolCall, BlockId)>,
+    delta_states: HashMap<BlockId, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
     /// Terminal reason from this turn's provider final record, retained so
     /// [`Self::finish`] can carry it onto the [`StreamedTurn`] (rig#2322).
@@ -484,15 +484,15 @@ impl StreamedTurnAssembler {
     /// Completed parts are deliberately skipped: a later delta may reuse a
     /// correlator after a completed restatement, in which case ingestion opens
     /// a new pending part and this returns that new part's aggregate.
-    pub fn aggregated_reasoning(&self, correlator: &str) -> Option<&str> {
-        self.reasoning_parts.iter().find_map(|part| {
-            match (&part.state, part.correlator.as_deref()) {
+    pub fn aggregated_reasoning(&self, correlator: &BlockId) -> Option<&str> {
+        self.reasoning_parts
+            .iter()
+            .find_map(|part| match (&part.state, part.correlator.as_ref()) {
                 (ReasoningPartState::Pending(text), Some(id)) if id == correlator => {
                     Some(text.as_str())
                 }
                 _ => None,
-            }
-        })
+            })
     }
 
     /// Normalize the provider aggregate into the content committed for this
@@ -502,7 +502,7 @@ impl StreamedTurnAssembler {
     /// ([`Self::assembled_reasoning`]) — agreement between the two is pinned
     /// by `canonical_choice_and_partial_turn_agree_on_multi_part_reasoning`.
     fn canonical_choice_with(
-        pending_tool_calls: Vec<(ToolCall, InternalCallId)>,
+        pending_tool_calls: Vec<(ToolCall, BlockId)>,
         reasoning: Vec<Reasoning>,
         provider_choice: &[AssistantContent],
     ) -> Vec<AssistantContent> {
@@ -533,7 +533,7 @@ impl StreamedTurnAssembler {
     /// its provider id, else occupies a new slot; unmatched pending buffers
     /// are never dropped (a delta-only visible part and a completed
     /// encrypted block can coexist in one stream).
-    fn ingest_completed_reasoning(&mut self, reasoning: &Reasoning, correlator: &str) {
+    fn ingest_completed_reasoning(&mut self, reasoning: &Reasoning, correlator: &BlockId) {
         // An exact correlator match IS the part, whatever its state:
         // replace wholesale (pydantic-ai's replace-part semantics — the
         // completed block always carries the whole content, the
@@ -544,7 +544,7 @@ impl StreamedTurnAssembler {
         let replace_at = self
             .reasoning_parts
             .iter()
-            .position(|part| part.correlator.as_deref() == Some(correlator))
+            .position(|part| part.correlator.as_ref() == Some(correlator))
             .or_else(|| {
                 self.reasoning_parts.iter().position(|part| {
                     matches!(part.state, ReasoningPartState::Pending(_))
@@ -579,7 +579,7 @@ impl StreamedTurnAssembler {
         }
 
         self.reasoning_parts.push(ReasoningPart {
-            correlator: Some(correlator.to_owned()),
+            correlator: Some(correlator.clone()),
             provider_id: reasoning.id.clone(),
             state: ReasoningPartState::Completed(reasoning.clone()),
         });
@@ -651,7 +651,7 @@ impl StreamedTurnAssembler {
                     .reasoning_parts
                     .iter()
                     .position(|part| {
-                        part.correlator.as_deref() == Some(id.as_str())
+                        part.correlator.as_ref() == Some(id)
                             && matches!(part.state, ReasoningPartState::Pending(_))
                     })
                     .unwrap_or_else(|| {
@@ -674,31 +674,31 @@ impl StreamedTurnAssembler {
             }
             StreamedAssistantContent::ToolCall {
                 tool_call,
-                internal_call_id,
+                id: block_id,
             } => {
                 if !self.allowed_tool_names.contains(&tool_call.function.name) {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
-                        *internal_call_id,
+                        block_id.clone(),
                         Some(json_utils::serialize_json_value(
                             &tool_call.function.arguments,
                         )),
                         PendingInvalid::FullCall {
                             tool_call: Box::new(tool_call.clone()),
-                            internal_call_id: *internal_call_id,
+                            block_id: block_id.clone(),
                         },
                     ));
                 }
 
                 self.pending_tool_calls
-                    .push((tool_call.clone(), *internal_call_id));
+                    .push((tool_call.clone(), block_id.clone()));
                 Ok(Vec::new())
             }
             StreamedAssistantContent::ToolCallDelta {
-                internal_call_id,
+                id: block_id,
                 content,
             } => {
-                let key = *internal_call_id;
+                let key = block_id.clone();
                 match content {
                     ToolCallDeltaContent::Name(name) => {
                         if !self.allowed_tool_names.contains(name) {
@@ -711,10 +711,10 @@ impl StreamedTurnAssembler {
                                 self.name_delta_diagnostic_tool_call(name, &buffered_args);
                             return Ok(self.surface_invalid_call(
                                 tool_call,
-                                *internal_call_id,
+                                block_id.clone(),
                                 Some(buffered_args),
                                 PendingInvalid::NameDelta {
-                                    internal_call_id: *internal_call_id,
+                                    block_id: block_id.clone(),
                                 },
                             ));
                         }
@@ -725,7 +725,7 @@ impl StreamedTurnAssembler {
                         let state = self.delta_states.entry(key).or_default();
                         if state.name_validated {
                             Ok(vec![StreamedTurnEvent::EmitToolCallDelta {
-                                internal_call_id: *internal_call_id,
+                                block_id: block_id.clone(),
                                 content: ToolCallDeltaContent::Delta(arguments.clone()),
                             }])
                         } else {
@@ -796,24 +796,21 @@ impl StreamedTurnAssembler {
                 StreamedResolution::Repaired { tool_name },
                 PendingInvalid::FullCall {
                     mut tool_call,
-                    internal_call_id,
+                    block_id,
                 },
             ) => {
                 tool_call.function.name.clone_from(tool_name);
-                self.pending_tool_calls.push((*tool_call, internal_call_id));
+                self.pending_tool_calls.push((*tool_call, block_id));
                 Vec::new()
             }
             (
                 StreamedResolution::Repaired { tool_name },
-                PendingInvalid::NameDelta { internal_call_id },
-            ) => self.validate_delta_name(internal_call_id, tool_name.clone()),
-            (
-                StreamedResolution::TurnAbandoned { .. },
-                PendingInvalid::NameDelta { internal_call_id },
-            ) => {
+                PendingInvalid::NameDelta { block_id },
+            ) => self.validate_delta_name(block_id, tool_name.clone()),
+            (StreamedResolution::TurnAbandoned { .. }, PendingInvalid::NameDelta { block_id }) => {
                 // The abandoned call's buffered state must not trip the
                 // pending-delta consistency check while usage is drained.
-                self.delta_states.remove(&internal_call_id);
+                self.delta_states.remove(&block_id);
                 Vec::new()
             }
             (StreamedResolution::TurnAbandoned { .. }, PendingInvalid::FullCall { .. }) => {
@@ -828,9 +825,9 @@ impl StreamedTurnAssembler {
         self.delta_states
             .iter()
             .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
-            .map(|(internal_call_id, state)| {
+            .map(|(block_id, state)| {
                 CompletionError::ResponseError(format!(
-                    "streamed tool call arguments received before a validated tool name for internal_call_id `{internal_call_id}` ({} buffered argument delta(s))",
+                    "streamed tool call arguments received before a validated tool name for block_id `{block_id}` ({} buffered argument delta(s))",
                     state.buffered_arguments.len()
                 ))
             })
@@ -862,11 +859,9 @@ impl StreamedTurnAssembler {
     ) -> StreamedTurn {
         let reasoning = self.drain_reasoning();
         let pending_tool_calls = std::mem::take(&mut self.pending_tool_calls);
-        let internal_call_ids: Vec<(String, InternalCallId)> = pending_tool_calls
+        let block_ids: Vec<(String, BlockId)> = pending_tool_calls
             .iter()
-            .map(|(tool_call, internal_call_id)| {
-                (tool_call.id.as_str().to_owned(), *internal_call_id)
-            })
+            .map(|(tool_call, block_id)| (tool_call.id.as_str().to_owned(), block_id.clone()))
             .collect();
         let choice = Self::canonical_choice_with(pending_tool_calls, reasoning, final_choice);
 
@@ -875,7 +870,7 @@ impl StreamedTurnAssembler {
             choice,
             executable_tool_names: self.executable_tool_names,
             allowed_tool_names: self.allowed_tool_names,
-            internal_call_ids,
+            block_ids,
             finish_reason: self.finish_reason.take(),
         }
     }
@@ -885,13 +880,13 @@ impl StreamedTurnAssembler {
     fn surface_invalid_call(
         &mut self,
         tool_call: ToolCall,
-        internal_call_id: InternalCallId,
+        block_id: BlockId,
         args: Option<String>,
         pending: PendingInvalid,
     ) -> Vec<StreamedTurnEvent> {
         let invalid = StreamedInvalidToolCall {
             tool_call,
-            internal_call_id,
+            block_id,
             args,
             executable_tool_names: self.executable_tool_names.clone(),
             allowed_tool_names: self.allowed_tool_names.clone(),
@@ -917,18 +912,18 @@ impl StreamedTurnAssembler {
         )
     }
 
-    fn validate_delta_name(&mut self, key: InternalCallId, name: String) -> Vec<StreamedTurnEvent> {
-        let state = self.delta_states.entry(key).or_default();
+    fn validate_delta_name(&mut self, key: BlockId, name: String) -> Vec<StreamedTurnEvent> {
+        let state = self.delta_states.entry(key.clone()).or_default();
         state.name_validated = true;
         let buffered_arguments = std::mem::take(&mut state.buffered_arguments);
 
         let mut events = vec![StreamedTurnEvent::EmitToolCallDelta {
-            internal_call_id: key,
+            block_id: key.clone(),
             content: ToolCallDeltaContent::Name(name),
         }];
         events.extend(buffered_arguments.into_iter().map(|arguments| {
             StreamedTurnEvent::EmitToolCallDelta {
-                internal_call_id: key,
+                block_id: key.clone(),
                 content: ToolCallDeltaContent::Delta(arguments),
             }
         }));

@@ -808,7 +808,7 @@ fn test_handle_input_json_delta_event() {
 
     match choice {
         RawStreamingChoice::ToolCallDelta { id, content } => {
-            assert_eq!(id, crate::streaming::StreamPartId::wire("tool_123"));
+            assert_eq!(id, crate::streaming::BlockId::wire("tool_123"));
             match content {
                 ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
                 _ => panic!("Expected Delta content"),
@@ -869,7 +869,7 @@ fn test_tool_call_accumulation_with_multiple_deltas() {
 
     match final_result.unwrap().unwrap() {
         RawStreamingChoice::ToolInputEnd(end) => {
-            assert_eq!(end.id, crate::streaming::StreamPartId::wire("tool_123"));
+            assert_eq!(end.id, crate::streaming::BlockId::wire("tool_123"));
             assert!(matches!(
                 end.on_unparseable,
                 crate::streaming::UnparseableToolInput::Error

@@ -114,7 +114,7 @@ pub(crate) struct ToolCallTally(pub(crate) usize);
 
 /// A comprehensive observe-only hook: counts every event kind, records the
 /// `HookContext` identity (run id / streaming flag / agent name), captures each
-/// tool call's and result's `internal_call_id` for correlation, records an
+/// tool call's and result's `block_id` for correlation, records an
 /// ordered `(tag, turn)` breadcrumb, and bumps a shared `Scratchpad` tally on
 /// every `ToolCall`.
 #[derive(Clone, Default)]
@@ -228,7 +228,7 @@ impl AgentHook for EventTap {
         self.call_ids
             .lock()
             .expect("call_ids")
-            .push(event.internal_call_id.to_string());
+            .push(event.block_id.to_string());
         ctx.scratchpad()
             .update(|tally: &mut ToolCallTally| tally.0 += 1);
         ToolCallAction::run()
@@ -242,7 +242,7 @@ impl AgentHook for EventTap {
         self.result_ids
             .lock()
             .expect("result_ids")
-            .push(event.internal_call_id.to_string());
+            .push(event.block_id.to_string());
         ToolResultAction::keep()
     }
     async fn on_text_delta(&self, ctx: &HookContext, _event: TextDelta<'_>) -> ObservationAction {

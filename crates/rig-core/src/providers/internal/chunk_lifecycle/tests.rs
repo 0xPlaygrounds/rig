@@ -2,7 +2,7 @@ use super::*;
 use crate::streaming::MintKind;
 
 fn lifecycle() -> MintedReasoningLifecycle {
-    MintedReasoningLifecycle::new(StreamPartId::minted(MintKind::Reasoning, 0))
+    MintedReasoningLifecycle::new(MintKind::Reasoning)
 }
 
 fn emitted(batches: Vec<ChunkParts<()>>) -> Vec<&'static str> {
@@ -29,7 +29,7 @@ fn emitted(batches: Vec<ChunkParts<()>>) -> Vec<&'static str> {
 
 fn tool_event() -> RawStreamingChoice<()> {
     RawStreamingChoice::ToolCall(crate::streaming::RawStreamingToolCall::new(
-        StreamPartId::minted(MintKind::Tool, 0),
+        BlockId::minted(MintKind::Tool, 0),
         "probe".to_owned(),
         serde_json::json!({}),
     ))
@@ -136,5 +136,58 @@ fn reasoning_reopens_after_a_boundary() {
             "bare-end",
             "text"
         ]
+    );
+}
+
+/// Every block gets its own key: reasoning that resumes after a boundary
+/// streams under a fresh minted id, while a trailing signature after a
+/// synthesized boundary still addresses the block that streamed.
+#[test]
+fn each_block_streams_under_its_own_key() {
+    let mut lifecycle = lifecycle();
+    let mut out = AdapterOutput::<()>::new();
+    lifecycle.emit_chunk(
+        ChunkParts {
+            reasoning: Some("first".into()),
+            ..ChunkParts::default()
+        },
+        &mut out,
+    );
+    lifecycle.emit_chunk(
+        ChunkParts {
+            text: Some("visible".into()),
+            ..ChunkParts::default()
+        },
+        &mut out,
+    );
+    // A late signature signs the first block, not a new one.
+    lifecycle.emit_chunk(
+        ChunkParts {
+            reasoning_signature: Some("sig_1".into()),
+            ..ChunkParts::default()
+        },
+        &mut out,
+    );
+    lifecycle.emit_chunk(
+        ChunkParts {
+            reasoning: Some("second".into()),
+            ..ChunkParts::default()
+        },
+        &mut out,
+    );
+    let ids: Vec<BlockId> = out
+        .iter()
+        .filter_map(|item| match item {
+            Ok(RawStreamingChoice::ReasoningDelta { id, .. })
+            | Ok(RawStreamingChoice::ReasoningEnd { id, .. }) => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
+    let first = BlockId::minted(MintKind::Reasoning, 0);
+    let second = BlockId::minted(MintKind::Reasoning, 1);
+    assert_eq!(
+        ids,
+        vec![first.clone(), first.clone(), first, second],
+        "delta, synthesized end, late signature end, then a fresh block"
     );
 }

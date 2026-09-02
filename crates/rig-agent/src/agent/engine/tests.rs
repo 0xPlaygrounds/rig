@@ -1417,7 +1417,7 @@ fn blocking_model() -> MockCompletionModel {
 
 /// Note the shape of turn one: the call's input streams as fragments
 /// (`tc1`) *and* the wire restates it as one complete `ToolCall`. See
-/// [`streamed_tool_call_items_share_one_internal_call_id`] for the
+/// [`streamed_tool_call_items_share_one_block_id`] for the
 /// correlation contract this pins.
 fn streaming_model() -> MockCompletionModel {
     MockCompletionModel::from_stream_turns([
@@ -1435,7 +1435,7 @@ fn streaming_model() -> MockCompletionModel {
 }
 
 /// #2258 F1, end to end: every stream item for one tool call carries the
-/// same `internal_call_id` — the deltas, the completed call, the
+/// same `block_id` — the deltas, the completed call, the
 /// execution confirmation, and the tool result. This mock has always
 /// emitted deltas followed by a full `ToolCall` for `tc1`; before the
 /// accumulator adopted the assembly's id, the completed call (and
@@ -1445,7 +1445,7 @@ fn streaming_model() -> MockCompletionModel {
 /// Not inducible from a recorded provider turn: no in-tree wire mixes
 /// fragments with a full restatement of the same call.
 #[tokio::test]
-async fn streamed_tool_call_items_share_one_internal_call_id() {
+async fn streamed_tool_call_items_share_one_block_id() {
     let mut stream = AgentBuilder::new(streaming_model())
         .tool(MockAddTool)
         .build()
@@ -1461,32 +1461,32 @@ async fn streamed_tool_call_items_share_one_internal_call_id() {
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
             MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta {
-                internal_call_id,
+                id: block_id,
                 ..
-            }) => delta_ids.push(internal_call_id),
+            }) => delta_ids.push(block_id),
             MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                internal_call_id,
+                id: block_id,
                 ..
-            }) => completed_ids.push(internal_call_id),
-            MultiTurnStreamItem::ToolExecutionCommitted {
-                internal_call_id, ..
-            } => executed_ids.push(internal_call_id),
+            }) => completed_ids.push(block_id),
+            MultiTurnStreamItem::ToolExecutionCommitted { block_id, .. } => {
+                executed_ids.push(block_id)
+            }
             MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                internal_call_id,
+                id: block_id,
                 ..
-            }) => result_ids.push(internal_call_id),
+            }) => result_ids.push(block_id),
             _ => {}
         }
     }
 
     assert_eq!(delta_ids.len(), 2, "one name delta and one argument delta");
-    let correlated = *delta_ids.first().expect("a delta id");
+    let correlated = delta_ids.first().expect("a delta id").clone();
     assert!(
         delta_ids.iter().all(|id| *id == correlated),
         "the fragments of one call share one id: {delta_ids:?}"
     );
-    assert_eq!(completed_ids, vec![correlated]);
-    assert_eq!(executed_ids, vec![correlated]);
+    assert_eq!(completed_ids, vec![correlated.clone()]);
+    assert_eq!(executed_ids, vec![correlated.clone()]);
     assert_eq!(result_ids, vec![correlated]);
 }
 

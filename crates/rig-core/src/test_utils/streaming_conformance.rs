@@ -25,7 +25,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use futures::future::BoxFuture;
 
-use crate::id::InternalCallId;
+use crate::streaming::BlockId;
 use crate::{
     completion::{CompletionError, FinishReason},
     http_client,
@@ -376,7 +376,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///    the stream appears in the aggregated choice exactly once, and vice
 ///    versa (counts match; aggregation neither drops nor duplicates).
 /// 4. **Delta-before-completion.** A completed call correlated with
-///    fragments (same `internal_call_id`) never precedes its own deltas.
+///    fragments (same `block_id`) never precedes its own deltas.
 /// 5. **Reasoning provenance.** The aggregate contains a reasoning part only
 ///    if the stream yielded reasoning items; and when only deltas were
 ///    yielded (no full block), the aggregated reasoning text is exactly
@@ -447,23 +447,18 @@ pub fn assert_valid_event_stream(
     );
 
     // Law 4: delta-before-completion.
-    let mut seen_delta_ids: Vec<InternalCallId> = Vec::new();
-    let mut completed_ids: Vec<InternalCallId> = Vec::new();
+    let mut seen_delta_ids: Vec<BlockId> = Vec::new();
+    let mut completed_ids: Vec<BlockId> = Vec::new();
     for item in &ok_items {
         match item {
-            Item::ToolCallDelta {
-                internal_call_id, ..
-            } => {
+            Item::ToolCallDelta { id, .. } => {
                 assert!(
-                    !completed_ids.contains(internal_call_id),
-                    "law 4: a delta for internal id {internal_call_id} arrived after its \
-                     completed call"
+                    !completed_ids.contains(id),
+                    "law 4: a delta for block {id} arrived after its completed call"
                 );
-                seen_delta_ids.push(*internal_call_id);
+                seen_delta_ids.push(id.clone());
             }
-            Item::ToolCall {
-                internal_call_id, ..
-            } => completed_ids.push(*internal_call_id),
+            Item::ToolCall { id, .. } => completed_ids.push(id.clone()),
             _ => {}
         }
     }
@@ -473,16 +468,16 @@ pub fn assert_valid_event_stream(
     // delta-only part may legitimately have no completed block — e.g. a
     // visible chain of thought whose synthesized end stays silent — so
     // delta ids are not required to appear among the completed ids).
-    let mut completed_reasoning_ids: Vec<&str> = Vec::new();
+    let mut completed_reasoning_ids: Vec<&BlockId> = Vec::new();
     for item in &ok_items {
         if let Item::Reasoning { id, .. } = item {
             assert!(
-                !id.is_empty(),
-                "law 4b (reasoning correlation): a completed block carries an empty correlator"
+                id.wire_str() != Some(""),
+                "law 4b (reasoning correlation): a completed block carries an empty wire id"
             );
             assert!(
-                !completed_reasoning_ids.contains(&id.as_str()),
-                "law 4b (reasoning correlation): two completed blocks share correlator {id}"
+                !completed_reasoning_ids.contains(&id),
+                "law 4b (reasoning correlation): two completed blocks share block id {id}"
             );
             completed_reasoning_ids.push(id);
         }

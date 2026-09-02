@@ -943,7 +943,7 @@ impl Default for OllamaAdapter {
     fn default() -> Self {
         Self {
             reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                crate::streaming::StreamPartId::minted(crate::streaming::MintKind::Reasoning, 0),
+                crate::streaming::MintKind::Reasoning,
             ),
             tool_ids: crate::streaming::SyntheticIds::tool(),
         }
@@ -993,9 +993,9 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                 let key = match tool_call
                     .id
                     .as_deref()
-                    .and_then(crate::streaming::WireId::new)
+                    .and_then(crate::streaming::non_empty_id)
                 {
-                    Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
+                    Some(wire_id) => crate::streaming::BlockId::wire(wire_id.as_str()),
                     None => self.tool_ids.mint(),
                 };
                 tool_events.push(RawStreamingChoice::ToolCall(

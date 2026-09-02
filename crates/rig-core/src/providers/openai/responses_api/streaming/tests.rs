@@ -352,8 +352,8 @@ fn reasoning_done_item_fuses_summary_content_and_encrypted_into_one_end() {
     ];
     let content = vec!["private reasoning".to_string()];
     let end = reasoning_end_from_done_item(
-        &crate::streaming::StreamPartId::wire("rs_1"),
-        crate::streaming::WireId::new("rs_1").as_ref(),
+        &crate::streaming::BlockId::wire("rs_1"),
+        Some("rs_1"),
         summary,
         content,
         Some("enc_blob".to_string()),
@@ -370,7 +370,7 @@ fn reasoning_done_item_fuses_summary_content_and_encrypted_into_one_end() {
     else {
         panic!("expected one wire-sent ReasoningEnd restatement");
     };
-    assert_eq!(id, crate::streaming::StreamPartId::wire("rs_1"));
+    assert_eq!(id, crate::streaming::BlockId::wire("rs_1"));
     assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
     assert_eq!(
         reasoning.content,
@@ -416,7 +416,7 @@ fn reasoning_output_item_done_emits_reasoning_text_content() {
             reasoning: Some(reasoning),
             wire_sent: true,
             ..
-        }) if id == &crate::streaming::StreamPartId::wire("rs_text_1")
+        }) if id == &crate::streaming::BlockId::wire("rs_text_1")
             && reasoning.content
                 == vec![ReasoningContent::Text {
                     text: "visible reasoning".to_string(),
@@ -492,7 +492,7 @@ fn reasoning_text_delta_emits_reasoning_delta() {
     assert!(matches!(
         choices.first(),
         Some(RawStreamingChoice::ReasoningDelta { id, provider_id: _, reasoning })
-            if id == &crate::streaming::StreamPartId::wire("rs_delta_1") && reasoning == "thinking"
+            if id == &crate::streaming::BlockId::wire("rs_delta_1") && reasoning == "thinking"
     ));
 }
 
@@ -538,8 +538,8 @@ fn reasoning_done_item_without_encrypted_emits_summary_only() {
         text: "only summary".to_string(),
     }];
     let end = reasoning_end_from_done_item(
-        &crate::streaming::StreamPartId::wire("rs_2"),
-        crate::streaming::WireId::new("rs_2").as_ref(),
+        &crate::streaming::BlockId::wire("rs_2"),
+        Some("rs_2"),
         summary,
         Vec::new(),
         None,
@@ -553,7 +553,7 @@ fn reasoning_done_item_without_encrypted_emits_summary_only() {
     else {
         panic!("expected one ReasoningEnd restatement");
     };
-    assert_eq!(id, crate::streaming::StreamPartId::wire("rs_2"));
+    assert_eq!(id, crate::streaming::BlockId::wire("rs_2"));
     assert_eq!(
         reasoning.content,
         vec![ReasoningContent::Summary("only summary".to_string())]
@@ -565,8 +565,8 @@ fn empty_encrypted_reasoning_is_not_emitted() {
     let content = vec!["visible reasoning".to_string()];
 
     let end = reasoning_end_from_done_item(
-        &crate::streaming::StreamPartId::wire("rs_1"),
-        crate::streaming::WireId::new("rs_1").as_ref(),
+        &crate::streaming::BlockId::wire("rs_1"),
+        Some("rs_1"),
         Vec::new(),
         content,
         Some(String::new()),
@@ -591,8 +591,8 @@ fn empty_encrypted_reasoning_is_not_emitted() {
     // An entirely empty done item says nothing at the boundary.
     assert!(
         reasoning_end_from_done_item(
-            &crate::streaming::StreamPartId::wire("rs_1"),
-            crate::streaming::WireId::new("rs_1").as_ref(),
+            &crate::streaming::BlockId::wire("rs_1"),
+            Some("rs_1"),
             Vec::new(),
             Vec::new(),
             Some(String::new()),
@@ -1749,7 +1749,7 @@ async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
         .filter(|choice| {
             matches!(
                 choice,
-                RawStreamingChoice::TextStart { id, .. } if id == &crate::streaming::StreamPartId::wire("msg_1")
+                RawStreamingChoice::TextStart { id, .. } if id == &crate::streaming::BlockId::wire("msg_1")
             )
         })
         .count();
@@ -1847,7 +1847,7 @@ async fn mixed_id_and_id_less_events_share_one_slot_key() {
 
     // Every tool event (name delta, args delta, input end) carries the
     // slot's single key — no fragment dangles under a second identity.
-    let mut keys: Vec<crate::streaming::StreamPartId> = raw_choices
+    let mut keys: Vec<crate::streaming::BlockId> = raw_choices
         .iter()
         .filter_map(|choice| match choice {
             RawStreamingChoice::ToolCallDelta { id, .. } => Some(id.clone()),
@@ -1858,7 +1858,7 @@ async fn mixed_id_and_id_less_events_share_one_slot_key() {
     keys.dedup();
     assert_eq!(
         keys,
-        [crate::streaming::StreamPartId::wire("fc_real")],
+        [crate::streaming::BlockId::wire("fc_real")],
         "one slot, one assembly key"
     );
 
@@ -2148,8 +2148,8 @@ async fn terminal_body_message_text_merges_into_reasoning_only_replay() {
     use crate::providers::openai::responses_api::Output;
 
     let raw_choices = vec![RawStreamingChoice::ReasoningDelta {
-        provider_id: crate::streaming::WireId::new("rs_1"),
-        id: crate::streaming::StreamPartId::wire("rs_1"),
+        provider_id: crate::streaming::non_empty_id("rs_1"),
+        id: crate::streaming::BlockId::wire("rs_1"),
         reasoning: "thinking".to_string(),
     }];
 

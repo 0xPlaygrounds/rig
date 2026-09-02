@@ -28,9 +28,9 @@ use tracing::{Instrument, span::Id};
 
 use rig_core::{
     completion::{FinishReason, ResponseIdentity},
-    id::InternalCallId,
     memory::ConversationMemory,
     message::{AssistantContent, Message, ToolCall, UserContent},
+    streaming::BlockId,
     telemetry::SpanCombinator,
     wasm_compat::WasmCompatSend,
 };
@@ -551,13 +551,13 @@ pub(crate) fn drive_tool_calls<'a, F>(
 where
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
-    // Per-call working state: a stable internal_call_id and the execute span,
+    // Per-call working state: a stable block_id and the execute span,
     // paired with the model's tool call. `span` is `Span::none()` for a
     // preresolved (invalid-recovery) call, which never executes.
     struct PreparedToolCall {
         tool_call: rig_core::message::ToolCall,
         preresolved_result: Option<UserContent>,
-        internal_call_id: InternalCallId,
+        block_id: BlockId,
         span: tracing::Span,
     }
     // How a settled tool call is surfaced on the stream once the batch succeeds:
@@ -577,7 +577,7 @@ where
     // batch settles.
     struct CollectedToolResult {
         content: UserContent,
-        internal_call_id: InternalCallId,
+        block_id: BlockId,
         surface: ToolSurface,
     }
 
@@ -585,7 +585,7 @@ where
         let full_history_for_errors = run.full_history();
         let call_count = calls.len();
 
-        // Assign each call a stable internal_call_id and, for calls that will
+        // Assign each call a stable block_id and, for calls that will
         // actually execute, an execute span. Emit the MODEL tool-call events now,
         // right after the turn committed: these report what the model emitted and
         // are *not* execution-lifecycle events. A preresolved call emits no model
@@ -593,7 +593,9 @@ where
         // model turn) and gets no execute span.
         let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
         for pending in calls {
-            let internal_call_id = pending.internal_call_id.unwrap_or_else(rig_core::id::InternalCallId::new);
+            let block_id = pending
+                .block_id
+                .unwrap_or_else(|| BlockId::wire(pending.tool_call.id.as_str()));
             let (span, preresolved_result) = match pending.preresolved_result {
                 Some(result) => (tracing::Span::none(), Some(result)),
                 None => {
@@ -601,7 +603,7 @@ where
                         yield Ok(MultiTurnStreamItem::stream_item(
                             StreamedAssistantContent::ToolCall {
                                 tool_call: pending.tool_call.clone(),
-                                internal_call_id,
+                                id: block_id.clone(),
                             },
                         ));
                     }
@@ -611,7 +613,7 @@ where
             prepared.push(PreparedToolCall {
                 tool_call: pending.tool_call,
                 preresolved_result,
-                internal_call_id,
+                block_id,
                 span,
             });
         }
@@ -635,7 +637,7 @@ where
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let unordered = stream::iter(prepared.into_iter().enumerate())
                 .map(|(index, call)| {
-                    let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
+                    let PreparedToolCall { tool_call, preresolved_result, block_id, span } = call;
                     let tool_snapshot = &tool_snapshot;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
@@ -645,7 +647,7 @@ where
                                 index,
                                 Some(Ok(CollectedToolResult {
                                     content: result,
-                                    internal_call_id,
+                                    block_id,
                                     surface: ToolSurface::Preresolved,
                                 })),
                             );
@@ -659,7 +661,7 @@ where
                             hook_ctx,
                             tool_snapshot,
                             &tool_call,
-                            internal_call_id,
+                            &block_id,
                             full_history_for_errors,
                         )
                         .await;
@@ -672,7 +674,7 @@ where
                             };
                             CollectedToolResult {
                                 content: o.content,
-                                internal_call_id,
+                                block_id,
                                 surface,
                             }
                         });
@@ -723,7 +725,7 @@ where
         let mut surface_items: Vec<MultiTurnStreamItem> =
             Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
-            let Some(CollectedToolResult { content, internal_call_id, surface }) = slot else {
+            let Some(CollectedToolResult { content, block_id, surface }) = slot else {
                 yield Err(StreamingError::Prompt(Box::new(PromptError::CompletionError(
                     CompletionError::ResponseError(
                         "tool execution finished without producing every result".to_string(),
@@ -739,7 +741,7 @@ where
                     ToolSurface::Executed(tool_call) => {
                         surface_items.push(MultiTurnStreamItem::ToolExecutionCommitted {
                             tool_call: *tool_call,
-                            internal_call_id,
+                            block_id: block_id.clone(),
                         });
                         true
                     }
@@ -752,7 +754,7 @@ where
                     surface_items.push(MultiTurnStreamItem::StreamUserItem(
                         StreamedUserContent::ToolResult {
                             tool_result: tool_result.clone(),
-                            internal_call_id,
+                            id: block_id,
                         },
                     ));
                 }
@@ -1028,7 +1030,7 @@ impl TurnSource for StreamingTurnSource {
                             }
                         }
                         StreamedTurnEvent::EmitToolCallDelta {
-                            internal_call_id,
+                            block_id,
                             content,
                         } => {
                             if self.observes_tool_call_delta {
@@ -1042,7 +1044,7 @@ impl TurnSource for StreamingTurnSource {
                                         .on_tool_call_delta(
                                             hook_ctx,
                                             ToolCallDelta {
-                                                internal_call_id,
+                                                block_id: &block_id,
                                                 tool_name: delta_name,
                                                 delta: delta_text,
                                             },
@@ -1058,7 +1060,7 @@ impl TurnSource for StreamingTurnSource {
 
                             yield Ok(MultiTurnStreamItem::StreamAssistantItem(
                                 StreamedAssistantContent::ToolCallDelta {
-                                    internal_call_id,
+                                    id: block_id,
                                     content,
                                 },
                             ));
@@ -1149,7 +1151,7 @@ impl TurnSource for StreamingTurnSource {
                                         yield Ok(MultiTurnStreamItem::StreamUserItem(
                                             StreamedUserContent::ToolResult {
                                                 tool_result: *tool_result,
-                                                internal_call_id: invalid.internal_call_id,
+                                                id: invalid.block_id.clone(),
                                             },
                                         ));
                                     }
@@ -1550,7 +1552,7 @@ pub(crate) async fn run_single_tool(
     ctx: &HookContext,
     tool_snapshot: &ToolRegistrySnapshot,
     tool_call: &ToolCall,
-    internal_call_id: rig_core::id::InternalCallId,
+    block_id: &BlockId,
     error_history: &[Message],
 ) -> Result<ToolCallOutcome, PromptError> {
     let hooks = &runner.config.hooks;
@@ -1580,7 +1582,7 @@ pub(crate) async fn run_single_tool(
             ToolCallEvent {
                 tool_name,
                 tool_call_id: Some(tool_call.id.as_str()),
-                internal_call_id,
+                block_id,
                 args: &args,
             },
         )
@@ -1665,7 +1667,7 @@ pub(crate) async fn run_single_tool(
             ToolResultEvent {
                 tool_name,
                 tool_call_id: Some(tool_call.id.as_str()),
-                internal_call_id,
+                block_id,
                 args: &args,
                 presentation: exec.output(),
                 raw_result: &exec,

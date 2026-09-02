@@ -20,30 +20,6 @@ fn custom_length() {
 }
 
 #[test]
-fn internal_call_ids_are_unique_increasing_and_round_trip() {
-    let a = InternalCallId::new();
-    let b = InternalCallId::new();
-    assert_ne!(a, b);
-    assert!(b > a);
-    let id = InternalCallId::from_raw(7).expect("non-zero");
-    assert_eq!(serde_json::to_string(&id).expect("serialize"), "7");
-    assert_eq!(
-        serde_json::from_str::<InternalCallId>("7").expect("deserialize"),
-        id
-    );
-}
-
-#[test]
-fn advance_past_makes_fresh_mints_strictly_greater() {
-    let seen = InternalCallId::new().to_raw() + 1_000;
-    InternalCallId::advance_past(seen);
-    assert!(InternalCallId::new().to_raw() > seen);
-    // Advancing backwards is a no-op: the counter never regresses.
-    InternalCallId::advance_past(1);
-    assert!(InternalCallId::new().to_raw() > seen);
-}
-
-#[test]
 fn conversation_id_round_trips_and_displays_transparently() {
     let id = ConversationId::from("thread-1");
     assert_eq!(id.as_str(), "thread-1");
