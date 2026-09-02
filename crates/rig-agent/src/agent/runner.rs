@@ -52,8 +52,9 @@ use super::{
     run::{AgentRun, ModelTurn, ModelTurnOutcome, PendingToolCall},
 };
 use rig_core::{
+    completion::{FinishReason, ResponseIdentity},
     memory::ConversationMemory,
-    message::{ToolCall, ToolChoice, UserContent},
+    message::{AssistantContent, ToolCall, ToolChoice, UserContent},
     telemetry::SpanCombinator,
 };
 
@@ -121,14 +122,67 @@ pub(crate) enum ModelTurnDecision {
     Terminate(String),
 }
 
-/// Apply a model-turn hook action to the sans-IO run.
-///
-/// Both blocking and streaming sources use this resolver so retry history,
-/// tool-turn rejection, and state transitions cannot diverge by medium.
-pub(crate) fn resolve_model_turn_action(
+/// One attempt's assembled response, as both drivers hand it to
+/// [`settle_model_turn`]: the unary response under `run()`, the finished
+/// stream under `stream()`. Every field is this attempt's own — a retry
+/// re-enters with a fresh response, so a stale attempt's ids or payload can
+/// never be attributed here.
+pub(crate) struct AssembledTurn<'a> {
+    pub(crate) prompt: &'a Message,
+    pub(crate) content: &'a Vec<AssistantContent>,
+    pub(crate) usage: Usage,
+    pub(crate) identity: &'a ResponseIdentity,
+    pub(crate) finish_reason: Option<&'a FinishReason>,
+    /// The cap this attempt was prepared with, completion-call patches
+    /// included; read off the prepared request, never the agent config.
+    pub(crate) max_tokens: Option<u64>,
+    pub(crate) raw: &'a serde_json::Value,
+}
+
+/// Settle a parked model turn: fire [`AgentHook::on_completion_response`]
+/// (observe-only; a stop terminates), then
+/// [`AgentHook::on_model_turn_finished`] and apply its action to the sans-IO
+/// run. Both drivers call this once per accepted attempt, so retry history,
+/// tool-turn rejection, and state transitions cannot diverge by medium. The
+/// callers own what happens next: the blocking driver records the accepted
+/// turn's telemetry; the streaming driver additionally surfaces or discards
+/// the buffered provisional `Final`.
+pub(crate) async fn settle_model_turn(
+    hooks: &HookStack,
+    hook_ctx: &HookContext,
     run: &mut AgentRun,
-    action: ModelTurnAction,
+    turn: AssembledTurn<'_>,
 ) -> Result<ModelTurnDecision, PromptError> {
+    if let Some(reason) = observe_action(
+        hooks
+            .on_completion_response(
+                hook_ctx,
+                CompletionResponseEvent {
+                    prompt: turn.prompt,
+                    content: turn.content,
+                    usage: turn.usage,
+                    identity: turn.identity,
+                    raw: turn.raw,
+                },
+            )
+            .await,
+    ) {
+        return Ok(ModelTurnDecision::Terminate(reason));
+    }
+    let action = hooks
+        .on_model_turn_finished(
+            hook_ctx,
+            ModelTurnFinished {
+                turn: hook_ctx.turn(),
+                content: turn.content,
+                usage: turn.usage,
+                identity: turn.identity,
+                finish_reason: turn.finish_reason,
+                max_tokens: turn.max_tokens,
+                raw: turn.raw,
+            },
+        )
+        .await;
     match action {
         ModelTurnAction::Continue => Ok(ModelTurnDecision::Advance),
         ModelTurnAction::Retry(request) => {
@@ -925,53 +979,23 @@ impl TurnSource for UnaryTurnSource {
                         response_hook_suppressed,
                     } => {
                         if !response_hook_suppressed {
-                            // The response-finish event fires first, then the
-                            // normalized per-turn event. The first observes;
-                            // the second can accept, retry, or stop the canonical
-                            // turn. Both are suppressed for recovered turns.
-                            //
-                            // Identity comes from this attempt's own `resp` —
-                            // a retried turn re-enters `run_model_turn` with a
-                            // fresh response, so a stale attempt's ids can
-                            // never be attributed here. The raw payload is read
-                            // from the same `resp` for the same reason.
                             let identity = resp.identity();
-                            let attempt_raw = &resp.raw;
-                            if let Some(reason) = observe_action(
-                                runner
-                                    .config.hooks
-                                    .on_completion_response(
-                                        hook_ctx,
-                                        CompletionResponseEvent {
-                                            prompt: &current_prompt,
-                                            content: &resp.choice,
-                                            usage: resp.usage,
-                                            identity: &identity,
-                                            raw: attempt_raw,
-                                        },
-                                    )
-                                    .await,
-                            ) {
-                                record_accepted_turn(run);
-                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                                return;
-                            }
-                            let action = runner
-                                .config.hooks
-                                .on_model_turn_finished(
-                                    hook_ctx,
-                                    ModelTurnFinished {
-                                        turn: hook_ctx.turn(),
-                                        content: &resp.choice,
-                                        usage: resp.usage,
-                                        identity: &identity,
-                                        finish_reason: attempt_finish_reason.as_ref(),
-                                        max_tokens: attempt_max_tokens,
-                                        raw: attempt_raw,
-                                    },
-                                )
-                                .await;
-                            match resolve_model_turn_action(run, action) {
+                            let settlement = settle_model_turn(
+                                &runner.config.hooks,
+                                hook_ctx,
+                                run,
+                                AssembledTurn {
+                                    prompt: &current_prompt,
+                                    content: &resp.choice,
+                                    usage: resp.usage,
+                                    identity: &identity,
+                                    finish_reason: attempt_finish_reason.as_ref(),
+                                    max_tokens: attempt_max_tokens,
+                                    raw: &resp.raw,
+                                },
+                            )
+                            .await;
+                            match settlement {
                                 Ok(ModelTurnDecision::Advance) => {}
                                 Ok(ModelTurnDecision::Retried) => break,
                                 Ok(ModelTurnDecision::Terminate(reason)) => {

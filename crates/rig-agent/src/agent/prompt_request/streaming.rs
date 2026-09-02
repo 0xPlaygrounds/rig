@@ -8,10 +8,9 @@ use rig_core::{
 use crate::{
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
-        AgentHook, CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
-        InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnFinished,
-        ReasoningDelta, RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind,
-        TextDelta, ToolCallDelta,
+        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
+        ModelSelectionAction, ReasoningDelta, RunSettled, RunStart, RunStartAction, SettledOutcome,
+        StepEventKind, TextDelta, ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -19,9 +18,9 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, append_run_messages,
-        build_chat_span, new_execute_tool_span, observe_action, resolve_completion_call,
-        resolve_model_turn_action, run_single_tool,
+        AgentRunner, AssembledTurn, CompletionCallOutcome, ModelTurnDecision, ToolExecution,
+        append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
+        resolve_completion_call, run_single_tool, settle_model_turn,
     },
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
@@ -1129,10 +1128,8 @@ impl TurnSource for StreamingTurnSource {
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
-            // Bound before the builder is consumed, exactly as the blocking
-            // surface does: the cap this attempt was prepared with, patches
-            // included. Both surfaces read it from the same carrier, so they
-            // cannot report different numbers for the same attempt.
+            // Bound before the builder is consumed: the cap this attempt was
+            // prepared with, completion-call patches included.
             let attempt_max_tokens = prepared.max_tokens;
 
             let mut stream = match prepared
@@ -1365,7 +1362,7 @@ impl TurnSource for StreamingTurnSource {
                             let partial = assembler.partial_turn(stream.message_id.clone());
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
-                            // fails fast — identical to the blocking path.
+                            // fails fast.
                             let action = if self.has_hooks {
                                 let context =
                                     run.streamed_invalid_tool_call_context(&partial, &invalid);
@@ -1506,62 +1503,38 @@ impl TurnSource for StreamingTurnSource {
                 .response
                 .as_ref()
                 .map_or(&serde_json::Value::Null, |response| &response.raw);
-            if !turn_recovered
-                && let Some(reason) = observe_action(
-                    runner
-                        .config.hooks
-                        .on_completion_response(
-                            hook_ctx,
-                            CompletionResponseEvent {
-                                prompt: &current_prompt,
-                                content: &streamed_turn.choice,
-                                usage: last_usage,
-                                identity: &identity,
-                                raw: attempt_raw,
-                            },
-                        )
-                        .await,
-                )
-            {
-                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                return;
-            }
             self.last_message_id.clone_from(&streamed_turn.message_id);
             // The canonical assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
-            // `stream.choice` aggregate. `ModelTurnFinished` — the normalized
-            // per-turn event — carries this, matching what is recorded into run
-            // history; the raw `stream.choice` is kept in `last_final_choice` for
-            // the raw/final streaming behavior.
+            // `stream.choice` aggregate. The hooks and run history see this;
+            // the raw `stream.choice` is kept in `last_final_choice` for the
+            // raw/final streaming behavior.
             let canonical_choice = streamed_turn.choice.clone();
-            // Captured for the same reason as the choice above: `streamed_turn`
-            // is moved into run state on the next line, and the per-turn hook
-            // fires after that. `FinishReason::Other` carries a `String`, so
-            // this is a clone rather than a copy.
+            // `streamed_turn` is moved into run state on the next line and the
+            // hooks fire after that. `FinishReason::Other` carries a `String`,
+            // so this is a clone rather than a copy.
             let attempt_finish_reason = streamed_turn.finish_reason.clone();
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(Box::new(err).into());
                 return;
             }
-            // Normalized per-turn event, fired once the turn is parked for
-            // acceptance. Suppressed for recovered turns.
             if !turn_recovered {
-                let action = runner
-                    .config.hooks
-                    .on_model_turn_finished(
-                        hook_ctx,
-                        ModelTurnFinished {
-                            turn: hook_ctx.turn(),
-                            content: &canonical_choice,
-                            usage: last_usage,
-                            identity: &identity,
-                            finish_reason: attempt_finish_reason.as_ref(),
-                            max_tokens: attempt_max_tokens,
-                            raw: attempt_raw,
-                        },
-                    )
-                    .await;
-                match resolve_model_turn_action(run, action) {
+                let settlement = settle_model_turn(
+                    &runner.config.hooks,
+                    hook_ctx,
+                    run,
+                    AssembledTurn {
+                        prompt: &current_prompt,
+                        content: &canonical_choice,
+                        usage: last_usage,
+                        identity: &identity,
+                        finish_reason: attempt_finish_reason.as_ref(),
+                        max_tokens: attempt_max_tokens,
+                        raw: attempt_raw,
+                    },
+                )
+                .await;
+                match settlement {
                     Ok(ModelTurnDecision::Advance) => {}
                     Ok(ModelTurnDecision::Retried) => {
                         yield Ok(MultiTurnStreamItem::ModelTurnRetried {
@@ -1570,11 +1543,10 @@ impl TurnSource for StreamingTurnSource {
                         return;
                     }
                     Ok(ModelTurnDecision::Terminate(reason)) => {
-                        // Before model-turn steering was added, Stop observed
-                        // this already completed provider turn: its buffered
-                        // final and content telemetry were visible before the
-                        // cancellation. Preserve that behavior while Retry
-                        // alone suppresses the provisional final.
+                        // A stop observes an already completed provider turn:
+                        // its buffered final and content telemetry stay
+                        // visible before the cancellation. Retry alone
+                        // suppresses the provisional final.
                         self.record_turn_telemetry(
                             agent_span,
                             &chat_span,
@@ -1595,7 +1567,6 @@ impl TurnSource for StreamingTurnSource {
             }
 
             // Only hook-accepted canonical output belongs in content telemetry.
-            // Keep caller-owned spans untouched, matching the blocking source.
             self.record_turn_telemetry(
                 agent_span,
                 &chat_span,
@@ -1656,8 +1627,8 @@ impl TurnSource for StreamingTurnSource {
                 }
                 self.last_final_choice.clone()
             });
-        // Always surface the accumulated messages (parity with the blocking
-        // `run()`), regardless of whether the caller supplied input history.
+        // Always surface the accumulated messages, regardless of whether the
+        // caller supplied input history.
         let final_messages: Option<Vec<Message>> =
             Some(response.messages.clone().unwrap_or_default());
         Some(MultiTurnStreamItem::final_response_with_completion_calls(

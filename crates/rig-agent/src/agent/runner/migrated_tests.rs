@@ -1127,8 +1127,12 @@ async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     assert_eq!(hook.model_turns.load(SeqCst), 1);
 }
 
+/// A stop from the response hook settles the turn exactly like a stop from
+/// `on_model_turn_finished`: the provider's completed turn stays visible (its
+/// buffered final is surfaced before the cancellation), the run produces no
+/// response, and the canonical turn hook never runs.
 #[tokio::test]
-async fn streaming_completion_response_stop_suppresses_final_and_turn_commit() {
+async fn streaming_completion_response_stop_preserves_provider_final() {
     let hook = FinishLifecycleHook::stopping();
     let prompt = Message::user("canonical prompt");
     let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
@@ -1155,7 +1159,10 @@ async fn streaming_completion_response_stop_suppresses_final_and_turn_commit() {
         }
     }
 
-    assert!(!saw_provider_final, "the buffered final must remain hidden");
+    assert!(
+        saw_provider_final,
+        "the completed provider turn's buffered final is surfaced before the stop"
+    );
     assert!(
         !saw_run_final,
         "the cancelled run must not produce a response"
