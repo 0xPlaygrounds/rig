@@ -1,7 +1,6 @@
 use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::transcription::send_json_transcription;
-use crate::providers::openrouter::Client;
 use crate::transcription;
 use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
 use crate::wasm_compat::WasmCompatSend;
@@ -72,7 +71,7 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
 
 pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
-        crate::providers::openrouter::client::OpenRouterExt,
+        crate::providers::openrouter::client::OpenRouter,
         T,
     >;
 
@@ -171,7 +170,7 @@ where
                 .post("/audio/transcriptions")?
                 .header("Content-Type", "application/json"),
             body,
-            <super::client::OpenRouterExt as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+            <super::client::OpenRouter as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
             |_, body_bytes| Ok(serde_json::from_slice::<TranscriptionResponse>(body_bytes)?),
         )
         .await
@@ -201,15 +200,6 @@ where
             },
         )
         .await
-    }
-}
-
-impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }
 

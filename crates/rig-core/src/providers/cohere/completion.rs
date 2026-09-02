@@ -715,16 +715,6 @@ where
     }
 }
 
-impl<T> crate::client::ConstructCompletionModel<Client<T>> for CompletionModel<T>
-where
-    T: HttpClientExt,
-    Client<T>: Clone,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,

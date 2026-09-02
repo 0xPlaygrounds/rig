@@ -2,11 +2,11 @@
 
 pub use crate::providers::openai::responses_api::CompletionResponse;
 
-use super::client::XAiExt;
+use super::client::XAi;
 
 /// xAI completion model, driven by the shared Responses implementation.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    crate::providers::openai::responses_api::GenericResponsesCompletionModel<XAiExt, H>;
+    crate::providers::openai::responses_api::GenericResponsesCompletionModel<XAi, H>;
 
 /// xAI completion models.
 pub const GROK_2_1212: &str = "grok-2-1212";

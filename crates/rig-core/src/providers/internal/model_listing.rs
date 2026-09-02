@@ -74,7 +74,7 @@ macro_rules! impl_model_lister {
             }
         }
 
-        impl<H> $crate::client::ConstructModelLister<$client> for $name<H>
+        impl<H> $name<H>
         where
             H: $crate::http_client::HttpClientExt
                 + $crate::wasm_compat::WasmCompatSend
@@ -82,10 +82,9 @@ macro_rules! impl_model_lister {
                 + Clone
                 + 'static,
         {
-            fn construct(client: &$client) -> Self {
-                Self {
-                    client: client.clone(),
-                }
+            /// Build the lister over `client`.
+            pub fn new(client: $client) -> Self {
+                Self { client }
             }
         }
     };

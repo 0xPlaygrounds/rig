@@ -134,15 +134,6 @@ where
     }
 }
 
-impl<C> crate::client::ConstructTranscriptionModel<C> for OpenAiTranscriptionModel<C>
-where
-    C: OpenAiTranscriptionClient + 'static,
-{
-    fn construct(client: &C, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 /// The client-plus-model wrapper behind each provider's public
 /// `TranscriptionModel` alias. Only the transcription conversation itself is
 /// provider-specific, so the storage and constructor live here once; each

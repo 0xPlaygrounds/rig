@@ -1,4 +1,4 @@
-use super::client::HuggingFaceExt;
+use super::client::HuggingFace;
 use crate::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
@@ -35,9 +35,9 @@ pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
 
 /// Huggingface completion model, driven by the shared OpenAI Chat Completions
 /// path. The sub-provider's completion endpoint and model-identifier mapping
-/// are applied by [`HuggingFaceExt`]'s `OpenAICompatibleProvider` impl.
+/// are applied by [`HuggingFace`]'s `OpenAICompatibleProvider` impl.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<HuggingFaceExt, H>;
+    openai::completion::GenericCompletionModel<HuggingFace, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;

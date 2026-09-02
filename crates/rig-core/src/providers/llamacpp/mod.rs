@@ -22,7 +22,7 @@
 //! [`Client::from_url_with`] and the builder's `base_url` take the server root
 //! (`http://localhost:8080`); the `/v1` prefix is this provider's business, not
 //! the caller's. Passing a URL that already ends in `/v1` is also accepted and
-//! does not double up — see [`LlamacppExt`]'s
+//! does not double up — see [`Llamacpp`]'s
 //! [`Provider::build_uri`](crate::client::Provider::build_uri) implementation.
 //!
 //! # Authentication
@@ -84,9 +84,7 @@ pub mod completion;
 pub mod embedding;
 pub mod rerank;
 
-pub use client::{
-    Client, ClientBuilder, LlamacppApiKey, LlamacppBuilder, LlamacppExt, LlamacppModelLister,
-};
+pub use client::{Client, ClientBuilder, Llamacpp, LlamacppApiKey, LlamacppModelLister};
 pub use completion::{CompletionModel, CompletionResponse, LLAMA_CPP, Timings};
 pub use embedding::EmbeddingModel;
 pub use rerank::RerankModel;

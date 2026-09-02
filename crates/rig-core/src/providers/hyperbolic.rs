@@ -13,7 +13,12 @@
 //! ```
 
 use crate::client::BearerAuth;
-use crate::client::{self, DebugExt, Provider};
+#[cfg(feature = "audio")]
+use crate::client::HasAudioGeneration;
+#[cfg(feature = "image")]
+use crate::client::HasImageGeneration;
+use crate::client::{self, HasCompletion, ModelTransport, Provider, ProviderClientResult};
+use crate::http_client::{self, HttpClientExt};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -21,28 +26,75 @@ use crate::client::{self, DebugExt, Provider};
 const HYPERBOLIC_API_BASE_URL: &str = "https://api.hyperbolic.xyz";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct HyperbolicExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct HyperbolicBuilder;
-
+pub struct Hyperbolic;
 type HyperbolicApiKey = BearerAuth;
 
-impl Provider for HyperbolicExt {
-    type Builder = HyperbolicBuilder;
-
+impl Provider for Hyperbolic {
+    const NAME: &'static str = "hyperbolic";
+    const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = HyperbolicApiKey;
+    type Config = ();
+    type EnvInput = HyperbolicApiKey;
+
+    fn build(_: (), _: &HyperbolicApiKey) -> http_client::Result<Self> {
+        Ok(Hyperbolic)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("HYPERBOLIC_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(
+        input: HyperbolicApiKey,
+        http: H,
+    ) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    HyperbolicExt,
-    completion = CompletionModel<H>,
-    image_generation = ImageGenerationModel<H>,
-    audio_generation = AudioGenerationModel<H>,
-);
+impl HasCompletion for Hyperbolic {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for HyperbolicExt {}
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for HyperbolicExt {
+#[cfg(feature = "image")]
+impl HasImageGeneration for Hyperbolic {
+    type Model<H>
+        = ImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        ImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for Hyperbolic {
+    type Model<H>
+        = AudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        AudioGenerationModel::new(client.clone(), model)
+    }
+}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbolic {
     const PROVIDER_NAME: &'static str = "hyperbolic";
 
     // Hyperbolic's structured-output support is unverified; keep the
@@ -82,21 +134,8 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
     }
 }
 
-client::impl_default_provider_builder!(
-    HyperbolicBuilder => HyperbolicExt,
-    api_key = HyperbolicApiKey,
-    base_url = HYPERBOLIC_API_BASE_URL,
-);
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<HyperbolicExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
-
-client::impl_provider_from_env!(
-    HyperbolicExt,
-    input = HyperbolicApiKey,
-    api_key_env = "HYPERBOLIC_API_KEY",
-);
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Hyperbolic, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Hyperbolic, H>;
 
 #[cfg(feature = "audio")]
 use crate::providers::openai::client::ApiResponse;
@@ -132,7 +171,7 @@ pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
 /// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    crate::providers::openai::completion::GenericCompletionModel<HyperbolicExt, H>;
+    crate::providers::openai::completion::GenericCompletionModel<Hyperbolic, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = crate::providers::openai::CompletionResponse;
@@ -147,7 +186,7 @@ pub use image_generation::*;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
-    use super::HyperbolicExt;
+    use super::Hyperbolic;
     use crate::image_generation;
     use crate::image_generation::{
         ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
@@ -169,7 +208,7 @@ mod image_generation {
 
     /// Hyperbolic image generation model.
     pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
-        GenericImageGenerationModel<HyperbolicExt, T>;
+        GenericImageGenerationModel<Hyperbolic, T>;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Image {
@@ -198,7 +237,7 @@ mod image_generation {
         }
     }
 
-    impl JsonImageGenerationProvider for HyperbolicExt {
+    impl JsonImageGenerationProvider for Hyperbolic {
         const IMAGE_GENERATION_PATH: &'static str = "/v1/image/generation";
         const PROVIDER_NAME: &'static str = "hyperbolic";
         type Response = ImageGenerationResponse;
@@ -248,6 +287,17 @@ mod audio_generation {
     pub struct AudioGenerationModel<T = crate::http_client::BoxedHttpClient> {
         client: Client<T>,
         pub language: String,
+    }
+
+    impl<T> AudioGenerationModel<T> {
+        /// Hyperbolic addresses its TTS endpoint by language rather than by
+        /// model, so the "model" identifier a client is asked for is the language.
+        pub fn new(client: Client<T>, language: impl Into<String>) -> Self {
+            Self {
+                client,
+                language: language.into(),
+            }
+        }
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -341,18 +391,6 @@ mod audio_generation {
                 },
             )
             .await
-        }
-    }
-
-    impl<T> crate::client::ConstructAudioGenerationModel<Client<T>> for AudioGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + crate::wasm_compat::WasmCompatSend + 'static,
-    {
-        fn construct(client: &Client<T>, language: String) -> Self {
-            Self {
-                client: client.clone(),
-                language,
-            }
         }
     }
 }

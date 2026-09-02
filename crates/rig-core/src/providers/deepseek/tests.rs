@@ -15,7 +15,7 @@ use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
 /// does, threading DeepSeek's own descriptor name through the conversion.
 fn normalized(response: CompletionResponse) -> crate::completion::CompletionResponse {
     response
-        .normalize(DeepSeekExt::PROVIDER_NAME)
+        .normalize(DeepSeek::PROVIDER_NAME)
         .expect("DeepSeek response should convert")
 }
 
@@ -25,13 +25,13 @@ fn finalized_body(request: crate::completion::CompletionRequest) -> serde_json::
         request,
         strict_tools: false,
         tool_result_array_content: false,
-        supports_response_format: DeepSeekExt::SUPPORTS_RESPONSE_FORMAT,
+        supports_response_format: DeepSeek::SUPPORTS_RESPONSE_FORMAT,
         supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request should convert");
     let mut body = serde_json::to_value(request).expect("request should serialize");
-    DeepSeekExt
+    DeepSeek
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
     body
@@ -174,7 +174,7 @@ fn deepseek_finalize_joins_user_parts_with_newline_and_concats_assistant_parts()
         ]
     });
 
-    DeepSeekExt
+    DeepSeek
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
 
@@ -197,7 +197,7 @@ fn deepseek_finalize_adds_tool_call_index_to_assistant_history() {
         }]
     });
 
-    DeepSeekExt
+    DeepSeek
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
 

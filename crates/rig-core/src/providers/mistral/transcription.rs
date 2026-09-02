@@ -6,7 +6,6 @@ use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::transcription::request_id_from_headers;
 use crate::providers::internal::transcription::{TranscriptionFields, transcription_form};
-use crate::providers::mistral::Client;
 use crate::transcription::{self, NormalizeTranscriptionResponse, TranscriptionError};
 use crate::wasm_compat::WasmCompatSend;
 
@@ -100,7 +99,7 @@ impl NormalizeTranscriptionResponse for MistralTranscriptionResponse {
 
 pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
-        crate::providers::mistral::client::MistralExt,
+        crate::providers::mistral::client::Mistral,
         T,
     >;
 
@@ -154,7 +153,7 @@ where
         let status = parts.status;
         let provider_request_id = request_id_from_headers(
             &parts.headers,
-            <super::client::MistralExt as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+            <super::client::Mistral as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
         );
         let response_bytes = body.await?;
 
@@ -198,15 +197,6 @@ where
             },
         )
         .await
-    }
-}
-
-impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }
 

@@ -35,7 +35,7 @@ fn perplexity_finalize_flattens_text_only_content_arrays() {
         ]
     });
 
-    PerplexityExt
+    Perplexity
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
 
@@ -74,9 +74,9 @@ fn perplexity_drops_tool_choice_instead_of_erroring() {
         request,
         strict_tools: false,
         tool_result_array_content: false,
-        supports_response_format: PerplexityExt::SUPPORTS_RESPONSE_FORMAT,
+        supports_response_format: Perplexity::SUPPORTS_RESPONSE_FORMAT,
         supports_image_tool_results: false,
-        supports_tools: PerplexityExt::SUPPORTS_TOOLS,
+        supports_tools: Perplexity::SUPPORTS_TOOLS,
     })
     .expect("unsupported tools should be dropped, not an error");
 
@@ -103,7 +103,7 @@ fn perplexity_finalize_strips_tool_history_and_preserves_alternation() {
         ]
     });
 
-    PerplexityExt
+    Perplexity
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
 
@@ -137,12 +137,12 @@ fn perplexity_prepare_request_drops_tools() {
         request,
         strict_tools: false,
         tool_result_array_content: false,
-        supports_response_format: PerplexityExt::SUPPORTS_RESPONSE_FORMAT,
+        supports_response_format: Perplexity::SUPPORTS_RESPONSE_FORMAT,
         supports_image_tool_results: false,
         supports_tools: false,
     })
     .expect("request should convert");
-    PerplexityExt
+    Perplexity
         .prepare_request(&mut request)
         .expect("prepare_request should succeed");
 

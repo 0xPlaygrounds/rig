@@ -1,6 +1,5 @@
 use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
 use rig_core::{
-    client::Nothing,
     embeddings::{Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse},
     vector_store::{VectorStoreIndexDyn, request::Filter},
 };
@@ -33,12 +32,6 @@ impl EmbeddingModel for MockEmbeddingModel {
                 .collect(),
             "mock",
         ))
-    }
-}
-
-impl rig_core::client::ConstructEmbeddingModel<Nothing> for MockEmbeddingModel {
-    fn construct(_: &Nothing, _: String, _: Option<usize>) -> Self {
-        Self
     }
 }
 

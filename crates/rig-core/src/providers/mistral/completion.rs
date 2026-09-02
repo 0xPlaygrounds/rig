@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::client::{MistralExt, Usage};
+use super::client::{Mistral, Usage};
 use crate::providers::openai;
 use crate::{
     completion::{self, CompletionError},
@@ -21,7 +21,7 @@ pub const MISTRAL_SMALL: &str = "mistral-small-latest";
 
 /// Mistral completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<MistralExt, H>;
+    openai::completion::GenericCompletionModel<Mistral, H>;
 
 /// Mistral's provider-native terminal streaming record: the value carried by
 /// the final item of the stream returned by `CompletionModel::raw_stream`.

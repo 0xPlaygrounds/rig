@@ -197,16 +197,6 @@ where
     }
 }
 
-impl<T> crate::client::ConstructCompletionModel<InteractionsClient<T>>
-    for InteractionsCompletionModel<T>
-where
-    InteractionsClient<T>: Clone,
-{
-    fn construct(client: &InteractionsClient<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 impl<T> InteractionsClient<T>
 where
     T: HttpClientExt + Clone + 'static,
@@ -256,7 +246,7 @@ where
         request.stream = Some(true);
         let body = serde_json::to_vec(&request)?;
         let request = self
-            .post_sse("/v1beta/interactions")?
+            .post("/v1beta/interactions?alt=sse")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
@@ -272,7 +262,7 @@ where
     ) -> Result<streaming::InteractionEventStream, CompletionError> {
         let path = build_interaction_stream_path(interaction_id.as_ref(), last_event_id);
         let request = self
-            .get_sse(path)?
+            .get(format!("{path}&alt=sse"))?
             .body(Vec::new())
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 

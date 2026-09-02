@@ -1,4 +1,4 @@
-use super::client::MistralExt;
+use super::client::Mistral;
 use crate::{
     embeddings::EmbeddingError,
     providers::openai::embedding::{
@@ -19,7 +19,7 @@ pub const MAX_DOCUMENTS: usize = 256;
 /// is left to the caller's `dimensions`.
 const MISTRAL_EMBED_NDIMS: usize = 1024;
 
-impl OpenAIEmbeddingsCompatible for MistralExt {
+impl OpenAIEmbeddingsCompatible for Mistral {
     const PROVIDER_NAME: &'static str = "mistral";
     // Mistral reports its transport id on every response, embeddings
     // included; inheriting the trait's `None` default silently dropped it
@@ -77,7 +77,7 @@ impl OpenAIEmbeddingsCompatible for MistralExt {
 }
 
 pub type EmbeddingModel<H = crate::http_client::BoxedHttpClient> =
-    GenericEmbeddingModel<MistralExt, H>;
+    GenericEmbeddingModel<Mistral, H>;
 
 #[cfg(test)]
 mod tests;

@@ -1,5 +1,4 @@
 use crate::http_client::HttpClientExt;
-use crate::providers::huggingface::Client;
 use crate::providers::huggingface::completion::ApiResponse;
 use crate::providers::internal::transcription::send_json_transcription;
 use crate::transcription;
@@ -18,7 +17,7 @@ pub use crate::providers::openai::TranscriptionResponse;
 
 pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
-        crate::providers::huggingface::client::HuggingFaceExt,
+        crate::providers::huggingface::client::HuggingFace,
         T,
     >;
 
@@ -101,15 +100,6 @@ where
             },
         )
         .await
-    }
-}
-
-impl<T> crate::client::ConstructTranscriptionModel<Client<T>> for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSync + 'static,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        TranscriptionModel::new(client.clone(), model)
     }
 }
 

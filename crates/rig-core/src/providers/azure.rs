@@ -24,8 +24,15 @@
 
 use std::fmt::Debug;
 
-use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder};
-use crate::http_client::{self, HttpClientExt, bearer_auth_header};
+#[cfg(feature = "audio")]
+use crate::client::HasAudioGeneration;
+#[cfg(feature = "image")]
+use crate::client::HasImageGeneration;
+use crate::client::{
+    self, ApiKey, HasCompletion, HasEmbeddings, HasTranscription, ModelTransport, Provider,
+    ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 use crate::providers::openai;
 // ================================================================
@@ -35,36 +42,27 @@ use crate::providers::openai;
 const DEFAULT_API_VERSION: &str = "2024-10-21";
 const DEFAULT_AUDIO_API_VERSION: &str = "2025-04-01-preview";
 
+/// The Azure OpenAI provider: a resource endpoint plus the API versions its
+/// deployments are addressed with.
 #[derive(Debug, Clone)]
-pub struct AzureExt {
+pub struct Azure {
     endpoint: String,
     api_version: String,
+    // Only the text-to-speech route reads it, and that route is feature-gated.
+    #[cfg_attr(not(feature = "audio"), allow(dead_code))]
     audio_api_version: String,
 }
 
-impl DebugExt for AzureExt {
-    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn std::fmt::Debug)> {
-        [
-            ("endpoint", (&self.endpoint as &dyn Debug)),
-            ("api_version", (&self.api_version as &dyn Debug)),
-            ("audio_api_version", (&self.audio_api_version as &dyn Debug)),
-        ]
-        .into_iter()
-    }
-}
-
-// TODO: @FayCarsons - this should be a type-safe builder,
-// but that would require extending the `ProviderBuilder`
-// to have some notion of complete vs incomplete states in a
-// given extension builder
+/// Builder settings for [`Azure`]. The endpoint has no default and must be
+/// set with [`ClientBuilder::azure_endpoint`] before the client is built.
 #[derive(Debug, Clone)]
-pub struct AzureExtBuilder {
+pub struct AzureConfig {
     endpoint: Option<String>,
     api_version: String,
     audio_api_version: String,
 }
 
-impl Default for AzureExtBuilder {
+impl Default for AzureConfig {
     fn default() -> Self {
         Self {
             endpoint: None,
@@ -74,50 +72,28 @@ impl Default for AzureExtBuilder {
     }
 }
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<AzureExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Azure, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Azure, H>;
 
-impl Provider for AzureExt {
-    type Builder = AzureExtBuilder;
-
+impl Provider for Azure {
+    const NAME: &'static str = "azure.openai";
+    // Blank so callers' absolute deployment URLs pass through `build_uri` untouched.
+    const BASE_URL: &'static str = "";
     /// Verifying Azure auth without consuming tokens is not supported
     const VERIFY_PATH: &'static str = "";
-}
-
-client::impl_capabilities!(
-    AzureExt,
-    completion = CompletionModel<H>,
-    embeddings = EmbeddingModel<H>,
-    transcription = TranscriptionModel<H>,
-    image_generation = ImageGenerationModel<H>,
-    audio_generation = AudioGenerationModel<H>,
-);
-
-impl ProviderBuilder for AzureExtBuilder {
-    type Extension<H>
-        = AzureExt
-    where
-        H: HttpClientExt;
     type ApiKey = AzureOpenAIAuth;
+    type Config = AzureConfig;
+    type EnvInput = AzureOpenAIClientParams;
 
-    const BASE_URL: &'static str = "";
-
-    fn build<H>(
-        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        let AzureExtBuilder {
+    fn build(config: AzureConfig, _: &AzureOpenAIAuth) -> http_client::Result<Self> {
+        let AzureConfig {
             endpoint,
             api_version,
             audio_api_version,
-            ..
-        } = builder.ext().clone();
+        } = config;
 
         match endpoint {
-            Some(endpoint) => Ok(AzureExt {
+            Some(endpoint) => Ok(Azure {
                 endpoint,
                 api_version,
                 audio_api_version,
@@ -128,32 +104,117 @@ impl ProviderBuilder for AzureExtBuilder {
         }
     }
 
-    fn finish<H>(
-        &self,
-        mut builder: client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, Self::ApiKey, H>> {
-        use AzureOpenAIAuth::*;
+    /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        let auth = if let Some(api_key) = crate::client::optional_env_var("AZURE_API_KEY")? {
+            AzureOpenAIAuth::ApiKey(api_key)
+        } else if let Some(token) = crate::client::optional_env_var("AZURE_TOKEN")? {
+            AzureOpenAIAuth::Token(token)
+        } else {
+            return Err(crate::client::ProviderClientError::InvalidConfiguration(
+                "either `AZURE_API_KEY` or `AZURE_TOKEN` must be set",
+            ));
+        };
 
-        let auth = builder.get_api_key().clone();
+        let api_version = crate::client::required_env_var("AZURE_API_VERSION")?;
+        let azure_endpoint = crate::client::required_env_var("AZURE_ENDPOINT")?;
 
-        match auth {
-            Token(token) => bearer_auth_header(builder.headers_mut(), token.as_str())?,
-            ApiKey(key) => {
-                let k = http::HeaderName::from_static("api-key");
-                let v = http::HeaderValue::from_str(key.as_str())?;
+        Client::builder()
+            .api_key(auth)
+            .azure_endpoint(azure_endpoint)
+            .api_version(&api_version)
+            .http_client(http)
+            .build()
+    }
 
-                builder.headers_mut().insert(k, v);
-            }
-        }
+    fn from_val<H: HttpClientExt>(
+        AzureOpenAIClientParams {
+            api_key,
+            version,
+            header,
+        }: AzureOpenAIClientParams,
+        http: H,
+    ) -> ProviderClientResult<Client<H>> {
+        Client::builder()
+            .api_key(AzureOpenAIAuth::ApiKey(api_key))
+            .azure_endpoint(header)
+            .api_version(&version)
+            .http_client(http)
+            .build()
+    }
+}
 
-        Ok(builder)
+impl HasCompletion for Azure {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasEmbeddings for Azure {
+    type Model<H>
+        = EmbeddingModel<H>
+    where
+        H: ModelTransport;
+
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasTranscription for Azure {
+    type Model<H>
+        = TranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "image")]
+impl HasImageGeneration for Azure {
+    type Model<H>
+        = ImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        ImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for Azure {
+    type Model<H>
+        = AudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        AudioGenerationModel::new(client.clone(), model)
     }
 }
 
 impl<H> ClientBuilder<H> {
     /// API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
     pub fn api_version(mut self, api_version: impl Into<String>) -> Self {
-        self.ext_mut().api_version = api_version.into();
+        self.config_mut().api_version = api_version.into();
 
         self
     }
@@ -163,26 +224,16 @@ impl<H> ClientBuilder<H> {
     /// This defaults to `2025-04-01-preview`, the first deployment-scoped
     /// Azure API release that exposes text-to-speech.
     pub fn audio_api_version(mut self, api_version: impl Into<String>) -> Self {
-        self.ext_mut().audio_api_version = api_version.into();
+        self.config_mut().audio_api_version = api_version.into();
 
         self
     }
-}
 
-impl<H> client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H> {
     /// Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn azure_endpoint(self, endpoint: String) -> ClientBuilder<H> {
-        self.over_ext(
-            |AzureExtBuilder {
-                 api_version,
-                 audio_api_version,
-                 ..
-             }| AzureExtBuilder {
-                endpoint: Some(endpoint),
-                api_version,
-                audio_api_version,
-            },
-        )
+    pub fn azure_endpoint(mut self, endpoint: String) -> Self {
+        self.config_mut().endpoint = Some(endpoint);
+
+        self
     }
 }
 
@@ -194,7 +245,16 @@ pub enum AzureOpenAIAuth {
     Token(String),
 }
 
-impl ApiKey for AzureOpenAIAuth {}
+impl ApiKey for AzureOpenAIAuth {
+    fn into_header(self) -> Option<http_client::Result<(http::HeaderName, http::HeaderValue)>> {
+        Some(match self {
+            Self::Token(token) => http_client::make_auth_header(token),
+            Self::ApiKey(key) => http::HeaderValue::from_str(&key)
+                .map(|value| (http::HeaderName::from_static("api-key"), value))
+                .map_err(Into::into),
+        })
+    }
+}
 
 impl std::fmt::Debug for AzureOpenAIAuth {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -219,11 +279,11 @@ where
     T: HttpClientExt,
 {
     fn endpoint(&self) -> &str {
-        &self.ext().endpoint
+        &self.provider().endpoint
     }
 
     fn api_version(&self) -> &str {
-        &self.ext().api_version
+        &self.provider().api_version
     }
 
     #[cfg(feature = "audio")]
@@ -235,7 +295,7 @@ where
             "{}/openai/deployments/{}/audio/speech?api-version={}",
             self.endpoint(),
             deployment_id.trim_start_matches('/'),
-            self.ext().audio_api_version
+            self.provider().audio_api_version
         );
 
         self.post(url)
@@ -274,62 +334,6 @@ pub struct AzureOpenAIClientParams {
     header: String,
 }
 
-impl crate::client::ProviderFromEnv for AzureExt {
-    type Input = AzureOpenAIClientParams;
-    /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    fn from_env_with<H>(
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        let auth = if let Some(api_key) = crate::client::optional_env_var("AZURE_API_KEY")? {
-            AzureOpenAIAuth::ApiKey(api_key)
-        } else if let Some(token) = crate::client::optional_env_var("AZURE_TOKEN")? {
-            AzureOpenAIAuth::Token(token)
-        } else {
-            return Err(crate::client::ProviderClientError::InvalidConfiguration(
-                "either `AZURE_API_KEY` or `AZURE_TOKEN` must be set",
-            ));
-        };
-
-        let api_version = crate::client::required_env_var("AZURE_API_VERSION")?;
-        let azure_endpoint = crate::client::required_env_var("AZURE_ENDPOINT")?;
-
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(auth)
-            .azure_endpoint(azure_endpoint)
-            .api_version(&api_version)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
-    }
-
-    fn from_val_with<H>(
-        AzureOpenAIClientParams {
-            api_key,
-            version,
-            header,
-        }: Self::Input,
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        let auth = AzureOpenAIAuth::ApiKey(api_key);
-
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(auth)
-            .azure_endpoint(header)
-            .api_version(&version)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
-    }
-}
-
 // ================================================================
 // Azure OpenAI Embedding API
 // ================================================================
@@ -346,9 +350,9 @@ pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 /// `embedding_model` helpers) default unknown dimensions from the model
 /// identifier, exactly like OpenAI.
 pub type EmbeddingModel<T = crate::http_client::BoxedHttpClient> =
-    openai::embedding::GenericEmbeddingModel<AzureExt, T>;
+    openai::embedding::GenericEmbeddingModel<Azure, T>;
 
-impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
+impl openai::embedding::OpenAIEmbeddingsCompatible for Azure {
     const PROVIDER_NAME: &'static str = "azure.openai";
 
     // Azure addresses the deployment through the URL, so the request body
@@ -399,13 +403,13 @@ pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 /// Azure OpenAI completion model, driven by the shared OpenAI Chat Completions
 /// path. The deployment-scoped URL (including `api-version`) is produced by
 /// [`completion_path`](crate::providers::openai::completion::OpenAICompatibleProvider::completion_path)
-/// on [`AzureExt`], pinned to the deployment this model handle was created
+/// on [`Azure`], pinned to the deployment this model handle was created
 /// with (a per-request `model` override changes only the request body, as
 /// before the migration).
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<AzureExt, H>;
+    openai::completion::GenericCompletionModel<Azure, H>;
 
-impl openai::completion::OpenAICompatibleProvider for AzureExt {
+impl openai::completion::OpenAICompatibleProvider for Azure {
     const PROVIDER_NAME: &'static str = "azure.openai";
 
     type StreamingUsage = openai::Usage;
@@ -459,7 +463,7 @@ pub use image_generation::*;
 mod image_generation {
     use crate::http_client::HttpClientExt;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-    use crate::providers::azure::AzureExt;
+    use crate::providers::azure::Azure;
     use crate::providers::internal::image_generation::{
         GenericImageGenerationModel, JsonImageGenerationProvider,
     };
@@ -468,9 +472,9 @@ mod image_generation {
 
     /// Azure OpenAI image generation model; `model` identifies the deployment.
     pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
-        GenericImageGenerationModel<AzureExt, T>;
+        GenericImageGenerationModel<Azure, T>;
 
-    impl JsonImageGenerationProvider for AzureExt {
+    impl JsonImageGenerationProvider for Azure {
         const IMAGE_GENERATION_PATH: &'static str = "";
         const PROVIDER_NAME: &'static str = "azure.openai";
         type Response = ImageGenerationResponse;
@@ -509,7 +513,7 @@ pub use audio_generation::*;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 mod audio_generation {
-    use super::AzureExt;
+    use super::Azure;
     use crate::audio_generation::AudioGenerationError;
     use crate::http_client::HttpClientExt;
     use crate::providers::internal::audio_generation::{
@@ -518,9 +522,9 @@ mod audio_generation {
 
     /// Azure OpenAI audio generation model; `model` identifies the deployment.
     pub type AudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
-        GenericAudioGenerationModel<AzureExt, T>;
+        GenericAudioGenerationModel<Azure, T>;
 
-    impl RawAudioGenerationProvider for AzureExt {
+    impl RawAudioGenerationProvider for Azure {
         const AUDIO_GENERATION_PATH: &'static str = "";
         const PROVIDER_NAME: &'static str = "azure.openai";
 

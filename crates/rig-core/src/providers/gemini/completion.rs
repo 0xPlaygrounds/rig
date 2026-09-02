@@ -242,15 +242,6 @@ where
     }
 }
 
-impl<T> crate::client::ConstructCompletionModel<Client<T>> for CompletionModel<T>
-where
-    Client<T>: Clone,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {

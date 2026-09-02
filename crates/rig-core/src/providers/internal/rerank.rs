@@ -179,7 +179,7 @@ where
 
         let req = self
             .client
-            .post(self.client.ext().rerank_path())?
+            .post(self.client.provider().rerank_path())?
             .body(body)
             .map_err(|error| RerankError::HttpError(error.into()))?;
 
@@ -242,16 +242,5 @@ where
             },
         )
         .await
-    }
-}
-
-impl<Ext, H> crate::client::ConstructRerankModel<Client<Ext, H>> for GenericRerankModel<Ext, H>
-where
-    Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: JinaCompatibleRerank + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    H: WasmCompatSend + WasmCompatSync,
-{
-    fn construct(client: &Client<Ext, H>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }

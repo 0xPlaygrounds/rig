@@ -5,7 +5,7 @@
 
 use crate::providers::openai;
 
-use super::client::TogetherExt;
+use super::client::Together;
 
 // ================================================================
 // Together Completion Models
@@ -122,7 +122,7 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 
 /// Together AI completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<TogetherExt, H>;
+    openai::completion::GenericCompletionModel<Together, H>;
 
 #[cfg(test)]
 mod tests;

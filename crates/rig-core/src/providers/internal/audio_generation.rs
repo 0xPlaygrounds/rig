@@ -148,17 +148,6 @@ where
     }
 }
 
-impl<Ext, H> crate::client::ConstructAudioGenerationModel<Client<Ext, H>>
-    for GenericAudioGenerationModel<Ext, H>
-where
-    Ext: RawAudioGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    fn construct(client: &Client<Ext, H>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 /// Sends an audio generation request and returns the raw audio bytes plus the
 /// transport request id read from `request_id_header`, when the provider has
 /// one and the response carried it.

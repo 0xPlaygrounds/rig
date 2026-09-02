@@ -1,4 +1,7 @@
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::client::{
+    self, BearerAuth, HasCompletion, HasEmbeddings, ModelTransport, Provider, ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 
 // ================================================================
 // Together AI Client
@@ -6,25 +9,60 @@ use crate::client::{self, BearerAuth, DebugExt, Provider};
 const TOGETHER_AI_BASE_URL: &str = "https://api.together.xyz";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct TogetherExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct TogetherExtBuilder;
-
+pub struct Together;
 type TogetherApiKey = BearerAuth;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<TogetherExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<TogetherExtBuilder, TogetherApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Together, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Together, H>;
 
-impl Provider for TogetherExt {
-    type Builder = TogetherExtBuilder;
-
+impl Provider for Together {
+    const NAME: &'static str = "together";
+    const BASE_URL: &'static str = TOGETHER_AI_BASE_URL;
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = TogetherApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &TogetherApiKey) -> http_client::Result<Self> {
+        Ok(Together)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("TOGETHER_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl DebugExt for TogetherExt {}
+impl HasCompletion for Together {
+    type Model<H>
+        = super::CompletionModel<H>
+    where
+        H: ModelTransport;
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for TogetherExt {
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasEmbeddings for Together {
+    type Model<H>
+        = super::EmbeddingModel<H>
+    where
+        H: ModelTransport;
+
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        super::EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for Together {
     const PROVIDER_NAME: &'static str = "together";
 
     type StreamingUsage = crate::providers::openai::Usage;
@@ -40,24 +78,6 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Together
         "/v1/chat/completions".to_string()
     }
 }
-
-client::impl_capabilities!(
-    TogetherExt,
-    completion = super::CompletionModel<H>,
-    embeddings = super::EmbeddingModel<H>,
-);
-
-client::impl_default_provider_builder!(
-    TogetherExtBuilder => TogetherExt,
-    api_key = TogetherApiKey,
-    base_url = TOGETHER_AI_BASE_URL,
-);
-
-client::impl_provider_from_env!(
-    TogetherExt,
-    input = String,
-    api_key_env = "TOGETHER_API_KEY"
-);
 
 #[cfg(test)]
 mod tests;

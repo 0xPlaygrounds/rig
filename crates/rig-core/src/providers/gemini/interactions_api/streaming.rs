@@ -147,7 +147,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let req = self
             .client
-            .post_sse("/v1beta/interactions")?
+            .post("/v1beta/interactions?alt=sse")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;

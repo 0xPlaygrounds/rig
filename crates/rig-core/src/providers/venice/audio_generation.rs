@@ -7,7 +7,7 @@ use crate::json_utils::merge_inplace;
 use crate::providers::internal::audio_generation::{
     GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::providers::venice::VeniceExt;
+use crate::providers::venice::Venice;
 
 // ================================================================
 // Venice TTS API
@@ -26,9 +26,9 @@ const DEFAULT_VOICE: &str = "af_sky";
 
 /// Venice audio generation model.
 pub type AudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
-    GenericAudioGenerationModel<VeniceExt, T>;
+    GenericAudioGenerationModel<Venice, T>;
 
-impl RawAudioGenerationProvider for VeniceExt {
+impl RawAudioGenerationProvider for Venice {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
     const PROVIDER_NAME: &'static str = "venice";
 

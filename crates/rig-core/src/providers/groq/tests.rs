@@ -153,7 +153,7 @@ fn groq_prepare_request_merges_native_tools_into_compound_custom() {
     })
     .expect("request should convert");
 
-    super::GroqExt
+    super::Groq
         .prepare_request(&mut request)
         .expect("prepare_request should succeed");
 

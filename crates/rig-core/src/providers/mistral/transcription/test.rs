@@ -1,4 +1,5 @@
 use super::*;
+use crate::providers::mistral::Client;
 
 #[test]
 fn test_mistral_transcription_response_deserialize() {

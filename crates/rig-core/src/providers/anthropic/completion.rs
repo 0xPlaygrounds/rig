@@ -58,7 +58,7 @@ pub trait AnthropicCompatibleProvider: Provider {
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
 }
 
-impl AnthropicCompatibleProvider for super::client::AnthropicExt {
+impl AnthropicCompatibleProvider for super::client::Anthropic {
     const PROVIDER_NAME: &'static str = "anthropic";
 
     fn default_max_tokens(model: &str) -> Option<u64> {
@@ -1563,7 +1563,7 @@ pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> 
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    GenericCompletionModel<super::client::AnthropicExt, H>;
+    GenericCompletionModel<super::client::Anthropic, H>;
 
 impl<Ext, H> GenericCompletionModel<Ext, H>
 where
@@ -1774,7 +1774,7 @@ where
     }
 }
 
-impl<H> GenericCompletionModel<super::client::AnthropicExt, H>
+impl<H> GenericCompletionModel<super::client::Anthropic, H>
 where
     H: HttpClientExt,
 {
@@ -2899,7 +2899,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
-        Self::try_from_params::<super::client::AnthropicExt>(params, false)
+        Self::try_from_params::<super::client::Anthropic>(params, false)
     }
 }
 
@@ -3033,18 +3033,6 @@ where
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
-    }
-}
-
-impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
-    for GenericCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>: Clone,
-    H: HttpClientExt,
-    Ext: AnthropicCompatibleProvider + Clone + 'static,
-{
-    fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }
 

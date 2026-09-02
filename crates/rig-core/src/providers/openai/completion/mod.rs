@@ -1818,7 +1818,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     }
 }
 
-impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
+impl OpenAICompatibleProvider for super::OpenAICompletions {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
@@ -1915,7 +1915,7 @@ pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> 
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    GenericCompletionModel<super::OpenAICompletionsExt, H>;
+    GenericCompletionModel<super::OpenAICompletions, H>;
 
 impl<Ext, H> GenericCompletionModel<Ext, H> {
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
@@ -2345,7 +2345,7 @@ where
     /// override changes which endpoint answers, so it has to decide the
     /// spelling too.
     pub(crate) fn sends_modern_output_cap(&self, model: &str) -> bool {
-        self.client.ext().requires_modern_output_cap(model)
+        self.client.provider().requires_modern_output_cap(model)
     }
 }
 
@@ -2355,7 +2355,6 @@ where
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
         + OpenAICompatibleProvider
-        + crate::client::DebugExt
         + Clone
         + WasmCompatSend
         + WasmCompatSync
@@ -2407,12 +2406,12 @@ where
             tool_result_array_content: self.tool_result_array_content,
             prompt_caching: self.prompt_caching,
         };
-        let mut request = self.client.ext().build_completion_request(
+        let mut request = self.client.provider().build_completion_request(
             self.model.clone(),
             completion_request,
             options,
         )?;
-        self.client.ext().prepare_request(&mut request)?;
+        self.client.provider().prepare_request(&mut request)?;
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,
             &request.model,
@@ -2424,7 +2423,7 @@ where
         let modern_output_cap = self.sends_modern_output_cap(&request.model);
         let mut request_body = request_body(&request, modern_output_cap)?;
         self.client
-            .ext()
+            .provider()
             .finalize_request_body_with_options(&mut request_body, options)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -2435,7 +2434,7 @@ where
         let body = serde_json::to_vec(&request_body)?;
         // Deliberately the configured model, not the per-request override:
         // Azure's deployment URL is pinned to the model handle.
-        let path = self.client.ext().completion_path(&self.model);
+        let path = self.client.provider().completion_path(&self.model);
 
         let req = self
             .client
@@ -2466,7 +2465,6 @@ where
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
         + OpenAICompatibleProvider
-        + crate::client::DebugExt
         + Clone
         + WasmCompatSend
         + WasmCompatSync
@@ -2509,17 +2507,6 @@ where
         request: CoreCompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
-    }
-}
-
-impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
-    for GenericCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
-{
-    fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }
 

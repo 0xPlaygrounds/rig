@@ -245,12 +245,6 @@ impl EmbeddingModel for SlowFirstBatchModel {
     }
 }
 
-impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for SlowFirstBatchModel {
-    fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
-        Self::new()
-    }
-}
-
 /// A model whose batches finish in reverse submission order: batch `n`
 /// sleeps longer the earlier it was submitted.
 ///
@@ -300,12 +294,6 @@ impl EmbeddingModel for DescendingLatencyModel {
                 .collect(),
             "mock",
         ))
-    }
-}
-
-impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for DescendingLatencyModel {
-    fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
-        Self::new()
     }
 }
 
@@ -500,12 +488,6 @@ impl EmbeddingModel for OneAtATimeReversedLatency {
                 .collect(),
             "mock",
         ))
-    }
-}
-
-impl crate::client::ConstructEmbeddingModel<crate::client::Nothing> for OneAtATimeReversedLatency {
-    fn construct(_: &crate::client::Nothing, _: String, _: Option<usize>) -> Self {
-        Self
     }
 }
 

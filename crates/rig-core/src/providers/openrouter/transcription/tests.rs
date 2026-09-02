@@ -1,4 +1,5 @@
 use super::*;
+use crate::providers::openrouter::Client;
 
 #[test]
 fn test_infer_format_from_filename() {

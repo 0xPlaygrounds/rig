@@ -54,12 +54,12 @@ where
     }
 }
 
-impl<H> crate::client::ConstructModelLister<Client<H>> for AnthropicModelLister<H>
+impl<H> AnthropicModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
 {
-    fn construct(client: &Client<H>) -> Self {
-        let client = client.clone();
+    /// Build the lister over `client`.
+    pub fn new(client: Client<H>) -> Self {
         Self { client }
     }
 }

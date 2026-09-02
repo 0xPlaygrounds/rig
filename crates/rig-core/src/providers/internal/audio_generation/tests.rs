@@ -2,11 +2,31 @@ use super::*;
 use serde_json::json;
 
 /// The default body every provider inherits unless it overrides it.
+#[derive(Debug, Clone)]
 struct DefaultAudioExt;
 
 impl Provider for DefaultAudioExt {
-    type Builder = crate::providers::openai::OpenAICompletionsExtBuilder;
+    const NAME: &'static str = "test";
+    const BASE_URL: &'static str = "";
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = crate::client::Nothing;
+    type Config = ();
+    type EnvInput = crate::client::Nothing;
+
+    fn build(_: (), _: &crate::client::Nothing) -> crate::http_client::Result<Self> {
+        Ok(DefaultAudioExt)
+    }
+    fn from_env<H: crate::http_client::HttpClientExt>(
+        http: H,
+    ) -> crate::client::ProviderClientResult<Client<Self, H>> {
+        Client::new_with(crate::client::Nothing, http)
+    }
+    fn from_val<H: crate::http_client::HttpClientExt>(
+        _: crate::client::Nothing,
+        http: H,
+    ) -> crate::client::ProviderClientResult<Client<Self, H>> {
+        Client::new_with(crate::client::Nothing, http)
+    }
 }
 
 impl RawAudioGenerationProvider for DefaultAudioExt {

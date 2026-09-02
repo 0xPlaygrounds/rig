@@ -2966,9 +2966,3 @@ impl EmbeddingModel for TestEmbeddingModel {
         ))
     }
 }
-
-impl rig_core::client::ConstructEmbeddingModel<()> for TestEmbeddingModel {
-    fn construct(_: &(), _: String, _: Option<usize>) -> Self {
-        Self
-    }
-}

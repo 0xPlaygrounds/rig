@@ -243,7 +243,7 @@ fn finalize_relaxes_a_forced_tool_choice_beside_a_response_format() {
         "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
         "response_format": {"type": "json_schema", "json_schema": {"name": "Plan"}}
     });
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
     assert_eq!(body["tool_choice"], "auto");
@@ -260,7 +260,7 @@ fn finalize_relaxes_a_forced_tool_choice_beside_a_response_format() {
         "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
         "response_format": {"type": "json_object"}
     });
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
     assert_eq!(body["tool_choice"], "auto");
@@ -278,7 +278,7 @@ fn finalize_leaves_a_forced_tool_choice_alone_without_a_response_format() {
         "tool_choice": "required",
         "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}]
     });
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
     assert_eq!(body["tool_choice"], "any", "still just the dialect rename");
@@ -290,7 +290,7 @@ fn finalize_leaves_a_forced_tool_choice_alone_without_a_response_format() {
         "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
         "response_format": {"type": "json_object"}
     });
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
     assert_eq!(body["tool_choice"], "none", "`none` is already compatible");
@@ -302,7 +302,7 @@ fn finalize_leaves_a_forced_tool_choice_alone_without_a_response_format() {
         "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
         "response_format": {"type": "text"}
     });
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
     assert_eq!(
@@ -319,7 +319,7 @@ fn finalize_rewrites_required_tool_choice_to_any() {
         "tool_choice": "required"
     });
 
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
 
@@ -334,7 +334,7 @@ fn finalize_preserves_specific_function_tool_choice() {
         "tool_choice": {"type": "function", "function": {"name": "beta"}}
     });
 
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
 
@@ -367,7 +367,7 @@ fn finalize_flattens_assistant_history_and_adds_prefix() {
         ]
     });
 
-    MistralExt
+    Mistral
         .finalize_request_body(&mut body)
         .expect("finalize should succeed");
 
@@ -394,7 +394,7 @@ fn finalized_content(parts: serde_json::Value) -> Result<serde_json::Value, Comp
         "model": MISTRAL_SMALL,
         "messages": [{"role": "user", "content": parts}],
     });
-    MistralExt.finalize_request_body(&mut body)?;
+    Mistral.finalize_request_body(&mut body)?;
     Ok(body["messages"][0]["content"].clone())
 }
 

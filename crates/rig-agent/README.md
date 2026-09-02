@@ -12,7 +12,7 @@ Direct users import construction and prompting explicitly:
 
 ```rust,ignore
 use rig_agent::prelude::*;
-use rig_core::{client::ProviderClient, providers::openai};
+use rig_core::providers::openai;
 
 let client = openai::Client::from_env()?;
 let agent = client.agent(openai::GPT_5_2).build();

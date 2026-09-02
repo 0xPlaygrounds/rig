@@ -14,7 +14,11 @@
 
 use serde_json::Value;
 
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::client::{
+    self, BearerAuth, HasCompletion, HasModelListing, ModelTransport, Provider,
+    ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -29,18 +33,56 @@ use serde::{Deserialize, Serialize};
 const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct DeepSeekExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct DeepSeekExtBuilder;
-
+pub struct DeepSeek;
 type DeepSeekApiKey = BearerAuth;
 
-impl Provider for DeepSeekExt {
-    type Builder = DeepSeekExtBuilder;
+impl Provider for DeepSeek {
+    const NAME: &'static str = "deepseek";
+    const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/user/balance";
+    type ApiKey = DeepSeekApiKey;
+    type Config = ();
+    type EnvInput = DeepSeekApiKey;
+
+    fn build(_: (), _: &DeepSeekApiKey) -> http_client::Result<Self> {
+        Ok(DeepSeek)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("DEEPSEEK_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(
+        input: DeepSeekApiKey,
+        http: H,
+    ) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
+impl HasCompletion for DeepSeek {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for DeepSeek {
+    type Lister<H>
+        = DeepSeekModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        DeepSeekModelLister::new(client.clone())
+    }
+}
+
+impl openai::completion::OpenAICompatibleProvider for DeepSeek {
     const PROVIDER_NAME: &'static str = "deepseek";
 
     type StreamingUsage = Usage;
@@ -116,65 +158,18 @@ impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
     }
 }
 
-client::impl_capabilities!(
-    DeepSeekExt,
-    completion = CompletionModel<H>,
-    model_listing = DeepSeekModelLister<H>,
-);
-
-impl DebugExt for DeepSeekExt {}
-
-client::impl_default_provider_builder!(
-    DeepSeekExtBuilder => DeepSeekExt,
-    api_key = DeepSeekApiKey,
-    base_url = DEEPSEEK_API_BASE_URL,
-);
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<DeepSeekExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<DeepSeekExtBuilder, DeepSeekApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<DeepSeek, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<DeepSeek, H>;
 
 /// DeepSeek completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<DeepSeekExt, H>;
+    openai::completion::GenericCompletionModel<DeepSeek, H>;
 
 /// DeepSeek's provider-native terminal streaming record: the value carried by
 /// the final item of the stream returned by `CompletionModel::raw_stream`.
 /// Shared with the OpenAI Chat Completions path but carrying DeepSeek's own
 /// usage payload (cache hit/miss counters).
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
-
-impl crate::client::ProviderFromEnv for DeepSeekExt {
-    type Input = DeepSeekApiKey;
-    // If you prefer the environment variable approach:
-    fn from_env_with<H>(
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        let api_key = crate::client::required_env_var("DEEPSEEK_API_KEY")?;
-        let mut client_builder = crate::client::Client::<Self, crate::markers::Missing>::builder();
-        client_builder.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/json"),
-        );
-        let client_builder = client_builder.api_key(&api_key);
-        client_builder.http_client(http).build().map_err(Into::into)
-    }
-
-    fn from_val_with<H>(
-        input: Self::Input,
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        crate::client::Client::new_with(input, http).map_err(Into::into)
-    }
-}
 
 /// The response shape from the DeepSeek API
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -4,7 +4,7 @@
 //!
 //! If you'd like to switch back to the regular Completions API, you can do so by using the `.completions_api()` function - see below for an example:
 //! ```ignore
-//! use rig_core::client::{CompletionClient, ProviderClient};
+//! use rig_core::client::CompletionClient;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let openai_client = rig_core::providers::openai::Client::from_env()?;
@@ -1499,7 +1499,7 @@ pub struct GenericResponsesCompletionModel<Ext, H = crate::http_client::BoxedHtt
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
 pub type ResponsesCompletionModel<H = crate::http_client::BoxedHttpClient> =
-    GenericResponsesCompletionModel<super::OpenAIResponsesExt, H>;
+    GenericResponsesCompletionModel<super::OpenAIResponses, H>;
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
@@ -1512,7 +1512,7 @@ where
 
     /// Creates a new [`ResponsesCompletionModel`].
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
-        let system_instructions_placement = client.ext().system_instructions_placement();
+        let system_instructions_placement = client.provider().system_instructions_placement();
         Self {
             client,
             model: model.into(),
@@ -1586,7 +1586,7 @@ where
         request: crate::completion::CompletionRequest,
         stream: bool,
     ) -> Result<(String, Value), CompletionError> {
-        self.client.ext().create_responses_request(
+        self.client.provider().create_responses_request(
             self.model.clone(),
             request,
             &self.tools,
@@ -1623,7 +1623,7 @@ where
     }
 }
 
-impl<T> GenericResponsesCompletionModel<super::OpenAIResponsesExt, T>
+impl<T> GenericResponsesCompletionModel<super::OpenAIResponses, T>
 where
     T: HttpClientExt + Clone + 'static,
 {
@@ -2499,7 +2499,6 @@ where
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
         + ResponsesProviderExt
-        + crate::client::DebugExt
         + Clone
         + WasmCompatSend
         + WasmCompatSync
@@ -2593,7 +2592,6 @@ where
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
         + ResponsesProviderExt
-        + crate::client::DebugExt
         + Clone
         + WasmCompatSend
         + WasmCompatSync
@@ -2623,17 +2621,6 @@ where
         request: crate::completion::CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericResponsesCompletionModel::stream(self, request).await
-    }
-}
-
-impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
-    for GenericResponsesCompletionModel<Ext, H>
-where
-    Ext: crate::client::Provider + ResponsesProviderExt + Clone,
-    H: Clone,
-{
-    fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }
 

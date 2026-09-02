@@ -1102,7 +1102,7 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
 /// The predicate is what the provider extension actually consults.
 #[test]
 fn openai_extension_asks_for_the_modern_cap_only_on_reasoning_models() {
-    let ext = super::super::OpenAICompletionsExt::default();
+    let ext = super::super::OpenAICompletions::default();
 
     assert!(ext.requires_modern_output_cap("gpt-5-nano"));
     assert!(!ext.requires_modern_output_cap(GPT_4O_MINI));
@@ -1704,7 +1704,7 @@ fn deserialize_llama_cpp_response_with_reasoning_content() {
 
     let response: completion::CompletionResponse =
         response
-            .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
             .unwrap();
 
     assert_eq!(response.choice.len(), 1);
@@ -2056,7 +2056,7 @@ mod raw_capture {
 
         // The capture and the normalized response tell one story.
         let renormalized = typed
-            .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
             .expect("re-normalize the capture")
             .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
         assert_eq!(response.identity(), renormalized.identity());
@@ -2087,7 +2087,7 @@ mod raw_capture {
             .expect("typed route");
         assert_eq!(id.as_deref(), Some(REQUEST_ID));
         let reassembled = raw
-            .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
             .expect("normalize")
             .with_optional_provider_request_id(id);
 

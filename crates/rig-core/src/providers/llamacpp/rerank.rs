@@ -24,7 +24,7 @@
 
 use crate::providers::internal::rerank::{GenericRerankModel, JinaCompatibleRerank};
 
-impl JinaCompatibleRerank for super::client::LlamacppExt {
+impl JinaCompatibleRerank for super::client::Llamacpp {
     const PROVIDER_NAME: &'static str = "llamacpp";
 
     // `llama-server` posts one task per document and waits for all of them,
@@ -35,7 +35,7 @@ impl JinaCompatibleRerank for super::client::LlamacppExt {
     // rather than to a number the server does not actually enforce.
     const MAX_DOCUMENTS: usize = 1024;
 
-    // The `/v1` prefix comes from `LlamacppExt::build_uri`, so the bare path
+    // The `/v1` prefix comes from `Llamacpp::build_uri`, so the bare path
     // here resolves to `/v1/rerank`.
     fn rerank_path(&self) -> String {
         "/rerank".to_string()
@@ -44,4 +44,4 @@ impl JinaCompatibleRerank for super::client::LlamacppExt {
 
 /// llama.cpp rerank model, driven by the shared Jina-compatible rerank path.
 pub type RerankModel<H = crate::http_client::BoxedHttpClient> =
-    GenericRerankModel<super::client::LlamacppExt, H>;
+    GenericRerankModel<super::client::Llamacpp, H>;

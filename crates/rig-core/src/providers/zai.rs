@@ -50,11 +50,10 @@ pub const GLM_4_5V: &str = "glm-4.5v";
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
 
 impl_dual_dialect_provider!(
-    ext = ZAiExt,
-    builder = ZAiBuilder,
-    anthropic_ext = ZAiAnthropicExt,
-    anthropic_builder = ZAiAnthropicBuilder,
+    provider = ZAi,
+    anthropic_provider = ZAiAnthropic,
     client_input = client::BearerAuth,
+    name = "zai",
     api_key_env = "ZAI_API_KEY",
     base_url = GENERAL_API_BASE_URL,
     base_url_env = "ZAI_API_BASE",
@@ -63,12 +62,21 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "ZAI_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(
-    ZAiExt,
-    completion = super::openai::completion::GenericCompletionModel<ZAiExt, H>,
-);
+impl client::HasCompletion for ZAi {
+    type Model<H>
+        = super::openai::completion::GenericCompletionModel<ZAi, H>
+    where
+        H: client::ModelTransport;
 
-impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
+    fn completion_model<H: client::ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl super::openai::completion::OpenAICompatibleProvider for ZAi {
     const PROVIDER_NAME: &'static str = "zai";
 
     type StreamingUsage = super::openai::Usage;

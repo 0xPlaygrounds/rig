@@ -1,5 +1,6 @@
 use super::*;
 use crate::client::transcription::TranscriptionClient;
+use crate::providers::huggingface::Client;
 use crate::test_utils::RecordingHttpClient;
 use crate::transcription::TranscriptionModel as _;
 

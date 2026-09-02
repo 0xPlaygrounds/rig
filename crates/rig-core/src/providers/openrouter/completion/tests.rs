@@ -6,7 +6,7 @@ use serde_json::json;
 #[test]
 fn openrouter_client_constructs_a_completion_model() {
     // Also a compile guard: it instantiates the shared chat-completions
-    // model over `OpenRouterExt`, which is what proves this provider's
+    // model over `OpenRouter`, which is what proves this provider's
     // response conversion satisfies the normalization bound.
     use crate::client::CompletionClient;
 
@@ -2036,7 +2036,7 @@ fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
         "index": 0,
         "data": "enc_blob",
     });
-    let (id, provider_id, content) = OpenRouterExt
+    let (id, provider_id, content) = OpenRouter
         .streaming_detail_reasoning(&detail)
         .expect("encrypted detail should map to reasoning");
     // 84a43e9e #4, closed: an id-less detail keys accumulation by a

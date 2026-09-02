@@ -4,7 +4,7 @@
 //! (*"Image URLs are only allowed for messages with role 'user'"*) and the
 //! GPT-5 family answers 200 with the image discarded, the model then describing
 //! what it never received. llama.cpp does honour it, which is why
-//! `LlamacppExt::SUPPORTS_IMAGE_TOOL_RESULTS` is `true` and the shared
+//! `Llamacpp::SUPPORTS_IMAGE_TOOL_RESULTS` is `true` and the shared
 //! conversion is gated rather than hard-coded.
 //!
 //! **Server**: the `--mmproj` vision configuration —

@@ -1,9 +1,16 @@
 use super::responses_api::{
     ConfigurableSystemInstructionsPlacement, ResponsesProviderExt, SystemInstructionsPlacement,
 };
+#[cfg(feature = "audio")]
+use crate::client::HasAudioGeneration;
+#[cfg(feature = "image")]
+use crate::client::HasImageGeneration;
 use crate::{
-    client::{self, BearerAuth, DebugExt, Provider},
-    http_client::HttpClientExt,
+    client::{
+        self, BearerAuth, HasCompletion, HasEmbeddings, HasModelListing, HasTranscription,
+        ModelTransport, Provider, ProviderClientResult,
+    },
+    http_client::{self, HttpClientExt},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
@@ -18,92 +25,247 @@ const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 // OpenAI Responses API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExt {
+pub struct OpenAIResponses {
     pub(crate) system_instructions_placement: SystemInstructionsPlacement,
 }
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExtBuilder;
 
 // ================================================================
 // OpenAI Completions API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAICompletionsExt {
+pub struct OpenAICompletions {
     /// Carried through API switches so that a placement configured on a
     /// Responses client survives `completions_api()` → `responses_api()`
     /// round trips. Not used by Chat Completions requests themselves.
     pub(crate) system_instructions_placement: SystemInstructionsPlacement,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAICompletionsExtBuilder;
-
 type OpenAIApiKey = BearerAuth;
 
 // Responses API client (default)
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OpenAIResponsesExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OpenAIResponses, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<OpenAIResponses, H>;
 
 // Completions API client
 pub type CompletionsClient<H = crate::http_client::BoxedHttpClient> =
-    client::Client<OpenAICompletionsExt, H>;
+    client::Client<OpenAICompletions, H>;
 pub type CompletionsClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
+    client::ClientBuilder<OpenAICompletions, H>;
 
-impl Provider for OpenAIResponsesExt {
-    type Builder = OpenAIResponsesExtBuilder;
+impl Provider for OpenAIResponses {
+    const NAME: &'static str = "openai";
+    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = OpenAIApiKey;
+    type Config = ();
+    type EnvInput = OpenAIApiKey;
+
+    fn build(_: (), _: &OpenAIApiKey) -> http_client::Result<Self> {
+        Ok(OpenAIResponses::default())
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("OPENAI_API_KEY", Some("OPENAI_BASE_URL"), http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: OpenAIApiKey, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl ResponsesProviderExt for OpenAIResponsesExt {
+impl HasCompletion for OpenAIResponses {
+    type Model<H>
+        = super::responses_api::ResponsesCompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::responses_api::ResponsesCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasEmbeddings for OpenAIResponses {
+    type Model<H>
+        = super::EmbeddingModel<H>
+    where
+        H: ModelTransport;
+
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        super::EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasTranscription for OpenAIResponses {
+    type Model<H>
+        = super::TranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for OpenAIResponses {
+    type Lister<H>
+        = super::OpenAIModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        super::OpenAIModelLister::new(client.clone())
+    }
+}
+
+#[cfg(feature = "image")]
+impl HasImageGeneration for OpenAIResponses {
+    type Model<H>
+        = super::ImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::ImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for OpenAIResponses {
+    type Model<H>
+        = super::audio_generation::AudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::audio_generation::AudioGenerationModel::new(client.clone(), model)
+    }
+}
+
+impl ResponsesProviderExt for OpenAIResponses {
     fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
         self.system_instructions_placement
     }
 }
 
-impl ConfigurableSystemInstructionsPlacement for OpenAIResponsesExt {}
+impl ConfigurableSystemInstructionsPlacement for OpenAIResponses {}
 
-impl Provider for OpenAICompletionsExt {
-    type Builder = OpenAICompletionsExtBuilder;
+impl Provider for OpenAICompletions {
+    const NAME: &'static str = "openai";
+    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = OpenAIApiKey;
+    type Config = ();
+    type EnvInput = OpenAIApiKey;
+
+    fn build(_: (), _: &OpenAIApiKey) -> http_client::Result<Self> {
+        Ok(OpenAICompletions::default())
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<CompletionsClient<H>> {
+        CompletionsClient::from_env_api_key("OPENAI_API_KEY", Some("OPENAI_BASE_URL"), http)
+    }
+
+    fn from_val<H: HttpClientExt>(
+        input: OpenAIApiKey,
+        http: H,
+    ) -> ProviderClientResult<CompletionsClient<H>> {
+        CompletionsClient::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    OpenAIResponsesExt,
-    completion = super::responses_api::ResponsesCompletionModel<H>,
-    embeddings = super::EmbeddingModel<H>,
-    transcription = super::TranscriptionModel<H>,
-    model_listing = super::OpenAIModelLister<H>,
-    image_generation = super::ImageGenerationModel<H>,
-    audio_generation = super::audio_generation::AudioGenerationModel<H>,
-);
+impl HasCompletion for OpenAICompletions {
+    type Model<H>
+        = super::completion::CompletionModel<H>
+    where
+        H: ModelTransport;
 
-client::impl_capabilities!(
-    OpenAICompletionsExt,
-    completion = super::completion::CompletionModel<H>,
-    embeddings = super::GenericEmbeddingModel<OpenAICompletionsExt, H>,
-    transcription = super::CompletionsTranscriptionModel<H>,
-    model_listing = super::OpenAICompletionsModelLister<H>,
-    image_generation = super::CompletionsImageGenerationModel<H>,
-    audio_generation = super::audio_generation::CompletionsAudioGenerationModel<H>,
-);
+    fn completion_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::completion::CompletionModel::new(client.clone(), model)
+    }
+}
 
-impl DebugExt for OpenAIResponsesExt {}
+impl HasEmbeddings for OpenAICompletions {
+    type Model<H>
+        = super::GenericEmbeddingModel<OpenAICompletions, H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for OpenAICompletionsExt {}
+    fn embedding_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        super::GenericEmbeddingModel::make(client, model, ndims)
+    }
+}
 
-client::impl_default_provider_builder!(
-    OpenAIResponsesExtBuilder => OpenAIResponsesExt,
-    api_key = OpenAIApiKey,
-    base_url = OPENAI_API_BASE_URL,
-);
-client::impl_default_provider_builder!(
-    OpenAICompletionsExtBuilder => OpenAICompletionsExt,
-    api_key = OpenAIApiKey,
-    base_url = OPENAI_API_BASE_URL,
-);
+impl HasTranscription for OpenAICompletions {
+    type Model<H>
+        = super::CompletionsTranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::CompletionsTranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for OpenAICompletions {
+    type Lister<H>
+        = super::OpenAICompletionsModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &CompletionsClient<H>) -> Self::Lister<H> {
+        super::OpenAICompletionsModelLister::new(client.clone())
+    }
+}
+
+#[cfg(feature = "image")]
+impl HasImageGeneration for OpenAICompletions {
+    type Model<H>
+        = super::CompletionsImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::CompletionsImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for OpenAICompletions {
+    type Model<H>
+        = super::audio_generation::CompletionsAudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::audio_generation::CompletionsAudioGenerationModel::new(client.clone(), model)
+    }
+}
 
 impl<H> Client<H>
 where
@@ -117,9 +279,9 @@ where
         self,
         placement: SystemInstructionsPlacement,
     ) -> Self {
-        let mut ext = *self.ext();
+        let mut ext = *self.provider();
         ext.system_instructions_placement = placement;
-        self.with_ext(ext)
+        self.with_provider(ext)
     }
 
     /// Sends Rig system instructions as `system` messages in `input` instead of
@@ -136,8 +298,8 @@ where
     /// Create a Completions API client from this Responses API client.
     /// Useful for switching to the traditional Chat Completions API.
     pub fn completions_api(self) -> CompletionsClient<H> {
-        let system_instructions_placement = self.ext().system_instructions_placement;
-        self.with_ext(OpenAICompletionsExt {
+        let system_instructions_placement = self.provider().system_instructions_placement;
+        self.with_provider(OpenAICompletions {
             system_instructions_placement,
         })
     }
@@ -152,25 +314,12 @@ where
     /// placement configured before switching to the Completions API is
     /// restored.
     pub fn responses_api(self) -> Client<H> {
-        let system_instructions_placement = self.ext().system_instructions_placement;
-        self.with_ext(OpenAIResponsesExt {
+        let system_instructions_placement = self.provider().system_instructions_placement;
+        self.with_provider(OpenAIResponses {
             system_instructions_placement,
         })
     }
 }
-
-client::impl_provider_from_env!(
-    OpenAIResponsesExt,
-    input = OpenAIApiKey,
-    api_key_env = "OPENAI_API_KEY",
-    base_url_env_first = "OPENAI_BASE_URL",
-);
-client::impl_provider_from_env!(
-    OpenAICompletionsExt,
-    input = OpenAIApiKey,
-    api_key_env = "OPENAI_API_KEY",
-    base_url_env_first = "OPENAI_BASE_URL",
-);
 
 /// Error envelope returned by OpenAI-compatible providers alongside 2xx
 /// statuses. Providers spell the message field differently (`message`,

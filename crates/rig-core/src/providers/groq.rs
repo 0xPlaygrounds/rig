@@ -15,9 +15,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::openai;
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::client::{
+    self, BearerAuth, HasCompletion, HasModelListing, HasTranscription, ModelTransport, Provider,
+    ProviderClientResult,
+};
 use crate::completion::CompletionError;
-use crate::http_client::HttpClientExt;
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 
 // ================================================================
@@ -26,18 +29,64 @@ use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct GroqExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct GroqBuilder;
-
+pub struct Groq;
 type GroqApiKey = BearerAuth;
 
-impl Provider for GroqExt {
-    type Builder = GroqBuilder;
+impl Provider for Groq {
+    const NAME: &'static str = "groq";
+    const BASE_URL: &'static str = GROQ_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = GroqApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &GroqApiKey) -> http_client::Result<Self> {
+        Ok(Groq)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("GROQ_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl openai::completion::OpenAICompatibleProvider for GroqExt {
+impl HasCompletion for Groq {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasTranscription for Groq {
+    type Model<H>
+        = TranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for Groq {
+    type Lister<H>
+        = GroqModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        GroqModelLister::new(client.clone())
+    }
+}
+
+impl openai::completion::OpenAICompatibleProvider for Groq {
     const PROVIDER_NAME: &'static str = "groq";
 
     /// Groq reports its transport request id on the same `x-request-id`
@@ -80,13 +129,6 @@ impl openai::completion::OpenAICompatibleProvider for GroqExt {
     }
 }
 
-client::impl_capabilities!(
-    GroqExt,
-    completion = CompletionModel<H>,
-    transcription = TranscriptionModel<H>,
-    model_listing = GroqModelLister<H>,
-);
-
 /// A Groq listing entry.
 ///
 /// Groq reports its context window and output ceiling on every entry, and
@@ -125,7 +167,7 @@ impl From<GroqModelEntry> for crate::model::Model {
 
 crate::providers::internal::model_listing::impl_model_lister!(
     /// [`ModelLister`](crate::client::ModelLister) implementation for the Groq
-    /// API (`GET /models`), the same path [`GroqExt::VERIFY_PATH`] already
+    /// API (`GET /models`), the same path [`Groq::VERIFY_PATH`] already
     /// uses.
     GroqModelLister,
     Client<H>,
@@ -134,28 +176,17 @@ crate::providers::internal::model_listing::impl_model_lister!(
     "/models"
 );
 
-impl DebugExt for GroqExt {}
-
-client::impl_default_provider_builder!(
-    GroqBuilder => GroqExt,
-    api_key = GroqApiKey,
-    base_url = GROQ_API_BASE_URL,
-);
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<GroqExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<GroqBuilder, GroqApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Groq, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Groq, H>;
 
 /// Groq completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<GroqExt, H>;
+    openai::completion::GenericCompletionModel<Groq, H>;
 
 /// Groq's provider-native terminal streaming record: the value carried by the
 /// final item of the stream returned by `CompletionModel::raw_stream`. Shared
 /// with the OpenAI Chat Completions path, usage payload included.
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
-
-client::impl_provider_from_env!(GroqExt, input = String, api_key_env = "GROQ_API_KEY");
 
 #[cfg(test)]
 use crate::providers::openai::client::ApiResponse;

@@ -312,11 +312,13 @@ where
     }
 }
 
-impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+    /// Build the model, defaulting `ndims` from the model identifier when the
+    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
+    pub fn make(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
         let dims = dims
             .or(super::model_dimensions_from_identifier(&model))
             .unwrap_or_default();

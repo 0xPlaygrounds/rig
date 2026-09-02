@@ -63,7 +63,10 @@ fn from_env_uses_anthropic_base_url() {
         "https://anthropic-compatible.example/v1/messages",
     );
 
-    let client = <crate::providers::anthropic::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
+    let client =
+        <crate::providers::anthropic::client::Anthropic as crate::client::Provider>::from_env(
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
         .expect("Client::from_env should build with ANTHROPIC_BASE_URL");
 
     assert_eq!(
@@ -79,7 +82,10 @@ fn from_env_uses_default_base_url_when_anthropic_base_url_is_unset() {
     let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "dummy-key");
     let _base_url = EnvVarGuard::remove("ANTHROPIC_BASE_URL");
 
-    let client = <crate::providers::anthropic::client::AnthropicExt as crate::client::ProviderFromEnv>::from_env_with(crate::test_utils::RecordingHttpClient::new(""))
+    let client =
+        <crate::providers::anthropic::client::Anthropic as crate::client::Provider>::from_env(
+            crate::test_utils::RecordingHttpClient::new(""),
+        )
         .expect("Client::from_env should build without ANTHROPIC_BASE_URL");
 
     assert_eq!(client.base_url(), "https://api.anthropic.com");

@@ -2731,7 +2731,9 @@ mod raw_capture {
         assert_eq!(typed.provider_request_id, None);
 
         let renormalized = typed
-            .normalize(<crate::providers::openai::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
+            .normalize(
+                <crate::providers::openai::OpenAIResponses as ResponsesProviderExt>::PROVIDER_NAME,
+            )
             .expect("re-normalize the capture")
             .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
         assert_eq!(response.identity(), renormalized.identity());
@@ -2757,7 +2759,9 @@ mod raw_capture {
             .expect("typed route");
         assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
         let reassembled = raw
-            .normalize(<crate::providers::openai::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
+            .normalize(
+                <crate::providers::openai::OpenAIResponses as ResponsesProviderExt>::PROVIDER_NAME,
+            )
             .expect("normalize");
 
         let normalized = model

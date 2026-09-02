@@ -541,7 +541,7 @@ fn rig_tools_are_non_strict_by_default() {
 #[test]
 fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     let mut additional_params = serde_json::Value::Null;
-    let tools = build_tool_definitions::<crate::providers::minimax::MiniMaxAnthropicExt>(
+    let tools = build_tool_definitions::<crate::providers::minimax::MiniMaxAnthropic>(
         vec![generic_tool("lookup")],
         &mut additional_params,
         true,
@@ -610,7 +610,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
         })),
     );
     let request = AnthropicCompletionRequest::try_from_params::<
-        crate::providers::anthropic::client::AnthropicExt,
+        crate::providers::anthropic::client::Anthropic,
     >(
         AnthropicRequestParams {
             model: CLAUDE_SONNET_4_6,
@@ -4115,7 +4115,7 @@ mod raw_capture {
         assert_eq!(raw["stop_sequence"], "alpha");
 
         let renormalized = typed
-            .normalize(<crate::providers::anthropic::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
+            .normalize(<crate::providers::anthropic::client::Anthropic as AnthropicCompatibleProvider>::PROVIDER_NAME)
             .expect("re-normalize the capture");
         assert_eq!(response.identity(), renormalized.identity());
         assert_eq!(response.finish_reason(), renormalized.finish_reason());
@@ -4143,7 +4143,7 @@ mod raw_capture {
             .expect("typed route");
         assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
         let reassembled = raw
-            .normalize(<crate::providers::anthropic::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
+            .normalize(<crate::providers::anthropic::client::Anthropic as AnthropicCompatibleProvider>::PROVIDER_NAME)
             .expect("normalize");
 
         let normalized = model

@@ -51,11 +51,10 @@ pub const MINIMAX_M2_1_HIGHSPEED: &str = "MiniMax-M2.1-highspeed";
 pub const MINIMAX_M2: &str = "MiniMax-M2";
 
 impl_dual_dialect_provider!(
-    ext = MiniMaxExt,
-    builder = MiniMaxBuilder,
-    anthropic_ext = MiniMaxAnthropicExt,
-    anthropic_builder = MiniMaxAnthropicBuilder,
+    provider = MiniMax,
+    anthropic_provider = MiniMaxAnthropic,
     client_input = client::BearerAuth,
+    name = "minimax",
     api_key_env = "MINIMAX_API_KEY",
     base_url = GLOBAL_API_BASE_URL,
     base_url_env = "MINIMAX_API_BASE",
@@ -64,11 +63,30 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "MINIMAX_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(
-    MiniMaxExt,
-    completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
-    model_listing = MiniMaxModelLister<H>,
-);
+impl client::HasCompletion for MiniMax {
+    type Model<H>
+        = super::openai::completion::GenericCompletionModel<MiniMax, H>
+    where
+        H: client::ModelTransport;
+
+    fn completion_model<H: client::ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl client::HasModelListing for MiniMax {
+    type Lister<H>
+        = MiniMaxModelLister<H>
+    where
+        H: client::ModelTransport;
+
+    fn model_lister<H: client::ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        MiniMaxModelLister::new(client.clone())
+    }
+}
 
 crate::providers::internal::model_listing::impl_model_lister!(
     /// [`ModelLister`](crate::client::ModelLister) implementation for the
@@ -83,7 +101,7 @@ crate::providers::internal::model_listing::impl_model_lister!(
     "/models"
 );
 
-impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
+impl super::openai::completion::OpenAICompatibleProvider for MiniMax {
     const PROVIDER_NAME: &'static str = "minimax";
 
     type StreamingUsage = super::openai::Usage;

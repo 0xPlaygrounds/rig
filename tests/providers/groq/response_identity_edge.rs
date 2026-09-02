@@ -1,6 +1,6 @@
 //! Response identity on Groq (rig#2265): Groq reports its transport request
 //! id on `x-request-id` — the same header OpenAI and xAI use — verified live
-//! and now captured via `GroqExt::REQUEST_ID_HEADER`. An earlier revision of
+//! and now captured via `Groq::REQUEST_ID_HEADER`. An earlier revision of
 //! this suite recorded the header arriving while the compat-default contract
 //! ignored it; #2265's acceptance criterion ("providers that expose these
 //! populate them") makes capture, not documentation, the fix.

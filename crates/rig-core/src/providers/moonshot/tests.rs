@@ -1,4 +1,4 @@
-use super::{ANTHROPIC_BASE_URLS, MoonshotExt};
+use super::{ANTHROPIC_BASE_URLS, Moonshot};
 use crate::completion::CompletionRequest;
 use crate::message::{AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction};
 use crate::providers::openai::completion::{
@@ -11,12 +11,12 @@ fn prepared_body(request: CompletionRequest, model: &str) -> serde_json::Value {
         request,
         strict_tools: false,
         tool_result_array_content: false,
-        supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+        supports_response_format: Moonshot::SUPPORTS_RESPONSE_FORMAT,
         supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request should convert");
-    MoonshotExt
+    Moonshot
         .prepare_request(&mut request)
         .expect("prepare_request should succeed");
     serde_json::to_value(request).expect("request should serialize")
@@ -137,13 +137,13 @@ fn moonshot_specific_tool_choice_is_rejected() {
         request,
         strict_tools: false,
         tool_result_array_content: false,
-        supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
+        supports_response_format: Moonshot::SUPPORTS_RESPONSE_FORMAT,
         supports_image_tool_results: false,
         supports_tools: true,
     })
     .expect("request should convert");
 
-    let error = MoonshotExt
+    let error = Moonshot
         .prepare_request(&mut request)
         .expect_err("specific tool choice should be rejected");
     assert!(error.to_string().contains("specific tool"));

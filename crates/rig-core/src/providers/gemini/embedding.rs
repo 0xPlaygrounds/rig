@@ -173,11 +173,13 @@ where
     }
 }
 
-impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: Clone + HttpClientExt,
 {
-    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+    /// Build the model, defaulting `ndims` from the model identifier when the
+    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
+    pub fn make(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
         let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
         Self::new(client.clone(), model, ndims)
     }

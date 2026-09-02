@@ -7,7 +7,7 @@ use crate::providers::openai::completion::OpenAICompatibleProvider;
 /// threading Mira's own descriptor name through the conversion.
 fn normalized(response: CompletionResponse) -> completion::CompletionResponse {
     response
-        .normalize(MiraExt::PROVIDER_NAME)
+        .normalize(Mira::PROVIDER_NAME)
         .expect("Mira response should convert")
 }
 

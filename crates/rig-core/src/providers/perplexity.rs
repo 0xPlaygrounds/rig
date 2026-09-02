@@ -12,8 +12,9 @@
 //! # }
 //! ```
 use crate::client::BearerAuth;
-use crate::client::{self, DebugExt, Provider};
+use crate::client::{self, HasCompletion, ModelTransport, Provider, ProviderClientResult};
 use crate::completion::CompletionError;
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai;
 
 // ================================================================
@@ -22,21 +23,44 @@ use crate::providers::openai;
 const PERPLEXITY_API_BASE_URL: &str = "https://api.perplexity.ai";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct PerplexityExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct PerplexityBuilder;
+pub struct Perplexity;
 
 type PerplexityApiKey = BearerAuth;
 
-impl Provider for PerplexityExt {
-    type Builder = PerplexityBuilder;
-
+impl Provider for Perplexity {
+    const NAME: &'static str = "perplexity";
+    const BASE_URL: &'static str = PERPLEXITY_API_BASE_URL;
     // There is currently no way to verify a perplexity api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
+    type ApiKey = PerplexityApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &PerplexityApiKey) -> http_client::Result<Self> {
+        Ok(Perplexity)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("PERPLEXITY_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
+impl HasCompletion for Perplexity {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl openai::completion::OpenAICompatibleProvider for Perplexity {
     const PROVIDER_NAME: &'static str = "perplexity";
 
     type StreamingUsage = openai::Usage;
@@ -78,32 +102,15 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
     }
 }
 
-client::impl_capabilities!(PerplexityExt, completion = CompletionModel<H>);
-
-impl DebugExt for PerplexityExt {}
-
-client::impl_default_provider_builder!(
-    PerplexityBuilder => PerplexityExt,
-    api_key = PerplexityApiKey,
-    base_url = PERPLEXITY_API_BASE_URL,
-);
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<PerplexityExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<PerplexityBuilder, PerplexityApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Perplexity, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Perplexity, H>;
 
 /// Perplexity completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<PerplexityExt, H>;
+    openai::completion::GenericCompletionModel<Perplexity, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;
-
-client::impl_provider_from_env!(
-    PerplexityExt,
-    input = String,
-    api_key_env = "PERPLEXITY_API_KEY"
-);
 
 // ================================================================
 // Perplexity Completion API

@@ -7,7 +7,7 @@
 //!
 //! ```ignore
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
+//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };
@@ -128,6 +128,18 @@ impl CompletionError {
             Self::HttpError(error)
         } else {
             Self::ProviderError(error.to_string())
+        }
+    }
+}
+
+/// A client that could not be built cannot complete: transport-configuration
+/// failures keep their HTTP identity, everything else (a missing key, an
+/// unreadable environment variable) is reported as a provider error.
+impl From<crate::client::ProviderClientError> for CompletionError {
+    fn from(error: crate::client::ProviderClientError) -> Self {
+        match error {
+            crate::client::ProviderClientError::Http(error) => Self::HttpError(error),
+            other => Self::ProviderError(other.to_string()),
         }
     }
 }

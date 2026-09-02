@@ -165,12 +165,12 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     }
 }
 
-impl OpenAIEmbeddingsCompatible for super::OpenAIResponsesExt {
+impl OpenAIEmbeddingsCompatible for super::OpenAIResponses {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
-impl OpenAIEmbeddingsCompatible for super::OpenAICompletionsExt {
+impl OpenAIEmbeddingsCompatible for super::OpenAICompletions {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
@@ -220,7 +220,7 @@ pub struct GenericEmbeddingModel<Ext, H = crate::http_client::BoxedHttpClient> {
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
 pub type EmbeddingModel<H = crate::http_client::BoxedHttpClient> =
-    GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
+    GenericEmbeddingModel<super::OpenAIResponses, H>;
 
 /// Default dimensions for OpenAI's known embedding models (also used by
 /// Azure OpenAI, which deploys the same models).
@@ -293,7 +293,7 @@ where
             (self.dimensions_were_explicitly_set || self.ndims > 0).then_some(self.ndims);
         let dimensions = self
             .client
-            .ext()
+            .provider()
             .embedding_dimensions(&self.model, requested_dimensions)?;
         let (dimensions, output_dimension) = match dimensions {
             Some(EmbeddingDimensions::Dimensions(value)) => (Some(value), None),
@@ -312,7 +312,11 @@ where
 
         let req = self
             .client
-            .post(self.client.ext().embeddings_path_for_model(&self.model))?
+            .post(
+                self.client
+                    .provider()
+                    .embeddings_path_for_model(&self.model),
+            )?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
@@ -439,13 +443,14 @@ where
     }
 }
 
-impl<Ext, H> crate::client::ConstructEmbeddingModel<crate::client::Client<Ext, H>>
-    for GenericEmbeddingModel<Ext, H>
+impl<Ext, H> GenericEmbeddingModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync,
     Ext: OpenAIEmbeddingsCompatible + Clone,
 {
-    fn construct(
+    /// Build the model, defaulting `ndims` from the model identifier when the
+    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
+    pub fn make(
         client: &crate::client::Client<Ext, H>,
         model: String,
         ndims: Option<usize>,

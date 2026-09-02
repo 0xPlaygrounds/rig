@@ -35,7 +35,7 @@
 //! (`common_chat_tool_choice_parse_oaicompat`). An OpenAI-shaped object
 //! type-mismatches that read and falls through to the default, so the request
 //! is served as `auto` and the caller silently gets whichever tool the model
-//! felt like. `LlamacppExt::prepare_request` refuses it locally instead.
+//! felt like. `Llamacpp::prepare_request` refuses it locally instead.
 //!
 //! And `tool_choice: "none"`:
 //!

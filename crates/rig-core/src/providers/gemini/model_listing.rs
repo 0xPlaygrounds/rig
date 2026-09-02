@@ -151,12 +151,12 @@ where
     }
 }
 
-impl<H> crate::client::ConstructModelLister<Client<H>> for GeminiModelLister<H>
+impl<H> GeminiModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
 {
-    fn construct(client: &Client<H>) -> Self {
-        let client = client.clone();
+    /// Build the lister over `client`.
+    pub fn new(client: Client<H>) -> Self {
         Self { client }
     }
 }
@@ -179,13 +179,12 @@ where
     }
 }
 
-impl<H> crate::client::ConstructModelLister<InteractionsClient<H>>
-    for GeminiInteractionsModelLister<H>
+impl<H> GeminiInteractionsModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
 {
-    fn construct(client: &InteractionsClient<H>) -> Self {
-        let client = client.clone();
+    /// Build the lister over `client`.
+    pub fn new(client: InteractionsClient<H>) -> Self {
         Self { client }
     }
 }

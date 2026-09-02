@@ -122,12 +122,6 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     }
 }
 
-impl rig_core::client::ConstructEmbeddingModel<super::Client> for EmbeddingModel {
-    fn construct(client: &super::Client, model: String, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-}
-
 // Map a failed gRPC call into an `EmbeddingError` that preserves the provider's
 // error payload verbatim. gRPC is a non-HTTP transport, so there is no
 // `http::StatusCode`; the body is preserved via `from_provider_body` (status:

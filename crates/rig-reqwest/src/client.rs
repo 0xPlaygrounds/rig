@@ -18,10 +18,8 @@
 //! instead, use rig-core's `Client::new_with(key, ReqwestClient::default())`
 //! or `.http_client(ReqwestClient::default()).build()`.
 
-use rig_core::client::{
-    Client, ClientBuilder, Provider, ProviderBuilder, ProviderClientError, ProviderFromEnv,
-};
-use rig_core::http_client::{self, BoxedHttpClient};
+use rig_core::client::{Client, ClientBuilder, Provider, ProviderClientError};
+use rig_core::http_client::BoxedHttpClient;
 use rig_core::markers::Missing;
 
 fn bundled() -> BoxedHttpClient {
@@ -42,7 +40,7 @@ pub trait DefaultTransportClient: Sized {
     type Input;
 
     /// Construct a provider client over the bundled transport.
-    fn new(api_key: impl Into<Self::ApiKey>) -> http_client::Result<Self>;
+    fn new(api_key: impl Into<Self::ApiKey>) -> Result<Self, ProviderClientError>;
 
     /// Construct a provider client from the process's environment over the
     /// bundled transport.
@@ -53,24 +51,23 @@ pub trait DefaultTransportClient: Sized {
     fn from_val(input: Self::Input) -> Result<Self, ProviderClientError>;
 }
 
-impl<Ext> DefaultTransportClient for Client<Ext, BoxedHttpClient>
+impl<P> DefaultTransportClient for Client<P, BoxedHttpClient>
 where
-    Ext: ProviderFromEnv,
-    Ext::Builder: ProviderBuilder<Extension<BoxedHttpClient> = Ext> + Default,
+    P: Provider,
 {
-    type ApiKey = <Ext::Builder as ProviderBuilder>::ApiKey;
-    type Input = Ext::Input;
+    type ApiKey = P::ApiKey;
+    type Input = P::EnvInput;
 
-    fn new(api_key: impl Into<Self::ApiKey>) -> http_client::Result<Self> {
+    fn new(api_key: impl Into<Self::ApiKey>) -> Result<Self, ProviderClientError> {
         Client::new_with(api_key, bundled())
     }
 
     fn from_env() -> Result<Self, ProviderClientError> {
-        Ext::from_env_with(bundled())
+        P::from_env(bundled())
     }
 
     fn from_val(input: Self::Input) -> Result<Self, ProviderClientError> {
-        Ext::from_val_with(input, bundled())
+        P::from_val(input, bundled())
     }
 }
 
@@ -86,38 +83,41 @@ pub trait DefaultTransportBuilder {
     type Client;
 
     /// Build the client over the bundled transport.
-    fn build(self) -> http_client::Result<Self::Client>;
+    fn build(self) -> Result<Self::Client, ProviderClientError>;
 }
 
-impl<ExtBuilder, Key> DefaultTransportBuilder for ClientBuilder<ExtBuilder, Key, Missing>
+impl<P> DefaultTransportBuilder for ClientBuilder<P, Missing>
 where
-    ExtBuilder: ProviderBuilder<ApiKey = Key>,
-    Key: rig_core::client::ApiKey,
-    ExtBuilder::Extension<BoxedHttpClient>: Provider,
+    P: Provider,
 {
-    type Client = Client<ExtBuilder::Extension<BoxedHttpClient>, BoxedHttpClient>;
+    type Client = Client<P, BoxedHttpClient>;
 
-    fn build(self) -> http_client::Result<Self::Client> {
+    fn build(self) -> Result<Self::Client, ProviderClientError> {
         self.http_client(bundled()).build()
     }
 }
 
-/// The four construction spellings resolve with only the prelude and the
-/// provider module in scope, and all name the same type.
+/// The construction spellings resolve with only the prelude and the
+/// provider module in scope, and the transport-less ones all name the same
+/// type; `new_with` keeps the concrete transport in the type.
 ///
 /// ```no_run
 /// use rig_core::providers::openai;
 /// use rig_reqwest::prelude::*;
+/// use rig_reqwest::ReqwestClient;
 ///
 /// fn takes(_: openai::Client) {}
+/// fn takes_reqwest(_: openai::Client<ReqwestClient>) {}
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let a: openai::Client = openai::Client::new("k")?;
 /// let b = openai::Client::from_env()?;
 /// let c = openai::Client::builder().api_key("k").build()?;
+/// let d = openai::Client::new_with("k", ReqwestClient::default())?;
 /// takes(a);
 /// takes(b);
 /// takes(c);
+/// takes_reqwest(d);
 /// # Ok(())
 /// # }
 /// ```
