@@ -9,7 +9,10 @@ mod accumulator;
 mod block_id;
 mod event;
 
+use futures::StreamExt as _;
+
 use crate::completion::{CompletionError, CompletionResponse, Usage};
+use crate::error::ErrorReport;
 use crate::message::{AssistantContent, ToolResult};
 pub use accumulator::BlockAccumulator;
 pub use block_id::{BlockId, MintKind, SyntheticIds, non_empty_id};
@@ -345,22 +348,30 @@ mod unknown_payload_tests;
 
 /// A provider stream: the events an adapter emits, with in-band errors, as
 /// consumed by [`StreamingCompletionResponse`].
+/// The stream a provider hands to [`StreamingCompletionResponse::stream`]:
+/// the impl-side wire, whose error half is the provider's
+/// [`CompletionError`]. It is mapped once, at construction, onto the one
+/// consumer item type — [`StreamEvents`], whose error half is
+/// [`ErrorReport`] on every path (provider, accumulator, bus, hooks).
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, CompletionError>> + Send>>;
 
-/// A provider stream, on browser wasm (no `Send`).
+/// The stream a provider hands to [`StreamingCompletionResponse::stream`]
+/// (browser wasm: `!Send` allowed).
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<StreamEvent, CompletionError>>>>;
 
-/// The response from a streaming completion request: the provider's events,
-/// yielded as they arrive, and the aggregated choice they fold into.
-///
-/// Every yielded [`StreamEvent`] has already been applied to the
-/// accumulator, so [`StreamingCompletionResponse::snapshot`] is always
-/// consistent with the events seen so far, and a
-/// [`StreamEvent::BlockEnd`] carries the block it finalized in `block`.
+/// The one stream item type: what [`StreamingCompletionResponse`] yields,
+/// what the accumulator applies, what the bus carries.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub type StreamEvents = Pin<Box<dyn Stream<Item = Result<StreamEvent, ErrorReport>> + Send>>;
+
+/// The one stream item type (browser wasm: `!Send` allowed).
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub type StreamEvents = Pin<Box<dyn Stream<Item = Result<StreamEvent, ErrorReport>>>>;
+
 pub struct StreamingCompletionResponse {
-    pub(crate) inner: Abortable<StreamingResult>,
+    pub(crate) inner: Abortable<StreamEvents>,
     pub(crate) abort_handle: AbortHandle,
     pub(crate) pause_control: PauseControl,
     /// Accumulates the streamed parts of the final aggregated choice.
@@ -388,6 +399,16 @@ impl StreamingCompletionResponse {
     /// stream; it is recorded up front so it is available even when the stream
     /// never reaches its terminal record.
     pub fn stream(provider: impl Into<String>, inner: StreamingResult) -> Self {
+        // The one place a provider's error half becomes the wire's: from
+        // here on every item is `Result<StreamEvent, ErrorReport>`.
+        let mapped: StreamEvents =
+            Box::pin(inner.map(|item| item.map_err(|error| ErrorReport::from(&error))));
+        Self::from_events(provider, mapped)
+    }
+
+    /// A response over events that already speak the wire's error half —
+    /// what the bus hands back ([`crate::bus::wrap_stream`]). No mapping.
+    pub fn from_events(provider: impl Into<String>, inner: StreamEvents) -> Self {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let abortable_stream = Abortable::new(inner, abort_registration);
         let pause_control = PauseControl::new();
@@ -453,7 +474,7 @@ impl StreamingCompletionResponse {
     pub fn cancel(&mut self) {
         self.abort_handle.abort();
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let empty: StreamingResult = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
+        let empty: StreamEvents = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
         self.inner = Abortable::new(empty, abort_registration);
         self.abort_handle = abort_handle;
         self.pause_control.resume();
@@ -508,7 +529,7 @@ impl StreamingCompletionResponse {
 }
 
 impl Stream for StreamingCompletionResponse {
-    type Item = Result<StreamEvent, CompletionError>;
+    type Item = Result<StreamEvent, ErrorReport>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();

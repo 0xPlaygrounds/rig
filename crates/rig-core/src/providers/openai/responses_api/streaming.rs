@@ -930,7 +930,9 @@ pub async fn completion_response_from_stream_events(
     let mut stream = streaming::StreamingCompletionResponse::stream(provider, stream);
 
     while let Some(item) = stream.next().await {
-        item?;
+        // A replay of the provider's own events: an accumulator error here
+        // is a malformed response, reported as such.
+        item.map_err(|report| CompletionError::ResponseError(report.message))?;
     }
 
     let mut choice = stream.snapshot();

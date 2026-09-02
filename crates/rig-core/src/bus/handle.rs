@@ -36,11 +36,10 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::StreamExt;
 use serde::de::DeserializeOwned;
 
 use crate::{
-    completion::{CompletionError, CompletionRequest, CompletionResponse, ProviderCapabilities},
+    completion::{CompletionRequest, CompletionResponse, ProviderCapabilities},
     effect::{
         EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, Family, FamilyDescriptor,
         HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
@@ -249,7 +248,7 @@ impl ModelHandle {
 
     /// A streaming completion, wrapped back into a
     /// [`StreamingCompletionResponse`] over the B2 accumulator. Errors that
-    /// cross the bus surface as [`CompletionError::Report`].
+    /// cross the bus surface as the stream's error half, [`ErrorReport`].
     pub fn stream(&self, request: CompletionRequest) -> StreamingCompletionResponse {
         let provider = self.model_ref().to_string();
         let stream: EffectStream = self.dispatcher.dispatch_stream(
@@ -475,13 +474,12 @@ impl EmbedHandle {
 
 /// Wrap an [`EffectStream`] back into a [`StreamingCompletionResponse`]:
 /// the B2 accumulator folds the events on this side of the bus, and errors
-/// that crossed it surface as [`CompletionError::Report`].
+/// that crossed it are the stream's own error half, [`ErrorReport`].
 pub fn wrap_stream(
     provider: impl Into<String>,
     stream: EffectStream,
 ) -> StreamingCompletionResponse {
-    let inner = stream.map(|item| item.map_err(CompletionError::Report));
-    StreamingCompletionResponse::stream(provider, Box::pin(inner))
+    StreamingCompletionResponse::from_events(provider, Box::pin(stream))
 }
 
 // Every alias is `Clone + Send + Sync + 'static` on every target, by

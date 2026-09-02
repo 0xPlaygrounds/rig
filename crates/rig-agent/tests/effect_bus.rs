@@ -413,10 +413,7 @@ async fn selecting_an_unregistered_model_label_fails_at_bind_time() {
         .add_hook(SelectMissing)
         .build();
     let error = within(agent.prompt("go").run()).await.expect_err("unbound");
-    let rig_agent::completion::PromptError::CompletionError(
-        rig_core::completion::CompletionError::Report(report),
-    ) = error
-    else {
+    let rig_agent::completion::PromptError::Report(report) = error else {
         panic!("expected a report, got {error}");
     };
     assert_eq!(report.kind, ErrorKind::HandlerUnavailable);

@@ -4,6 +4,7 @@
 
 use futures::StreamExt;
 use rig::completion::{CompletionError, CompletionModel};
+use rig::error::{ErrorKind, ErrorReport};
 use rig::prelude::*;
 use rig::providers::openai;
 
@@ -107,7 +108,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
             let model = client.completion_model("gpt-nonexistent-model-for-error-edge");
             let result = model.completion_request("Never streamed").stream().await;
             let error = match result {
-                Err(error) => error,
+                Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {
@@ -119,7 +120,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                     yielded.expect("the failed handshake must surface an error")
                 }
             };
-            assert!(matches!(error, CompletionError::ProviderResponse(_)));
+            assert_eq!(error.kind, ErrorKind::ProviderResponse, "error: {error}");
             assert_transport_request_id(error.provider_request_id(), "streaming connect 4xx");
             assert!(error.provider_response_body().is_some());
         },

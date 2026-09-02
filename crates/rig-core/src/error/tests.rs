@@ -163,3 +163,59 @@ fn report_round_trips_through_serde() {
     assert_eq!(back, report);
     assert_eq!(report.to_string(), "slow down");
 }
+
+#[test]
+fn a_provider_response_travels_with_the_report() {
+    // What a caller could read off the provider error — status, body,
+    // headers, request id — is still readable after the failure crossed
+    // the wire, and survives serde.
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("7"));
+    let error = CompletionError::ProviderResponse(
+        ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#)
+            .with_provider_request_id(Some("req-9".to_owned()))
+            .with_headers(Some(Box::new(headers))),
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
+    assert_eq!(
+        report.provider_response_status(),
+        Some(StatusCode::TOO_MANY_REQUESTS)
+    );
+    assert_eq!(
+        report.provider_response_body(),
+        Some(r#"{"error":"slow down"}"#)
+    );
+    assert_eq!(
+        report
+            .provider_response_json()
+            .expect("json")
+            .and_then(|json| json["error"].as_str().map(str::to_owned)),
+        Some("slow down".to_owned())
+    );
+    assert_eq!(
+        report
+            .provider_response_headers()
+            .and_then(|headers| headers.get("retry-after"))
+            .and_then(|value| value.to_str().ok()),
+        Some("7")
+    );
+    assert_eq!(report.provider_request_id(), Some("req-9"));
+    assert!(report.retryable, "429 is retryable");
+
+    let json = serde_json::to_string(&report).expect("serialize");
+    let back: ErrorReport = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back, report);
+
+    // A non-success HTTP failure carries its status and body the same way;
+    // a diagnostic with no provider response carries nothing.
+    let http = ErrorReport::from(&http_error(503));
+    assert_eq!(
+        http.provider_response_status(),
+        Some(StatusCode::SERVICE_UNAVAILABLE)
+    );
+    assert_eq!(http.provider_response_body(), Some("body"));
+    let plain = ErrorReport::from(&CompletionError::ProviderError("oops".to_owned()));
+    assert!(plain.provider_response.is_none());
+    assert_eq!(plain.provider_response_body(), None);
+}

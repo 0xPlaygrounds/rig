@@ -14,6 +14,7 @@
 use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::CompletionModel;
+use rig::error::ErrorReport;
 use rig::prelude::*;
 use rig::providers::mistral;
 
@@ -38,6 +39,16 @@ fn assert_error_keeps_id_and_body(error: &rig::completion::CompletionError) {
     assert!(
         error.provider_response_body().is_some(),
         "the error body must survive alongside the id: {error:?}"
+    );
+}
+
+/// The streaming twin: an in-band stream failure is an `ErrorReport`, which
+/// carries the same preserved id and body as the `CompletionError`.
+fn assert_report_keeps_id_and_body(report: &ErrorReport) {
+    assert_is_request_id(report.provider_request_id());
+    assert!(
+        report.provider_response_body().is_some(),
+        "the error body must survive alongside the id: {report:?}"
     );
 }
 
@@ -137,7 +148,7 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
                 .stream()
                 .await
             {
-                Err(error) => error,
+                Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => {
                     let mut failure = None;
                     while let Some(item) = stream.next().await {
@@ -149,7 +160,7 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
                     failure.expect("an unroutable model must fail the stream")
                 }
             };
-            assert_error_keeps_id_and_body(&error);
+            assert_report_keeps_id_and_body(&error);
             Ok::<_, anyhow::Error>(())
         },
     )

@@ -9,6 +9,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 use futures::StreamExt;
 use rig::completion::CompletionModel;
+use rig::error::ErrorReport;
 use rig::prelude::*;
 
 use super::super::support::with_openai_cassette;
@@ -59,7 +60,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
             // The SSE connection opens lazily, so the HTTP error may surface
             // either from `stream()` itself or as the first stream item.
             let error = match model.stream(request).await {
-                Err(error) => error,
+                Err(error) => ErrorReport::from(&error),
                 Ok(mut stream) => match stream.next().await {
                     Some(Err(error)) => error,
                     Some(Ok(item)) => {

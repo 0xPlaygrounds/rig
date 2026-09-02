@@ -113,15 +113,9 @@ pub enum CompletionError {
     /// Raw error response preserved from the completion model provider
     #[error("ProviderResponseError: {0}")]
     ProviderResponse(provider_response::ProviderResponseError),
-
-    /// An error that crossed the effect bus: the handler's failure as an
-    /// [`ErrorReport`](crate::error::ErrorReport), or the bus's own
-    /// `BusClosed`/`HandlerUnavailable`.
-    #[error("{0}")]
-    Report(crate::error::ErrorReport),
 }
 
-crate::provider_response::impl_provider_response_helpers!(CompletionError, Report);
+crate::provider_response::impl_provider_response_helpers!(CompletionError);
 
 impl CompletionError {
     /// Maps an SSE transport error into a completion error without flattening HTTP failures.

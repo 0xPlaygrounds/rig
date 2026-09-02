@@ -32,7 +32,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::completion::CompletionError;
+use crate::error::{ErrorKind, ErrorReport};
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
 use crate::streaming::UnparseableToolInput;
 use crate::streaming::block_id::BlockId;
@@ -119,7 +119,7 @@ impl BlockAccumulator {
     pub fn apply(
         &mut self,
         event: &StreamEvent,
-    ) -> Result<Option<(BlockId, AssistantContent)>, CompletionError> {
+    ) -> Result<Option<(BlockId, AssistantContent)>, ErrorReport> {
         match event {
             StreamEvent::BlockStart { id, kind } => {
                 match kind {
@@ -558,7 +558,7 @@ impl BlockAccumulator {
         &mut self,
         id: &BlockId,
         end: ToolCallEnd,
-    ) -> Result<Option<(BlockId, ToolCall)>, CompletionError> {
+    ) -> Result<Option<(BlockId, ToolCall)>, ErrorReport> {
         let position = self
             .open_tool_inputs
             .iter()
@@ -672,9 +672,12 @@ impl BlockAccumulator {
                             // The wire promised a complete block; malformed input
                             // is a response defect, never a silent drop.
                             UnparseableToolInput::Error => {
-                                return Err(CompletionError::ResponseError(format!(
-                                    "tool call `{name}` arrived with malformed JSON input: {err}"
-                                )));
+                                return Err(ErrorReport::new(
+                                    ErrorKind::Response,
+                                    format!(
+                                        "tool call `{name}` arrived with malformed JSON input: {err}"
+                                    ),
+                                ));
                             }
                             // A completion probe: the input may still be extended.
                             UnparseableToolInput::Keep => {

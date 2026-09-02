@@ -241,6 +241,10 @@ pub(crate) fn finalize_streamed_choice(
 pub enum StreamingError {
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
+    /// An effect failed on the agent's bus — a bus or handler failure, a
+    /// hook's denial, a stream item's error — as the wire reports it.
+    #[error("{0}")]
+    Report(#[from] rig_core::error::ErrorReport),
     #[error("PromptError: {0}")]
     Prompt(#[from] Box<PromptError>),
 }

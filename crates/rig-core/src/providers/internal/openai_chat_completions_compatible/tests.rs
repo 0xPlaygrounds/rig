@@ -3,6 +3,7 @@ use super::{
     CompatibleStreamProfile, map_openai_finish_reason, send_compatible_raw_streaming_request,
 };
 use crate::completion::{CompletionError, FinishReason};
+use crate::error::ErrorKind;
 use crate::http_client;
 use crate::message::AssistantContent;
 use crate::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
@@ -475,8 +476,8 @@ async fn streaming_http_non_success_preserves_status_and_body() {
         )
     );
     assert_eq!(
-        err.provider_response_status(),
-        Some(http::StatusCode::TOO_MANY_REQUESTS)
+        err.http_status,
+        Some(http::StatusCode::TOO_MANY_REQUESTS.as_u16())
     );
     assert_eq!(err.provider_response_body(), Some(body));
     assert_eq!(
@@ -544,8 +545,8 @@ async fn streaming_in_band_error_envelope_preserves_full_payload() {
         Some(Ok(_)) => panic!("expected in-band provider error after partial content"),
         None => panic!("stream ended before in-band provider error"),
     };
-    assert!(matches!(err, CompletionError::ProviderResponse(_)));
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     assert_eq!(err.provider_response_body(), Some(body));
     assert!(
         stream.next().await.is_none(),
@@ -608,8 +609,8 @@ async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
         None => panic!("stream ended before HTTP transport error"),
     };
     assert_eq!(
-        err.provider_response_status(),
-        Some(http::StatusCode::BAD_GATEWAY)
+        err.http_status,
+        Some(http::StatusCode::BAD_GATEWAY.as_u16())
     );
     assert_eq!(err.provider_response_body(), Some(body));
     assert!(
@@ -669,10 +670,10 @@ async fn streaming_non_http_transport_error_stays_provider_error() {
         err.to_string(),
         "ProviderError: Invalid content type was returned: \"application/json\""
     );
-    assert!(matches!(err, CompletionError::ProviderError(_)));
+    assert_eq!(err.kind, ErrorKind::Provider);
     // Rig-generated transport diagnostics are not provider response bodies.
     assert_eq!(err.provider_response_body(), None);
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.http_status, None);
 }
 
 #[tokio::test]

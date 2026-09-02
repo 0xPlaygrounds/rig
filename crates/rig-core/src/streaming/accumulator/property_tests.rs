@@ -1,6 +1,8 @@
 use super::*;
 use proptest::prelude::*;
 
+use crate::error::ErrorReport;
+
 fn split_fragments(payload: &str, points: &[usize]) -> Vec<String> {
     let chars: Vec<char> = payload.chars().collect();
     let mut cuts: Vec<usize> = points
@@ -77,7 +79,7 @@ fn tool_end(
     accumulator: &mut BlockAccumulator,
     key: &BlockId,
     end: ToolCallEnd,
-) -> Result<Option<ToolCall>, CompletionError> {
+) -> Result<Option<ToolCall>, ErrorReport> {
     Ok(accumulator
         .apply(&StreamEvent::BlockEnd {
             id: key.clone(),

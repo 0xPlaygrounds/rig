@@ -18,6 +18,7 @@
 
 use futures::StreamExt;
 use rig::completion::{CompletionError, CompletionModel};
+use rig::error::ErrorReport;
 use rig::prelude::*;
 use rig::providers::doubleword;
 use serde_json::json;
@@ -58,11 +59,25 @@ fn assert_preserved_client_error(
     expected_status: u16,
     expected_envelope: ErrorEnvelope,
 ) {
-    let status = error
+    assert_preserved_client_error_report(
+        &ErrorReport::from(error),
+        expected_status,
+        expected_envelope,
+    );
+}
+
+/// The streaming twin: an in-band stream failure is an `ErrorReport`, which
+/// carries the same preserved provider response as the `CompletionError`.
+fn assert_preserved_client_error_report(
+    report: &ErrorReport,
+    expected_status: u16,
+    expected_envelope: ErrorEnvelope,
+) {
+    let status = report
         .provider_response_status()
         .expect("provider status should be preserved");
-    assert_eq!(status.as_u16(), expected_status, "error: {error}");
-    let body = error
+    assert_eq!(status.as_u16(), expected_status, "error: {report}");
+    let body = report
         .provider_response_body()
         .expect("provider response body should be preserved");
     assert!(!body.trim().is_empty());
@@ -126,7 +141,7 @@ async fn unknown_model_streaming_body(client: doubleword::Client) {
             None => panic!("unknown-model stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error(&error, 404, ErrorEnvelope::Nested);
+    assert_preserved_client_error_report(&error, 404, ErrorEnvelope::Nested);
 }
 
 async fn invalid_key_blocking_body(client: doubleword::Client) {
@@ -151,7 +166,7 @@ async fn invalid_key_streaming_body(client: doubleword::Client) {
             None => panic!("invalid-key stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error(&error, 403, ErrorEnvelope::Nested);
+    assert_preserved_client_error_report(&error, 403, ErrorEnvelope::Nested);
 }
 
 async fn invalid_temperature_blocking_body(client: doubleword::Client) {
@@ -188,7 +203,7 @@ async fn invalid_temperature_streaming_body(client: doubleword::Client) {
             None => panic!("invalid-temperature stream ended without its provider error"),
         }
     };
-    assert_preserved_client_error(&error, 400, ErrorEnvelope::Flat);
+    assert_preserved_client_error_report(&error, 400, ErrorEnvelope::Flat);
 }
 
 #[tokio::test]

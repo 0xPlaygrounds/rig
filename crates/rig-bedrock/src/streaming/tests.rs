@@ -1,5 +1,6 @@
 use super::*;
 use futures::StreamExt;
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{AssistantContent, Reasoning};
 use rig_core::streaming::{Delta, StreamEvent};
 
@@ -526,7 +527,7 @@ fn run_events(
 /// malformed-input errors belong at this level.
 async fn assembled(
     items: Vec<Result<StreamEvent, CompletionError>>,
-) -> (Vec<rig_core::message::ToolCall>, Vec<CompletionError>) {
+) -> (Vec<rig_core::message::ToolCall>, Vec<ErrorReport>) {
     use futures::StreamExt;
     let mut stream =
         StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
@@ -664,10 +665,9 @@ async fn malformed_tool_json_surfaces_an_error_item() {
     let (calls, errors) = assembled(items).await;
     assert!(calls.is_empty());
     assert!(
-        errors.iter().any(|err| matches!(
-            err,
-            CompletionError::ResponseError(msg) if msg.contains("get_weather")
-        )),
+        errors
+            .iter()
+            .any(|err| err.kind == ErrorKind::Response && err.message.contains("get_weather")),
         "malformed tool JSON must yield an error item"
     );
 }

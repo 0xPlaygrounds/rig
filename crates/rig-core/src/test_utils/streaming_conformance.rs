@@ -28,6 +28,7 @@ use futures::future::BoxFuture;
 use crate::streaming::BlockId;
 use crate::{
     completion::{CompletionError, FinishReason},
+    error::ErrorReport,
     http_client,
     message::AssistantContent,
     streaming::{Delta, StreamEvent, StreamFinal},
@@ -382,7 +383,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///    yielded (no full block), the aggregated reasoning text is exactly
 ///    their concatenation.
 pub fn assert_valid_event_stream(
-    items: &[Result<StreamEvent, CompletionError>],
+    items: &[Result<StreamEvent, ErrorReport>],
     choice: &[AssistantContent],
 ) {
     use crate::message::AssistantContent;
@@ -568,7 +569,7 @@ pub fn assert_valid_event_stream(
 #[derive(Debug)]
 pub struct DrainedStream {
     /// Every item the stream yielded, in order.
-    pub items: Vec<Result<StreamEvent, CompletionError>>,
+    pub items: Vec<Result<StreamEvent, ErrorReport>>,
     /// The final aggregated assistant message.
     pub choice: Vec<AssistantContent>,
     /// The normalized terminal record, absent on truncation or terminal error.
