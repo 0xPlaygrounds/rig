@@ -53,6 +53,15 @@ inputs:
   protoc:
     description: Install the system protoc (required whenever the lance chain builds)
     default: "false"
+  bevy-fixture:
+    description: >-
+      Pre-install the toolchain pinned by tests/fixtures/bevy_bus_host (its
+      own workspace, its own rust-toolchain.toml). Required by every job that
+      executes the root `rig::core` test binary: the fixture tests shell out
+      to cargo from that directory, and two of them run concurrently under
+      nextest, so leaving the install to rustup's auto-install races two
+      downloads of the same toolchain against each other.
+    default: "false"
 
 runs:
   using: composite
@@ -165,3 +174,18 @@ runs:
       if: inputs.protoc == 'true'
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+    # Resolved from the fixture's own rust-toolchain.toml, never a literal
+    # here (check-toolchain-pin.sh polices copies); run from that directory
+    # so rustup reads the fixture's pin, not the workspace's. The wasm target
+    # is added explicitly because the fixture is also `cargo check`ed for
+    # the browser target and the file's `targets` list is only honoured on
+    # auto-install.
+    - name: Install the Bevy host fixture's toolchain
+      if: inputs.bevy-fixture == 'true'
+      shell: bash
+      working-directory: tests/fixtures/bevy_bus_host
+      run: |
+        unset RUSTUP_TOOLCHAIN
+        rustup show active-toolchain || rustup toolchain install --profile minimal
+        rustup target add wasm32-unknown-unknown

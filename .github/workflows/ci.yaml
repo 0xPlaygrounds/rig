@@ -149,6 +149,30 @@ jobs:
         if: matrix.package == 'rig-core'
         run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
 
+  # The Bevy host fixture (tests/fixtures/bevy_bus_host) is its own
+  # workspace pinned to bevy by git rev and to its own toolchain, so the
+  # matrix above cannot name it as a package. Its native run lives in the
+  # `test` sweep (tests/core/bevy_bus_host.rs); this job is the browser-target
+  # half of that proof: bevy_tasks' wasm pool accepts the `!Send` driver, and
+  # the whole stack must compile for wasm32-unknown-unknown.
+  check-bevy-bus-host-wasm:
+    name: stable / check bevy_bus_host fixture wasm target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          bevy-fixture: "true"
+
+      - name: Run cargo check wasm target
+        working-directory: tests/fixtures/bevy_bus_host
+        run: |
+          unset RUSTUP_TOOLCHAIN
+          cargo check --locked --target wasm32-unknown-unknown
+
   # `rig-rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
   # unconditionally, which rig's wasm tool registry cannot satisfy. Building it
   # for wasm must fail with exactly one actionable sentence (the crate-root
@@ -308,6 +332,8 @@ jobs:
         with:
           sccache: "true"
           nextest: "true"
+          # The sweep below executes tests/core/bevy_bus_host.rs.
+          bevy-fixture: "true"
 
       # `nextest` below runs with `--features bedrock`, which does not compile
       # the pure default-feature test graph. Check the root integration tests

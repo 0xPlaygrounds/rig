@@ -146,6 +146,8 @@ jobs:
         with:
           nextest: "true"
           protoc: "true"
+          # The sweep below executes tests/core/bevy_bus_host.rs.
+          bevy-fixture: "true"
 
       # The workspace-wide sweep over every feature. This is the step that
       # was ci.yaml's `Test with latest nextest release` before the fast/full
