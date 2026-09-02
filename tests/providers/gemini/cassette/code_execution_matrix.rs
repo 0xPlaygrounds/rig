@@ -68,7 +68,7 @@ use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -160,12 +160,15 @@ async fn drain(
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item.expect("no stream item should be an error") {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(_) => saw_terminal = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(_) => saw_terminal = true,
             _ => {}
         }
     }
-    (text, stream.choice.clone(), saw_terminal)
+    (text, stream.snapshot(), saw_terminal)
 }
 
 /// One blocking cell: run the prompt with code execution enabled and assert
@@ -337,10 +340,13 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Text(text),
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    },
                 ) = item.expect("no stream item should be an error")
                 {
-                    answer.push_str(&text.text);
+                    answer.push_str(&text);
                 }
             }
 

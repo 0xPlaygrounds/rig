@@ -10,14 +10,12 @@ use crate::http_client::sse::GenericEventSource;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
+use crate::providers::internal::sse_transport::stamp_terminal_request_id;
 use crate::providers::internal::sse_transport::{
     OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
 };
 use crate::providers::internal::wire::{self, WireEvent};
-use crate::streaming::{
-    self, BlockId, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal,
-    ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
-};
+use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::telemetry::{CompletionOperation, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
@@ -273,9 +271,10 @@ impl From<PartialUsage> for crate::completion::Usage {
 }
 
 // Client tool-call fragment assembly lives in the shared accumulator
-// (`PartsAccumulator::tool_input_*`); the adapter tracks only the open block's
-// wire id. Server tool use keeps local state because its assembled payload
-// becomes text-block metadata (`ANTHROPIC_RAW_CONTENT_KEY`), not a tool call.
+// (`BlockAccumulator`, fed by `ToolArguments` deltas); the adapter tracks only
+// the open block's wire id. Server tool use keeps local state because its
+// assembled payload becomes text-block metadata (`ANTHROPIC_RAW_CONTENT_KEY`),
+// not a tool call.
 struct ServerToolUseState {
     name: String,
     id: String,
@@ -289,7 +288,7 @@ struct ThinkingState {
     /// signature is adapter-side state — the wire fragments it across
     /// deltas and delivers no completed form, so the adapter assembles it
     /// for the block's end event. Thinking TEXT accumulates in the shared
-    /// accumulator via `ReasoningDelta`s; no restatement buffer exists.
+    /// accumulator via `Reasoning` deltas; no restatement buffer exists.
     signature: String,
     /// The `signature` `content_block_start` opened the block with.
     ///
@@ -319,9 +318,14 @@ impl ThinkingState {
 /// Holds the per-stream assembly state (open tool call, server tool uses,
 /// open thinking block, terminal metadata); frame-triage policy lives in
 /// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
-/// not here.
-#[derive(Default)]
+/// not here. Every interpretation — content blocks and the message-level
+/// frames alike — goes through [`WireAdapter::interpret`]: one path.
 struct AnthropicAdapter {
+    /// Stable descriptor name stamped on the terminal record. An *input*
+    /// rather than a constant: the Anthropic Messages stream format is
+    /// shared by every Anthropic-compatible provider, so baking in
+    /// `"anthropic"` here would mislabel all of them.
+    provider: &'static str,
     /// Wire id of the open client tool-use block, when one is streaming.
     current_tool_call: Option<String>,
     server_tool_uses: HashMap<usize, ServerToolUseState>,
@@ -338,10 +342,248 @@ struct AnthropicAdapter {
     failed: bool,
 }
 
+impl AnthropicAdapter {
+    /// A fresh adapter whose terminal record names `provider`.
+    fn new(provider: &'static str) -> Self {
+        Self {
+            provider,
+            current_tool_call: None,
+            server_tool_uses: HashMap::new(),
+            current_thinking: None,
+            input_tokens: 0,
+            cache_creation: None,
+            message_id: None,
+            response_model: None,
+            failed: false,
+        }
+    }
+
+    /// The content-block frames: `content_block_start` / `_delta` / `_stop`.
+    fn interpret_content(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
+        match event {
+            StreamingEvent::ContentBlockDelta { index, delta } => match delta {
+                ContentDelta::TextDelta { text } => {
+                    if self.current_tool_call.is_none() {
+                        out.text(text);
+                    }
+                }
+                ContentDelta::InputJsonDelta { partial_json } => {
+                    if let Some(server_tool_use) = self.server_tool_uses.get_mut(&index) {
+                        server_tool_use.input_json.push_str(&partial_json);
+                        return;
+                    }
+
+                    if let Some(id) = &self.current_tool_call {
+                        // Emit the delta so UI can show progress; the shared
+                        // accumulator assembles the fragments.
+                        out.tool_arguments(&BlockId::wire(id.clone()), partial_json);
+                    }
+                }
+                ContentDelta::ThinkingDelta { thinking } => {
+                    self.current_thinking
+                        .get_or_insert_with(ThinkingState::default);
+
+                    // Anthropic has no reasoning item id; the content-block
+                    // index is stable across a block's deltas and its stop.
+                    out.reasoning_delta(
+                        &MintKind::Block.for_wire_index(index as u64),
+                        None,
+                        thinking,
+                    );
+                }
+                ContentDelta::SignatureDelta { signature } => {
+                    self.current_thinking
+                        .get_or_insert_with(ThinkingState::default)
+                        .signature
+                        .push_str(&signature);
+
+                    // Wire quirk: the signature is not emitted as its own
+                    // event — it closes the thinking block, riding on the
+                    // `BlockEnd` the `content_block_stop` emits.
+                }
+                ContentDelta::CitationsDelta { citation } => {
+                    if let Some(params) = crate::message::AdditionalParams::from_entries([(
+                        "citations",
+                        json!([citation]),
+                    )]) {
+                        out.text_meta(params);
+                    }
+                }
+                ContentDelta::Unknown(value) => {
+                    // Structural metadata only: a novel delta type can carry
+                    // model output, which must not leak into production WARN
+                    // logs (same policy as the adapter's unknown-event warn).
+                    tracing::warn!(
+                        delta_type = value.get("type").and_then(serde_json::Value::as_str),
+                        "skipping unrecognized Anthropic content delta type"
+                    );
+                }
+            },
+            StreamingEvent::ContentBlockStart {
+                index,
+                content_block,
+            } => match content_block {
+                // Keep this destructuring exhaustive so new wire fields force
+                // an explicit capture-or-drop decision: block-start `text`
+                // arrives via the deltas, and `cache_control` is a
+                // request-side directive — both deliberately dropped here.
+                Content::Text {
+                    text: _,
+                    citations,
+                    cache_control: _,
+                } => {
+                    let additional_params = crate::message::AdditionalParams::from_entries(
+                        (!citations.is_empty()).then(|| ("citations", json!(citations))),
+                    );
+                    // Anthropic has no text item id; the content-block index
+                    // is stable for the block's lifetime.
+                    out.text_start(
+                        MintKind::Block.for_wire_index(index as u64),
+                        additional_params,
+                    );
+                }
+                Content::ServerToolUse { id, name, input } => {
+                    self.server_tool_uses.insert(
+                        index,
+                        ServerToolUseState {
+                            name,
+                            id,
+                            initial_input: input,
+                            input_json: String::new(),
+                        },
+                    );
+                }
+                raw @ (Content::WebSearchToolResult { .. }
+                | Content::CodeExecutionToolResult { .. }) => out.text_start(
+                    MintKind::Block.for_wire_index(index as u64),
+                    crate::message::AdditionalParams::from_entries([(
+                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                        json!(raw),
+                    )]),
+                ),
+                Content::ToolUse { id, name, .. } => {
+                    self.current_tool_call = Some(id.clone());
+                    out.tool_name(&BlockId::wire(id), name);
+                }
+                Content::Thinking {
+                    thinking,
+                    signature,
+                } => {
+                    // `content_block_start` opens the block with its initial
+                    // payload; the old `..` discarded both fields. Adaptive
+                    // thinking opens with an empty `thinking`, emits no
+                    // `thinking_delta` at all, and delivers the whole
+                    // signature by `signature_delta` — so the block's only
+                    // content is a signature, which `content_block_stop`
+                    // must still close with.
+                    self.current_thinking = Some(ThinkingState {
+                        signature: String::new(),
+                        initial_signature: signature.unwrap_or_default(),
+                    });
+                    // The opening payload's text is a delta like any other;
+                    // the shared accumulator owns the block's text.
+                    if !thinking.is_empty() {
+                        out.reasoning_delta(
+                            &MintKind::Block.for_wire_index(index as u64),
+                            None,
+                            thinking,
+                        );
+                    }
+                }
+                Content::RedactedThinking { data } => out.reasoning_block(
+                    // Derive the key from the content-block index (no wire id).
+                    MintKind::Block.for_wire_index(index as u64),
+                    None,
+                    ReasoningContent::Redacted { data },
+                ),
+                // Request-side content kinds; an assistant stream never
+                // opens a block with them, and there is nothing to emit.
+                Content::Image { .. } | Content::ToolResult { .. } | Content::Document { .. } => {}
+            },
+            StreamingEvent::ContentBlockStop { index } => {
+                // Drop only a wholly empty block. A signature-only thinking
+                // block (empty text, complete signature) is the
+                // adaptive-thinking wire shape, and its signature is
+                // replay-required provider state that Anthropic accepts back
+                // verbatim (the paired non-streaming cassette replays that
+                // exact empty-text signed block). The non-streaming path has
+                // never gated on text, so gating here was a unary/streaming
+                // divergence that silently dropped the signature.
+                if let Some(thinking_state) = self.current_thinking.take() {
+                    // `content_block_stop` is the wire's own lifecycle end:
+                    // the shared accumulator holds the block's accumulated
+                    // text, and the end carries the assembled signature
+                    // (present for signed and adaptive signature-only blocks
+                    // alike — replay-required provider state either way). A
+                    // wholly empty block (no deltas, no signature) closes
+                    // silently.
+                    out.reasoning_end(
+                        MintKind::Block.for_wire_index(index as u64),
+                        None,
+                        thinking_state.into_signature(),
+                        // `content_block_stop` is the wire's own end frame,
+                        // so even an unsigned block yields its end event.
+                        true,
+                    );
+                    return;
+                }
+
+                if let Some(server_tool_use) = self.server_tool_uses.remove(&index) {
+                    let input = if server_tool_use.input_json.is_empty() {
+                        if server_tool_use.initial_input.is_null() {
+                            json!({})
+                        } else {
+                            server_tool_use.initial_input
+                        }
+                    } else {
+                        match serde_json::from_str(&server_tool_use.input_json) {
+                            Ok(json_value) => json_value,
+                            Err(e) => {
+                                out.error(CompletionError::from(e));
+                                return;
+                            }
+                        }
+                    };
+
+                    out.text_start(
+                        MintKind::Block.for_wire_index(index as u64),
+                        crate::message::AdditionalParams::from_entries([(
+                            super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                            json!(Content::ServerToolUse {
+                                id: server_tool_use.id,
+                                name: server_tool_use.name,
+                                input,
+                            }),
+                        )]),
+                    );
+                    return;
+                }
+
+                // `content_block_stop` promises a complete block: empty input
+                // finalizes to `{}`, malformed input surfaces as an error
+                // item (`UnparseableToolInput::Error`) in the accumulator.
+                if let Some(id) = self.current_tool_call.take() {
+                    out.tool_end(
+                        BlockId::wire(id),
+                        ToolCallEnd::new(UnparseableToolInput::Error),
+                    );
+                }
+            }
+            // Interpreted by `interpret` itself (`message_start` /
+            // `message_delta` / the `error` envelope) or Known no-ops
+            // (`message_stop`, `ping`).
+            StreamingEvent::MessageStart { .. }
+            | StreamingEvent::MessageDelta { .. }
+            | StreamingEvent::MessageStop
+            | StreamingEvent::Ping
+            | StreamingEvent::Error { .. } => {}
+        }
+    }
+}
+
 impl WireAdapter for AnthropicAdapter {
     type Frame = WireFrame;
     type Event = StreamingEvent;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamingEvent> {
         wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
@@ -349,12 +591,12 @@ impl WireAdapter for AnthropicAdapter {
         })
     }
 
-    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput<Self::Response>) {
+    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
 
-        match &event {
+        match event {
             StreamingEvent::MessageStart { message } => {
                 // Bedrock-compat quirk: a `message_start` without a message
                 // body is a no-op, not an error.
@@ -368,12 +610,11 @@ impl WireAdapter for AnthropicAdapter {
                 let span = tracing::Span::current();
                 span.record("gen_ai.response.id", &message.id);
                 span.record("gen_ai.response.model", &message.model);
-                return;
             }
             StreamingEvent::MessageDelta { delta, usage } => {
                 // Only a `message_delta` carrying a stop reason is the
                 // provider's genuine terminal; without one it is a no-op.
-                let Some(reason) = delta.stop_reason.as_ref() else {
+                let Some(reason) = delta.stop_reason else {
                     return;
                 };
                 // cache_creation_input_tokens and cache_read_input_tokens are
@@ -436,22 +677,23 @@ impl WireAdapter for AnthropicAdapter {
 
                 let span = tracing::Span::current();
                 span.record_token_usage(&crate::completion::Usage::from(&usage));
-                out.push(Ok(RawStreamingChoice::FinalResponse(
-                    StreamingCompletionResponse {
-                        usage,
-                        stop_reason: Some(reason.clone()),
-                        // Rides the same `message_delta` as the stop reason,
-                        // and only that frame carries it: `message_start`
-                        // always opens with `null`.
-                        stop_sequence: delta.stop_sequence.clone(),
-                        message_id: self.message_id.clone(),
-                        model: self.response_model.clone(),
-                        // Stamped by the transport layer; the adapter never
-                        // sees connection headers.
-                        provider_request_id: None,
-                    },
-                )));
-                return;
+                let native = StreamingCompletionResponse {
+                    usage,
+                    stop_reason: Some(reason),
+                    // Rides the same `message_delta` as the stop reason, and
+                    // only that frame carries it: `message_start` always
+                    // opens with `null`.
+                    stop_sequence: delta.stop_sequence,
+                    message_id: self.message_id.clone(),
+                    model: self.response_model.clone(),
+                    // Stamped by the transport layer onto the normalized
+                    // record; the adapter never sees connection headers.
+                    provider_request_id: None,
+                };
+                match terminal_record(self.provider, &native) {
+                    Ok(record) => out.final_record(record),
+                    Err(err) => out.error(err),
+                }
             }
             StreamingEvent::Error { error } => {
                 // The provider aborted the turn in-band. Preserve the full
@@ -461,25 +703,17 @@ impl WireAdapter for AnthropicAdapter {
                 // `message_delta` then withholds the terminal record.
                 self.failed = true;
                 let body = serde_json::json!({ "type": "error", "error": error }).to_string();
-                out.push(Err(crate::provider_response::completion_error_from_body(
-                    body,
-                )));
-                return;
+                out.error(crate::provider_response::completion_error_from_body(body));
             }
-            _ => {}
-        }
-
-        if let Some(result) = handle_event(
-            &event,
-            &mut self.current_tool_call,
-            &mut self.server_tool_uses,
-            &mut self.current_thinking,
-        ) {
-            out.push(result);
+            event @ (StreamingEvent::ContentBlockStart { .. }
+            | StreamingEvent::ContentBlockDelta { .. }
+            | StreamingEvent::ContentBlockStop { .. }
+            | StreamingEvent::MessageStop
+            | StreamingEvent::Ping) => self.interpret_content(event, out),
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, _out: &mut AdapterOutput) {
         // EOF without `message_delta` is truncation: open blocks stay
         // partial, and no terminal record may be synthesized.
     }
@@ -493,12 +727,11 @@ impl WireAdapter for AnthropicAdapter {
     }
 }
 
-/// Anthropic's own terminal stream record, as returned by
-/// [`GenericCompletionModel::raw_stream`].
+/// Anthropic's own terminal stream record.
 ///
-/// [`crate::completion::CompletionModel::stream`] maps this once into the
-/// normalized [`StreamFinal`]; callers who want the provider-native shape read
-/// it here instead.
+/// The adapter maps it once into the normalized [`StreamFinal`] (see
+/// [`terminal_record`]) and serializes it onto [`StreamFinal::raw`]; callers
+/// who want the provider-native shape deserialize it from there.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     /// Token usage carried by the terminal `message_delta` event.
@@ -525,25 +758,34 @@ pub struct StreamingCompletionResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// The transport request id from the SSE connection's `request-id`
-    /// response header — not part of any stream frame; stamped by the
-    /// transport. `None` when the provider did not report one.
+    /// response header — not part of any stream frame. The adapter never
+    /// sees connection headers, so on a live stream this is `None` and the
+    /// transport stamps the id onto the normalized
+    /// [`StreamFinal::provider_request_id`] instead; the field survives for
+    /// records built elsewhere (and re-normalizes through
+    /// [`terminal_record`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
 }
 
-/// Normalize an Anthropic terminal stream record.
+/// Normalize an Anthropic terminal stream record for `provider`, keeping
+/// the native record on [`StreamFinal::raw`].
 ///
 /// The provider descriptor name is an *input* rather than a constant: the
 /// Anthropic Messages stream format is shared by every Anthropic-compatible
 /// provider, so baking in `"anthropic"` here would mislabel all of them.
-impl From<(&str, StreamingCompletionResponse)> for StreamFinal {
-    fn from((provider, response): (&str, StreamingCompletionResponse)) -> Self {
+fn terminal_record(
+    provider: &str,
+    response: &StreamingCompletionResponse,
+) -> Result<StreamFinal, CompletionError> {
+    Ok(
         StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
             .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
-            .with_optional_message_id(response.message_id)
-            .with_optional_provider_request_id(response.provider_request_id)
-            .with_optional_model(response.model)
-    }
+            .with_optional_message_id(response.message_id.clone())
+            .with_optional_provider_request_id(response.provider_request_id.clone())
+            .with_optional_model(response.model.clone())
+            .with_raw(serde_json::to_value(response)?),
+    )
 }
 
 impl<Ext, T> GenericCompletionModel<Ext, T>
@@ -551,18 +793,10 @@ where
     T: HttpClientExt + Clone + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    /// Open a stream whose terminal record stays Anthropic-native.
-    ///
-    /// This is the escape hatch for provider-specific terminal fields rig does
-    /// not normalize. It shares the request builder, transport, telemetry, and
-    /// error handling with
-    /// [`CompletionModel::stream`](crate::completion::CompletionModel::stream),
-    /// which calls it and then maps the terminal record once through
-    /// [`crate::streaming::normalize_stream`] — one network request either way.
-    pub async fn raw_stream(
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let (span, request) =
             self.prepare_request(completion_request, CompletionOperation::ChatStreaming)?;
 
@@ -604,255 +838,15 @@ where
                 log_transport_errors: false,
             },
             skip_blank_frames,
-            AnthropicAdapter::default(),
+            AnthropicAdapter::new(Ext::PROVIDER_NAME),
             span,
         );
-        Ok(
-            crate::providers::internal::sse_transport::stamp_terminal_request_id(
-                stream,
-                request_id_slot,
-                Ext::REQUEST_ID_HEADER,
-                |response, id| response.provider_request_id = Some(id),
-            ),
-        )
-    }
-
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let stream = self.raw_stream(completion_request).await?;
-        let normalized = streaming::normalize_stream(stream, |response| {
-            Ok(StreamFinal::from((Ext::PROVIDER_NAME, response)))
-        });
+        let stream = stamp_terminal_request_id(stream, request_id_slot, Ext::REQUEST_ID_HEADER);
 
         Ok(streaming::StreamingCompletionResponse::stream(
             Ext::PROVIDER_NAME,
-            normalized,
+            stream,
         ))
-    }
-}
-
-fn handle_event(
-    event: &StreamingEvent,
-    current_tool_call: &mut Option<String>,
-    server_tool_uses: &mut HashMap<usize, ServerToolUseState>,
-    current_thinking: &mut Option<ThinkingState>,
-) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
-    match event {
-        StreamingEvent::ContentBlockDelta { index, delta } => match delta {
-            ContentDelta::TextDelta { text } => {
-                if current_tool_call.is_none() {
-                    return Some(Ok(RawStreamingChoice::Message(text.clone())));
-                }
-                None
-            }
-            ContentDelta::InputJsonDelta { partial_json } => {
-                if let Some(server_tool_use) = server_tool_uses.get_mut(index) {
-                    server_tool_use.input_json.push_str(partial_json);
-                    return None;
-                }
-
-                if let Some(id) = current_tool_call {
-                    // Emit the delta so UI can show progress; the shared
-                    // accumulator assembles the fragments.
-                    return Some(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: BlockId::wire(id.clone()),
-                        content: ToolCallDeltaContent::Delta(partial_json.clone()),
-                    }));
-                }
-                None
-            }
-            ContentDelta::ThinkingDelta { thinking } => {
-                current_thinking.get_or_insert_with(ThinkingState::default);
-
-                Some(Ok(RawStreamingChoice::ReasoningDelta {
-                    // Anthropic has no reasoning item id; the content-block
-                    // index is stable across a block's deltas and its stop.
-                    id: MintKind::Block.for_wire_index(*index as u64),
-                    provider_id: None,
-                    reasoning: thinking.clone(),
-                }))
-            }
-            ContentDelta::SignatureDelta { signature } => {
-                current_thinking
-                    .get_or_insert_with(ThinkingState::default)
-                    .signature
-                    .push_str(signature);
-
-                // Wire quirk: the signature is not emitted as its own chunk —
-                // it closes the thinking block, riding on the completed
-                // `Reasoning` the `content_block_stop` restatement emits.
-                None
-            }
-            ContentDelta::CitationsDelta { citation } => {
-                crate::message::AdditionalParams::from_entries([("citations", json!([citation]))])
-                    .map(|params| Ok(RawStreamingChoice::TextAdditionalParams(params)))
-            }
-            ContentDelta::Unknown(value) => {
-                // Structural metadata only: a novel delta type can carry
-                // model output, which must not leak into production WARN
-                // logs (same policy as the adapter's unknown-event warn).
-                tracing::warn!(
-                    delta_type = value.get("type").and_then(serde_json::Value::as_str),
-                    "skipping unrecognized Anthropic content delta type"
-                );
-                None
-            }
-        },
-        StreamingEvent::ContentBlockStart {
-            index,
-            content_block,
-        } => match content_block {
-            // Keep this destructuring exhaustive so new wire fields force an
-            // explicit capture-or-drop decision: block-start `text` arrives
-            // via the deltas, and `cache_control` is a request-side
-            // directive — both deliberately dropped here.
-            Content::Text {
-                text: _,
-                citations,
-                cache_control: _,
-            } => {
-                let additional_params = crate::message::AdditionalParams::from_entries(
-                    (!citations.is_empty()).then(|| ("citations", json!(citations))),
-                );
-                Some(Ok(RawStreamingChoice::TextStart {
-                    // Anthropic has no text item id; the content-block index
-                    // is stable for the block's lifetime.
-                    id: MintKind::Block.for_wire_index(*index as u64),
-                    additional_params,
-                }))
-            }
-            Content::ServerToolUse { id, name, input } => {
-                server_tool_uses.insert(
-                    *index,
-                    ServerToolUseState {
-                        name: name.clone(),
-                        id: id.clone(),
-                        initial_input: input.clone(),
-                        input_json: String::new(),
-                    },
-                );
-                None
-            }
-            raw @ (Content::WebSearchToolResult { .. }
-            | Content::CodeExecutionToolResult { .. }) => Some(Ok(RawStreamingChoice::TextStart {
-                id: MintKind::Block.for_wire_index(*index as u64),
-                additional_params: crate::message::AdditionalParams::from_entries([(
-                    super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                    json!(raw),
-                )]),
-            })),
-            Content::ToolUse { id, name, .. } => {
-                *current_tool_call = Some(id.clone());
-                Some(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: BlockId::wire(id.clone()),
-                    content: ToolCallDeltaContent::Name(name.clone()),
-                }))
-            }
-            Content::Thinking {
-                thinking,
-                signature,
-            } => {
-                // `content_block_start` opens the block with its initial
-                // payload; the old `..` discarded both fields. Adaptive
-                // thinking opens with an empty `thinking`, emits no
-                // `thinking_delta` at all, and delivers the whole signature
-                // by `signature_delta` — so the block's only content is a
-                // signature, which `content_block_stop` must still restate.
-                *current_thinking = Some(ThinkingState {
-                    signature: String::new(),
-                    initial_signature: signature.clone().unwrap_or_default(),
-                });
-                // The opening payload's text is a delta like any other; the
-                // shared accumulator owns the block's text.
-                (!thinking.is_empty()).then(|| {
-                    Ok(RawStreamingChoice::ReasoningDelta {
-                        id: MintKind::Block.for_wire_index(*index as u64),
-                        provider_id: None,
-                        reasoning: thinking.clone(),
-                    })
-                })
-            }
-            Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
-                // Derive the key from the content-block index (no wire id).
-                id: MintKind::Block.for_wire_index(*index as u64),
-                provider_id: None,
-                content: ReasoningContent::Redacted { data: data.clone() },
-            })),
-            // Handle other content types - they don't need special handling
-            _ => None,
-        },
-        StreamingEvent::ContentBlockStop { index } => {
-            // Drop only a wholly empty block. A signature-only thinking block
-            // (empty text, complete signature) is the adaptive-thinking wire
-            // shape, and its signature is replay-required provider state that
-            // Anthropic accepts back verbatim (the paired non-streaming
-            // cassette replays that exact empty-text signed block). The
-            // non-streaming path has never gated on text, so gating here was
-            // a unary/streaming divergence that silently dropped the
-            // signature.
-            if let Some(thinking_state) = Option::take(current_thinking) {
-                // `content_block_stop` is the wire's own lifecycle end: the
-                // shared accumulator holds the block's accumulated text, and
-                // the end carries the assembled signature (present for
-                // signed and adaptive signature-only blocks alike — replay-
-                // required provider state either way). A wholly empty block
-                // (no deltas, no signature) closes silently.
-                return Some(Ok(RawStreamingChoice::ReasoningEnd {
-                    id: MintKind::Block.for_wire_index(*index as u64),
-                    reasoning: None,
-                    signature: thinking_state.into_signature(),
-                    // `content_block_stop` is the wire's own end frame, so
-                    // even an unsigned block yields its completed event.
-                    wire_sent: true,
-                }));
-            }
-
-            if let Some(server_tool_use) = server_tool_uses.remove(index) {
-                let input = if server_tool_use.input_json.is_empty() {
-                    if server_tool_use.initial_input.is_null() {
-                        json!({})
-                    } else {
-                        server_tool_use.initial_input
-                    }
-                } else {
-                    match serde_json::from_str(&server_tool_use.input_json) {
-                        Ok(json_value) => json_value,
-                        Err(e) => return Some(Err(CompletionError::from(e))),
-                    }
-                };
-
-                return Some(Ok(RawStreamingChoice::TextStart {
-                    id: MintKind::Block.for_wire_index(*index as u64),
-                    additional_params: crate::message::AdditionalParams::from_entries([(
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
-                        json!(Content::ServerToolUse {
-                            id: server_tool_use.id,
-                            name: server_tool_use.name,
-                            input,
-                        }),
-                    )]),
-                }));
-            }
-
-            // `content_block_stop` promises a complete block: empty input
-            // finalizes to `{}`, malformed input surfaces as an error item
-            // (`UnparseableToolInput::Error`) in the accumulator.
-            Option::take(current_tool_call).map(|id| {
-                Ok(RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(
-                    id,
-                    UnparseableToolInput::Error,
-                )))
-            })
-        }
-        // Interpreted by the adapter (`message_start`/`message_delta`/the
-        // `error` envelope) or Known no-ops (`message_stop`, `ping`).
-        StreamingEvent::MessageStart { .. }
-        | StreamingEvent::MessageDelta { .. }
-        | StreamingEvent::MessageStop
-        | StreamingEvent::Ping
-        | StreamingEvent::Error { .. } => None,
     }
 }
 

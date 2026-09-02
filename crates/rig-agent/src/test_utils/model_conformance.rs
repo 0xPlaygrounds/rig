@@ -1256,17 +1256,19 @@ where
     let mut streamed_usage = None;
     while let Some(item) = stream.next().await {
         match item? {
-            crate::streaming::StreamedAssistantContent::Text(text) => {
-                streamed_text.push_str(&text.text);
+            crate::streaming::StreamEvent::BlockDelta {
+                delta: crate::streaming::Delta::Text { text },
+                ..
+            } => {
+                streamed_text.push_str(&text);
             }
-            crate::streaming::StreamedAssistantContent::Final(response) => {
+            crate::streaming::StreamEvent::Final(response) => {
                 streamed_usage = Some(response.usage);
             }
-            crate::streaming::StreamedAssistantContent::ToolCall { .. }
-            | crate::streaming::StreamedAssistantContent::ToolCallDelta { .. }
-            | crate::streaming::StreamedAssistantContent::Reasoning { .. }
-            | crate::streaming::StreamedAssistantContent::ReasoningDelta { .. }
-            | crate::streaming::StreamedAssistantContent::Unknown(_) => {}
+            crate::streaming::StreamEvent::BlockStart { .. }
+            | crate::streaming::StreamEvent::BlockDelta { .. }
+            | crate::streaming::StreamEvent::BlockEnd { .. }
+            | crate::streaming::StreamEvent::Unknown(_) => {}
         }
     }
     let usage = streamed_usage.ok_or_else(|| {
@@ -1814,9 +1816,7 @@ where
     let mut streamed_result_ids = Vec::new();
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(
-                crate::streaming::StreamedAssistantContent::ToolCall { id, .. },
-            ) => streamed_call_ids.push(id),
+            MultiTurnStreamItem::ToolCall { block_id, .. } => streamed_call_ids.push(block_id),
             MultiTurnStreamItem::StreamUserItem(
                 crate::streaming::StreamedUserContent::ToolResult { id, .. },
             ) => streamed_result_ids.push(id),

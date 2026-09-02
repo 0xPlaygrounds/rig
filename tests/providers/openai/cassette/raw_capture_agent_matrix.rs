@@ -59,7 +59,7 @@ use rig::completion::ResponseIdentity;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use serde_json::Value;
 
 use super::super::support::{assert_matches_recorded_token, sse_json_frames, with_openai_cassette};
@@ -315,9 +315,9 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
             let mut final_response = None;
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should succeed") {
-                    MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                        terminal,
-                    )) => observation.finals.push(terminal.raw.clone()),
+                    MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(terminal)) => {
+                        observation.finals.push(terminal.raw.clone())
+                    }
                     MultiTurnStreamItem::CompletionCall(call) => {
                         observation.stream_calls.push(call.raw.clone());
                     }

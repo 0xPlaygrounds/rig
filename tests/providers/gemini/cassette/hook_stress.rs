@@ -31,7 +31,7 @@ use rig::agent::{
 use rig::completion::Document;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
@@ -557,13 +557,19 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
-                        StreamedAssistantContent::Text(_) => events.push("text"),
-                        StreamedAssistantContent::ToolCall { .. } => events.push("tool_call"),
-                        StreamedAssistantContent::ToolCallDelta { .. } => {
+                        StreamEvent::BlockDelta {
+                            delta: Delta::Text { text: _ },
+                            ..
+                        } => events.push("text"),
+                        StreamEvent::BlockDelta {
+                            delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                            ..
+                        } => {
                             events.push("tool_call_delta");
                         }
                         _ => {}
                     },
+                    Ok(MultiTurnStreamItem::ToolCall { .. }) => events.push("tool_call"),
                     Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
                         events.push("tool_execution_committed");
                     }

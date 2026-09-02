@@ -102,7 +102,7 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition, Usage};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_reasoning_usage_cassette};
@@ -341,20 +341,16 @@ async fn blocking_usage(model: &AnthropicModel, request: CompletionRequest) -> U
 
 /// Drain a provider-native stream and return its terminal record's usage.
 async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> Usage {
-    let mut stream = model.raw_stream(request).await.expect("stream should open");
+    let mut stream = model.stream(request).await.expect("stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let RawStreamingChoice::FinalResponse(record) =
-            item.expect("stream item should not error")
-        {
+        if let StreamEvent::Final(record) = item.expect("stream item should not error") {
             terminal = Some(record);
         }
     }
-    Usage::from(
-        &terminal
-            .expect("stream should yield a terminal record")
-            .usage,
-    )
+    terminal
+        .expect("stream should yield a terminal record")
+        .usage
 }
 
 // ------------------------------------------------------------- blocking ---

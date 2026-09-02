@@ -75,7 +75,7 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedError) ->
             Ok(_) => bail!("Mistral unexpectedly accepted blocking logprobs"),
             Err(error) => error,
         },
-        Transport::Streaming => match model.raw_stream(request).await {
+        Transport::Streaming => match model.stream(request).await {
             Err(error) => error,
             Ok(mut stream) => loop {
                 match stream.next().await {

@@ -105,7 +105,7 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::providers::gemini::Client;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -147,7 +147,10 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
             items_after_error += 1;
         }
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => texts.push(text),
             Ok(_) => {}
             Err(_) => saw_error = true,
         }
@@ -602,7 +605,7 @@ mod terminal_emission {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::providers::gemini::Client;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -643,8 +646,11 @@ mod terminal_emission {
         let mut saw_terminal = false;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
-                Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                Ok(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                }) => texts.push(text),
+                Ok(StreamEvent::Final(_)) => saw_terminal = true,
                 Ok(_) => {}
                 Err(_) => saw_error = true,
             }
@@ -675,8 +681,10 @@ mod terminal_emission {
 
         let mut signed = None;
         while let Some(item) = stream.next().await {
-            if let StreamedAssistantContent::Reasoning { reasoning, .. } =
-                item.expect("stream item should be Ok")
+            if let StreamEvent::BlockEnd {
+                block: Some(crate::message::AssistantContent::Reasoning(reasoning)),
+                ..
+            } = item.expect("stream item should be Ok")
             {
                 signed = Some(reasoning);
             }
@@ -730,8 +738,11 @@ mod terminal_emission {
         let mut saw_terminal = false;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
-                Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                Ok(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                }) => texts.push(text),
+                Ok(StreamEvent::Final(_)) => saw_terminal = true,
                 Ok(_) => {}
                 Err(_) => saw_error = true,
             }

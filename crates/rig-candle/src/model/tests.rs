@@ -6,6 +6,8 @@ use futures::StreamExt;
 use rig_core::completion::{CompletionModel, Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
+use rig_core::streaming::{Delta, StreamEvent};
+#[cfg(not(target_family = "wasm"))]
 use safetensors::tensor::{Dtype, View, serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -250,17 +252,22 @@ async fn collect_stream(
     model: &CandleModel,
     request: CompletionRequest,
 ) -> Result<(String, CandleCompletionResponse), Box<dyn std::error::Error + Send + Sync>> {
-    let mut response = model.raw_stream(request).await?;
+    let mut response = model.stream(request).await?;
     let mut text = String::new();
-    let mut final_response = None;
     while let Some(item) = response.next().await {
-        match item? {
-            RawStreamingChoice::Message(fragment) => text.push_str(&fragment),
-            RawStreamingChoice::FinalResponse(raw) => final_response = Some(raw),
-            _ => {}
+        if let StreamEvent::BlockDelta {
+            delta: Delta::Text { text: fragment },
+            ..
+        } = item?
+        {
+            text.push_str(&fragment);
         }
     }
-    let raw = final_response.ok_or("stream did not emit a final response")?;
+    let terminal = response
+        .response
+        .ok_or("stream did not emit a final response")?;
+    // The local record rides the terminal's `raw`, typed back here.
+    let raw: CandleCompletionResponse = serde_json::from_value(terminal.raw)?;
     Ok((text, raw))
 }
 
@@ -908,7 +915,7 @@ async fn streaming_clamps_context_and_rejects_bad_request_options()
     ] {
         let mut bad_request = request(vec![Message::user("hello")]);
         bad_request.additional_params = Some(additional_params);
-        let mut stream = model.raw_stream(bad_request).await?;
+        let mut stream = model.stream(bad_request).await?;
         let item = stream
             .next()
             .await
@@ -1226,9 +1233,7 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
 async fn dropping_stream_cancels_worker_before_queued_request_runs()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let stream = model
-        .raw_stream(request(vec![Message::user("hello")]))
-        .await?;
+    let stream = model.stream(request(vec![Message::user("hello")])).await?;
     control.wait_until_entered().await;
 
     let queued = model.raw_completion(request(vec![Message::user("hello")]));
@@ -1272,9 +1277,7 @@ async fn streaming_channel_applies_bounded_backpressure()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) =
         controlled_model(false, false, (STREAM_CHANNEL_CAPACITY + 4) as u64)?;
-    let stream = model
-        .raw_stream(request(vec![Message::user("hello")]))
-        .await?;
+    let stream = model.stream(request(vec![Message::user("hello")])).await?;
     control
         .wait_for_delivery_attempts(STREAM_CHANNEL_CAPACITY + 1)
         .await;
@@ -1302,9 +1305,7 @@ async fn blocking_task_panic_maps_to_typed_completion_error()
     assert!(error.to_string().contains("Candle blocking task failed"));
 
     let (model, _, _) = controlled_model(false, true, 1)?;
-    let mut stream = model
-        .raw_stream(request(vec![Message::user("hello")]))
-        .await?;
+    let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
     let error = stream
         .next()
         .await
@@ -1574,7 +1575,7 @@ fn candle_completion_response_round_trips_through_serde_json_value()
 
 /// The events-first seam captures like the request-driven one: its terminal
 /// `raw` is the same `CandleCompletionResponse` the model's `stream()` would
-/// attach, because both funnel through `normalize_candle_stream`.
+/// attach, because both funnel through the adapter's `terminal_record`.
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test(flavor = "current_thread")]
 async fn stream_from_events_terminal_carries_raw()
@@ -1592,8 +1593,8 @@ async fn stream_from_events_terminal_carries_raw()
         tokens_per_second: Some(500.0),
     };
     let mut stream = stream_from_events(futures::stream::iter(vec![
-        Ok(RawStreamingChoice::Message("hi".to_string())),
-        Ok(RawStreamingChoice::FinalResponse(terminal_record.clone())),
+        Ok(GenerationEvent::Text("hi".to_string())),
+        Ok(GenerationEvent::Final(terminal_record.clone())),
     ]));
     while let Some(item) = stream.next().await {
         item?;
@@ -1660,10 +1661,11 @@ async fn completion_raw_round_trips_into_the_local_record()
 }
 
 /// The streaming twin through the real `CompletionModel::stream` path: the
-/// terminal `StreamFinal.raw` is the same local record the raw stream's
-/// `FinalResponse` carries — it round-trips into `CandleCompletionResponse`,
-/// agrees with `raw_stream` on text and token counts, and re-normalizing it
-/// through the events-first seam reproduces every normalized field.
+/// terminal `StreamFinal.raw` is the local record the generator's `Final`
+/// event carries — it round-trips into `CandleCompletionResponse`, agrees
+/// with a second stream's terminal on text and token counts, and
+/// re-normalizing it through the events-first seam reproduces every
+/// normalized field.
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test(flavor = "current_thread")]
 async fn stream_terminal_raw_round_trips_into_the_local_record()
@@ -1699,7 +1701,7 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     assert_eq!(typed.finish_reason, streamed.finish_reason);
 
     let mut renormalized = stream_from_events(futures::stream::iter(vec![Ok(
-        RawStreamingChoice::FinalResponse(typed),
+        GenerationEvent::Final(typed),
     )]));
     while let Some(item) = renormalized.next().await {
         item?;

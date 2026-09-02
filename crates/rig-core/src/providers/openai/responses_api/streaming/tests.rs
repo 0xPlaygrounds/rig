@@ -1,10 +1,11 @@
 use super::{
     ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator, ResponsesStreamOptions,
-    StreamingCompletionChunk, classify_responses_frame, raw_choices_from_sse_body,
-    reasoning_end_from_done_item,
+    StreamingCompletionChunk, classify_responses_frame, reasoning_from_done_item,
+    stream_events_from_sse_body,
 };
 use crate::completion::CompletionModel;
-use crate::message::ReasoningContent;
+use crate::message::{AssistantContent, ReasoningContent};
+use crate::providers::internal::adapter::AdapterOutput;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
@@ -13,7 +14,7 @@ use crate::providers::openai::responses_api::{
     AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
     ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
 };
-use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
+use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::{client::CompletionClient, providers::openai};
 use futures::StreamExt;
@@ -95,7 +96,7 @@ fn classify_reasoning_text_done_is_known_and_decodes() {
 /// a no-op: replaying it would double every raw-reasoning block.
 #[test]
 fn reasoning_text_done_emits_nothing() {
-    let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
+    let mut accumulator = RawChoiceAccumulator::new("openai", ResponsesUsage::new());
     let chunk: ItemChunk = serde_json::from_value(json!({
         "type": "response.reasoning_text.done",
         "item_id": "rs_1",
@@ -106,7 +107,8 @@ fn reasoning_text_done_emits_nothing() {
     }))
     .expect("reasoning text done event should deserialize");
 
-    let emitted = accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict());
+    let mut emitted = AdapterOutput::new();
+    accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict(), &mut emitted);
     assert!(
         emitted.is_empty(),
         "the done restatement must not re-emit the reasoning text: {emitted:?}"
@@ -251,7 +253,8 @@ async fn first_error_from_event(event: serde_json::Value) -> crate::completion::
         .expect_err("stream should surface a provider error")
 }
 
-/// The provider-native terminal record, as `raw_stream` exposes it.
+/// The provider-native terminal record, recovered from the serialized
+/// `StreamFinal::raw` the stream's terminal carries.
 async fn final_response_from_event(event: serde_json::Value) -> super::StreamingCompletionResponse {
     let client = openai::Client::builder()
         .http_client(MockStreamingClient {
@@ -262,16 +265,12 @@ async fn final_response_from_event(event: serde_json::Value) -> super::Streaming
         .expect("client should build");
     let model = client.completion_model("gpt-5.4");
     let request = model.completion_request("hello").build();
-    let mut stream = model
-        .raw_stream(request)
-        .await
-        .expect("stream should start");
+    let mut stream = model.stream(request).await.expect("stream should start");
 
     while let Some(item) = stream.next().await {
-        if let RawStreamingChoice::FinalResponse(response) =
-            item.expect("completed stream should not error")
-        {
-            return response;
+        if let StreamEvent::Final(response) = item.expect("completed stream should not error") {
+            return serde_json::from_value(response.raw)
+                .expect("the raw terminal record is the provider's own type");
         }
     }
 
@@ -292,14 +291,45 @@ async fn stream_final_from_event(event: serde_json::Value) -> crate::streaming::
     let mut stream = model.stream(request).await.expect("stream should start");
 
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(response) =
-            item.expect("completed stream should not error")
-        {
+        if let StreamEvent::Final(response) = item.expect("completed stream should not error") {
             return response;
         }
     }
 
     panic!("stream should yield a final response");
+}
+
+/// Drain a stream whose provider fully delivered one tool call before a
+/// terminal error: the call's block events (its start, then the end
+/// carrying the completed call) come first, then the error, then nothing.
+async fn flushed_tool_call_then_error(
+    stream: &mut crate::streaming::StreamingCompletionResponse,
+) -> (crate::message::ToolCall, crate::completion::CompletionError) {
+    let mut tool_call = None;
+    let err = loop {
+        match stream
+            .next()
+            .await
+            .expect("stream should yield the flushed tool call, then the error")
+        {
+            Ok(StreamEvent::BlockStart {
+                kind: BlockKind::ToolCall,
+                ..
+            }) => {}
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(call)),
+                ..
+            }) => tool_call = Some(call),
+            Ok(other) => panic!("expected the flushed tool call first, got {other:?}"),
+            Err(err) => break err,
+        }
+    };
+    let tool_call = tool_call.expect("the flushed tool call must precede the terminal error");
+    assert!(
+        stream.next().await.is_none(),
+        "nothing may follow the terminal error"
+    );
+    (tool_call, err)
 }
 
 #[test]
@@ -351,26 +381,14 @@ fn reasoning_done_item_fuses_summary_content_and_encrypted_into_one_end() {
         },
     ];
     let content = vec!["private reasoning".to_string()];
-    let end = reasoning_end_from_done_item(
-        &crate::streaming::BlockId::wire("rs_1"),
-        Some("rs_1"),
-        summary,
-        content,
-        Some("enc_blob".to_string()),
-    );
+    let reasoning =
+        reasoning_from_done_item(Some("rs_1"), summary, content, Some("enc_blob".to_string()));
 
-    // ONE end event carrying every block in wire field order — never a
-    // choice per block, which made siblings under one `rs_*` id.
-    let Some(RawStreamingChoice::ReasoningEnd {
-        id,
-        reasoning: Some(reasoning),
-        signature: None,
-        wire_sent: true,
-    }) = end
-    else {
-        panic!("expected one wire-sent ReasoningEnd restatement");
+    // ONE restatement carrying every block in wire field order — never a
+    // block per entry, which made siblings under one `rs_*` id.
+    let Some(reasoning) = reasoning else {
+        panic!("expected one wire-sent reasoning restatement");
     };
-    assert_eq!(id, crate::streaming::BlockId::wire("rs_1"));
     assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
     assert_eq!(
         reasoning.content,
@@ -404,19 +422,32 @@ fn reasoning_output_item_done_emits_reasoning_text_content() {
         })
     );
 
-    let choices =
-        raw_choices_from_sse_body(&body, ResponsesUsage::new()).expect("sse body should decode");
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+        .expect("sse body should decode");
 
-    // The done item arrives as one wire-sent end restatement whose
-    // single block is the reasoning text.
+    // The done item opens its block under the item's `rs_*` id and closes
+    // it with one wire-sent end restatement whose single block is the
+    // reasoning text.
     assert!(matches!(
-        choices.first(),
-        Some(RawStreamingChoice::ReasoningEnd {
+        events.first(),
+        Some(StreamEvent::BlockStart {
             id,
-            reasoning: Some(reasoning),
-            wire_sent: true,
+            kind: BlockKind::Reasoning {
+                provider_id: Some(provider_id)
+            },
+        }) if id == &BlockId::wire("rs_text_1") && provider_id == "rs_text_1"
+    ));
+    assert!(matches!(
+        events.get(1),
+        Some(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::Reasoning {
+                reasoning: Some(reasoning),
+                wire_sent: true,
+                ..
+            },
             ..
-        }) if id == &crate::streaming::BlockId::wire("rs_text_1")
+        }) if id == &BlockId::wire("rs_text_1")
             && reasoning.content
                 == vec![ReasoningContent::Text {
                     text: "visible reasoning".to_string(),
@@ -463,13 +494,12 @@ fn envelope_less_reasoning_then_text_decodes_without_violation() {
         }),
     );
 
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("sse body should decode without a sequence-law violation");
-    assert!(
-        choices.iter().any(
-            |choice| matches!(choice, RawStreamingChoice::Message(text) if text == "the answer")
-        )
-    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if text == "the answer"
+    )));
 }
 
 #[test]
@@ -486,13 +516,24 @@ fn reasoning_text_delta_emits_reasoning_delta() {
         })
     );
 
-    let choices =
-        raw_choices_from_sse_body(&body, ResponsesUsage::new()).expect("sse body should decode");
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+        .expect("sse body should decode");
 
+    // The first delta for an unseen id opens its block, carrying the
+    // wire's `rs_*` id as the durable provider id.
     assert!(matches!(
-        choices.first(),
-        Some(RawStreamingChoice::ReasoningDelta { id, provider_id: _, reasoning })
-            if id == &crate::streaming::BlockId::wire("rs_delta_1") && reasoning == "thinking"
+        events.first(),
+        Some(StreamEvent::BlockStart {
+            id,
+            kind: BlockKind::Reasoning {
+                provider_id: Some(provider_id)
+            },
+        }) if id == &BlockId::wire("rs_delta_1") && provider_id == "rs_delta_1"
+    ));
+    assert!(matches!(
+        events.get(1),
+        Some(StreamEvent::BlockDelta { id, delta: Delta::Reasoning { text } })
+            if id == &BlockId::wire("rs_delta_1") && text == "thinking"
     ));
 }
 
@@ -500,7 +541,7 @@ fn reasoning_text_delta_emits_reasoning_delta() {
 fn unknown_output_item_surfaces_as_raw_unknown_choice() {
     // A hosted-tool item (web_search_call) arriving on
     // `response.output_item.done` must surface to stream consumers as
-    // `RawStreamingChoice::Unknown` carrying the verbatim item, mirroring how
+    // `StreamEvent::Unknown` carrying the verbatim item, mirroring how
     // the non-streaming decode preserves it on `CompletionResponse.output`.
     let item = json!({
         "type": "web_search_call",
@@ -518,11 +559,11 @@ fn unknown_output_item_surfaces_as_raw_unknown_choice() {
         })
     );
 
-    let choices =
-        raw_choices_from_sse_body(&body, ResponsesUsage::new()).expect("sse body should decode");
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+        .expect("sse body should decode");
 
-    let unknown = choices.iter().find_map(|choice| match choice {
-        RawStreamingChoice::Unknown(value) => Some(value),
+    let unknown = events.iter().find_map(|event| match event {
+        StreamEvent::Unknown(value) => Some(value),
         _ => None,
     });
     assert_eq!(
@@ -537,23 +578,12 @@ fn reasoning_done_item_without_encrypted_emits_summary_only() {
     let summary = vec![ReasoningSummary::SummaryText {
         text: "only summary".to_string(),
     }];
-    let end = reasoning_end_from_done_item(
-        &crate::streaming::BlockId::wire("rs_2"),
-        Some("rs_2"),
-        summary,
-        Vec::new(),
-        None,
-    );
+    let reasoning = reasoning_from_done_item(Some("rs_2"), summary, Vec::new(), None);
 
-    let Some(RawStreamingChoice::ReasoningEnd {
-        id,
-        reasoning: Some(reasoning),
-        ..
-    }) = end
-    else {
-        panic!("expected one ReasoningEnd restatement");
+    let Some(reasoning) = reasoning else {
+        panic!("expected one reasoning restatement");
     };
-    assert_eq!(id, crate::streaming::BlockId::wire("rs_2"));
+    assert_eq!(reasoning.id.as_deref(), Some("rs_2"));
     assert_eq!(
         reasoning.content,
         vec![ReasoningContent::Summary("only summary".to_string())]
@@ -564,20 +594,11 @@ fn reasoning_done_item_without_encrypted_emits_summary_only() {
 fn empty_encrypted_reasoning_is_not_emitted() {
     let content = vec!["visible reasoning".to_string()];
 
-    let end = reasoning_end_from_done_item(
-        &crate::streaming::BlockId::wire("rs_1"),
-        Some("rs_1"),
-        Vec::new(),
-        content,
-        Some(String::new()),
-    );
+    let reasoning =
+        reasoning_from_done_item(Some("rs_1"), Vec::new(), content, Some(String::new()));
 
-    let Some(RawStreamingChoice::ReasoningEnd {
-        reasoning: Some(reasoning),
-        ..
-    }) = end
-    else {
-        panic!("expected one ReasoningEnd restatement");
+    let Some(reasoning) = reasoning else {
+        panic!("expected one reasoning restatement");
     };
     assert_eq!(
         reasoning.content,
@@ -590,14 +611,8 @@ fn empty_encrypted_reasoning_is_not_emitted() {
 
     // An entirely empty done item says nothing at the boundary.
     assert!(
-        reasoning_end_from_done_item(
-            &crate::streaming::BlockId::wire("rs_1"),
-            Some("rs_1"),
-            Vec::new(),
-            Vec::new(),
-            Some(String::new()),
-        )
-        .is_none()
+        reasoning_from_done_item(Some("rs_1"), Vec::new(), Vec::new(), Some(String::new()))
+            .is_none()
     );
 }
 
@@ -801,8 +816,11 @@ async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_r
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         match item.expect("incomplete stream should not error") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::Final(response) => final_response = Some(response),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::Final(response) => final_response = Some(response),
             _ => {}
         }
     }
@@ -861,8 +879,10 @@ async fn multi_block_reasoning_done_item_yields_one_part() {
 
     let mut completed_reasoning = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Reasoning { reasoning, .. } =
-            item.expect("stream items should be ok")
+        if let StreamEvent::BlockEnd {
+            block: Some(AssistantContent::Reasoning(reasoning)),
+            ..
+        } = item.expect("stream items should be ok")
         {
             completed_reasoning.push(reasoning);
         }
@@ -886,7 +906,7 @@ async fn multi_block_reasoning_done_item_yields_one_part() {
     );
 
     // The aggregated choice replays as exactly one reasoning input item.
-    let choice = stream.choice;
+    let choice = stream.snapshot();
     let reasoning_parts = choice
         .iter()
         .filter(|content| matches!(content, crate::message::AssistantContent::Reasoning(_)))
@@ -939,15 +959,9 @@ async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
     let request = model.completion_request("hello").build();
     let mut stream = model.stream(request).await.expect("stream should start");
 
-    let tool_call = match stream
-        .next()
-        .await
-        .expect("stream should yield the flushed tool call")
-        .expect("the flushed tool call must precede the terminal error")
-    {
-        StreamedAssistantContent::ToolCall { tool_call, .. } => tool_call,
-        other => panic!("expected the flushed tool call first, got {other:?}"),
-    };
+    // The flushed call (its block start and its completed end) precedes
+    // the terminal error.
+    let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
     // The correlator drives rig's id; the item id rides on `provider`.
     assert_eq!(tool_call.id, "call_123");
     let provider = tool_call.provider.as_ref().expect("provider ids are kept");
@@ -955,11 +969,6 @@ async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
     assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
     assert_eq!(tool_call.function.name, "example_tool");
 
-    let err = stream
-        .next()
-        .await
-        .expect("stream should yield an item")
-        .expect_err("stream should surface a provider error");
     assert!(matches!(
         err,
         crate::completion::CompletionError::ProviderResponse(_)
@@ -1009,30 +1018,15 @@ async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
         .body(Vec::new())
         .expect("request should build");
     let event_source = GenericEventSource::new(client, req);
-    let mut stream = super::normalize_responses_stream(
+    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
         "openai",
-        super::raw_stream_from_event_source(event_source, tracing::Span::none()),
+        super::responses_stream_from_event_source("openai", event_source, tracing::Span::none()),
     );
 
-    match stream
-        .next()
-        .await
-        .expect("stream should yield the flushed tool call")
-        .expect("the flushed tool call must precede the transport error")
-    {
-        StreamedAssistantContent::ToolCall { tool_call, .. } => {
-            assert_eq!(tool_call.id, "call_123");
-            let provider = tool_call.provider.as_ref().expect("provider ids are kept");
-            assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
-        }
-        other => panic!("expected the flushed tool call first, got {other:?}"),
-    }
-
-    let err = stream
-        .next()
-        .await
-        .expect("stream should yield the transport error")
-        .expect_err("the transport failure must reach the consumer");
+    let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
+    assert_eq!(tool_call.id, "call_123");
+    let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+    assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
     assert_eq!(
         err.provider_response_status(),
         Some(http::StatusCode::BAD_GATEWAY)
@@ -1072,7 +1066,7 @@ async fn known_terminal_with_malformed_usage_surfaces_error_without_terminal() {
     let mut saw_final = false;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
+            Ok(StreamEvent::Final(_)) => saw_final = true,
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(err) => {
                 assert!(
@@ -1119,8 +1113,7 @@ async fn unknown_event_type_is_skipped_and_stream_completes() {
 
     let mut saw_final = false;
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(_) =
-            item.expect("unknown event types must not surface as errors")
+        if let StreamEvent::Final(_) = item.expect("unknown event types must not surface as errors")
         {
             saw_final = true;
         }
@@ -1197,8 +1190,11 @@ async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
     let mut saw_final = false;
     while let Some(item) = stream.next().await {
         match item.expect("content-part frames must not surface as errors") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(_) => saw_final = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(_) => saw_final = true,
             _ => {}
         }
     }
@@ -1247,8 +1243,11 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(_) => saw_terminal = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(_) => saw_terminal = true,
             _ => {}
         }
     }
@@ -1316,9 +1315,9 @@ async fn streaming_http_non_success_preserves_status_and_body() {
         .expect("request should build");
     let event_source = GenericEventSource::new(client, req);
     let span = tracing::Span::none();
-    let mut stream = super::normalize_responses_stream(
+    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
         "openai",
-        super::raw_stream_from_event_source(event_source, span),
+        super::responses_stream_from_event_source("openai", event_source, span),
     );
 
     let err = stream
@@ -1357,7 +1356,7 @@ fn corrupt_known_frame_fails_the_buffered_body() {
     });
     let body = format!("data: {corrupt}\ndata: {completed}\n");
 
-    let err = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let err = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect_err("a corrupt known frame must fail the buffered decode");
     assert!(
         err.to_string().contains("response.output_text.delta"),
@@ -1366,18 +1365,18 @@ fn corrupt_known_frame_fails_the_buffered_body() {
 
     // Syntactically invalid JSON fails too.
     let body = format!("data: {{not json\ndata: {completed}\n");
-    raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect_err("invalid JSON must fail the buffered decode");
 
     // Unknown event types stay skippable.
     let unknown = json!({ "type": "response.rocket_launch", "count": 3 });
     let body = format!("data: {unknown}\ndata: {completed}\n");
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("unknown event types must stay skippable");
     assert!(
-        choices
+        events
             .iter()
-            .any(|choice| matches!(choice, RawStreamingChoice::FinalResponse(_))),
+            .any(|event| matches!(event, StreamEvent::Final(_))),
         "the genuine terminal must still be recorded"
     );
 }
@@ -1397,13 +1396,12 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.output_text.delta", "delta": "hi" })
     );
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("an envelope-less delta must repair and decode");
-    assert!(
-        choices
-            .iter()
-            .any(|choice| matches!(choice, RawStreamingChoice::Message(text) if text == "hi"))
-    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if text == "hi"
+    )));
 
     // Live-path parity, pinned: a function-call-arguments delta with no
     // `item_id` is keyed by the minted slot identity (the repair injects
@@ -1413,11 +1411,12 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.function_call_arguments.delta", "delta": "{}" })
     );
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("an id-less args delta must repair and decode");
-    assert!(choices.iter().any(|choice| matches!(
-        choice,
-        RawStreamingChoice::ToolCallDelta { id, .. } if id == &crate::streaming::MintKind::Output.for_wire_index(0)
+    assert!(events.iter().any(|event| matches!(
+        event,
+        StreamEvent::BlockDelta { id, delta: Delta::ToolArguments { .. } }
+            if id == &crate::streaming::MintKind::Output.for_wire_index(0)
     )));
 
     // Live-path parity, pinned: an envelope-less bookkeeping event whose
@@ -1427,12 +1426,12 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.output_text.done", "text": "hi" })
     );
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("an envelope-less done event must repair to the live no-op");
     assert!(
-        choices
+        events
             .iter()
-            .any(|choice| matches!(choice, RawStreamingChoice::FinalResponse(_)))
+            .any(|event| matches!(event, StreamEvent::Final(_)))
     );
 
     // An envelope-less reasoning summary delta keys by the repaired
@@ -1441,12 +1440,12 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" })
     );
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("an envelope-less summary delta must repair and decode");
-    assert!(choices.iter().any(|choice| matches!(
-        choice,
-        RawStreamingChoice::ReasoningDelta { id, provider_id: _, reasoning }
-            if id == &crate::streaming::MintKind::Output.for_wire_index(0) && reasoning == "think"
+    assert!(events.iter().any(|event| matches!(
+        event,
+        StreamEvent::BlockDelta { id, delta: Delta::Reasoning { text } }
+            if id == &crate::streaming::MintKind::Output.for_wire_index(0) && text == "think"
     )));
 }
 
@@ -1487,15 +1486,15 @@ data: {done}
 "
     );
 
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the truncated shape must decode");
-    let raw_fragments: Vec<&str> = choices
+    let raw_fragments: Vec<&str> = events
         .iter()
-        .filter_map(|choice| match choice {
-            RawStreamingChoice::ToolCallDelta {
-                content: crate::streaming::ToolCallDeltaContent::Delta(fragment),
+        .filter_map(|event| match event {
+            StreamEvent::BlockDelta {
+                delta: Delta::ToolArguments { arguments },
                 ..
-            } => Some(fragment.as_str()),
+            } => Some(arguments.as_str()),
             _ => None,
         })
         .collect();
@@ -1529,15 +1528,15 @@ fn a_fragmentless_unparseable_restatement_still_reaches_the_buffer() {
 "
     );
 
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the replayed truncated shape must decode");
-    let raw_fragments = choices
+    let raw_fragments = events
         .iter()
-        .filter(|choice| {
+        .filter(|event| {
             matches!(
-                choice,
-                RawStreamingChoice::ToolCallDelta {
-                    content: crate::streaming::ToolCallDeltaContent::Delta(_),
+                event,
+                StreamEvent::BlockDelta {
+                    delta: Delta::ToolArguments { .. },
                     ..
                 }
             )
@@ -1588,15 +1587,24 @@ async fn mixed_id_and_id_less_reasoning_frames_share_one_slot_key() {
     });
     let body = format!("data: {with_id}\ndata: {id_less}\ndata: {done}\ndata: {completed}\n");
 
-    let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the mixed slot must decode");
     let mut keys = std::collections::HashSet::new();
-    for choice in &raw_choices {
-        match choice {
-            RawStreamingChoice::ReasoningDelta { id, .. } => {
-                keys.insert(id.clone());
+    for event in &raw_choices {
+        match event {
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Reasoning { .. },
             }
-            RawStreamingChoice::ReasoningEnd { id, .. } => {
+            | StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning { .. },
+            }
+            | StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::Reasoning { .. },
+                ..
+            } => {
                 keys.insert(id.clone());
             }
             _ => {}
@@ -1610,7 +1618,7 @@ async fn mixed_id_and_id_less_reasoning_frames_share_one_slot_key() {
 
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
-        super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
             .await
             .expect("the mixed slot should normalize")
             .expect("a reasoning-bearing stream is not empty");
@@ -1653,18 +1661,21 @@ async fn envelope_less_reasoning_deltas_are_superseded_by_their_done_item() {
     });
     let body = format!("data: {delta}\ndata: {done}\ndata: {completed}\n");
 
-    let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the envelope-less reasoning replay must decode");
     // The done item's restatement shares the minted per-slot identity.
-    assert!(raw_choices.iter().any(|choice| matches!(
-        choice,
-        RawStreamingChoice::ReasoningEnd { id, reasoning: Some(_), .. }
-            if id == &crate::streaming::MintKind::Output.for_wire_index(0)
+    assert!(raw_choices.iter().any(|event| matches!(
+        event,
+        StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::Reasoning { reasoning: Some(_), .. },
+            ..
+        } if id == &crate::streaming::MintKind::Output.for_wire_index(0)
     )));
 
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
-        super::completion_response_from_raw_choices("chatgpt", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("chatgpt", raw_choices, &raw_response)
             .await
             .expect("replay should normalize")
             .expect("a reasoning-bearing replay is not empty");
@@ -1741,26 +1752,27 @@ async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the interleaved stream must decode");
-    // The resumed item re-announces its block: two `TextStart { msg_1 }`.
+    // The resumed item re-announces its block: two text `BlockStart { msg_1 }`.
     let starts = raw_choices
         .iter()
-        .filter(|choice| {
+        .filter(|event| {
             matches!(
-                choice,
-                RawStreamingChoice::TextStart { id, .. } if id == &crate::streaming::BlockId::wire("msg_1")
+                event,
+                StreamEvent::BlockStart { id, kind: BlockKind::Text { .. } }
+                    if id == &BlockId::wire("msg_1")
             )
         })
         .count();
     assert_eq!(
         starts, 2,
-        "returning to the same item must re-emit its TextStart: {raw_choices:?}"
+        "returning to the same item must re-emit its text BlockStart: {raw_choices:?}"
     );
 
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
-        super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
             .await
             .expect("replay should normalize")
             .expect("a text-bearing replay is not empty");
@@ -1842,29 +1854,40 @@ async fn mixed_id_and_id_less_events_share_one_slot_key() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the mixed-id stream must decode");
 
-    // Every tool event (name delta, args delta, input end) carries the
-    // slot's single key — no fragment dangles under a second identity.
-    let mut keys: Vec<crate::streaming::BlockId> = raw_choices
+    // Every tool event (block start, name delta, args delta, end) carries
+    // the slot's single key — no fragment dangles under a second identity.
+    let mut keys: Vec<BlockId> = raw_choices
         .iter()
-        .filter_map(|choice| match choice {
-            RawStreamingChoice::ToolCallDelta { id, .. } => Some(id.clone()),
-            RawStreamingChoice::ToolInputEnd(end) => Some(end.id.clone()),
+        .filter_map(|event| match event {
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::ToolCall,
+            }
+            | StreamEvent::BlockDelta {
+                id,
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            }
+            | StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::ToolCall(_),
+                ..
+            } => Some(id.clone()),
             _ => None,
         })
         .collect();
     keys.dedup();
     assert_eq!(
         keys,
-        [crate::streaming::BlockId::wire("fc_real")],
+        [BlockId::wire("fc_real")],
         "one slot, one assembly key"
     );
 
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
-        super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
             .await
             .expect("replay should normalize")
             .expect("a tool-bearing replay is not empty");
@@ -1939,11 +1962,11 @@ async fn parallel_id_less_function_calls_assemble_distinctly() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the id-less parallel-call stream must decode");
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
-        super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
             .await
             .expect("replay should normalize")
             .expect("a tool-bearing replay is not empty");
@@ -2011,11 +2034,11 @@ async fn a_lost_done_frame_does_not_discard_a_provider_completed_call() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices =
-        raw_choices_from_sse_body(&body, ResponsesUsage::new()).expect("the stream must decode");
+    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+        .expect("the stream must decode");
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
-        super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
             .await
             .expect("replay should normalize")
             .expect("a tool-bearing replay is not empty");
@@ -2069,16 +2092,16 @@ async fn id_less_args_deltas_surface_and_truncation_fabricates_no_call() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("the truncated id-less stream must decode");
     // The fragment flowed into assembly under the minted identity.
     assert!(
-        raw_choices.iter().any(|choice| matches!(
-            choice,
-            RawStreamingChoice::ToolCallDelta {
+        raw_choices.iter().any(|event| matches!(
+            event,
+            StreamEvent::BlockDelta {
                 id,
-                content: crate::streaming::ToolCallDeltaContent::Delta(delta),
-            } if id == &crate::streaming::MintKind::Output.for_wire_index(0) && delta == "{\"loc\":"
+                delta: Delta::ToolArguments { arguments },
+            } if id == &crate::streaming::MintKind::Output.for_wire_index(0) && arguments == "{\"loc\":"
         )),
         "the id-less args fragment must surface as a delta: {raw_choices:?}"
     );
@@ -2087,7 +2110,7 @@ async fn id_less_args_deltas_surface_and_truncation_fabricates_no_call() {
     // call rather than fabricating one from partial arguments.
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
-        super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
             .await
             .expect("replay should normalize");
     assert!(
@@ -2130,12 +2153,13 @@ data: {completed}
 "
     );
 
-    let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect("refusal content-part frames must not fail the buffered decode");
     assert!(
-        choices
-            .iter()
-            .any(|choice| matches!(choice, RawStreamingChoice::Message(text) if text == "no")),
+        events.iter().any(|event| matches!(
+            event,
+            StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if text == "no"
+        )),
         "the refusal text must be delivered"
     );
 }
@@ -2147,11 +2171,20 @@ data: {completed}
 async fn terminal_body_message_text_merges_into_reasoning_only_replay() {
     use crate::providers::openai::responses_api::Output;
 
-    let raw_choices = vec![RawStreamingChoice::ReasoningDelta {
-        provider_id: crate::streaming::non_empty_id("rs_1"),
-        id: crate::streaming::BlockId::wire("rs_1"),
-        reasoning: "thinking".to_string(),
-    }];
+    let raw_choices = vec![
+        StreamEvent::BlockStart {
+            id: BlockId::wire("rs_1"),
+            kind: BlockKind::Reasoning {
+                provider_id: crate::streaming::non_empty_id("rs_1"),
+            },
+        },
+        StreamEvent::BlockDelta {
+            id: BlockId::wire("rs_1"),
+            delta: Delta::Reasoning {
+                text: "thinking".to_string(),
+            },
+        },
+    ];
 
     let mut raw_response = sample_response(ResponseStatus::Completed);
     raw_response.output = vec![
@@ -2166,7 +2199,7 @@ async fn terminal_body_message_text_merges_into_reasoning_only_replay() {
     ];
 
     let response =
-        super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+        super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
             .await
             .expect("replay should normalize")
             .expect("a reasoning-bearing replay is not empty");
@@ -2195,7 +2228,7 @@ fn streaming_error_event_preserves_full_payload() {
     let payload = r#"{"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;
     let body = format!("data: {payload}\n");
 
-    let err = super::raw_choices_from_sse_body(&body, super::ResponsesUsage::new())
+    let err = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
         .expect_err("error event should surface as a provider response error");
 
     assert_eq!(err.provider_response_status(), None);
@@ -2223,9 +2256,9 @@ async fn streaming_non_http_transport_error_stays_provider_error() {
         .expect("request should build");
     let event_source = GenericEventSource::new(client, req);
     let span = tracing::Span::none();
-    let mut stream = super::normalize_responses_stream(
+    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
         "openai",
-        super::raw_stream_from_event_source(event_source, span),
+        super::responses_stream_from_event_source("openai", event_source, span),
     );
 
     let err = stream
@@ -2366,15 +2399,14 @@ async fn terminal_record_reports_tool_calls_when_the_stream_called_a_tool() {
 
     let mut final_response = None;
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(response) =
-            item.expect("completed stream should not error")
-        {
+        if let StreamEvent::Final(response) = item.expect("completed stream should not error") {
             final_response = Some(response);
         }
     }
 
-    // `completed` is reconciled up to `ToolCalls` by `normalize_stream`,
-    // using the call the stream actually emitted.
+    // `completed` is reconciled up to `ToolCalls` by
+    // `StreamingCompletionResponse`, using the call the stream actually
+    // emitted.
     assert_eq!(
         final_response
             .expect("stream should yield a final response")
@@ -2395,7 +2427,8 @@ fn terminal_record_preserves_an_unknown_incomplete_reason() {
         ..super::StreamingCompletionResponse::new(ResponsesUsage::new())
     };
 
-    let final_response = crate::streaming::StreamFinal::from(("openai", response));
+    let final_response =
+        super::terminal_record("openai", response.clone()).expect("the native record serializes");
 
     assert_eq!(
         final_response.finish_reason,
@@ -2405,6 +2438,11 @@ fn terminal_record_preserves_an_unknown_incomplete_reason() {
     );
     assert_eq!(final_response.message_id.as_deref(), Some("msg_1"));
     assert_eq!(final_response.model.as_deref(), Some("gpt-5.4"));
+    // The native record rides on `raw`, exactly as its wire type serializes.
+    assert_eq!(
+        final_response.raw,
+        serde_json::to_value(&response).expect("serialize")
+    );
 }
 
 #[tokio::test]
@@ -2476,9 +2514,7 @@ async fn done_sentinel_is_ignored_without_debug_parse_noise() {
 
     let mut final_usage = None;
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(response) =
-            item.expect("stream should complete successfully")
-        {
+        if let StreamEvent::Final(response) = item.expect("stream should complete successfully") {
             final_usage = Some(response.usage);
         }
     }
@@ -2538,10 +2574,19 @@ async fn malformed_frame_surfaces_error_and_stream_still_completes() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(chunk)) => text.push_str(&chunk.text),
-            Ok(StreamedAssistantContent::Final(final_response)) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            }) => text.push_str(&chunk),
+            Ok(StreamEvent::Final(final_response)) => {
                 terminal = Some(final_response);
             }
+            // The item's text block opens under its `msg_*` id before the
+            // first fragment.
+            Ok(StreamEvent::BlockStart {
+                kind: BlockKind::Text { .. },
+                ..
+            }) => {}
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(err) => {
                 assert!(

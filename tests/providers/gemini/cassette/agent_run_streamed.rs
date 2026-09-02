@@ -18,7 +18,7 @@ use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
@@ -72,8 +72,12 @@ async fn run_streamed_turn(
         while let Some(event) = events.pop_front() {
             match event {
                 StreamedTurnEvent::EmitIngested => {
-                    if let StreamedAssistantContent::Text(text) = &item {
-                        collected_text.push_str(&text.text);
+                    if let StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } = &item
+                    {
+                        collected_text.push_str(text);
                     }
                 }
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
@@ -145,7 +149,7 @@ async fn run_streamed_turn(
         )
         .expect("turns without provider usage still record a completion call");
     }
-    let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.choice);
+    let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.snapshot());
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }
@@ -154,7 +158,7 @@ async fn drain_stream_usage(stream: &mut rig::streaming::StreamingCompletionResp
 where
 {
     while let Some(item) = stream.next().await {
-        if let Ok(StreamedAssistantContent::Final(final_response)) = item {
+        if let Ok(StreamEvent::Final(final_response)) = item {
             return final_response.usage;
         }
     }

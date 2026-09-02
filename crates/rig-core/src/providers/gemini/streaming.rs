@@ -24,17 +24,17 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 pub(crate) mod shared_parts {
     use serde_json::Value;
 
-    use crate::streaming::{BlockId, RawStreamingChoice, RawStreamingToolCall};
+    use crate::streaming::{BlockClose, BlockId, BlockKind, StreamEvent, ToolCallEnd};
 
-    /// A whole function-call part as a canonical tool call (Gemini never
-    /// streams arguments incrementally).
-    pub(crate) fn function_call<R>(
+    /// A whole function-call part as a canonical tool call — its start and
+    /// its authoritative end (Gemini never streams arguments incrementally).
+    pub(crate) fn function_call(
         name: String,
         args: Value,
         wire_id: Option<String>,
         signature: Option<String>,
         tool_ids: &mut crate::streaming::SyntheticIds,
-    ) -> RawStreamingChoice<R> {
+    ) -> Vec<StreamEvent> {
         // Never fabricate the identifier that travels upstream: the wire's
         // own id (when Gemini supplies one) is both the part identity and
         // the correlation id; an id-less call keys the stream by a minted
@@ -47,20 +47,23 @@ pub(crate) mod shared_parts {
         let id = tool_id
             .as_ref()
             .map_or_else(|| tool_ids.mint(), |id| BlockId::wire(id.as_str()));
-        let tool_call = RawStreamingToolCall {
-            id,
-            tool_id,
-            // Gemini is a single-identifier wire: its one id travels as
-            // `tool_id` and `call_id` stays unset. Filling both from the same
-            // id would take the dual-wire arm downstream and fabricate an
-            // item id Gemini never issued.
-            call_id: None,
-            name,
-            arguments: args,
-            signature,
-            additional_params: None,
-        };
-        RawStreamingChoice::ToolCall(tool_call)
+        let mut end = ToolCallEnd::whole(name, args).with_signature(signature);
+        // Gemini is a single-identifier wire: its one id travels as
+        // `tool_id` and `call_id` stays unset. Filling both from the same
+        // id would take the dual-wire arm downstream and fabricate an
+        // item id Gemini never issued.
+        end.tool_id = tool_id;
+        vec![
+            StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: BlockKind::ToolCall,
+            },
+            StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::ToolCall(end),
+                block: None,
+            },
+        ]
     }
 }
 
@@ -105,24 +108,6 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
     fn from(value: StreamingCompletionResponse) -> crate::completion::Usage {
         (&value).into()
     }
-}
-
-/// Normalize Gemini's terminal streaming record.
-///
-/// Infallible in practice, but stated as a `Result` because
-/// [`crate::streaming::normalize_stream`] maps terminal records through a
-/// fallible closure.
-fn map_stream_final(
-    response: StreamingCompletionResponse,
-) -> Result<streaming::StreamFinal, CompletionError> {
-    let finish_reason = response.finish_reason.as_ref().and_then(map_finish_reason);
-
-    Ok(
-        streaming::StreamFinal::new(PROVIDER_NAME, (&response.usage_metadata).into())
-            .with_optional_finish_reason(finish_reason)
-            .with_optional_response_id(response.response_id)
-            .with_optional_model(response.model_version),
-    )
 }
 
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
@@ -194,17 +179,12 @@ impl Default for GeminiRestAdapter {
 impl WireAdapter for GeminiRestAdapter {
     type Frame = WireFrame;
     type Event = StreamGenerateContentResponse;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
     }
 
-    fn interpret(
-        &mut self,
-        data: StreamGenerateContentResponse,
-        out: &mut AdapterOutput<Self::Response>,
-    ) {
+    fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
@@ -260,7 +240,7 @@ impl WireAdapter for GeminiRestAdapter {
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, out: &mut AdapterOutput) {
         // EOF without a `finishReason` chunk is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
@@ -273,15 +253,28 @@ impl WireAdapter for GeminiRestAdapter {
         // Holding the record until EOF is what lets the driver read the rest
         // of the turn, and it means the terminal carries the last reason,
         // usage, and metadata the stream actually reported.
-        out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
-            StreamingCompletionResponse {
-                usage_metadata: self.final_usage.take().unwrap_or_default(),
-                finish_reason: self.final_finish_reason.take(),
-                finish_message: self.final_finish_message.take(),
-                model_version: self.final_model_version.take(),
-                response_id: self.final_response_id.take(),
-            },
-        )));
+        let native = StreamingCompletionResponse {
+            usage_metadata: self.final_usage.take().unwrap_or_default(),
+            finish_reason: self.final_finish_reason.take(),
+            finish_message: self.final_finish_message.take(),
+            model_version: self.final_model_version.take(),
+            response_id: self.final_response_id.take(),
+        };
+        let raw = match serde_json::to_value(&native) {
+            Ok(raw) => raw,
+            Err(err) => {
+                out.error(err.into());
+                return;
+            }
+        };
+        let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
+        out.final_record(
+            streaming::StreamFinal::new(PROVIDER_NAME, (&native.usage_metadata).into())
+                .with_optional_finish_reason(finish_reason)
+                .with_optional_response_id(native.response_id)
+                .with_optional_model(native.model_version)
+                .with_raw(raw),
+        );
     }
 
     fn is_finished(&self) -> bool {
@@ -294,7 +287,7 @@ impl WireAdapter for GeminiRestAdapter {
 }
 
 impl GeminiRestAdapter {
-    fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput<StreamingCompletionResponse>) {
+    fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput) {
         match part {
             Part {
                 part: PartKind::Text(text),
@@ -358,13 +351,13 @@ impl GeminiRestAdapter {
                         reasoning: None,
                         reasoning_signature: None,
                         text: None,
-                        tool_events: vec![shared_parts::function_call(
+                        tool_events: shared_parts::function_call(
                             function_call.name,
                             function_call.args,
                             function_call.id,
                             thought_signature,
                             &mut self.tool_ids,
-                        )],
+                        ),
                     },
                     out,
                 );
@@ -382,16 +375,10 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    /// Open a `streamGenerateContent` stream whose terminal record stays
-    /// provider-native.
-    ///
-    /// The normalized [`CompletionModel::stream`](crate::completion::CompletionModel::stream)
-    /// delegates here and maps only the terminal record, so both paths open
-    /// exactly one stream over the same request, telemetry, and error handling.
-    pub async fn raw_stream(
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
@@ -423,28 +410,19 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        Ok(open_wire_stream(
-            GenericEventSource::new(self.client.clone(), req),
-            SseTransportOptions {
-                open_log: OpenLog::Debug,
-                stream_ended_is_error: false,
-                log_transport_errors: true,
-            },
-            skip_blank_frames,
-            GeminiRestAdapter::default(),
-            span,
-        ))
-    }
-
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let inner = self.raw_stream(completion_request).await?;
-
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            streaming::normalize_stream(inner, map_stream_final),
+            open_wire_stream(
+                GenericEventSource::new(self.client.clone(), req),
+                SseTransportOptions {
+                    open_log: OpenLog::Debug,
+                    stream_ended_is_error: false,
+                    log_transport_errors: true,
+                },
+                skip_blank_frames,
+                GeminiRestAdapter::default(),
+                span,
+            ),
         ))
     }
 }

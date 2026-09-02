@@ -11,7 +11,7 @@
 //! | [`WireEvent::Known`]      | `adapter.interpret`, yield its outputs       |
 //! | [`WireEvent::Unknown`]    | `tracing::warn!` (metadata only), skip on    |
 //! |                           | the semantic path, and yield the raw value   |
-//! |                           | as [`RawStreamingChoice::Unknown`] (the      |
+//! |                           | as [`StreamEvent::Unknown`] (the             |
 //! |                           | passthrough channel — never aggregated)      |
 //! | [`WireEvent::Corrupt`]    | in-band `Err` item, keep consuming           |
 //! | transport `Err`           | `Err` item, then end (truncation semantics — |
@@ -28,7 +28,10 @@ use futures::{Stream, StreamExt};
 
 use super::wire::WireEvent;
 use crate::completion::CompletionError;
-use crate::streaming::{RawStreamingChoice, RawStreamingResult};
+use crate::streaming::{
+    BlockClose, BlockId, BlockKind, Delta, StreamEvent, StreamFinal, StreamingResult, SyntheticIds,
+    ToolCallEnd, UnknownPayload,
+};
 use crate::wasm_compat::WasmCompatSend;
 
 /// One transport frame, after framing but before decoding.
@@ -53,48 +56,321 @@ impl WireFrame {
     }
 }
 
-/// What one adapter step hands back to the driver.
+/// What one `interpret` step emitted: the canonical events, with in-band
+/// errors, plus the text-block bookkeeping every adapter needs.
 ///
-/// `Err` items are data-level defects the adapter itself detects while
-/// assembling (e.g. accumulated tool-argument JSON that fails to parse);
-/// frame-level defects never reach `interpret` — the driver surfaces those
-/// from `classify` directly.
-pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
+/// Adapters push through the helpers so the grammar is stated once: a bare
+/// text delta lands in the active text block (minted on demand, and a new
+/// one after any non-text block — a completed tool call or a reasoning
+/// block is a boundary for anonymous text), a tool/reasoning delta for an
+/// unseen id is preceded by its `BlockStart`, and a whole call or whole
+/// reasoning block is its start and its end. Frame-level defects never reach
+/// `interpret` — the driver surfaces those from `classify` directly.
+#[derive(Debug, Default)]
+pub struct AdapterOutput {
+    items: Vec<Result<StreamEvent, CompletionError>>,
+    /// Minter for text blocks opened by a bare text delta.
+    text_ids: Option<SyntheticIds>,
+    /// The block receiving bare text deltas and metadata, until a boundary
+    /// or an explicit text start/end switches it.
+    active_text: Option<BlockId>,
+    /// Blocks a start was emitted for (or that a delta opened leniently),
+    /// so a delta never precedes its block's start on the wire we emit.
+    opened: std::collections::HashSet<BlockId>,
+}
 
-/// One streaming wire family as a thin adapter onto the canonical grammar.
-///
-/// `classify` and `interpret` are sans-IO by construction: no transport
-/// handle, no async — pure `(state, event) → events` functions, testable by
-/// feeding events directly with no mock HTTP.
-///
-/// # Contract for implementors (in-tree and out-of-tree)
-///
-/// This trait is public so companion provider crates (rig-bedrock,
-/// rig-gemini-grpc, rig-candle) and out-of-tree providers implement it and
-/// inherit the shared [`run_wire_stream`] / [`run_wire_buffered`] drivers.
-/// An implementation must uphold:
-///
-/// - **Classify delegation**: [`WireAdapter::classify`] delegates to a
-///   `wire.rs` classifier — never raw serde — so decode-then-validate policy
-///   is stated once per wire family.
-/// - **Driver-owns-policy**: unknown/corrupt-frame handling belongs to the
-///   driver (module policy table); adapters contain no `match WireEvent`.
-/// - **Mandatory identity**: every `Reasoning`/`ReasoningDelta`,
-///   `ToolCallDelta`, and `TextStart` event carries a
-///   [`BlockId`](crate::streaming::BlockId) — the wire's own identity
-///   (`BlockId::Wire`) when it exists, else
-///   an identity minted via [`SyntheticIds`]
-///   (`BlockId::Minted`). Provenance
-///   travels in the type: a minted identity keys stream accumulation and
-///   structurally cannot become a durable provider handle or reach a request
-///   serializer, so no per-provider gate exists or is needed.
-/// - **Finish/flush obligations**: see [`WireAdapter::finish`] (EOF-only,
-///   never synthesizes a terminal) and
-///   [`WireAdapter::flush_before_terminal_error`] (fully-delivered content
-///   only, no terminal record).
-/// - **[`WireAdapter::is_finished`]**: `true` only after `interpret`
-///   consumed the wire's own in-band terminal failure, having pushed the
-///   flush-then-`Err` sequence itself.
+impl AdapterOutput {
+    /// An empty output buffer.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Push one event verbatim.
+    pub fn push(&mut self, item: Result<StreamEvent, CompletionError>) {
+        if let Ok(event) = &item
+            && let Some(id) = event.block_id()
+        {
+            match event {
+                StreamEvent::BlockStart { .. } => {
+                    self.opened.insert(id.clone());
+                }
+                StreamEvent::BlockEnd { .. } => {
+                    self.opened.remove(id);
+                }
+                _ => {}
+            }
+            // Any non-text block event is a boundary for anonymous text.
+            let is_text = matches!(
+                event,
+                StreamEvent::BlockStart {
+                    kind: BlockKind::Text { .. },
+                    ..
+                } | StreamEvent::BlockDelta {
+                    delta: Delta::Text { .. } | Delta::TextMeta { .. },
+                    ..
+                } | StreamEvent::BlockEnd {
+                    end: BlockClose::Text,
+                    ..
+                }
+            );
+            if !is_text
+                && !matches!(
+                    event,
+                    StreamEvent::BlockStart {
+                        kind: BlockKind::Message,
+                        ..
+                    }
+                )
+            {
+                self.active_text = None;
+            }
+        }
+        self.items.push(item);
+    }
+
+    /// Push an in-band error item.
+    pub fn error(&mut self, error: CompletionError) {
+        self.items.push(Err(error));
+    }
+
+    /// Iterate the buffered items.
+    pub fn iter(&self) -> std::slice::Iter<'_, Result<StreamEvent, CompletionError>> {
+        self.items.iter()
+    }
+
+    /// Drain the buffered items, keeping the block bookkeeping.
+    pub fn drain(&mut self) -> std::vec::Drain<'_, Result<StreamEvent, CompletionError>> {
+        self.items.drain(..)
+    }
+
+    /// Whether nothing is buffered.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    /// Number of buffered items.
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Take the buffered items.
+    pub fn into_items(self) -> Vec<Result<StreamEvent, CompletionError>> {
+        self.items
+    }
+
+    fn open_if_unseen(&mut self, id: &BlockId, kind: BlockKind) {
+        if !self.opened.contains(id) {
+            self.push(Ok(StreamEvent::BlockStart {
+                id: id.clone(),
+                kind,
+            }));
+        }
+    }
+
+    /// A bare text delta: lands in the active text block, opening a minted
+    /// one if none is active.
+    pub fn text(&mut self, text: impl Into<String>) {
+        let id = self.active_text_id();
+        self.push(Ok(StreamEvent::BlockDelta {
+            id,
+            delta: Delta::Text { text: text.into() },
+        }));
+    }
+
+    /// Provider metadata for the active text block (opening a minted one if
+    /// none is active).
+    pub fn text_meta(&mut self, additional_params: crate::message::AdditionalParams) {
+        let id = self.active_text_id();
+        self.push(Ok(StreamEvent::BlockDelta {
+            id,
+            delta: Delta::TextMeta { additional_params },
+        }));
+    }
+
+    /// Open (or reactivate) the text block identified by `id`; later bare
+    /// text deltas extend it.
+    pub fn text_start(
+        &mut self,
+        id: BlockId,
+        additional_params: Option<crate::message::AdditionalParams>,
+    ) {
+        self.push(Ok(StreamEvent::BlockStart {
+            id: id.clone(),
+            kind: BlockKind::Text { additional_params },
+        }));
+        self.active_text = Some(id);
+    }
+
+    /// Close the text block identified by `id`: later bare text deltas open
+    /// a fresh block instead of extending it.
+    pub fn text_end(&mut self, id: BlockId) {
+        if self.active_text.as_ref() == Some(&id) {
+            self.active_text = None;
+        }
+        self.push(Ok(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::Text,
+            block: None,
+        }));
+    }
+
+    fn active_text_id(&mut self) -> BlockId {
+        if let Some(id) = &self.active_text {
+            return id.clone();
+        }
+        let id = self.text_ids.get_or_insert_with(SyntheticIds::text).mint();
+        self.push(Ok(StreamEvent::BlockStart {
+            id: id.clone(),
+            kind: BlockKind::Text {
+                additional_params: None,
+            },
+        }));
+        self.active_text = Some(id.clone());
+        id
+    }
+
+    /// Open the tool-call block `id` (a no-op when already open).
+    pub fn tool_start(&mut self, id: &BlockId) {
+        self.open_if_unseen(id, BlockKind::ToolCall);
+    }
+
+    /// A streamed tool-name fragment for the call `id`.
+    pub fn tool_name(&mut self, id: &BlockId, name: impl Into<String>) {
+        self.open_if_unseen(id, BlockKind::ToolCall);
+        self.push(Ok(StreamEvent::BlockDelta {
+            id: id.clone(),
+            delta: Delta::ToolName { name: name.into() },
+        }));
+    }
+
+    /// A streamed argument fragment for the call `id`.
+    pub fn tool_arguments(&mut self, id: &BlockId, arguments: impl Into<String>) {
+        self.open_if_unseen(id, BlockKind::ToolCall);
+        self.push(Ok(StreamEvent::BlockDelta {
+            id: id.clone(),
+            delta: Delta::ToolArguments {
+                arguments: arguments.into(),
+            },
+        }));
+    }
+
+    /// End the call `id`: the accumulator finalizes the assembled fragments
+    /// (or `end`'s authoritative payload) into a completed call.
+    pub fn tool_end(&mut self, id: BlockId, end: ToolCallEnd) {
+        self.open_if_unseen(&id, BlockKind::ToolCall);
+        self.push(Ok(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::ToolCall(end),
+            block: None,
+        }));
+    }
+
+    /// A tool call the wire delivered whole: its start and its authoritative
+    /// end in one step.
+    pub fn tool_call(&mut self, id: BlockId, end: ToolCallEnd) {
+        self.tool_end(id, end);
+    }
+
+    /// Open the reasoning block `id` (a no-op when already open).
+    pub fn reasoning_start(&mut self, id: &BlockId, provider_id: Option<String>) {
+        self.open_if_unseen(id, BlockKind::Reasoning { provider_id });
+    }
+
+    /// A reasoning text fragment for the block `id`, opening it (with
+    /// `provider_id`) if unseen.
+    pub fn reasoning_delta(
+        &mut self,
+        id: &BlockId,
+        provider_id: Option<String>,
+        text: impl Into<String>,
+    ) {
+        self.open_if_unseen(id, BlockKind::Reasoning { provider_id });
+        self.push(Ok(StreamEvent::BlockDelta {
+            id: id.clone(),
+            delta: Delta::Reasoning { text: text.into() },
+        }));
+    }
+
+    /// Close the reasoning block `id`. `reasoning` is the wire's
+    /// authoritative restatement, `signature` a provider signature closing
+    /// the block, `wire_sent` whether the wire itself sent the end.
+    pub fn reasoning_end(
+        &mut self,
+        id: BlockId,
+        reasoning: Option<crate::message::Reasoning>,
+        signature: Option<String>,
+        wire_sent: bool,
+    ) {
+        // A restatement is a whole block: open it under its provider id so
+        // every published block has a start. A payload-less or
+        // signature-only end for an unseen id gets none — the accumulator
+        // creates no part for the former, and a start would publish an
+        // empty block ahead of the latter's signature-only part.
+        if let Some(reasoning) = &reasoning {
+            self.open_if_unseen(
+                &id,
+                BlockKind::Reasoning {
+                    provider_id: reasoning.id.clone(),
+                },
+            );
+        }
+        self.push(Ok(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::Reasoning {
+                reasoning,
+                signature,
+                wire_sent,
+            },
+            block: None,
+        }));
+    }
+
+    /// A whole reasoning block: open + authoritative restatement + close.
+    pub fn reasoning_block(
+        &mut self,
+        id: BlockId,
+        provider_id: Option<String>,
+        content: crate::message::ReasoningContent,
+    ) {
+        self.open_if_unseen(
+            &id,
+            BlockKind::Reasoning {
+                provider_id: provider_id.clone(),
+            },
+        );
+        self.push(Ok(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::Reasoning {
+                reasoning: Some(crate::message::Reasoning {
+                    id: provider_id,
+                    content: vec![content],
+                }),
+                signature: None,
+                wire_sent: true,
+            },
+            block: None,
+        }));
+    }
+
+    /// The provider-assigned message id (a `Message` block start).
+    pub fn message_id(&mut self, id: impl Into<String>) {
+        self.push(Ok(StreamEvent::BlockStart {
+            id: BlockId::wire(id),
+            kind: BlockKind::Message,
+        }));
+    }
+
+    /// The provider's terminal record; the driver stops consuming after it.
+    pub fn final_record(&mut self, record: StreamFinal) {
+        self.push(Ok(StreamEvent::Final(record)));
+    }
+
+    /// An unmodeled provider item on the passthrough channel.
+    pub fn unknown(&mut self, payload: UnknownPayload) {
+        self.push(Ok(StreamEvent::Unknown(payload)));
+    }
+}
+
 pub trait WireAdapter {
     /// The transport frame this adapter classifies: [`WireFrame`] for byte
     /// wires (SSE, NDJSON, websocket), the SDK's own event type for
@@ -103,9 +379,6 @@ pub trait WireAdapter {
     type Frame;
     /// The wire's typed event, produced by the `wire.rs` classifier.
     type Event;
-    /// The provider-native terminal record carried by
-    /// [`RawStreamingChoice::FinalResponse`].
-    type Response;
 
     /// Decode + classify one transport frame. MUST delegate to a `wire.rs`
     /// classifier (`classify_tagged_frame` / `classify_chat_completions_frame`
@@ -117,9 +390,11 @@ pub trait WireAdapter {
     /// maps, open-block state, id fabrication, and wire-quirk quarantine live
     /// here — policy for unknown/corrupt frames does not (the driver owns it).
     ///
-    /// Pushing a [`RawStreamingChoice::FinalResponse`] marks the provider's
-    /// genuine terminal; the driver stops consuming after yielding it.
-    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>);
+    /// Pushing a [`StreamEvent::Final`] (the adapter maps its native
+    /// terminal record itself, serializing it onto [`StreamFinal::raw`])
+    /// marks the provider's genuine terminal; the driver stops consuming
+    /// after yielding it.
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput);
 
     /// End-of-stream flush on EOF without a terminal (close open blocks).
     ///
@@ -130,7 +405,7 @@ pub trait WireAdapter {
     /// provider *did* signal earlier — e.g. the chat-completions `[DONE]`
     /// sentinel or a `finish_reason` chunk, whose usage trailer arrives later —
     /// may be emitted here; that is deferral, not synthesis.)
-    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>);
+    fn finish(&mut self, out: &mut AdapterOutput);
 
     /// Flush content the provider fully delivered before a terminal error item
     /// (a transport failure or an in-band provider error envelope) reaches the
@@ -140,7 +415,7 @@ pub trait WireAdapter {
     /// fully-delivered tool calls (the chat-completions compat family, the
     /// Responses SSE loop) override this so a first-`Err`-stop consumer still
     /// sees them. Must not push a terminal record.
-    fn flush_before_terminal_error(&mut self, _out: &mut AdapterOutput<Self::Response>) {}
+    fn flush_before_terminal_error(&mut self, _out: &mut AdapterOutput) {}
 
     /// Whether `interpret` consumed the wire's own in-band terminal failure.
     ///
@@ -159,7 +434,7 @@ pub enum TriagedFrame<T> {
     /// A modeled event, ready for [`WireAdapter::interpret`].
     Event(T),
     /// An unknown frame's raw payload. Already warned; the caller forwards it
-    /// as [`RawStreamingChoice::Unknown`] where the surface has a raw channel
+    /// as [`StreamEvent::Unknown`] where the surface has a raw channel
     /// (openai-agents' raw-event precedent), and never interprets it — the
     /// semantic path skips it.
     Unknown(crate::streaming::UnknownPayload),
@@ -232,17 +507,16 @@ fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
 ///
 /// This is the single policy site for every wire family (see the module table).
 /// Adapters contain no `match WireEvent`.
-pub fn run_wire_stream<A, S>(transport: S, mut adapter: A) -> RawStreamingResult<A::Response>
+pub fn run_wire_stream<A, S>(transport: S, mut adapter: A) -> StreamingResult
 where
     A: WireAdapter + WasmCompatSend + 'static,
     A::Frame: WasmCompatSend,
     A::Event: WasmCompatSend,
-    A::Response: WasmCompatSend + 'static,
     S: Stream<Item = Result<A::Frame, CompletionError>> + WasmCompatSend + 'static,
 {
     Box::pin(async_stream::stream! {
         let mut transport = Box::pin(transport);
-        let mut out: AdapterOutput<A::Response> = Vec::new();
+        let mut out = AdapterOutput::new();
         // Debug-mode sequence laws over the raw adapter output: every
         // conformance fixture and cassette replay checks what the adapter
         // ACTUALLY emits, not just what accumulator fixtures spell.
@@ -260,7 +534,7 @@ where
                     // calls) still flushes first, so a first-`Err`-stop
                     // consumer sees it.
                     adapter.flush_before_terminal_error(&mut out);
-                    for item in out.drain(..) {
+                    for item in out.drain() {
                         yield item;
                     }
                     yield Err(error);
@@ -275,7 +549,7 @@ where
                 // can observe them; aggregation never folds `Unknown` into
                 // the assistant choice.
                 Ok(TriagedFrame::Unknown(value)) => {
-                    out.push(Ok(RawStreamingChoice::Unknown(value)));
+                    out.unknown(value);
                 }
                 Err(error) => {
                     yield Err(error);
@@ -287,8 +561,8 @@ where
 
             let saw_terminal = out
                 .iter()
-                .any(|item| matches!(item, Ok(RawStreamingChoice::FinalResponse(_))));
-            for item in out.drain(..) {
+                .any(|item| matches!(item, Ok(StreamEvent::Final(_))));
+            for item in out.drain() {
                 yield item;
             }
             if saw_terminal || adapter.is_finished() {
@@ -299,7 +573,7 @@ where
         adapter.finish(&mut out);
         #[cfg(any(test, debug_assertions))]
         sequence_laws.check_batch(&out);
-        for item in out.drain(..) {
+        for item in out.drain() {
             yield item;
         }
     })
@@ -329,11 +603,11 @@ where
 pub fn run_wire_buffered<A>(
     frames: impl IntoIterator<Item = A::Frame>,
     mut adapter: A,
-) -> Result<Vec<RawStreamingChoice<A::Response>>, CompletionError>
+) -> Result<Vec<StreamEvent>, CompletionError>
 where
     A: WireAdapter,
 {
-    let mut out: AdapterOutput<A::Response> = Vec::new();
+    let mut out = AdapterOutput::new();
     let mut choices = Vec::new();
     // Same debug-mode sequence laws as `run_wire_stream` (see there).
     #[cfg(any(test, debug_assertions))]
@@ -378,17 +652,15 @@ where
 
 /// Move one buffered step's output into `choices`, failing the operation on
 /// the first `Err` item; reports whether a terminal record was appended.
-fn drain_buffered<R>(
-    out: &mut AdapterOutput<R>,
-    choices: &mut Vec<RawStreamingChoice<R>>,
+fn drain_buffered(
+    out: &mut AdapterOutput,
+    choices: &mut Vec<StreamEvent>,
 ) -> Result<bool, CompletionError> {
     let mut saw_terminal = false;
-    for item in out.drain(..) {
+    for item in out.drain() {
         let choice = item?;
-        saw_terminal |= matches!(choice, RawStreamingChoice::FinalResponse(_));
+        saw_terminal |= matches!(choice, StreamEvent::Final(_));
         choices.push(choice);
     }
     Ok(saw_terminal)
 }
-
-pub use crate::streaming::SyntheticIds;

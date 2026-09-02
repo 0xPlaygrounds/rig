@@ -1,4 +1,5 @@
 use rig::client::DefaultTransportBuilder as _;
+use rig::message::AssistantContent;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -260,7 +261,7 @@ pub(super) async fn collect_raw_stream_outcome(
     mut stream: rig::streaming::StreamingCompletionResponse,
 ) -> RawStreamOutcome {
     use futures::StreamExt as _;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::{Delta, StreamEvent};
 
     let mut outcome = RawStreamOutcome {
         text: String::new(),
@@ -279,25 +280,48 @@ pub(super) async fn collect_raw_stream_outcome(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => {
-                outcome.text.push_str(&text.text);
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
+                outcome.text.push_str(&text);
                 note(&mut outcome.order, "text");
             }
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => {
                 outcome.tool_calls.push(tool_call);
                 note(&mut outcome.order, "tool_call");
             }
-            Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {}
-            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            }) => {}
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            }) => {
                 outcome.reasoning.push_str(&reasoning.display_text());
                 note(&mut outcome.order, "reasoning");
             }
-            Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text: reasoning },
+                ..
+            }) => {
                 outcome.reasoning.push_str(&reasoning);
                 note(&mut outcome.order, "reasoning");
             }
-            Ok(StreamedAssistantContent::Final(record)) => outcome.final_record = Some(record),
-            Ok(StreamedAssistantContent::Unknown(_)) => {}
+            Ok(StreamEvent::Final(record)) => outcome.final_record = Some(record),
+            Ok(
+                StreamEvent::Unknown(_)
+                | StreamEvent::BlockStart { .. }
+                | StreamEvent::BlockEnd { .. }
+                | StreamEvent::BlockDelta {
+                    delta: Delta::TextMeta { .. },
+                    ..
+                },
+            ) => {}
             Err(error) => outcome.errors.push(error.to_string()),
         }
     }

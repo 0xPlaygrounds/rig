@@ -422,7 +422,7 @@ fn unknown_event_type_is_forwarded_raw() {
 
     let result = parse_server_event(&payload.to_string()).expect("unknown event should not error");
     // Semantically skipped, but carried verbatim so the streaming surface
-    // can yield it on the `RawStreamingChoice::Unknown` passthrough.
+    // can yield it on the `StreamEvent::Unknown` passthrough.
     match result {
         Some(ResponsesWebSocketEvent::Unknown(value)) => assert_eq!(value, payload.into()),
         other => panic!("expected the raw Unknown passthrough event, got {other:?}"),

@@ -226,7 +226,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
     let mut stream = model.stream(request).await.expect("mock stream");
     while stream.next().await.is_some() {}
-    let choice = stream.choice.clone();
+    let choice = stream.snapshot();
     // The provenance funnel: a minted stream identity never becomes the
     // durable `Reasoning::id`, so the replayed history carries no id at
     // all — there is nothing for a serializer gate to filter, and no

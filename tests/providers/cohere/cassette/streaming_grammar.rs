@@ -1,13 +1,13 @@
 //! Canonical streaming-grammar coverage for the Cohere v2 chat wire, asserted
 //! through the *normalized* path: the aggregated
-//! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
+//! [`StreamingCompletionResponse::snapshot`], the terminal [`StreamFinal`]
 //! record, usage, and finish reason.
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
 use rig::prelude::*;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 
 use super::super::{
     CASSETTE_MODEL,
@@ -44,20 +44,35 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => run.text.push_str(&text),
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            } => {
                 run.reasoning_blocks.push(reasoning);
             }
-            StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
-                run.reasoning_delta.push_str(&reasoning);
+            StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text },
+                ..
+            } => {
+                run.reasoning_delta.push_str(&text);
             }
-            StreamedAssistantContent::ToolCall { tool_call, .. } => run.tool_calls.push(tool_call),
-            StreamedAssistantContent::Final(response) => run.finals.push(response),
-            _ => {}
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => run.tool_calls.push(tool_call),
+            StreamEvent::Final(response) => run.finals.push(response),
+            StreamEvent::BlockStart { .. }
+            | StreamEvent::BlockDelta { .. }
+            | StreamEvent::BlockEnd { .. }
+            | StreamEvent::Unknown(_) => {}
         }
     }
 
-    run.choice = stream.choice.clone();
+    run.choice = stream.snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);

@@ -28,13 +28,15 @@
 //! request asked for thinking), so a recording that stopped reasoning fails
 //! instead of covering nothing.
 
+use rig::message::AssistantContent;
+
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ReasoningContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -89,10 +91,16 @@ async fn collect_reasoning_text_and_terminal(
     };
     while let Some(item) = stream.next().await {
         match item.expect("stream item should not be an error") {
-            StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text: reasoning },
+                ..
+            } => {
                 observation.reasoning.push_str(&reasoning);
             }
-            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            } => {
                 observation.reasoning = reasoning
                     .content
                     .iter()
@@ -102,8 +110,11 @@ async fn collect_reasoning_text_and_terminal(
                     })
                     .collect();
             }
-            StreamedAssistantContent::Text(chunk) => observation.text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(final_record) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => observation.text.push_str(&chunk),
+            StreamEvent::Final(final_record) => {
                 observation.terminal = Some(final_record);
             }
             _ => {}

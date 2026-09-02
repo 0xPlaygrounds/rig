@@ -18,7 +18,7 @@ use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::streaming::{
-    self, BlockId, MintKind, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent,
+    self, BlockId, Delta, MintKind, StreamEvent, StreamFinal, ToolCallDecoration,
     UnparseableToolInput,
 };
 use crate::wasm_compat::WasmCompatSend;
@@ -423,7 +423,6 @@ where
 pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     type Usage: Clone + Default + Into<Usage> + WasmCompatSend + 'static;
     type Detail: WasmCompatSend + 'static;
-    type FinalResponse: Clone + WasmCompatSend + 'static;
 
     /// Classify one SSE `data:` payload as this profile's chunk shape.
     ///
@@ -433,18 +432,16 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     /// the driver owns the unknown/corrupt policy.
     fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>>;
 
-    /// Stamp the transport request id (captured off the SSE connection's
-    /// response headers) onto the profile's terminal record. The default
-    /// drops it — for profiles whose terminal has no slot for it.
-    fn stamp_request_id(_response: &mut Self::FinalResponse, _request_id: String) {}
-
-    /// Build the provider's own terminal record from the stream's terminal
-    /// state. The record stays provider-native for `raw_stream`; the normalized
-    /// path maps it once through [`crate::streaming::normalize_stream`].
-    fn build_final_response(
+    /// Map the stream's terminal state to the normalized record, attributed
+    /// to `provider` (the descriptor name the stream is opened under — an
+    /// input, because this wire shape is shared by every OpenAI-compatible
+    /// provider). The provider's own terminal record, serialized, goes on
+    /// [`StreamFinal::raw`].
+    fn final_record(
         &self,
+        provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
-    ) -> Self::FinalResponse;
+    ) -> Result<StreamFinal, CompletionError>;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -530,6 +527,8 @@ pub(crate) enum CompatEvent<U, D> {
 /// Fragment assembly itself lives in the shared accumulator.
 struct CompatAdapter<P: CompatibleStreamProfile> {
     profile: P,
+    /// Descriptor name the stream is attributed to.
+    provider: String,
     /// Owns the constant-key `reasoning_content` lifecycle: `reasoning_content`
     /// deltas carry no wire id or block boundaries, so the shared derivation
     /// synthesizes the end this wire never announces.
@@ -556,9 +555,10 @@ struct CompatAdapter<P: CompatibleStreamProfile> {
 }
 
 impl<P: CompatibleStreamProfile> CompatAdapter<P> {
-    fn new(profile: P) -> Self {
+    fn new(profile: P, provider: String) -> Self {
         Self {
             profile,
+            provider,
             reasoning: MintedReasoningLifecycle::new(MintKind::Reasoning),
             open_tool_calls: ToolCallBridge::new(),
             final_usage: None,
@@ -579,7 +579,6 @@ where
 {
     type Frame = WireFrame;
     type Event = CompatEvent<P::Usage, P::Detail>;
-    type Response = P::FinalResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         let data = frame.as_str();
@@ -593,7 +592,7 @@ where
             .map(|chunk| CompatEvent::Chunk(Box::new(chunk)))
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
         let chunk = match event {
             CompatEvent::Done => {
                 self.saw_terminal = true;
@@ -651,11 +650,7 @@ where
         // precedes, and a reasoning block never depends on an open slot.
         for detail in &choice.details {
             if let Some((id, provider_id, content)) = self.profile.detail_reasoning(detail) {
-                out.push(Ok(RawStreamingChoice::Reasoning {
-                    id,
-                    provider_id,
-                    content,
-                }));
+                out.reasoning_block(id, provider_id, content);
             }
         }
 
@@ -673,9 +668,7 @@ where
                 // The wire reused this call's slot: the evicted call is
                 // delivered even when its arguments never parse
                 // (empty-object fallback).
-                tool_events.push(RawStreamingChoice::ToolInputEnd(
-                    evicted.end_event(UnparseableToolInput::EmptyObject),
-                ));
+                tool_events.push(evicted.end_event(UnparseableToolInput::EmptyObject));
             }
 
             // The bridge fixes the assembly key at open — the wire id, or a
@@ -690,9 +683,9 @@ where
             if let Some(name) = incoming.name.as_ref()
                 && !name.is_empty()
             {
-                tool_events.push(RawStreamingChoice::ToolCallDelta {
+                tool_events.push(StreamEvent::BlockDelta {
                     id: slot.key().clone(),
-                    content: ToolCallDeltaContent::Name(name.clone()),
+                    delta: Delta::ToolName { name: name.clone() },
                 });
             }
 
@@ -700,9 +693,11 @@ where
                 && !arguments.is_empty()
             {
                 slot.observe_arguments_delta(arguments);
-                tool_events.push(RawStreamingChoice::ToolCallDelta {
+                tool_events.push(StreamEvent::BlockDelta {
                     id: slot.key().clone(),
-                    content: ToolCallDeltaContent::Delta(arguments.clone()),
+                    delta: Delta::ToolArguments {
+                        arguments: arguments.clone(),
+                    },
                 });
             }
 
@@ -714,9 +709,7 @@ where
                 // if its input parses, and keeps it open otherwise (`Keep`).
                 // The slot stays in the bridge either way — a later flush of
                 // an already finalized key is a no-op downstream.
-                tool_events.push(RawStreamingChoice::ToolInputEnd(
-                    slot.end_event(UnparseableToolInput::Keep),
-                ));
+                tool_events.push(slot.end_event(UnparseableToolInput::Keep));
             }
         }
 
@@ -751,13 +744,12 @@ where
                 // the output-token cap cut the payload short, and must remain
                 // loud. Empty arguments still normalize to `{}` for genuine
                 // zero-argument tools.
-                let end = slot.end_event(UnparseableToolInput::Error);
-                out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
+                out.push(Ok(slot.end_event(UnparseableToolInput::Error)));
             }
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, out: &mut AdapterOutput) {
         // Tool calls the provider fully delivered are content, so a truncated
         // stream still flushes them to the consumer. Partial calls (arguments
         // that never parse) drop in the accumulator.
@@ -783,8 +775,7 @@ where
             } else {
                 UnparseableToolInput::Error
             };
-            let end = slot.end_event(on_unparseable);
-            out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
+            out.push(Ok(slot.end_event(on_unparseable)));
         }
 
         // Only `[DONE]` or a chunk carrying a finish reason counts as the
@@ -800,24 +791,25 @@ where
 
         let final_usage = self.final_usage.take().unwrap_or_default();
         record_usage(&tracing::Span::current(), &final_usage.clone().into());
-        out.push(Ok(RawStreamingChoice::FinalResponse(
-            self.profile.build_final_response(CompatibleTerminal {
-                usage: final_usage,
-                finish_reason: self.final_finish_reason.take(),
-                response_id: self.response_id.take(),
-                model: self.response_model.take(),
-                logprobs: self.logprobs.take(),
-                additional_params: self.additional_params.take(),
-            }),
-        )));
+        let terminal = CompatibleTerminal {
+            usage: final_usage,
+            finish_reason: self.final_finish_reason.take(),
+            response_id: self.response_id.take(),
+            model: self.response_model.take(),
+            logprobs: self.logprobs.take(),
+            additional_params: self.additional_params.take(),
+        };
+        match self.profile.final_record(&self.provider, terminal) {
+            Ok(record) => out.final_record(record),
+            Err(error) => out.error(error),
+        }
     }
 
-    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput<Self::Response>) {
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
         // Fully-delivered tool calls flush before the terminal error reaches
         // the consumer, so a first-`Err`-stop consumer sees them too.
         for slot in self.open_tool_calls.drain_ordered() {
-            let end = slot.end_event(UnparseableToolInput::Drop);
-            out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
+            out.push(Ok(slot.end_event(UnparseableToolInput::Drop)));
         }
     }
 }
@@ -826,8 +818,9 @@ pub(crate) async fn send_compatible_raw_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
     request_id_header: Option<&'static str>,
+    provider: String,
     profile: P,
-) -> Result<streaming::RawStreamingResult<P::FinalResponse>, CompletionError>
+) -> Result<streaming::StreamingResult, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
@@ -865,14 +858,13 @@ where
             }
             FrameDisposition::Frame(data)
         },
-        CompatAdapter::new(profile),
+        CompatAdapter::new(profile, provider),
         tracing::Span::current(),
     );
     Ok(super::sse_transport::stamp_terminal_request_id(
         stream,
         request_id_slot,
         request_id_header,
-        P::stamp_request_id,
     ))
 }
 

@@ -138,28 +138,24 @@ where
 /// connection that delivered it. With no slot (provider reports no request-id
 /// header), the stream passes through untouched and the terminal's id stays
 /// `None`.
-pub(crate) fn stamp_terminal_request_id<R>(
-    stream: crate::streaming::RawStreamingResult<R>,
+pub(crate) fn stamp_terminal_request_id(
+    stream: crate::streaming::StreamingResult,
     slot: Option<crate::http_client::sse::RequestIdSlot>,
     request_id_header: Option<&'static str>,
-    stamp: impl Fn(&mut R, String) + WasmCompatSend + 'static,
-) -> crate::streaming::RawStreamingResult<R>
-where
-    R: 'static,
-{
+) -> crate::streaming::StreamingResult {
     let Some(slot) = slot else {
         return stream;
     };
     Box::pin(stream.map(move |item| {
         let request_id = slot.lock().ok().and_then(|guard| guard.clone());
         match item {
-            Ok(crate::streaming::RawStreamingChoice::FinalResponse(mut response)) => {
-                if let Some(id) = request_id {
-                    stamp(&mut response, id);
-                }
-                Ok(crate::streaming::RawStreamingChoice::FinalResponse(
-                    response,
-                ))
+            Ok(crate::streaming::StreamEvent::Final(response)) => {
+                Ok(crate::streaming::StreamEvent::Final(match request_id {
+                    Some(id) if response.provider_request_id.is_none() => {
+                        response.with_provider_request_id(id)
+                    }
+                    _ => response,
+                }))
             }
             // A mid-stream in-band provider error envelope (yielded as an
             // error item) also came over this connection: attach the same
@@ -223,13 +219,12 @@ pub(crate) fn open_wire_stream<HttpClient, RequestBody, A, F>(
     triage: F,
     adapter: A,
     span: tracing::Span,
-) -> crate::streaming::RawStreamingResult<A::Response>
+) -> crate::streaming::StreamingResult
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
     A: WireAdapter<Frame = WireFrame> + WasmCompatSend + 'static,
     A::Event: WasmCompatSend,
-    A::Response: WasmCompatSend + 'static,
     F: FnMut(String) -> FrameDisposition + WasmCompatSend + 'static,
 {
     // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,

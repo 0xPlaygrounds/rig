@@ -6,7 +6,7 @@
 //! the same bridge: a per-stream map from the wire's index to the identity the
 //! adapter established for that call. [`ToolCallBridge`] is that map, shared
 //! so the mandatory-identity invariant on
-//! [`RawStreamingChoice::ToolCallDelta`](crate::streaming::RawStreamingChoice)
+//! tool-call [`BlockDelta`](crate::streaming::StreamEvent::BlockDelta)
 //! is enforced in exactly one place: when the wire supplies no id, the slot's
 //! grammar id is a `BlockId::Minted` from the bridge's [`SyntheticIds`]
 //! counter, so parallel id-less calls can never share an assembly key
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use crate::streaming::{
-    BlockId, SyntheticIds, ToolCallDecoration, ToolInputEnd, UnparseableToolInput,
+    BlockId, StreamEvent, SyntheticIds, ToolCallDecoration, ToolCallEnd, UnparseableToolInput,
 };
 
 /// Wire identity of a tool call whose input is streaming, as tracked by an
@@ -81,10 +81,10 @@ impl ToolCallSlot {
         self.saw_non_whitespace_arguments_delta || self.announce_arguments.is_some()
     }
 
-    /// Build the end event that closes this call's assembly in the shared
+    /// The end payload that closes this call's assembly in the shared
     /// accumulator, carrying the established provider id and any decoration.
-    pub fn end_event(&self, on_unparseable: UnparseableToolInput) -> ToolInputEnd {
-        let mut end = ToolInputEnd::new(self.key.clone(), on_unparseable);
+    pub fn end(&self, on_unparseable: UnparseableToolInput) -> ToolCallEnd {
+        let mut end = ToolCallEnd::new(on_unparseable);
         // Only an established provider id overrides the assembly key; a
         // call whose wire never supplied one carries no durable handle at
         // all (`non_empty_id` rejects the empty string by construction).
@@ -95,6 +95,16 @@ impl ToolCallSlot {
             end.arguments.clone_from(&self.announce_arguments);
         }
         end
+    }
+
+    /// The end event that closes this call's assembly, keyed by the slot's
+    /// assembly id.
+    pub fn end_event(&self, on_unparseable: UnparseableToolInput) -> StreamEvent {
+        StreamEvent::BlockEnd {
+            id: self.key.clone(),
+            end: crate::streaming::BlockClose::ToolCall(self.end(on_unparseable)),
+            block: None,
+        }
     }
 }
 

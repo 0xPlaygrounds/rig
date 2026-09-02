@@ -44,7 +44,6 @@ use futures::StreamExt as _;
 use rig::completion::{AssistantContent, CompletionModel, NormalizeCompletionResponse};
 use rig::prelude::*;
 use rig::providers::openrouter;
-use rig::streaming::StreamingCompletionResponse;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -170,15 +169,12 @@ async fn run_cell(client: openrouter::Client, cell: Cell, observed: SharedChoice
                 .choice
         }
         Transport::Streaming => {
-            let raw = model.raw_stream(request(&model, cell)).await?;
-            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
-                Ok::<_, rig::completion::CompletionError>(("openrouter", terminal).into())
-            });
-            let mut stream = StreamingCompletionResponse::stream("openrouter", normalized);
+            let raw = model.stream(request(&model, cell)).await?;
+            let mut stream = raw;
             while let Some(item) = stream.next().await {
                 item?;
             }
-            stream.choice.into_iter().collect()
+            stream.snapshot()
         }
     };
 

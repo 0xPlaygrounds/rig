@@ -14,12 +14,13 @@
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::http_client::{self, HttpClientExt, NoBody};
-use crate::providers::internal::adapter::{TriagedFrame, triage_frame};
+use crate::providers::internal::adapter::{AdapterOutput, TriagedFrame, triage_frame};
 use crate::providers::openai::Client as OpenAIClient;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
-    StreamingCompletionChunk, classify_responses_frame, completion_response_from_raw_choices,
+    StreamingCompletionChunk, classify_responses_frame, completion_response_from_stream_events,
 };
+use crate::streaming::StreamEvent;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::ws_client::{
     BoxedWebSocketConnection, ConnectOptions, Frame, WebSocketClientExt, WebSocketConnection,
@@ -31,10 +32,6 @@ use std::time::Duration;
 use crate::providers::openai::responses_api::{
     CompletionResponse, ResponseStatus, ResponsesCompletionModel, ResponsesUsage,
 };
-
-type WebSocketRawChoice = crate::streaming::RawStreamingChoice<
-    crate::providers::openai::responses_api::streaming::StreamingCompletionResponse,
->;
 
 /// The websocket endpoint's path, appended to the client's configured base URL.
 const WEBSOCKET_PATH: &str = "responses";
@@ -180,7 +177,7 @@ pub enum ResponsesWebSocketEvent {
     Done(ResponsesWebSocketDoneEvent),
     /// An unrecognized event's raw payload — warned and skipped on the
     /// semantic path, forwarded verbatim so the streaming surface can carry
-    /// it on the `RawStreamingChoice::Unknown` passthrough channel.
+    /// it on the [`StreamEvent::Unknown`] passthrough channel.
     Unknown(crate::streaming::UnknownPayload),
 }
 
@@ -489,13 +486,13 @@ where
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let provider = self.model.provider_name();
         self.send(completion_request).await?;
-        let (response, raw_choices) = self.wait_for_terminal_response().await?;
+        let (response, events) = self.wait_for_terminal_response().await?;
         // Replay the accumulated deltas through the shared normalization
         // pipeline so streamed partial output survives even when the terminal
         // body's `output` is empty (e.g. an incomplete turn). A turn that
         // carried no deltas (e.g. a `response.done`-only turn) falls back to
         // normalizing the terminal body itself.
-        match completion_response_from_raw_choices(provider, raw_choices, &response).await? {
+        match completion_response_from_stream_events(provider, events, &response).await? {
             Some(normalized) => Ok(normalized),
             None => response.normalize(provider),
         }
@@ -561,10 +558,10 @@ where
     /// the same decode state machine the SSE path uses, fed by a different
     /// transport — so streamed deltas survive alongside the terminal body.
     ///
-    /// **A failed turn discards the choices collected so far, deliberately
+    /// **A failed turn discards the events collected so far, deliberately
     /// (#2258 G3).** Every error exit below — the `?` on `next_event()`, the
     /// `response.done`-without-a-body branch, and the provider `error` event —
-    /// returns `Err` and drops `accumulator`/`raw_choices` with whatever text,
+    /// returns `Err` and drops `accumulator`/`out` with whatever text,
     /// reasoning and tool calls had already arrived.
     ///
     /// That is not a divergence from the SSE side: the right comparison is the
@@ -584,9 +581,10 @@ where
     /// fix is a streaming websocket surface, not a partial unary response.
     async fn wait_for_terminal_response(
         &mut self,
-    ) -> Result<(CompletionResponse, Vec<WebSocketRawChoice>), CompletionError> {
-        let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
-        let mut raw_choices = Vec::new();
+    ) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
+        let mut accumulator =
+            RawChoiceAccumulator::new(self.model.provider_name(), ResponsesUsage::new());
+        let mut out = AdapterOutput::new();
         loop {
             match self.next_event().await? {
                 ResponsesWebSocketEvent::Response(chunk) => {
@@ -596,12 +594,12 @@ where
                             | ResponseChunkKind::ResponseFailed
                             | ResponseChunkKind::ResponseIncomplete
                     ) {
-                        return finish_terminal_response(accumulator, chunk.response, raw_choices);
+                        return finish_terminal_response(accumulator, chunk.response, out);
                     }
                 }
                 ResponsesWebSocketEvent::Done(done) => {
                     if let Some(response) = done.as_completion_response() {
-                        return finish_terminal_response(accumulator, response, raw_choices);
+                        return finish_terminal_response(accumulator, response, out);
                     }
 
                     let message = if let Some(response_id) = done.response_id() {
@@ -623,15 +621,17 @@ where
                     return Err(provider_error_from_event(&error));
                 }
                 ResponsesWebSocketEvent::Item(chunk) => {
-                    raw_choices.extend(
-                        accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict()),
+                    accumulator.decode_item_chunk(
+                        chunk,
+                        ResponsesStreamOptions::strict(),
+                        &mut out,
                     );
                 }
                 ResponsesWebSocketEvent::Unknown(value) => {
                     // Semantic skip, raw passthrough: the accumulator never
                     // sees the frame, but the streaming surface still yields
                     // it verbatim.
-                    raw_choices.push(crate::streaming::RawStreamingChoice::Unknown(value));
+                    out.unknown(value);
                 }
             }
         }
@@ -747,13 +747,15 @@ impl<H> Drop for ResponsesWebSocketSession<H> {
     }
 }
 
-/// Records the terminal event into the accumulator and drains it, so the raw
-/// choices end with the terminal record exactly as the SSE path produces them.
+/// Records the terminal event into the accumulator and drains it, so the
+/// events end with the terminal record exactly as the SSE path produces them.
+/// This surface is unary, so an in-band error item the accumulator pushed
+/// (a terminal record that failed to serialize) fails the turn.
 fn finish_terminal_response(
     mut accumulator: RawChoiceAccumulator,
     response: CompletionResponse,
-    mut raw_choices: Vec<WebSocketRawChoice>,
-) -> Result<(CompletionResponse, Vec<WebSocketRawChoice>), CompletionError> {
+    mut out: AdapterOutput,
+) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
     let response = terminal_response_result(response)?;
     // Only completed/incomplete get through `terminal_response_result`, so the
     // accumulator's failed-event error mapping (which needs the raw event
@@ -764,8 +766,12 @@ fn finish_terminal_response(
         ResponseChunkKind::ResponseCompleted
     };
     accumulator.record_response_chunk(kind, response.clone(), "")?;
-    raw_choices.extend(accumulator.finish());
-    Ok((response, raw_choices))
+    accumulator.finish(&mut out);
+    let events = out
+        .into_items()
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((response, events))
 }
 
 fn terminal_response_result(

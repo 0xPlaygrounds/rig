@@ -673,7 +673,7 @@ mod interleaved_constant_id_reasoning {
     #[tokio::test]
     async fn ollama_two_calls_to_the_same_tool_stay_distinct() {
         use rig_core::message::AssistantContent;
-        use rig_core::streaming::StreamedAssistantContent;
+        use rig_core::streaming::StreamEvent;
         use serde_json::json;
 
         let ndjson = |frame: &serde_json::Value| {
@@ -709,9 +709,10 @@ mod interleaved_constant_id_reasoning {
         let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
-            if let StreamedAssistantContent::ToolCall {
-                tool_call,
+            if let StreamEvent::BlockEnd {
                 id: block_id,
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
@@ -802,7 +803,7 @@ mod interleaved_constant_id_reasoning {
     #[tokio::test]
     async fn interactions_two_id_less_calls_to_the_same_tool_stay_distinct() {
         use rig_core::message::AssistantContent;
-        use rig_core::streaming::StreamedAssistantContent;
+        use rig_core::streaming::StreamEvent;
         use serde_json::json;
 
         let sse = |frame: &serde_json::Value| {
@@ -844,9 +845,10 @@ mod interleaved_constant_id_reasoning {
         let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
-            if let StreamedAssistantContent::ToolCall {
-                tool_call,
+            if let StreamEvent::BlockEnd {
                 id: block_id,
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");

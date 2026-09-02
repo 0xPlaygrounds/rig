@@ -13,7 +13,7 @@ use rig::agent::{
 use rig::completion::{CompletionModel, Document, Message};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use rig::tool::{Tool, ToolContext, ToolExecutionError};
 
 use super::super::support::with_anthropic_cassette;
@@ -109,9 +109,7 @@ async fn caching_and_identity_share_the_wire_streaming() {
                     .expect("stream should open");
                 let mut terminal = None;
                 while let Some(item) = stream.next().await {
-                    if let StreamedAssistantContent::Final(final_record) =
-                        item.expect("stream item")
-                    {
+                    if let StreamEvent::Final(final_record) = item.expect("stream item") {
                         terminal = Some(final_record);
                     }
                 }
@@ -656,13 +654,13 @@ async fn stream_conversion_carries_live_identity() {
                 .expect("stream should open");
             let mut terminal_id = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) = item.expect("stream item") {
+                if let StreamEvent::Final(final_record) = item.expect("stream item") {
                     terminal_id = final_record.provider_request_id.clone();
                 }
             }
             assert_transport_request_id(terminal_id.as_deref(), "live terminal");
 
-            let response: rig::completion::CompletionResponse = stream.into();
+            let response: rig::completion::CompletionResponse = stream.finish();
             assert_eq!(
                 response.provider_request_id, terminal_id,
                 "conversion carries the live terminal's id"

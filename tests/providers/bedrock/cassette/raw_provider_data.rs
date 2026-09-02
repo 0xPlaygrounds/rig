@@ -86,7 +86,7 @@ async fn guardrail_trace_survives_into_raw_completion() {
 #[tokio::test]
 async fn request_id_survives_into_streamed_terminal() {
     use futures::StreamExt;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::StreamEvent;
 
     with_bedrock_cassette(
         "raw_provider_data/request_id_survives_into_streamed_terminal",
@@ -100,8 +100,7 @@ async fn request_id_survives_into_streamed_terminal() {
             let mut stream = model.stream(request).await.expect("stream should start");
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }

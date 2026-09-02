@@ -21,7 +21,7 @@ use rig::client::Provider as _;
 use rig::http_client::ReqwestClient;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
@@ -47,8 +47,11 @@ fn main() -> Result<()> {
     let response = loop {
         while let Some(event) = events.try_next() {
             match event {
-                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
-                    print!("{}", text.text);
+                MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                }) => {
+                    print!("{text}");
                 }
                 MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                     println!("\n[tool {}]", tool_call.function.name);

@@ -13,7 +13,7 @@ use crate::client::AgentClientExt;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::run::transcript::tool_result_output;
-use crate::streaming::ToolCallDeltaContent;
+use crate::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 use crate::test_utils::{
     AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
     MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn, SessionId,
@@ -2032,16 +2032,17 @@ async fn stream_prompt_continues_after_tool_call_turn() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 saw_tool_result = true;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
-                final_text.push_str(&text.text);
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            })) => {
+                final_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 saw_final_response = true;
@@ -2226,9 +2227,7 @@ async fn unknown_tool_call_fails_before_streaming_second_request() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
             Ok(_) => {}
@@ -2293,10 +2292,7 @@ async fn invalid_tool_call_hook_can_repair_streaming_tool_name() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
                 assert_eq!(tool_call.function.name, "add");
                 saw_repaired_tool_call = true;
             }
@@ -2922,9 +2918,10 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
             Ok(MultiTurnStreamItem::CompletionCall(completion_call)) => {
                 completion_call_events.push(completion_call);
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => panic!("invalid tool-call delta should not be emitted"),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => panic!("invalid tool-call delta should not be emitted"),
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 final_response_text = Some(response.output().to_string());
                 final_response_usage = response.usage();
@@ -3171,9 +3168,10 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => panic!("invalid tool-call delta should not be emitted"),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => panic!("invalid tool-call delta should not be emitted"),
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                 tool_result,
                 id: block_id,
@@ -3419,19 +3417,20 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { .. },
+                ..
+            })) => {
                 saw_text = true;
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {
                 saw_completion_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_)))
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_)))
             | Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                 saw_final_response = true;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
@@ -3514,9 +3513,7 @@ async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {
                 saw_completion_call = true;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
@@ -3593,10 +3590,7 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
                 tool_call_names.push(tool_call.function.name);
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
@@ -3665,9 +3659,7 @@ async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
             Ok(_) => {}
@@ -3744,9 +3736,7 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
@@ -3816,9 +3806,7 @@ async fn tool_choice_none_rejects_streaming_tool_call() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { .. }) => {
                 saw_tool_call = true;
             }
             Ok(_) => {}
@@ -3881,9 +3869,10 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -3943,9 +3932,10 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -4005,9 +3995,10 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -4060,13 +4051,11 @@ async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta {
-                    id: block_id,
-                    content,
-                },
-            )) => {
-                stream_deltas.push((block_id, content));
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                id: block_id,
+                delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
+            })) => {
+                stream_deltas.push((block_id, delta));
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
@@ -4094,15 +4083,21 @@ async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order
         vec![
             (
                 internal.clone(),
-                ToolCallDeltaContent::Name("add".to_string())
+                Delta::ToolName {
+                    name: "add".to_string()
+                }
             ),
             (
                 internal.clone(),
-                ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                Delta::ToolArguments {
+                    arguments: "{\"x\":".to_string()
+                }
             ),
             (
                 internal.clone(),
-                ToolCallDeltaContent::Delta("1}".to_string())
+                Delta::ToolArguments {
+                    arguments: "1}".to_string()
+                }
             ),
         ]
     );
@@ -4136,9 +4131,10 @@ async fn tool_call_args_delta_without_name_errors_at_stream_end() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 saw_delta = true;
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {
@@ -4204,9 +4200,10 @@ async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 saw_delta = true;
             }
             Ok(_) => {}
@@ -4258,17 +4255,29 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
         .await;
     let mut stream_deltas = Vec::new();
     let mut completed_reasoning = 0;
+    // The durable provider id travels on the block start; a delta carries
+    // only its block id.
+    let mut provider_ids: std::collections::HashMap<BlockId, Option<String>> =
+        std::collections::HashMap::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta {
-                    id,
-                    provider_id,
-                    reasoning,
-                },
-            )) => stream_deltas.push((id, provider_id, reasoning)),
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Reasoning { provider_id },
+            })) => {
+                provider_ids.insert(id, provider_id);
+            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning { text: reasoning },
+            })) => {
+                let provider_id = provider_ids.get(&id).cloned().flatten();
+                stream_deltas.push((id, provider_id, reasoning));
+            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                block: Some(rig_core::message::AssistantContent::Reasoning(_)),
                 ..
             })) => completed_reasoning += 1,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
@@ -4341,9 +4350,10 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { .. },
-            )) => saw_delta = true,
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { .. },
+                ..
+            })) => saw_delta = true,
             Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
             Ok(_) => {}
             Err(err) => {
@@ -4387,9 +4397,10 @@ async fn stream_prompt_skips_reasoning_delta_hook_without_observation_interest()
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { reasoning, .. },
-            )) => emitted.push(reasoning),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text: reasoning },
+                ..
+            })) => emitted.push(reasoning),
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
             Err(err) => panic!("unexpected streaming error: {err:?}"),
@@ -4425,9 +4436,10 @@ async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisiona
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { reasoning, .. },
-            )) => order.push(reasoning),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text: reasoning },
+                ..
+            })) => order.push(reasoning),
             Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
                 order.push(format!("retry:{turn}"));
             }
@@ -4461,13 +4473,11 @@ async fn stream_prompt_emits_tool_call_deltas_without_hook() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta {
-                    id: block_id,
-                    content,
-                },
-            )) => {
-                deltas.push((block_id, content));
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                id: block_id,
+                delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
+            })) => {
+                deltas.push((block_id, delta));
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
@@ -4487,15 +4497,21 @@ async fn stream_prompt_emits_tool_call_deltas_without_hook() {
         vec![
             (
                 internal.clone(),
-                ToolCallDeltaContent::Name("add".to_string())
+                Delta::ToolName {
+                    name: "add".to_string()
+                }
             ),
             (
                 internal.clone(),
-                ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                Delta::ToolArguments {
+                    arguments: "{\"x\":".to_string()
+                }
             ),
             (
                 internal.clone(),
-                ToolCallDeltaContent::Delta("1}".to_string())
+                Delta::ToolArguments {
+                    arguments: "1}".to_string()
+                }
             ),
         ]
     );
@@ -4521,13 +4537,11 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta {
-                    id: block_id,
-                    content,
-                },
-            )) => {
-                stream_deltas.push((block_id, content));
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                id: block_id,
+                delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
+            })) => {
+                stream_deltas.push((block_id, delta));
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
             Ok(_) => {}
@@ -4555,15 +4569,21 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
         vec![
             (
                 internal.clone(),
-                ToolCallDeltaContent::Name("add".to_string())
+                Delta::ToolName {
+                    name: "add".to_string()
+                }
             ),
             (
                 internal.clone(),
-                ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                Delta::ToolArguments {
+                    arguments: "{\"x\":".to_string()
+                }
             ),
             (
                 internal.clone(),
-                ToolCallDeltaContent::Delta("1}".to_string())
+                Delta::ToolArguments {
+                    arguments: "1}".to_string()
+                }
             ),
         ]
     );
@@ -4590,9 +4610,10 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 saw_delta = true;
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
@@ -4833,9 +4854,10 @@ async fn final_response_matches_streamed_text_when_provider_final_is_textless() 
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
-                streamed_text.push_str(&text.text)
-            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            })) => streamed_text.push_str(&text),
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_response_text = Some(res.output().to_owned());
                 break;
@@ -4969,9 +4991,10 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
-                streamed_text.push_str(&text.text)
-            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            })) => streamed_text.push_str(&text),
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_response_text = Some(res.output().to_owned());
                 break;
@@ -5349,8 +5372,9 @@ async fn reasoning_survives_into_history_when_the_truncated_turn_errors() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
-                reasoning,
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                block: Some(rig_core::message::AssistantContent::Reasoning(reasoning)),
                 ..
             })) => {
                 streamed_reasoning.push_str(&reasoning.display_text());
@@ -5438,8 +5462,11 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
     let mut full_content = String::new();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
-                full_content.push_str(&text.text);
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            })) => {
+                full_content.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => {
                 break;
@@ -5500,8 +5527,11 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     let mut final_history = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
-                response_text.push_str(&text.text);
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            })) => {
+                response_text.push_str(&text);
             }
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 final_history = res
@@ -5830,10 +5860,11 @@ async fn run_channel_forwards_events_and_resolves() {
 
     let response = response.expect("run succeeds");
     assert_eq!(response.output(), "done");
-    assert!(items.iter().any(|item| matches!(
-        item,
-        MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall { .. })
-    )));
+    assert!(
+        items
+            .iter()
+            .any(|item| matches!(item, MultiTurnStreamItem::ToolCall { .. }))
+    );
     assert!(items.iter().any(|item| matches!(
         item,
         MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })

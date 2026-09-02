@@ -120,18 +120,6 @@ impl CompletionModel {
 
         Ok(response)
     }
-
-    /// Open a stream whose terminal record stays Gemini's own protobuf
-    /// response.
-    pub async fn raw_stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        rig_core::streaming::RawStreamingResult<super::streaming::StreamingCompletionResponse>,
-        CompletionError,
-    > {
-        super::streaming::raw_stream(self.client.clone(), self.model.clone(), request).await
-    }
 }
 
 impl completion::CompletionModel for CompletionModel {

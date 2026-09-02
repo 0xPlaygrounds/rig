@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     message::Message,
-    streaming::{StreamFinal, StreamedAssistantContent, ToolCallDeltaContent},
+    streaming::{Delta, StreamEvent, StreamFinal},
 };
 use futures::StreamExt;
 
@@ -83,9 +83,9 @@ async fn completion_attaches_scripted_raw_and_reports_null_when_unscripted() {
     assert_eq!(model.requests().len(), 2);
 }
 
-/// The streaming half of the same contract: the scripted terminal goes
-/// through `normalize_stream`, so the terminal's `raw` is the scripted
-/// terminal record serialized (the mock's own terminal type is
+/// The streaming half of the same contract: the mock's adapter maps the
+/// scripted terminal onto the `Final` record, so the terminal's `raw` is
+/// the scripted terminal record serialized (the mock's own terminal type is
 /// `StreamFinal`).
 #[tokio::test]
 async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
@@ -162,22 +162,32 @@ async fn stream_yields_scripted_events_and_records_requests() {
 
     while let Some(item) = stream.next().await {
         match item.expect("stream event should succeed") {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::ToolCallDelta { content, .. } => match content {
-                ToolCallDeltaContent::Name(name) => {
-                    saw_name_delta = name == "calculator";
-                }
-                ToolCallDeltaContent::Delta(arguments) => {
-                    saw_arguments_delta = arguments == "{\"x\":1}";
-                }
-            },
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::BlockDelta {
+                delta: Delta::ToolName { name },
+                ..
+            } => {
+                saw_name_delta = name == "calculator";
+            }
+            StreamEvent::BlockDelta {
+                delta: Delta::ToolArguments { arguments },
+                ..
+            } => {
+                saw_arguments_delta = arguments == "{\"x\":1}";
+            }
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => {
                 saw_tool_call = tool_call
                     .provider
                     .as_ref()
                     .is_some_and(|provider| provider.call_id == "call_1");
             }
-            StreamedAssistantContent::Final(response) => {
+            StreamEvent::Final(response) => {
                 saw_final = matches!(
                     response.usage,
                     Usage {

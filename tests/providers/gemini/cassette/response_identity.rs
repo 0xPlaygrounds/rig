@@ -8,7 +8,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 
 use super::super::support::with_gemini_cassette;
 
@@ -47,8 +47,7 @@ async fn streaming_request_id_is_none_by_design() {
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }

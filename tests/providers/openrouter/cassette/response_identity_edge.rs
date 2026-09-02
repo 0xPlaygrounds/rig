@@ -39,7 +39,7 @@ async fn blocking_contract_and_gateway_both_report_none() {
 #[tokio::test]
 async fn streaming_contract_and_gateway_both_report_none() {
     use futures::StreamExt;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::StreamEvent;
 
     with_openrouter_cassette(
         "response_identity_edge/streaming_contract_and_gateway_both_report_none",
@@ -52,8 +52,7 @@ async fn streaming_contract_and_gateway_both_report_none() {
                 .expect("stream should open");
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }

@@ -67,7 +67,7 @@ const TWO_CANDIDATE_PROMPT: &str =
 #[tokio::test]
 async fn reasoning_content_reaches_the_caller_on_both_transports() {
     use futures::StreamExt as _;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::{Delta, StreamEvent};
 
     with_llamacpp_cassette(
         "response_shape_matrix/reasoning_blocking",
@@ -146,18 +146,24 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
                     // Streaming delivers reasoning incrementally, as deltas
                     // sharing one rig-generated correlator, and may close them
                     // with a complete block. Both are reasoning; text is not.
-                    StreamedAssistantContent::ReasoningDelta {
+                    StreamEvent::BlockDelta {
                         id,
-                        reasoning: delta,
-                        ..
+                        delta: Delta::Reasoning { text: delta },
                     } => {
                         correlators.insert(id);
                         reasoning.push_str(&delta);
                     }
-                    StreamedAssistantContent::Reasoning { id, .. } => {
+                    StreamEvent::BlockEnd {
+                        id,
+                        block: Some(AssistantContent::Reasoning(_)),
+                        ..
+                    } => {
                         correlators.insert(id);
                     }
-                    StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: chunk },
+                        ..
+                    } => text.push_str(&chunk),
                     _ => {}
                 }
             }
@@ -221,7 +227,7 @@ async fn reasoning_content_reaches_the_caller_on_both_transports() {
 #[tokio::test]
 async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
     use futures::StreamExt as _;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::{Delta, StreamEvent};
 
     let blocking_answer = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let blocking_sink = std::sync::Arc::clone(&blocking_answer);
@@ -265,10 +271,12 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Text(chunk) =
-                    item.expect("stream item should be ok")
+                if let StreamEvent::BlockDelta {
+                    delta: Delta::Text { text: chunk },
+                    ..
+                } = item.expect("stream item should be ok")
                 {
-                    text.push_str(&chunk.text);
+                    text.push_str(&chunk);
                 }
             }
             *streaming_sink.lock().expect("answer") = text;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::streaming::Delta;
 use serde_json::json;
 
 #[test]
@@ -38,14 +39,10 @@ fn test_content_delta_text_event() {
         panic!("expected step delta");
     };
 
-    let choice = content_delta_to_choice(delta, &mut streaming::SyntheticIds::tool())
-        .expect("choice should exist");
-    match choice {
-        crate::streaming::RawStreamingChoice::Message(text) => {
-            assert_eq!(text, "Hello");
-        }
-        other => panic!("unexpected choice: {other:?}"),
-    }
+    let parts = content_delta_to_parts(delta, &mut streaming::SyntheticIds::tool())
+        .expect("parts should exist");
+    assert_eq!(parts.text.as_deref(), Some("Hello"));
+    assert!(parts.tool_events.is_empty());
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -54,7 +51,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::providers::gemini::Client;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -84,8 +81,11 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(_) => saw_terminal = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(_) => saw_terminal = true,
             _ => {}
         }
     }
@@ -104,7 +104,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 async fn drive_frames(
     frames: &[&str],
 ) -> (
-    Vec<Result<crate::streaming::StreamedAssistantContent, String>>,
+    Vec<Result<crate::streaming::StreamEvent, String>>,
     crate::streaming::StreamingCompletionResponse,
 ) {
     use crate::client::CompletionClient;
@@ -145,7 +145,8 @@ async fn drive_frames(
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn a_model_output_step_yields_every_convertible_item() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamEvent;
 
     let (items, _stream) = drive_frames(&[
         r#"{"event_type":"step.start","index":0,"step":{"type":"model_output","content":[{"type":"text","text":"answer: "},{"type":"function_call","name":"add","arguments":{"x":1},"id":"fc_9"}]}}"#,
@@ -157,8 +158,14 @@ async fn a_model_output_step_yields_every_convertible_item() {
     let mut calls = Vec::new();
     for item in &items {
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text.clone()),
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => texts.push(text.clone()),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => {
                 calls.push(tool_call.clone());
             }
             _ => {}
@@ -183,7 +190,8 @@ async fn a_model_output_step_yields_every_convertible_item() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn announce_arguments_never_concatenate_with_fragments() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamEvent;
 
     let (items, _stream) = drive_frames(&[
         r#"{"event_type":"step.start","index":1,"step":{"arguments":{"x":1},"id":"fc_1","name":"add","type":"function_call"}}"#,
@@ -196,7 +204,10 @@ async fn announce_arguments_never_concatenate_with_fragments() {
     let tool_calls: Vec<_> = items
         .iter()
         .filter_map(|item| match item {
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => Some(tool_call),
             _ => None,
         })
         .collect();
@@ -218,7 +229,8 @@ async fn announce_arguments_never_concatenate_with_fragments() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn announce_arguments_finalize_a_call_with_no_fragments() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamEvent;
 
     let (items, _stream) = drive_frames(&[
         r#"{"event_type":"step.start","index":1,"step":{"arguments":{"x":7},"id":"fc_1","name":"add","type":"function_call"}}"#,
@@ -230,7 +242,10 @@ async fn announce_arguments_finalize_a_call_with_no_fragments() {
     let tool_calls: Vec<_> = items
         .iter()
         .filter_map(|item| match item {
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => Some(tool_call),
             _ => None,
         })
         .collect();
@@ -248,7 +263,8 @@ async fn announce_arguments_finalize_a_call_with_no_fragments() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn a_streamed_call_carries_a_single_wire_identity() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamEvent;
 
     let (items, _stream) = drive_frames(&[
         r#"{"event_type":"step.start","index":1,"step":{"arguments":{},"id":"fc_1","name":"add","type":"function_call"}}"#,
@@ -261,7 +277,10 @@ async fn a_streamed_call_carries_a_single_wire_identity() {
     let tool_calls: Vec<_> = items
         .iter()
         .filter_map(|item| match item {
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => Some(tool_call),
             _ => None,
         })
         .collect();
@@ -288,7 +307,8 @@ async fn a_streamed_call_carries_a_single_wire_identity() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn a_missing_step_stop_does_not_lose_the_announced_call() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamEvent;
 
     let (items, stream) = drive_frames(&[
         r#"{"event_type":"step.start","index":1,"step":{"arguments":{},"id":"fc_1","name":"get_weather","type":"function_call"}}"#,
@@ -300,7 +320,10 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
     let tool_calls: Vec<_> = items
         .iter()
         .filter_map(|item| match item {
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => Some(tool_call),
             _ => None,
         })
         .collect();
@@ -321,7 +344,7 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
     // The turn completed normally: the terminal record survives too.
     assert!(stream.response.is_some());
     let aggregated_calls = stream
-        .choice
+        .snapshot()
         .iter()
         .filter(|content| matches!(content, crate::message::AssistantContent::ToolCall(_)))
         .count();
@@ -334,7 +357,7 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
 
     // A provider `error` event, then more frames: well-formed content, an
     // unknown frame, and a terminal `interaction.completed`. The error
@@ -361,7 +384,7 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
     assert!(
         items.iter().any(|item| matches!(
             item,
-            Ok(StreamedAssistantContent::Text(text)) if text.text == "hi"
+            Ok(StreamEvent::BlockDelta { delta: Delta::Text { text }, .. }) if text == "hi"
         )),
         "content before the error must survive"
     );
@@ -371,7 +394,8 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn thought_signature_completes_the_accumulated_reasoning_block() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamEvent;
 
     // Text-then-signature: the signed block must restate the full
     // accumulated thought text and carry the signature; the aggregated
@@ -387,7 +411,10 @@ async fn thought_signature_completes_the_accumulated_reasoning_block() {
     let signed = items
         .iter()
         .find_map(|item| match item {
-            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => Some(reasoning.clone()),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            }) => Some(reasoning.clone()),
             _ => None,
         })
         .expect("the signature must yield a completed Reasoning block");
@@ -402,15 +429,15 @@ async fn thought_signature_completes_the_accumulated_reasoning_block() {
 
     // The aggregated choice keeps exactly one reasoning part carrying the
     // signature — the signed restatement superseded the deltas.
-    let aggregated: Vec<_> = stream
-        .choice
+    let choice = stream.snapshot();
+    let aggregated: Vec<_> = choice
         .iter()
         .filter_map(|content| match content {
             crate::completion::AssistantContent::Reasoning(reasoning) => Some(reasoning),
             _ => None,
         })
         .collect();
-    assert_eq!(aggregated.len(), 1, "got {:?}", stream.choice);
+    assert_eq!(aggregated.len(), 1, "got {choice:?}");
     assert_eq!(
         aggregated.first().map(|r| r.content.clone()),
         Some(signed.content)
@@ -420,7 +447,8 @@ async fn thought_signature_completes_the_accumulated_reasoning_block() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn signature_only_thought_still_carries_the_signature() {
-    use crate::streaming::StreamedAssistantContent;
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamEvent;
 
     // Signature with no preceding thought-summary text: the signature is
     // the provider's replay-validated payload and must still survive as a
@@ -434,7 +462,10 @@ async fn signature_only_thought_still_carries_the_signature() {
     let signed = items
         .iter()
         .find_map(|item| match item {
-            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => Some(reasoning.clone()),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            }) => Some(reasoning.clone()),
             _ => None,
         })
         .expect("a signature-only block must still yield a signed Reasoning");
@@ -465,17 +496,29 @@ fn test_content_delta_function_call_event() {
         panic!("expected step delta");
     };
 
-    let choice = content_delta_to_choice(delta, &mut streaming::SyntheticIds::tool())
-        .expect("choice should exist");
-    match choice {
-        crate::streaming::RawStreamingChoice::ToolCall(call) => {
-            assert_eq!(call.name, "get_weather");
-            // Single-identifier wire: the id travels as `tool_id` only.
-            // Filling `call_id` too would take the dual-wire arm and
-            // fabricate an item id the wire never issued.
-            assert_eq!(call.tool_id.as_deref(), Some("call-1"));
-            assert_eq!(call.call_id, None);
-        }
-        other => panic!("unexpected choice: {other:?}"),
-    }
+    let parts = content_delta_to_parts(delta, &mut streaming::SyntheticIds::tool())
+        .expect("parts should exist");
+    assert_eq!(parts.text, None);
+    // A whole call is its start and its authoritative end.
+    let [
+        crate::streaming::StreamEvent::BlockStart {
+            id: start_id,
+            kind: crate::streaming::BlockKind::ToolCall,
+        },
+        crate::streaming::StreamEvent::BlockEnd {
+            id: end_id,
+            end: crate::streaming::BlockClose::ToolCall(call),
+            block: None,
+        },
+    ] = parts.tool_events.as_slice()
+    else {
+        panic!("unexpected tool events: {:?}", parts.tool_events);
+    };
+    assert_eq!(start_id, end_id);
+    assert_eq!(call.name.as_deref(), Some("get_weather"));
+    // Single-identifier wire: the id travels as `tool_id` only.
+    // Filling `call_id` too would take the dual-wire arm and
+    // fabricate an item id the wire never issued.
+    assert_eq!(call.tool_id.as_deref(), Some("call-1"));
+    assert_eq!(call.call_id, None);
 }

@@ -9,7 +9,7 @@ use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig::telemetry::ProviderResponseExt;
 use serde_json::json;
 
@@ -342,8 +342,11 @@ async fn send_matrix_streaming_probe(
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming matrix Anthropic item should succeed") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::Final(response) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::Final(response) => {
                 usage = Some(response.usage);
             }
             _ => {}
@@ -1388,8 +1391,11 @@ async fn send_streaming_cache_probe(
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming prompt-cached Anthropic item should succeed") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::Final(response) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::Final(response) => {
                 usage = Some(response.usage);
             }
             _ => {}

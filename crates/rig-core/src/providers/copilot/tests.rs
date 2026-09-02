@@ -6,11 +6,12 @@ use super::{
 use crate::client::CompletionClient;
 use crate::completion::CompletionModel;
 use crate::http_client;
+use crate::message::AssistantContent;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
 use crate::providers::openai;
-use crate::streaming::StreamedAssistantContent;
+use crate::streaming::{BlockClose, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
 use futures::StreamExt;
@@ -459,23 +460,29 @@ async fn responses_stream_terminates_after_terminal_error() {
     // The fully-delivered tool call is content, so it is flushed *before*
     // the terminal error: consumers that stop at the first `Err` still
     // see the completed work.
-    let tool_call = stream
-        .next()
-        .await
-        .expect("fully-delivered tool call should be flushed before the error")
-        .expect("flushed tool call should not be an error");
-    assert!(
-        matches!(
-            tool_call,
-            StreamedAssistantContent::ToolCall { ref tool_call, .. }
-                if tool_call.function.name == "example_tool"
-        ),
-        "expected the flushed tool call, got {tool_call:?}"
-    );
-    let err = match stream.next().await.expect("stream should yield an item") {
-        Ok(item) => panic!("stream should surface a provider error, got {item:?}"),
-        Err(err) => err,
+    let mut flushed_tool_call = false;
+    let err = loop {
+        match stream
+            .next()
+            .await
+            .expect("fully-delivered tool call should be flushed before the error")
+        {
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => {
+                assert_eq!(tool_call.function.name, "example_tool");
+                flushed_tool_call = true;
+            }
+            Ok(StreamEvent::BlockStart { .. } | StreamEvent::BlockDelta { .. }) => {}
+            Ok(item) => panic!("expected the flushed tool call, got {item:?}"),
+            Err(err) => break err,
+        }
     };
+    assert!(
+        flushed_tool_call,
+        "the flushed tool call must precede the terminal error"
+    );
     // The terminal `response.failed` event carries the provider's error
     // payload, so the full raw event JSON is preserved for inspection
     // (status: None — the error arrived over an already-established stream),
@@ -614,8 +621,16 @@ async fn responses_stream_incomplete_is_a_terminal_with_partial_content() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item.expect("incomplete turn should not surface an error") {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(final_response) => terminal = Some(final_response),
+            StreamEvent::BlockStart { .. }
+            | StreamEvent::BlockEnd {
+                end: BlockClose::Text,
+                ..
+            } => {}
             other => panic!("unexpected stream item: {other:?}"),
         }
     }
@@ -655,8 +670,18 @@ async fn chat_stream_surfaces_malformed_frame_and_still_completes() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(chunk)) => text.push_str(&chunk.text),
-            Ok(StreamedAssistantContent::Final(final_response)) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            }) => text.push_str(&chunk),
+            Ok(
+                StreamEvent::BlockStart { .. }
+                | StreamEvent::BlockEnd {
+                    end: BlockClose::Text,
+                    ..
+                },
+            ) => {}
+            Ok(StreamEvent::Final(final_response)) => {
                 terminal = Some(final_response);
             }
             Ok(other) => panic!("unexpected stream item: {other:?}"),
@@ -706,7 +731,7 @@ async fn chat_stream_surfaces_recognizable_chunk_with_malformed_field() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Final(final_response)) => {
+            Ok(StreamEvent::Final(final_response)) => {
                 terminal = Some(final_response);
             }
             Ok(other) => panic!("unexpected stream item: {other:?}"),
@@ -759,9 +784,17 @@ async fn chat_stream_skips_unrecognized_event_and_still_completes() {
     let mut unknown = None;
     while let Some(item) = stream.next().await {
         match item.expect("unrecognized events must not surface errors") {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
-            StreamedAssistantContent::Unknown(value) => unknown = Some(value),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(final_response) => terminal = Some(final_response),
+            StreamEvent::Unknown(value) => unknown = Some(value),
+            StreamEvent::BlockStart { .. }
+            | StreamEvent::BlockEnd {
+                end: BlockClose::Text,
+                ..
+            } => {}
             other => panic!("unexpected stream item: {other:?}"),
         }
     }
@@ -817,17 +850,16 @@ async fn responses_stream_preserves_reasoning_metadata_on_final_response() {
     let model = client.completion_model("gpt-5.3-codex");
     let request = model.completion_request("hello").build();
     // Reasoning metadata is Copilot's own terminal payload, not part of
-    // the normalized `StreamFinal`, so this reads it through `raw_stream`.
-    let mut stream = model
-        .raw_stream(request)
-        .await
-        .expect("stream should start");
+    // the normalized `StreamFinal`, so this reads it back off the terminal
+    // record's `raw` — the provider's own type, serialized.
+    let mut stream = model.stream(request).await.expect("stream should start");
 
     while let Some(item) = stream.next().await {
-        if let crate::streaming::RawStreamingChoice::FinalResponse(
-            super::CopilotStreamingResponse::Responses(response),
-        ) = item.expect("completed stream should not error")
+        if let crate::streaming::StreamEvent::Final(record) =
+            item.expect("completed stream should not error")
         {
+            let response: crate::providers::openai::responses_api::streaming::StreamingCompletionResponse =
+                serde_json::from_value(record.raw).expect("raw terminal is the Responses record");
             assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
             assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
             return;
@@ -865,10 +897,13 @@ async fn chat_stream_terminates_after_transport_error() {
     let mut saw_tool_call = false;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {
+            Ok(StreamEvent::BlockStart { .. } | StreamEvent::BlockDelta { .. }) => {
                 assert!(!saw_error, "deltas should precede the terminal error");
             }
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => {
                 assert!(
                     !saw_error,
                     "flushed tool call should precede the terminal error"

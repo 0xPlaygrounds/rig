@@ -5,7 +5,7 @@ use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::message::Message;
 use rig::prelude::*;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 
 use crate::chatgpt::{LIVE_MODEL, live_builder, live_client};
 use crate::support::{
@@ -58,14 +58,16 @@ async fn system_messages_are_lifted_into_instructions() {
 
     let mut text = String::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Text(delta) =
-            item.expect("system-message stream item should succeed")
+        if let StreamEvent::BlockDelta {
+            delta: Delta::Text { text: delta },
+            ..
+        } = item.expect("system-message stream item should succeed")
         {
-            text.push_str(&delta.text);
+            text.push_str(&delta);
         }
     }
     if text.trim().is_empty() {
-        text = aggregated_text(&stream.choice);
+        text = aggregated_text(&stream.snapshot());
     }
     assert_nonempty_response(&text);
     assert_contains_any_case_insensitive(&text, &["maple"]);

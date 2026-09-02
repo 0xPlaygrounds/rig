@@ -41,7 +41,7 @@ use rig::bedrock::streaming::BedrockStreamingResponse;
 use rig::bedrock::types::converse_output::StopReason;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -63,7 +63,7 @@ fn request(model: &bedrock::completion::CompletionModel) -> rig::completion::Com
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
     let mut finals = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(record) = item.expect("stream item should be ok") {
+        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
             finals.push(record);
         }
     }

@@ -63,7 +63,7 @@ use super::{
 use crate::{
     completion::{CompletionError, PromptError, Usage},
     json_utils,
-    streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
+    streaming::{Delta, StreamEvent, StreamedUserContent},
     tool::{ToolDispatch, ToolResult, server::ToolRegistrySnapshot},
 };
 
@@ -520,7 +520,7 @@ where
 ///
 /// The batch commits and surfaces all-or-nothing:
 ///
-/// - The model tool-call events ([`StreamedAssistantContent::ToolCall`]) are
+/// - The model tool-call events ([`MultiTurnStreamItem::ToolCall`]) are
 ///   emitted up front — they report what the model emitted at turn commit.
 /// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
 ///   concurrently bounded by it), with outcomes **collected, not surfaced**.
@@ -600,12 +600,10 @@ where
                 Some(result) => (tracing::Span::none(), Some(result)),
                 None => {
                     if forward_items {
-                        yield Ok(MultiTurnStreamItem::stream_item(
-                            StreamedAssistantContent::ToolCall {
-                                tool_call: pending.tool_call.clone(),
-                                id: block_id.clone(),
-                            },
-                        ));
+                        yield Ok(MultiTurnStreamItem::ToolCall {
+                            tool_call: pending.tool_call.clone(),
+                            block_id: block_id.clone(),
+                        });
                     }
                     (chain_tool_span(new_execute_tool_span()), None)
                 }
@@ -949,7 +947,14 @@ impl TurnSource for StreamingTurnSource {
                         return;
                     }
                 };
-                if provider_final_seen {
+                // Only *content* after the terminal record is a defect:
+                // block bookkeeping (a late message-id start, a text block
+                // closing) is not.
+                let visible_content = !matches!(
+                    &item,
+                    StreamEvent::BlockStart { .. } | StreamEvent::BlockEnd { block: None, .. }
+                );
+                if provider_final_seen && visible_content {
                     yield Err(CompletionError::ResponseError(
                         "provider stream emitted visible assistant content after its final response"
                             .to_string(),
@@ -971,15 +976,17 @@ impl TurnSource for StreamingTurnSource {
                     match event {
                         StreamedTurnEvent::EmitIngested => {
                             if self.observes_text_delta
-                                && let Some(StreamedAssistantContent::Text(text)) =
-                                    item_slot.as_ref()
+                                && let Some(StreamEvent::BlockDelta {
+                                    delta: Delta::Text { text },
+                                    ..
+                                }) = item_slot.as_ref()
                                 && let Some(reason) = observe_action(
                                     runner
                                         .config.hooks
                                         .on_text_delta(
                                             hook_ctx,
                                             TextDelta {
-                                                delta: &text.text,
+                                                delta: text,
                                                 aggregated: assembler.aggregated_text(),
                                             },
                                         )
@@ -992,10 +999,9 @@ impl TurnSource for StreamingTurnSource {
                                 return;
                             }
                             if self.observes_reasoning_delta
-                                && let Some(StreamedAssistantContent::ReasoningDelta {
+                                && let Some(StreamEvent::BlockDelta {
                                     id,
-                                    provider_id,
-                                    reasoning,
+                                    delta: Delta::Reasoning { text: reasoning },
                                 }) = item_slot.as_ref()
                             {
                                 let Some(aggregated) = assembler.aggregated_reasoning(id) else {
@@ -1012,7 +1018,7 @@ impl TurnSource for StreamingTurnSource {
                                             hook_ctx,
                                             ReasoningDelta {
                                                 id,
-                                                provider_id: provider_id.as_deref(),
+                                                provider_id: assembler.reasoning_provider_id(id),
                                                 delta: reasoning,
                                                 aggregated,
                                             },
@@ -1029,14 +1035,15 @@ impl TurnSource for StreamingTurnSource {
                                 yield Ok(MultiTurnStreamItem::stream_item(item));
                             }
                         }
-                        StreamedTurnEvent::EmitToolCallDelta {
-                            block_id,
-                            content,
-                        } => {
+                        StreamedTurnEvent::EmitToolCallDelta { block_id, delta } => {
                             if self.observes_tool_call_delta {
-                                let (delta_name, delta_text) = match &content {
-                                    ToolCallDeltaContent::Name(name) => (Some(name.as_str()), ""),
-                                    ToolCallDeltaContent::Delta(delta) => (None, delta.as_str()),
+                                let (delta_name, delta_text) = match &delta {
+                                    Delta::ToolName { name } => (Some(name.as_str()), ""),
+                                    Delta::ToolArguments { arguments } => (None, arguments.as_str()),
+                                    // The assembler emits only tool deltas here.
+                                    Delta::Text { .. }
+                                    | Delta::TextMeta { .. }
+                                    | Delta::Reasoning { .. } => (None, ""),
                                 };
                                 if let Some(reason) = observe_action(
                                     runner
@@ -1059,9 +1066,9 @@ impl TurnSource for StreamingTurnSource {
                             }
 
                             yield Ok(MultiTurnStreamItem::StreamAssistantItem(
-                                StreamedAssistantContent::ToolCallDelta {
+                                StreamEvent::BlockDelta {
                                     id: block_id,
-                                    content,
+                                    delta,
                                 },
                             ));
                         }
@@ -1083,7 +1090,7 @@ impl TurnSource for StreamingTurnSource {
                             if emit_final
                                 && matches!(
                                     item_slot.as_ref(),
-                                    Some(StreamedAssistantContent::Final(_))
+                                    Some(StreamEvent::Final(_))
                                 )
                             {
                                 pending_final = item_slot.take();
@@ -1216,7 +1223,7 @@ impl TurnSource for StreamingTurnSource {
                 }
             }
 
-            let final_turn_content = stream.choice.clone();
+            let final_turn_content = stream.snapshot();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
             // This attempt's identity, read from *this* stream's terminal
             // record (each attempt — including a retry — opens its own
@@ -1237,9 +1244,8 @@ impl TurnSource for StreamingTurnSource {
             self.last_message_id.clone_from(&streamed_turn.message_id);
             // The canonical assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
-            // `stream.choice` aggregate. The hooks and run history see this;
-            // the raw `stream.choice` is kept in `last_final_choice` for the
-            // raw/final streaming behavior.
+            // provider aggregate (`stream.snapshot()`). The hooks and run
+            // history see this.
             let canonical_choice = streamed_turn.choice.clone();
             // `streamed_turn` is moved into run state on the next line and the
             // hooks fire after that. `FinishReason::Other` carries a `String`,

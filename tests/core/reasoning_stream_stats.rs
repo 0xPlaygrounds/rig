@@ -2,7 +2,7 @@ use futures::stream;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::streaming::{BlockId, StreamEvent, StreamedUserContent};
 
 use crate::reasoning::collect_stream_stats;
 
@@ -24,21 +24,21 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
     };
 
     let items = vec![
-        Ok(MultiTurnStreamItem::StreamAssistantItem(
-            StreamedAssistantContent::text("Sure! Let me check the weather right away!"),
-        )),
-        Ok(MultiTurnStreamItem::StreamAssistantItem(
-            StreamedAssistantContent::ToolCall {
-                tool_call,
-                id: block_id.clone(),
-            },
-        )),
+        Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::text(
+            BlockId::wire("t1"),
+            "Sure! Let me check the weather right away!",
+        ))),
+        Ok(MultiTurnStreamItem::ToolCall {
+            tool_call,
+            block_id: block_id.clone(),
+        }),
         Ok(MultiTurnStreamItem::StreamUserItem(
             StreamedUserContent::tool_result(tool_result, block_id),
         )),
-        Ok(MultiTurnStreamItem::StreamAssistantItem(
-            StreamedAssistantContent::text("It's 72F and sunny in Tokyo."),
-        )),
+        Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::text(
+            BlockId::wire("t2"),
+            "It's 72F and sunny in Tokyo.",
+        ))),
         Ok(MultiTurnStreamItem::final_response(
             vec![AssistantContent::text("It's 72F and sunny in Tokyo.")],
             Usage::new(),

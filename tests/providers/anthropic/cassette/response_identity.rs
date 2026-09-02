@@ -9,7 +9,7 @@ use rig::agent::{AgentHook, HookContext, ObservationAction};
 use rig::completion::{CompletionModel, Message};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
@@ -65,8 +65,7 @@ async fn streaming_terminal_carries_identity() {
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }

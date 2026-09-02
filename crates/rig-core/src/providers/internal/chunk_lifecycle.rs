@@ -36,14 +36,14 @@
 //! wire quirks (slot eviction, encrypted reasoning details, tool-call
 //! decorations) this declarative shape does not model.
 
-use crate::streaming::{BlockId, MintKind, RawStreamingChoice, SyntheticIds};
+use crate::streaming::{BlockId, MintKind, StreamEvent, SyntheticIds};
 
 use super::adapter::AdapterOutput;
 
 /// What one wire chunk (or one wire part, for parts-array wires) carried,
 /// declared by the adapter with no lifecycle events of its own.
 #[derive(Default)]
-pub struct ChunkParts<R> {
+pub struct ChunkParts {
     /// Reasoning content accumulating under the wire's constant minted key.
     pub reasoning: Option<String>,
     /// A wire-carried signature closing the reasoning block (gemini's
@@ -54,10 +54,10 @@ pub struct ChunkParts<R> {
     /// Tool-call events in wire order — whole calls, fragments, or input
     /// ends, prebuilt by the adapter (keys and ids are wire policy, not
     /// lifecycle). Emitted after the boundary close, in the canonical slot.
-    pub tool_events: Vec<RawStreamingChoice<R>>,
+    pub tool_events: Vec<StreamEvent>,
 }
 
-impl<R> ChunkParts<R> {
+impl ChunkParts {
     /// Whether the chunk carries content that interleaves — and therefore
     /// closes — an open reasoning block.
     fn has_boundary_content(&self) -> bool {
@@ -111,7 +111,7 @@ impl MintedReasoningLifecycle {
     ///    synthesized silent end (`wire_sent: false` — the wire never spelled
     ///    the boundary, so downstream must not observe a fabricated event);
     /// 4. text, then tool events.
-    pub fn emit_chunk<R>(&mut self, parts: ChunkParts<R>, out: &mut AdapterOutput<R>) {
+    pub fn emit_chunk(&mut self, parts: ChunkParts, out: &mut AdapterOutput) {
         if let Some(reasoning) = parts
             .reasoning
             .as_ref()
@@ -122,11 +122,7 @@ impl MintedReasoningLifecycle {
                 self.closed = false;
             }
             self.open = true;
-            out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                id: self.key.clone(),
-                provider_id: None,
-                reasoning: reasoning.clone(),
-            }));
+            out.reasoning_delta(&self.key, None, reasoning.clone());
         }
 
         if let Some(signature) = parts.reasoning_signature.clone() {
@@ -136,12 +132,7 @@ impl MintedReasoningLifecycle {
             // streamed — the shared accumulator owns the per-case behavior.
             self.open = false;
             self.closed = true;
-            out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                id: self.key.clone(),
-                reasoning: None,
-                signature: Some(signature),
-                wire_sent: false,
-            }));
+            out.reasoning_end(self.key.clone(), None, Some(signature), false);
         }
 
         if parts.has_boundary_content() && self.open {
@@ -150,16 +141,11 @@ impl MintedReasoningLifecycle {
             // instead of once per adapter.
             self.open = false;
             self.closed = true;
-            out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                id: self.key.clone(),
-                reasoning: None,
-                signature: None,
-                wire_sent: false,
-            }));
+            out.reasoning_end(self.key.clone(), None, None, false);
         }
 
         if let Some(text) = parts.text.filter(|text| !text.is_empty()) {
-            out.push(Ok(RawStreamingChoice::Message(text)));
+            out.text(text);
         }
 
         for event in parts.tool_events {

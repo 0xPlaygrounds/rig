@@ -39,13 +39,15 @@
 //! terminal `raw` and the normalized terminal legitimately disagree — `raw`
 //! must keep the wire spelling and the terminal must report the upgrade.
 
+use rig::message::AssistantContent;
+
 use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason};
 use rig::message::{ToolCall, ToolChoice};
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -101,9 +103,15 @@ async fn drain_stream(
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::ToolCall { tool_call, .. } => tool_calls.push(tool_call),
-            StreamedAssistantContent::Final(final_record) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => tool_calls.push(tool_call),
+            StreamEvent::Final(final_record) => {
                 assert!(
                     terminal.replace(final_record).is_none(),
                     "a stream yields exactly one terminal record"

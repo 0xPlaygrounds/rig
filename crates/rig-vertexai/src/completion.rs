@@ -115,18 +115,6 @@ impl CompletionModel {
 
         Ok(VertexGenerateContentOutput(response))
     }
-
-    /// Vertex AI streaming is not implemented in this integration.
-    ///
-    /// Present for parity with the other providers' escape hatches so callers
-    /// get the same error from the raw and normalized paths.
-    pub async fn raw_stream(
-        &self,
-        _request: CompletionRequest,
-    ) -> Result<rig_core::streaming::RawStreamingResult<VertexGenerateContentOutput>, CompletionError>
-    {
-        Err(streaming_unsupported())
-    }
 }
 
 fn streaming_unsupported() -> CompletionError {

@@ -47,13 +47,15 @@
 //! what the terminal *does* carry: the usage bucket and the verbatim
 //! `stop_reason`.
 
+use rig::message::AssistantContent;
+
 use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
 use rig::message::{ReasoningContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -126,7 +128,7 @@ fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
 /// What a cell observed on the stream: every non-terminal item, and the
 /// terminal record.
 struct Streamed {
-    items: Vec<StreamedAssistantContent>,
+    items: Vec<StreamEvent>,
     terminal: StreamFinal,
 }
 
@@ -138,7 +140,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
-            StreamedAssistantContent::Final(final_record) => terminal = Some(final_record),
+            StreamEvent::Final(final_record) => terminal = Some(final_record),
             item => items.push(item),
         }
     }
@@ -361,7 +363,9 @@ async fn terminal_raw_round_trips_into_provider_type() {
 
     // Terminal record only. Pin the exact key set: the fields the Anthropic
     // terminal type carries for an `end_turn` text stream (no
-    // `stop_sequence`, which is skipped when absent) — and nothing frame-shaped.
+    // `stop_sequence`, which is skipped when absent, and no
+    // `provider_request_id` — the transport stamps that onto the normalized
+    // record, not the provider's) — and nothing frame-shaped.
     let mut keys: Vec<&str> = raw
         .as_object()
         .expect("terminal raw is an object")
@@ -371,13 +375,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
     keys.sort_unstable();
     assert_eq!(
         keys,
-        [
-            "message_id",
-            "model",
-            "provider_request_id",
-            "stop_reason",
-            "usage"
-        ],
+        ["message_id", "model", "stop_reason", "usage"],
         "the terminal record's own fields, and only those"
     );
     for frame_key in [
@@ -408,8 +406,11 @@ async fn terminal_raw_round_trips_into_provider_type() {
         std::slice::from_ref(&recorded.message_id),
         ROUND_TRIP_SCENARIO,
     );
+    // The transport id is stamped on the normalized terminal, never on the
+    // native record inside `raw`.
+    assert!(raw.get("provider_request_id").is_none());
     assert_ids_match_recording(
-        &[raw["provider_request_id"].as_str().map(str::to_string)],
+        std::slice::from_ref(&terminal.provider_request_id),
         std::slice::from_ref(&recorded.request_id),
         ROUND_TRIP_SCENARIO,
     );
@@ -525,16 +526,20 @@ async fn normalized_terminal_matches_raw_renormalized() {
 
     let typed = StreamingCompletionResponse::deserialize(raw)
         .expect("`raw` is the serialized anthropic::streaming::StreamingCompletionResponse");
-    let renormalized = StreamFinal::from((ANTHROPIC_PROVIDER, typed));
     assert_eq!(
-        renormalized.identity(),
-        terminal.identity(),
-        "identity (message id, transport id) survives raw → typed → StreamFinal"
+        serde_json::to_value(&typed).expect("typed record serializes"),
+        *raw,
+        "the provider record round-trips through its own serde"
     );
-    assert_eq!(renormalized.finish_reason, terminal.finish_reason);
-    assert_eq!(renormalized.model, terminal.model);
-    assert_eq!(renormalized.usage, terminal.usage);
-    assert_eq!(renormalized.provider, terminal.provider);
+    assert_eq!(
+        typed.message_id, terminal.message_id,
+        "the message id survives raw → typed"
+    );
+    assert_eq!(typed.model, terminal.model);
+    assert_eq!(
+        typed.usage.input_tokens.map(|n| n as u64),
+        Some(terminal.usage.input_tokens)
+    );
 
     // …and none of that is vacuous: the normalized terminal is the fixture's.
     let recorded = recorded_stream(RENORMALIZED_SCENARIO);
@@ -656,7 +661,10 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     let streamed_reasoning = items
         .iter()
         .filter_map(|item| match item {
-            StreamedAssistantContent::Reasoning { reasoning, .. } => Some(reasoning),
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            } => Some(reasoning),
             _ => None,
         })
         .flat_map(|reasoning| reasoning.content.iter())
@@ -761,7 +769,10 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     let streamed_calls = items
         .iter()
         .filter_map(|item| match item {
-            StreamedAssistantContent::ToolCall { tool_call, .. } => Some(tool_call),
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => Some(tool_call),
             _ => None,
         })
         .collect::<Vec<_>>();

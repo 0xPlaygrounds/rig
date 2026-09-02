@@ -949,7 +949,7 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
 #[tokio::test]
 async fn streaming_against_a_cache_reports_the_cache_read() {
     use futures::StreamExt;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::StreamEvent;
 
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/use_streaming",
@@ -994,8 +994,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     .expect("streamed cached-content request should start");
                 let mut usage = None;
                 while let Some(item) = stream.next().await {
-                    if let StreamedAssistantContent::Final(response) =
-                        item.expect("stream item should succeed")
+                    if let StreamEvent::Final(response) = item.expect("stream item should succeed")
                     {
                         usage = Some(response.usage);
                     }

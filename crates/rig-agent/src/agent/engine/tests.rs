@@ -23,7 +23,7 @@ use crate::agent::streaming::{MultiTurnStreamItem, StreamingError};
 use crate::completion::{
     CompletionError, CompletionModel, FinishReason, Message, PromptError, Usage,
 };
-use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
+use crate::streaming::{Delta, StreamEvent, StreamedUserContent};
 use crate::test_utils::{
     MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
     MockSubtractTool, MockToolError, MockTurn, mock_final,
@@ -723,7 +723,7 @@ async fn hook_events_carry_raw_blocking() {
 /// Streamed surface: `CompletionResponse` and `ModelTurnFinished` both
 /// see the terminal record the mock scripted,
 /// and so do the recorded call and the forwarded
-/// `StreamedAssistantContent::Final` — again with no opt-in anywhere.
+/// `StreamEvent::Final` — again with no opt-in anywhere.
 #[tokio::test]
 async fn hook_events_carry_raw_streamed() {
     let terminal = stream_final_for_attempt("streamed", 3);
@@ -743,9 +743,9 @@ async fn hook_events_carry_raw_streamed() {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                final_record,
-            )) => finals.push(final_record.raw.clone()),
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_record)) => {
+                finals.push(final_record.raw.clone())
+            }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
             _ => {}
         }
@@ -794,7 +794,7 @@ async fn completion_calls_carry_each_attempts_own_raw_blocking() {
 /// carry two *different* terminal records; `completion_calls` (both the
 /// forwarded items and the final response's record) carry each attempt's
 /// own, `CompletionResponse` and `ModelTurnFinished` agree for both, and
-/// the single forwarded `StreamedAssistantContent::Final` carries the
+/// the single forwarded `StreamEvent::Final` carries the
 /// final turn's.
 #[tokio::test]
 async fn completion_calls_carry_each_attempts_own_raw_streamed() {
@@ -832,9 +832,9 @@ async fn completion_calls_carry_each_attempts_own_raw_streamed() {
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
             MultiTurnStreamItem::CompletionCall(call) => forwarded_calls.push(call.raw.clone()),
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                final_record,
-            )) => finals.push(final_record.raw.clone()),
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_record)) => {
+                finals.push(final_record.raw.clone())
+            }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
             _ => {}
         }
@@ -959,9 +959,9 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                final_record,
-            )) => finals.push(final_record.raw.clone()),
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_record)) => {
+                finals.push(final_record.raw.clone())
+            }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
             _ => {}
         }
@@ -1108,7 +1108,7 @@ async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     while let Some(item) = stream.next().await {
         if matches!(
             item.expect("stream item"),
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))
         ) {
             provider_finals += 1;
             let snapshots = hook.snapshots.lock().expect("finish snapshots");
@@ -1150,7 +1150,7 @@ async fn streaming_completion_response_stop_preserves_provider_final() {
     let mut error = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
                 saw_provider_final = true
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_run_final = true,
@@ -1211,7 +1211,7 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
     let mut error = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
                 provider_finals += 1
             }
             Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => saw_retry = true,
@@ -1252,7 +1252,7 @@ async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() 
     let mut error = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
                 saw_provider_final = true
             }
             Ok(_) => {}
@@ -1306,9 +1306,9 @@ async fn visible_assistant_items_after_final_are_rejected() {
         let mut error = None;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                    _,
-                ))) => saw_provider_final = true,
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
+                    saw_provider_final = true
+                }
                 Ok(_) => {}
                 Err(err) => error = Some(err),
             }
@@ -1460,14 +1460,11 @@ async fn streamed_tool_call_items_share_one_block_id() {
     let mut result_ids = Vec::new();
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
                 id: block_id,
-                ..
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
             }) => delta_ids.push(block_id),
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                id: block_id,
-                ..
-            }) => completed_ids.push(block_id),
+            MultiTurnStreamItem::ToolCall { block_id, .. } => completed_ids.push(block_id),
             MultiTurnStreamItem::ToolExecutionCommitted { block_id, .. } => {
                 executed_ids.push(block_id)
             }
@@ -2513,7 +2510,7 @@ mod span_safety_net {
     use crate::completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, PromptError, Usage,
     };
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::streaming::StreamingCompletionResponse;
     use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
     use crate::tool::{ToolContext, ToolExecutionError};
@@ -2795,9 +2792,9 @@ mod span_safety_net {
         let mut errors = 0;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                    _,
-                ))) => provider_finals += 1,
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
+                    provider_finals += 1
+                }
                 Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,
                 Ok(MultiTurnStreamItem::ModelTurnRetried { .. }) => retries += 1,
                 Ok(_) => {}
@@ -3804,7 +3801,7 @@ async fn stream_executes_tools_concurrently_under_concurrency() {
 }
 
 /// The stream-item taxonomy and ordering: the driver emits *all* of a turn's
-/// **model** tool-call items ([`StreamedAssistantContent::ToolCall`], one per
+/// **model** tool-call items ([`MultiTurnStreamItem::ToolCall`], one per
 /// call the model made) first, then — after the whole tool batch settles —
 /// the per-tool **execution** items (`ToolExecutionCommitted` then the
 /// `ToolResult`) in call order. This holds identically at every concurrency
@@ -3834,9 +3831,7 @@ async fn stream_emits_model_tool_calls_then_atomic_execution_items() {
         let mut markers = Vec::new();
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                    ..
-                }) => markers.push("model-call"),
+                MultiTurnStreamItem::ToolCall { .. } => markers.push("model-call"),
                 MultiTurnStreamItem::ToolExecutionCommitted { .. } => {
                     markers.push("exec-commit");
                 }
@@ -4512,10 +4507,9 @@ async fn stream_tool_execution_committed_carries_effective_rewritten_args() {
     let mut exec_args = None;
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            }) => model_args = Some(tool_call.function.arguments),
+            MultiTurnStreamItem::ToolCall { tool_call, .. } => {
+                model_args = Some(tool_call.function.arguments)
+            }
             MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                 exec_args = Some(tool_call.function.arguments);
             }
@@ -7994,7 +7988,7 @@ async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
 
 /// A structured-output Tool-mode output-tool call finalizes the run directly, so
 /// on the streaming surface it is **not** re-emitted as a complete
-/// `StreamAssistantItem(StreamedAssistantContent::ToolCall)` item (it bypasses
+/// `MultiTurnStreamItem::ToolCall` item (it bypasses
 /// `drive_tool_calls`); its structured result is surfaced in the final `PromptResponse`.
 /// Guards the narrowed `StreamAssistantItem` contract.
 #[tokio::test]
@@ -8015,10 +8009,9 @@ async fn output_tool_finalization_emits_no_complete_tool_call_stream_item() {
     let mut final_has_output = false;
     while let Some(item) = stream.next().await {
         match item.expect("stream item") {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            }) if tool_call.function.name == "final_result" => {
+            MultiTurnStreamItem::ToolCall { tool_call, .. }
+                if tool_call.function.name == "final_result" =>
+            {
                 saw_complete_output_tool_call = true;
             }
             MultiTurnStreamItem::FinalResponse(res) => {
@@ -9074,7 +9067,7 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
         match item.expect("stream item") {
             MultiTurnStreamItem::ModelTurnRetried { turn } => retries.push(turn),
             MultiTurnStreamItem::CompletionCall(_) => completion_calls += 1,
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_)) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_)) => {
                 provider_finals += 1;
             }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
@@ -9207,7 +9200,7 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
         match item.expect("stream item") {
             MultiTurnStreamItem::ModelTurnRetried { turn } => retries.push(turn),
             MultiTurnStreamItem::CompletionCall(_) => completion_calls += 1,
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_)) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_)) => {
                 provider_finals += 1;
             }
             MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
@@ -9454,7 +9447,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 tool_results += 1
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
                 provider_finals += 1
             }
             Ok(MultiTurnStreamItem::FinalResponse(_)) => agent_finals += 1,

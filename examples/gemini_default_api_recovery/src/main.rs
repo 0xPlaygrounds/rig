@@ -9,13 +9,14 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
 };
+use rig::message::AssistantContent;
 use rig::message::ToolResultContent;
 use rig::prelude::*;
 use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -231,12 +232,16 @@ async fn consume_workspace_like_stream(
 
     while let Some(item) = stream.next().await {
         match item.map_err(|error| error.to_string())? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
                 observation.events.push("text");
-                observation.streamed_text.push_str(&text.text);
+                observation.streamed_text.push_str(&text);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
-                reasoning,
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             }) => {
                 observation.events.push("reasoning");
@@ -244,16 +249,14 @@ async fn consume_workspace_like_stream(
                     .reasoning_text
                     .push_str(&reasoning.display_text());
             }
-            MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { reasoning, .. },
-            ) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text: reasoning },
+                ..
+            }) => {
                 observation.events.push("reasoning_delta");
                 observation.reasoning_text.push_str(&reasoning);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            }) => {
+            MultiTurnStreamItem::ToolCall { tool_call, .. } => {
                 observation.events.push("tool_call");
                 observation.tool_calls.push(tool_call.function.name.clone());
                 let execution: JavaScriptProgram =
@@ -261,7 +264,8 @@ async fn consume_workspace_like_stream(
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
                 ..
             }) => {
                 observation.events.push("tool_call_delta");
