@@ -16,7 +16,12 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 
-use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
+use super::{
+    Agent,
+    hook::AgentHook,
+    run::{OutputMode, spec::UnhandledInvalidToolCall},
+    runner::AgentRunner,
+};
 use crate::{
     completion::{Message, StructuredOutputError, Usage},
     run::response::{CompletionCall, PromptResponse},
@@ -312,7 +317,7 @@ where
     /// model that fumbles the call once can still succeed within the budget.
     pub(crate) fn output_tool(runner: AgentRunner) -> Self {
         Self::from_runner(
-            runner.ignore_unhandled_invalid_tool_calls(),
+            runner.unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore),
             TypedOutput::OutputTool,
         )
     }

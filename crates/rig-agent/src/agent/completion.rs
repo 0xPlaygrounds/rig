@@ -254,6 +254,7 @@ impl AgentConfig {
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
+            unhandled_invalid_tool_call: crate::run::spec::UnhandledInvalidToolCall::Fail,
         }
     }
 

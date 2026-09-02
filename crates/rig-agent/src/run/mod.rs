@@ -72,6 +72,7 @@ pub mod output;
 pub mod patch;
 pub mod prepare;
 pub mod spec;
+pub use spec::UnhandledInvalidToolCall;
 pub mod transcript;
 
 pub use output::OutputMode;
@@ -456,6 +457,9 @@ enum RunState {
 pub struct AgentRun {
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
+    /// See [`RunSpec::unhandled_invalid_tool_call`].
+    #[serde(default)]
+    unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     tool_choice: Option<ToolChoice>,
     /// Name of the synthetic output tool when the agent uses Tool output mode
     /// (see #1928). A model turn calling this tool finalizes the run with the
@@ -555,6 +559,7 @@ impl AgentRun {
         Self {
             max_turns: 1,
             max_invalid_tool_call_retries: 0,
+            unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             tool_choice: None,
             output_tool_name: None,
             output_schema: None,
@@ -737,6 +742,13 @@ impl AgentRun {
     /// budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
         self.max_invalid_tool_call_retries = retries;
+        self
+    }
+
+    /// Set what the run does with an invalid tool call no hook resolves. See
+    /// [`UnhandledInvalidToolCall`].
+    pub fn with_unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
+        self.unhandled_invalid_tool_call = policy;
         self
     }
 
@@ -1463,6 +1475,18 @@ impl AgentRun {
     /// preserves the extractor's legacy response semantics: unrelated calls
     /// disappear, a sibling output call can still finalize the turn, and
     /// response observers still receive the canonical response fields.
+    /// Resolve the pending invalid tool call the way the run's
+    /// [`unhandled_invalid_tool_call`](RunSpec::unhandled_invalid_tool_call)
+    /// policy says, for a driver whose hooks all declined to resolve it.
+    pub fn resolve_unhandled_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
+        match self.unhandled_invalid_tool_call {
+            UnhandledInvalidToolCall::Fail => {
+                self.resolve_invalid_tool_call(InvalidToolCallAction::fail())
+            }
+            UnhandledInvalidToolCall::Ignore => self.ignore_invalid_tool_call(),
+        }
+    }
+
     pub fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         let mut resolving = self.take_resolving(
             "ignore_invalid_tool_call called without a pending invalid tool call",
@@ -1893,6 +1917,7 @@ impl AgentRun {
         let mut run = AgentRun::new(prompt)
             .max_turns(spec.effective_max_turns())
             .max_invalid_tool_call_retries(spec.max_invalid_tool_call_retries)
+            .with_unhandled_invalid_tool_call(spec.unhandled_invalid_tool_call)
             .with_output_validation(spec.output_schema.clone(), RunSpec::DEFAULT_OUTPUT_RETRIES);
         if let Some(history) = history {
             run = run.with_history(history);

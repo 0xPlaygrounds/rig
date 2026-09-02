@@ -31,7 +31,7 @@ use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
     hook::AgentHook,
-    run::{AgentRun, response::PromptResponse},
+    run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
 use rig_core::{memory::ConversationMemory, message::ToolChoice};
@@ -42,13 +42,6 @@ use crate::{
 };
 
 use super::UNKNOWN_AGENT_NAME;
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum UnhandledInvalidToolCallPolicy {
-    #[default]
-    Fail,
-    IgnoreForExtractor,
-}
 
 /// A hook-aware driver over [`AgentRun`].
 ///
@@ -76,7 +69,7 @@ pub struct AgentRunner {
     pub(crate) output_tool_name: Option<String>,
     pub(crate) output_tool_description: Option<String>,
     pub(crate) augment_output_preamble: bool,
-    pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
+    pub(crate) unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
@@ -102,7 +95,7 @@ impl AgentRunner {
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
-            unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
+            unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             concurrency: 1,
             error_usage: None,
         }
@@ -277,13 +270,10 @@ impl AgentRunner {
 
     /// Ignore invalid tool calls when every registered hook declines to act.
     ///
-    /// This is an internal compatibility policy for extractors, whose legacy
-    /// transport treated every non-`submit` call as irrelevant response
-    /// content. Hooks still receive the invalid-call event first and retain
-    /// full control over recovery or termination.
-    pub(crate) fn ignore_unhandled_invalid_tool_calls(mut self) -> Self {
-        self.unhandled_invalid_tool_call_policy =
-            UnhandledInvalidToolCallPolicy::IgnoreForExtractor;
+    /// Set what this run does with an invalid tool call no hook resolves.
+    /// See [`UnhandledInvalidToolCall`].
+    pub fn unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
+        self.unhandled_invalid_tool_call = policy;
         self
     }
 
@@ -360,6 +350,7 @@ impl AgentRunner {
             self.prompt.clone(),
             self.config.max_turns,
             self.max_invalid_tool_call_retries,
+            self.unhandled_invalid_tool_call,
             self.config.output_schema.as_ref(),
             history_override.or_else(|| self.chat_history.clone()),
             self.config.tool_choice.clone(),
@@ -378,6 +369,7 @@ pub(crate) fn build_agent_run(
     prompt: Message,
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
+    unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     output_schema: Option<&schemars::Schema>,
     history: Option<Vec<Message>>,
     tool_choice: Option<ToolChoice>,
@@ -385,6 +377,7 @@ pub(crate) fn build_agent_run(
     let spec = crate::run::spec::RunSpec {
         max_turns: Some(max_turns),
         max_invalid_tool_call_retries,
+        unhandled_invalid_tool_call,
         output_schema: output_schema.map(|schema| schema.as_value().clone()),
         tool_choice,
         ..crate::run::spec::RunSpec::new()

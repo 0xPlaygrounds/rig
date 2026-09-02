@@ -54,7 +54,7 @@ use super::{
         response::PromptResponse,
         transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
     },
-    runner::{AgentRunner, UnhandledInvalidToolCallPolicy},
+    runner::AgentRunner,
     streaming::{
         MultiTurnStreamItem, StreamingError, drain_stream_usage, finalize_streamed_choice,
     },
@@ -1828,13 +1828,7 @@ impl TurnSource for UnaryTurnSource {
                             .await;
                         let resolution = match action {
                             Some(action) => run.resolve_invalid_tool_call(action),
-                            None
-                                if runner.unhandled_invalid_tool_call_policy
-                                    == UnhandledInvalidToolCallPolicy::IgnoreForExtractor =>
-                            {
-                                run.ignore_invalid_tool_call()
-                            }
-                            None => run.resolve_invalid_tool_call(InvalidToolCallAction::fail()),
+                            None => run.resolve_unhandled_invalid_tool_call(),
                         };
                         outcome = match resolution {
                             Ok(outcome) => outcome,

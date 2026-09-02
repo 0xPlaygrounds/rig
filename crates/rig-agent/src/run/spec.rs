@@ -47,6 +47,29 @@ pub struct RunSpec {
     /// Whether the driver may augment the preamble with structured-output
     /// instructions.
     pub augment_output_preamble: bool,
+    /// What the run does with a model tool call that cannot be dispatched as
+    /// written when no hook resolves it.
+    pub unhandled_invalid_tool_call: UnhandledInvalidToolCall,
+}
+
+/// Default for an invalid model tool call that no hook resolves.
+///
+/// Hooks always see the invalid call first ([`on_invalid_tool_call`]) and may
+/// fail, retry, repair, or skip it; this only applies when every hook
+/// declines. [`Fail`](Self::Fail) is the protocol default. [`Ignore`](Self::Ignore)
+/// treats the call as irrelevant response content and lets the turn
+/// proceed — what a typed extraction run wants, where any call that is not
+/// the output tool is noise rather than an error.
+///
+/// [`on_invalid_tool_call`]: crate::agent::AgentHook::on_invalid_tool_call
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnhandledInvalidToolCall {
+    /// Fail the run.
+    #[default]
+    Fail,
+    /// Drop the call and continue the turn.
+    Ignore,
 }
 
 impl RunSpec {
