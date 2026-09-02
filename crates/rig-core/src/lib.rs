@@ -149,6 +149,7 @@ extern crate self as rig;
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
+pub mod effect;
 pub mod embeddings;
 pub mod error;
 pub mod http_client;
