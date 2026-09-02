@@ -123,12 +123,11 @@ pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHa
 pub use completion::{Agent, AgentParts};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
-    AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
-    HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
-    ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
-    RetryRequest, RunEntry, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
-    SettledOutcome, StepEventKind, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
-    ToolResultAction, ToolResultEvent,
+    AgentHook, CompletionCallAction, HookContext, HookStack, InvalidToolCallAction,
+    InvalidToolCallContext, ModelSelection, ModelSelectionAction, ModelTurnAction,
+    ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch, RetryRequest, RunEntry,
+    RunId, RunSettled, RunStart, RunStartAction, Scratchpad, SettledOutcome, StepEventKind,
+    TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::bus::ModelHandle;

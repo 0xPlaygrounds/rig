@@ -29,7 +29,7 @@ use futures::StreamExt;
 use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
-    hook::AgentHook,
+    hook::{AgentHook, HookContext},
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
@@ -430,6 +430,7 @@ impl AgentRunner {
     /// load failure to its own error channel.
     pub(crate) async fn resolve_history_and_memory(
         &self,
+        hook_ctx: &HookContext,
     ) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
         match &self.chat_history {
             Some(_) => Ok((None, None)),
@@ -438,15 +439,42 @@ impl AgentRunner {
                     let memory = memory.map_err(|report| {
                         rig_core::memory::MemoryError::Internal(report.to_string())
                     })?;
-                    let loaded = memory
-                        .load(id.clone())
-                        .await
-                        .map_err(memory_error_from_report)?;
+                    // The load is a `Memory` dispatch at the boundary:
+                    // observe-only for hooks unless one opts in.
+                    let loaded = crate::agent::engine::dispatch_effect(
+                        &self.config.hooks,
+                        hook_ctx,
+                        self.config.bus.dispatcher(),
+                        memory.key(),
+                        rig_core::effect::EffectKind::Memory {
+                            op: rig_core::effect::MemoryOp::Load {
+                                conversation: id.clone(),
+                            },
+                        },
+                    )
+                    .await
+                    .and_then(|outcome| match outcome {
+                        rig_core::effect::Outcome::Memory(
+                            rig_core::effect::MemoryOutcome::Loaded { messages },
+                        ) => Ok(messages),
+                        other => Err(crate::agent::engine::wrong_outcome("loaded memory", &other)),
+                    })
+                    .map_err(memory_error_from_report)?;
                     Ok((Some(loaded), Some((memory, id.clone()))))
                 }
                 _ => Ok((None, None)),
             },
         }
+    }
+
+    /// The run-scoped hook context: minted once per run, before the memory
+    /// load (a dispatch too), shared by every hook event.
+    pub(crate) fn hook_context(&self, is_streaming: bool) -> HookContext {
+        HookContext::new(
+            is_streaming,
+            self.config.name.clone(),
+            Some(self.config.bus.dispatcher().clone()),
+        )
     }
 
     /// Drive the agent loop to completion, returning the aggregated
@@ -455,9 +483,10 @@ impl AgentRunner {
     pub async fn run(self) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) = self.open_agent_span();
         let bus = self.config.bus.clone();
+        let hook_ctx = self.hook_context(false);
         // A memory load is a dispatch too: drive the bus while resolving.
         let (history_override, memory_handle) = {
-            let resolve = self.resolve_history_and_memory();
+            let resolve = self.resolve_history_and_memory(&hook_ctx);
             futures::pin_mut!(resolve);
             let mut driven = bus.drive(futures::stream::once(resolve));
             match driven.next().await {
@@ -480,7 +509,7 @@ impl AgentRunner {
             agent_span,
             created_agent_span,
             memory_handle,
-            false,
+            hook_ctx,
         );
         let driver = bus.drive(Box::pin(driver));
         futures::pin_mut!(driver);

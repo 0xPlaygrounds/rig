@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use rig::agent::{AgentHook, HookContext, ObservationAction};
+use rig::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
 use rig::completion::{CompletionModel, Message};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
@@ -108,19 +108,18 @@ impl IdentityCapture {
 }
 
 impl AgentHook for IdentityCapture {
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: rig::agent::CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
         self.seen.lock().expect("snapshots").push((
             ctx.is_streaming(),
             (
-                event.identity.message_id.clone(),
-                event.identity.provider_request_id.clone(),
+                response.message_id.clone(),
+                response.provider_request_id.clone(),
             ),
         ));
-        ObservationAction::continue_run()
+        OutcomeAction::proceed()
     }
 }
 

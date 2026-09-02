@@ -56,8 +56,8 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem,
-    ObservationAction,
+    AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, OutcomeAction,
+    OutcomeEvent,
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
@@ -138,23 +138,22 @@ impl RawProbe {
 }
 
 impl AgentHook for RawProbe {
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: rig::agent::CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
         self.completion_response
             .lock()
             .expect("probe")
             .push(ResponseSeen {
                 streaming: ctx.is_streaming(),
-                tool_call: event
-                    .content
+                tool_call: response
+                    .choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                raw: event.raw.clone(),
+                raw: response.raw.clone(),
             });
-        ObservationAction::continue_run()
+        OutcomeAction::proceed()
     }
 
     async fn on_model_turn_finished(

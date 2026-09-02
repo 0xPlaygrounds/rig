@@ -2,18 +2,18 @@
 //!
 //! An agent is given two side-effecting tools (`send_email`, `delete_file`).
 //! Before *any* tool runs, an [`ApprovalHook`] pauses the run on the
-//! [`ToolCallEvent`] event, shows the human the tool name and arguments,
+//! [`DispatchEvent`] for the tool call, shows the human the tool name and arguments,
 //! and waits for a decision on stdin. Each decision maps to an existing
 //! event-specific action — no special HITL machinery is required:
 //!
 //! | Human decision | Action returned                  | Effect                                                              |
 //! |----------------|----------------------------------|--------------------------------------------------------------------|
-//! | **approve**    | [`ToolCallAction::run`]          | the tool executes as the model requested                           |
-//! | **deny**       | [`ToolCallAction::skip`]         | the tool does *not* run; the reason becomes the tool result the model sees, so it can adapt |
-//! | **edit**       | [`ToolCallAction::rewrite`]      | the tool executes with human-supplied arguments instead            |
-//! | **abort**      | [`ToolCallAction::stop`]         | the whole run stops and surfaces the reason as an error            |
+//! | **approve**    | [`DispatchAction::proceed`]      | the tool executes as the model requested                           |
+//! | **deny**       | [`DispatchAction::skip`]         | the tool does *not* run; the reason becomes the tool result the model sees, so it can adapt |
+//! | **edit**       | [`DispatchAction::rewrite_tool_args`] | the tool executes with human-supplied arguments instead       |
+//! | **abort**      | [`DispatchAction::stop`]         | the whole run stops and surfaces the reason as an error            |
 //!
-//! Because `AgentHook::on_tool_call` is `async`, the hook can simply `.await` the
+//! Because `AgentHook::on_dispatch` is `async`, the hook can simply `.await` the
 //! human's input inline (here from stdin; in a real app this might be an HTTP
 //! request to an approval UI, a Slack round-trip, or a database poll). The same
 //! hook works unchanged on the streaming driver (`stream_prompt`).
@@ -21,7 +21,7 @@
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
 
 use anyhow::Result;
-use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
+use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -157,9 +157,12 @@ async fn ask(prompt: &str) -> Option<String> {
 struct ApprovalHook;
 
 impl AgentHook for ApprovalHook {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        let tool_name = event.tool_name;
-        let args = event.args;
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        // `on_dispatch` fires for every effect family (completions included);
+        // only tool calls need approval.
+        let (Some(tool_name), Some(args)) = (event.tool_name(), event.tool_args()) else {
+            return DispatchAction::proceed();
+        };
 
         println!("\n⏸  The agent wants to run a tool — your approval is required:");
         println!("     tool: {tool_name}");
@@ -169,7 +172,7 @@ impl AgentHook for ApprovalHook {
         let Some(choice) = ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort run? ").await
         else {
             println!("     → no input (stdin closed); aborting (fail-closed)");
-            return ToolCallAction::stop("no reviewer input available (stdin closed)");
+            return DispatchAction::stop("no reviewer input available (stdin closed)");
         };
 
         // Match the whole (lowercased) answer, accepting either the hotkey or the
@@ -177,7 +180,7 @@ impl AgentHook for ApprovalHook {
         match choice.to_ascii_lowercase().as_str() {
             "a" | "approve" => {
                 println!("     → approved");
-                ToolCallAction::run()
+                DispatchAction::proceed()
             }
             // Deny: the tool does not run; the reason is fed back to the model as
             // the tool result so it can choose another course of action.
@@ -187,7 +190,7 @@ impl AgentHook for ApprovalHook {
                     .filter(|r| !r.is_empty())
                     .unwrap_or_else(|| "denied by the human reviewer".to_string());
                 println!("     → denied");
-                ToolCallAction::skip(reason)
+                DispatchAction::skip(reason)
             }
             // Edit: run the tool with human-supplied JSON arguments instead.
             "e" | "edit" => {
@@ -198,11 +201,11 @@ impl AgentHook for ApprovalHook {
                 {
                     Some(Ok(value)) => {
                         println!("     → running with edited arguments");
-                        ToolCallAction::rewrite(value)
+                        DispatchAction::rewrite_tool_args(event.kind, value)
                     }
                     other => {
                         println!("     ! no valid JSON ({other:?}); denying instead");
-                        ToolCallAction::skip(
+                        DispatchAction::skip(
                             "the reviewer tried to edit the arguments but supplied no valid JSON",
                         )
                     }
@@ -211,16 +214,16 @@ impl AgentHook for ApprovalHook {
             // Abort: stop the whole run.
             "b" | "abort" | "q" | "quit" => {
                 println!("     → aborting the run");
-                ToolCallAction::stop("run aborted by the human reviewer")
+                DispatchAction::stop("run aborted by the human reviewer")
             }
             // Fail closed: empty or unrecognized input denies rather than runs.
             "" => {
                 println!("     → empty input; denying (fail-closed)");
-                ToolCallAction::skip("denied: the reviewer gave no decision")
+                DispatchAction::skip("denied: the reviewer gave no decision")
             }
             other => {
                 println!("     ! unrecognized choice '{other}'; denying (fail-closed)");
-                ToolCallAction::skip(format!("denied: unrecognized reviewer input '{other}'"))
+                DispatchAction::skip(format!("denied: unrecognized reviewer input '{other}'"))
             }
         }
     }

@@ -1,16 +1,16 @@
-//! Verifies that a `ToolCallAction::Rewrite` hook rewrites a tool call's arguments
+//! Verifies that a `DispatchAction::Patch` hook rewrites a tool call's arguments
 //! before the tool executes, end-to-end through a real Anthropic round-trip.
 //!
 //! The `get_weather` tool advertises only a `location` parameter, so the model
 //! never sends a `units` field. A default hook injects `units: "celsius"` on the
-//! `ToolCall` event via `ToolCallAction::rewrite`, and the tool records what it was
+//! `Dispatch` event via `DispatchAction::rewrite_tool_args`, and the tool records what it was
 //! actually called with. A recorded `units` value therefore proves the rewritten
 //! arguments reached execution — and the blocking and streaming tests assert the
 //! same behavior, since both drivers share the same tool-execution seam.
 
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
+use rig::agent::{AgentHook, DispatchAction, DispatchEvent};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -102,26 +102,27 @@ impl Tool for GetWeather {
 }
 
 /// A guardrail hook that injects `units: "celsius"` into every `get_weather`
-/// call before it runs — the parameter-normalization use case for `ToolCallAction::Rewrite`
+/// call before it runs — the parameter-normalization use case for `DispatchAction::Patch`
 /// exists for. It reads the model's emitted arguments, adds the field, and
-/// returns the rewritten object via [`ToolCallAction::rewrite`].
+/// returns the rewritten object via [`DispatchAction::rewrite_tool_args`].
 struct PinUnitsToCelsius;
 
 impl AgentHook for PinUnitsToCelsius {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name != GetWeather::NAME {
-            return ToolCallAction::run();
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if event.tool_name() != Some(GetWeather::NAME) {
+            return DispatchAction::proceed();
         }
         let mut value: serde_json::Value =
-            serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
+            serde_json::from_str(event.tool_args().unwrap_or_default())
+                .unwrap_or_else(|_| json!({}));
         if let Some(object) = value.as_object_mut() {
             object.insert("units".to_string(), json!("celsius"));
         }
-        ToolCallAction::rewrite(value)
+        DispatchAction::rewrite_tool_args(event.kind, value)
     }
 }
 

@@ -69,6 +69,7 @@ pub(crate) struct PreparedCompletionRequest {
 /// model's request builder and pin the snapshot to the executable set.
 pub(crate) async fn build_prepared_completion_request(
     runner: &crate::agent::AgentRunner,
+    ctx: &crate::agent::HookContext,
     model: &ModelHandle,
     prompt: Message,
     chat_history: &[Message],
@@ -87,10 +88,32 @@ pub(crate) async fn build_prepared_completion_request(
             .find_map(rig_core::completion::Message::rag_text)
     });
 
-    let mut tool_snapshot = tool_server_handle
-        .snapshot_tool_defs(retrieval_query)
+    // Tool retrieval is a `Retrieve` dispatch at the boundary (observe-only
+    // for hooks unless one opts in), recorded like every other effect.
+    let mut dynamic_tool_ids = Vec::new();
+    for (key, kind) in tool_server_handle.retrieval_effects(retrieval_query) {
+        let ids = crate::agent::engine::dispatch_effect(
+            &runner.config.hooks,
+            ctx,
+            runner.config.bus.dispatcher(),
+            &key,
+            kind,
+        )
         .await
-        .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
+        .and_then(|outcome| match outcome {
+            rig_core::effect::Outcome::Documents(rig_core::effect::RetrievedDocuments::Ids(
+                ids,
+            )) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
+            other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
+        })
+        .map_err(|report| {
+            CompletionError::RequestError(
+                format!("Failed to get tool definitions: {report}").into(),
+            )
+        })?;
+        dynamic_tool_ids.extend(ids);
+    }
+    let mut tool_snapshot = tool_server_handle.snapshot_with_dynamic(&dynamic_tool_ids);
 
     let mut spec = runner.config.run_spec();
     spec.output_tool_description

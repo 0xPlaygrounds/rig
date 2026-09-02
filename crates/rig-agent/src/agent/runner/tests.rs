@@ -7,7 +7,7 @@ use futures::StreamExt;
 use serde_json::json;
 
 use crate::{
-    agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
+    agent::{AgentBuilder, AgentHook, HookContext, OutcomeAction, OutcomeEvent},
     completion::{CompletionModel, Document},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
@@ -56,18 +56,16 @@ impl Tool for SnapshotMutatingTool {
 struct SnapshotResults(Arc<Mutex<Vec<usize>>>);
 
 impl AgentHook for SnapshotResults {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(context) = event.tool_context() else {
+            return OutcomeAction::proceed();
+        };
         self.0.lock().expect("result values").push(
-            event
-                .tool_context
+            context
                 .require_result::<usize>()
                 .expect("per-dispatch result metadata"),
         );
-        ToolResultAction::keep()
+        OutcomeAction::proceed()
     }
 }
 
@@ -99,23 +97,23 @@ impl Tool for MetadataFailingTool {
 struct Results(Arc<Mutex<Vec<(ToolErrorKind, String, String)>>>);
 
 impl AgentHook for Results {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if let Some(error) = event.raw_result.error() {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(result) = event.tool_result() else {
+            return OutcomeAction::proceed();
+        };
+        if let Some(error) = result.error() {
             self.0.lock().expect("results").push((
                 error.kind(),
-                event.raw_result.output().render(),
+                result.output().render(),
                 event
-                    .tool_context
+                    .tool_context()
+                    .expect("tool outcome carries its context")
                     .result::<String>()
                     .expect("tool result metadata")
                     .clone(),
             ));
         }
-        ToolResultAction::rewrite("rewritten for model")
+        OutcomeAction::rewrite_tool_result(&event, "rewritten for model")
     }
 }
 

@@ -6,7 +6,7 @@ use std::sync::{
 use serde_json::json;
 
 use super::*;
-use crate::agent::{CompletionResponseEvent, HookContext, ModelTurnAction, ObservationAction};
+use crate::agent::{HookContext, ModelTurnAction, OutcomeAction, OutcomeEvent};
 use crate::completion::{CompletionError, PromptError, StructuredOutputError, Usage};
 use crate::test_utils::{MockCompletionModel, MockTurn};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
@@ -60,13 +60,11 @@ impl AgentHook for LifecycleCounts {
         crate::agent::CompletionCallAction::Continue
     }
 
-    async fn on_completion_response(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        self.completion_responses.fetch_add(1, Ordering::SeqCst);
-        ObservationAction::Continue
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some() {
+            self.completion_responses.fetch_add(1, Ordering::SeqCst);
+        }
+        OutcomeAction::Proceed
     }
 
     async fn on_model_turn_finished(
@@ -92,22 +90,37 @@ type ExtractorResponseSnapshot = (Message, Vec<AssistantContent>, Usage, Option<
 
 #[derive(Clone, Default)]
 struct ExtractorResponseCapture {
+    prompt: Arc<Mutex<Option<Message>>>,
     snapshot: Arc<Mutex<Option<ExtractorResponseSnapshot>>>,
 }
 
 impl AgentHook for ExtractorResponseCapture {
-    async fn on_completion_response(
+    async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
+        event: crate::agent::CompletionCallEvent<'_>,
+    ) -> crate::agent::CompletionCallAction {
+        *self.prompt.lock().expect("extractor prompt") = Some(event.prompt.clone());
+        crate::agent::CompletionCallAction::continue_run()
+    }
+
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
+        let prompt = self
+            .prompt
+            .lock()
+            .expect("extractor prompt")
+            .clone()
+            .expect("the completion call precedes its outcome");
         *self.snapshot.lock().expect("extractor response snapshot") = Some((
-            event.prompt.clone(),
-            event.content.clone(),
-            event.usage,
-            event.identity.message_id.clone(),
+            prompt,
+            response.choice.clone(),
+            response.usage,
+            response.message_id.clone(),
         ));
-        ObservationAction::continue_run()
+        OutcomeAction::proceed()
     }
 }
 
@@ -152,7 +165,7 @@ impl VectorStoreIndex for ExtractorContextIndex {
 
 #[derive(Clone, Copy)]
 enum StopFirstBilledResponseAt {
-    CompletionResponse,
+    CompletionOutcome,
     ModelTurnFinished,
 }
 
@@ -163,17 +176,14 @@ struct StopFirstBilledResponse {
 }
 
 impl AgentHook for StopFirstBilledResponse {
-    async fn on_completion_response(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        if matches!(self.phase, StopFirstBilledResponseAt::CompletionResponse)
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some()
+            && matches!(self.phase, StopFirstBilledResponseAt::CompletionOutcome)
             && self.calls.fetch_add(1, Ordering::SeqCst) == 0
         {
-            ObservationAction::stop("stop first billed response")
+            OutcomeAction::stop("stop first billed response")
         } else {
-            ObservationAction::continue_run()
+            OutcomeAction::proceed()
         }
     }
 
@@ -379,8 +389,8 @@ async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) 
 }
 
 #[tokio::test]
-async fn completion_response_hook_termination_preserves_billed_usage() {
-    assert_billed_hook_termination_usage(StopFirstBilledResponseAt::CompletionResponse).await;
+async fn completion_outcome_hook_termination_preserves_billed_usage() {
+    assert_billed_hook_termination_usage(StopFirstBilledResponseAt::CompletionOutcome).await;
 }
 
 #[tokio::test]

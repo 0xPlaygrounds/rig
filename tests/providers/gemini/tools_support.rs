@@ -19,9 +19,7 @@
 //! `assert_eq!` will spuriously fail the next re-recording.
 #![allow(dead_code)]
 
-use rig::agent::{
-    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
-};
+use rig::agent::{AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 use rig::completion::ToolDefinition;
 use rig::message::{ImageMediaType, ToolResultContent};
 use rig::tool::server::ToolServerHandle;
@@ -418,32 +416,40 @@ impl ToolEventRecorder {
 }
 
 impl AgentHook for ToolEventRecorder {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        let (Some(tool_name), Some(args)) = (event.tool_name(), event.tool_args()) else {
+            return DispatchAction::proceed();
+        };
         self.calls
             .lock()
             .expect("calls lock should not be poisoned")
-            .push((event.tool_name.to_string(), event.args.to_string()));
-        ToolCallAction::run()
+            .push((tool_name.to_string(), args.to_string()));
+        DispatchAction::proceed()
     }
 
-    async fn on_tool_result(
+    async fn on_outcome(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
+        event: OutcomeEvent<'_>,
+    ) -> OutcomeAction {
+        let (Some(tool_name), Some(args), Some(result)) =
+            (event.tool_name(), event.tool_args(), event.tool_result())
+        else {
+            return OutcomeAction::proceed();
+        };
         self.results
             .lock()
             .expect("results lock should not be poisoned")
             .push((
-                event.tool_name.to_string(),
-                event.args.to_string(),
-                event.presentation.render(),
+                tool_name.to_string(),
+                args.to_string(),
+                result.output().render(),
             ));
-        ToolResultAction::keep()
+        OutcomeAction::proceed()
     }
 }
 
@@ -455,15 +461,15 @@ pub(crate) struct SkipToolHook {
 }
 
 impl AgentHook for SkipToolHook {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            ToolCallAction::skip(self.reason)
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if event.tool_name() == Some(self.tool_name) {
+            DispatchAction::skip(self.reason)
         } else {
-            ToolCallAction::run()
+            DispatchAction::proceed()
         }
     }
 }
@@ -476,15 +482,15 @@ pub(crate) struct TerminateOnToolHook {
 }
 
 impl AgentHook for TerminateOnToolHook {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            ToolCallAction::stop(self.reason)
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if event.tool_name() == Some(self.tool_name) {
+            DispatchAction::stop(self.reason)
         } else {
-            ToolCallAction::run()
+            DispatchAction::proceed()
         }
     }
 }
@@ -498,15 +504,15 @@ pub(crate) struct RemoveToolBeforeExecutionHook {
 }
 
 impl AgentHook for RemoveToolBeforeExecutionHook {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if event.tool_name() == Some(self.tool_name) {
             self.handle.remove_tool(self.tool_name);
         }
-        ToolCallAction::run()
+        DispatchAction::proceed()
     }
 }
 

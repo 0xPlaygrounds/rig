@@ -15,11 +15,12 @@
 //!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
 //!    matters because results from concurrent tool calls can interleave.
 //!
-//! `ToolResultEvent` carries facts about one execution: `raw_result` contains the
-//! standard classification and `tool_context` holds tool/application-specific typed
-//! metadata that is never sent to the model. The scratchpad is different: it is
-//! shared, run-scoped hook state. Here it lets one hook record facts for the next
-//! hook without coupling either hook to model-visible result text.
+//! The tool-call `OutcomeEvent` carries facts about one execution: `tool_result()`
+//! contains the standard classification and `tool_context()` holds
+//! tool/application-specific typed metadata that is never sent to the model. The
+//! scratchpad is different: it is shared, run-scoped hook state. Here it lets one
+//! hook record facts for the next hook without coupling either hook to
+//! model-visible result text.
 //!
 //! Live commands (require `OPENAI_API_KEY`):
 //!
@@ -33,8 +34,8 @@
 
 use anyhow::{Result, bail};
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
-    ToolResultAction, ToolResultEvent,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, OutcomeAction, OutcomeEvent,
+    RequestPatch,
 };
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -206,18 +207,18 @@ fn failure_record(
 }
 
 impl AgentHook for FailureRecorder {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let Some(record) = failure_record(
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        // `on_outcome` fires for every effect family; only tool results matter here.
+        let (Some(block_id), Some(tool_name), Some(result), Some(tool_context)) = (
             event.block_id,
-            event.tool_name,
-            event.raw_result,
-            event.tool_context,
+            event.tool_name(),
+            event.tool_result(),
+            event.tool_context(),
         ) else {
-            return ToolResultAction::keep();
+            return OutcomeAction::proceed();
+        };
+        let Some(record) = failure_record(block_id, tool_name, result, tool_context) else {
+            return OutcomeAction::proceed();
         };
         println!(
             "[recorder] {} {} failed: kind={}, code={}, resource={}",
@@ -229,7 +230,7 @@ impl AgentHook for FailureRecorder {
         );
         ctx.scratchpad()
             .update(|ledger: &mut FailureLedger| ledger.0.push(record));
-        ToolResultAction::keep()
+        OutcomeAction::proceed()
     }
 }
 
@@ -253,7 +254,7 @@ fn decide(record: &FailureRecord) -> PolicyDecision {
 fn policy_action(
     ledger: Option<&FailureLedger>,
     block_id: &rig::streaming::BlockId,
-) -> ToolResultAction {
+) -> OutcomeAction {
     let decision = ledger
         .and_then(|ledger| {
             ledger
@@ -265,29 +266,28 @@ fn policy_action(
         .map(decide);
 
     match decision {
-        Some(PolicyDecision::Fatal(reason)) => ToolResultAction::stop(reason),
+        Some(PolicyDecision::Fatal(reason)) => OutcomeAction::stop(reason),
         Some(PolicyDecision::Recoverable) => {
             println!("[policy] recoverable failure; returning feedback to the model");
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
-        None => ToolResultAction::keep(),
+        None => OutcomeAction::proceed(),
     }
 }
 
 struct FatalFailurePolicy;
 
 impl AgentHook for FatalFailurePolicy {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.raw_result.error().is_none() {
-            return ToolResultAction::keep();
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let (Some(block_id), Some(result)) = (event.block_id, event.tool_result()) else {
+            return OutcomeAction::proceed();
+        };
+        if result.error().is_none() {
+            return OutcomeAction::proceed();
         }
 
         let ledger = ctx.scratchpad().get::<FailureLedger>();
-        policy_action(ledger.as_ref(), event.block_id)
+        policy_action(ledger.as_ref(), block_id)
     }
 }
 
@@ -354,7 +354,12 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rig::ErrorKind;
     use rig::tool::ToolSet;
+
+    fn stops_run(action: &OutcomeAction) -> bool {
+        matches!(action, OutcomeAction::Replace(Err(report)) if report.kind == ErrorKind::Cancelled)
+    }
 
     async fn structured_failure(operation: Operation) -> (ToolResult, ToolContext) {
         let tools = ToolSet::from_tools(vec![SystemProbe]);
@@ -429,19 +434,19 @@ mod tests {
         // Interleave a later recoverable record: policy must not use `last()`.
         ledger.0.push(recoverable_record);
 
+        assert!(stops_run(&policy_action(Some(&ledger), &fatal_call)));
         assert!(matches!(
-            policy_action(Some(&ledger), &fatal_call),
-            ToolResultAction::Stop(_)
-        ));
-        assert_eq!(
             policy_action(Some(&ledger), &recoverable_call),
-            ToolResultAction::Keep
-        );
-        assert_eq!(
+            OutcomeAction::Proceed
+        ));
+        assert!(matches!(
             policy_action(Some(&ledger), &missing_call),
-            ToolResultAction::Keep
-        );
-        assert_eq!(policy_action(None, &fatal_call), ToolResultAction::Keep);
+            OutcomeAction::Proceed
+        ));
+        assert!(matches!(
+            policy_action(None, &fatal_call),
+            OutcomeAction::Proceed
+        ));
     }
 
     #[tokio::test]
@@ -465,9 +470,9 @@ mod tests {
             operation: Operation::ReadDisk,
             resource: "/stale".to_string(),
         }]);
-        assert_eq!(
+        assert!(matches!(
             policy_action(Some(&stale), &rig::streaming::BlockId::wire("fresh")),
-            ToolResultAction::Keep
-        );
+            OutcomeAction::Proceed
+        ));
     }
 }

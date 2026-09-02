@@ -7,9 +7,8 @@ use crate::{
     agent::{
         AgentBuilder,
         hook::{
-            AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
-            InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
-            ToolCall as ToolCallEvent, ToolCallAction,
+            AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction,
+            InvalidToolCallContext, OutcomeAction, OutcomeEvent,
         },
     },
     completion::{
@@ -312,15 +311,17 @@ fn deserialize_structured_output_tolerates_fences_and_prose() {
 struct PanicOnUnknownToolHook;
 
 impl AgentHook for PanicOnUnknownToolHook {
-    async fn on_completion_response(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        panic!("unknown tool response should fail before response hooks run")
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some() {
+            panic!("unknown tool response should fail before response hooks run")
+        }
+        OutcomeAction::proceed()
     }
-    async fn on_tool_call(&self, _ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
-        panic!("unknown tool call should fail before tool hooks run")
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_some() {
+            panic!("unknown tool call should fail before tool hooks run")
+        }
+        DispatchAction::proceed()
     }
 }
 
@@ -328,8 +329,11 @@ impl AgentHook for PanicOnUnknownToolHook {
 struct PanicOnToolCallHook;
 
 impl AgentHook for PanicOnToolCallHook {
-    async fn on_tool_call(&self, _ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
-        panic!("recovered invalid turn should not invoke normal tool hooks")
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_some() {
+            panic!("recovered invalid turn should not invoke normal tool hooks")
+        }
+        DispatchAction::proceed()
     }
 }
 
@@ -344,8 +348,8 @@ impl AgentHook for SkipDefaultApiAndPanicOnToolCallHook {
     ) -> Option<InvalidToolCallAction> {
         SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
     }
-    async fn on_tool_call(&self, ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        PanicOnToolCallHook.on_tool_call(ctx, event).await
+    async fn on_dispatch(&self, ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        PanicOnToolCallHook.on_dispatch(ctx, event).await
     }
 }
 

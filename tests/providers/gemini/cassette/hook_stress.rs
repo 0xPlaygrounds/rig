@@ -4,8 +4,8 @@
 //! drive rich multi-turn workflows and assert *structural invariants* of the
 //! merged hook system: `HookContext` identity/turn/streaming, a shared
 //! `Scratchpad` threaded across hooks and turns, `RequestPatch` context
-//! injection + `active_tools` narrowing, chained `ToolCallAction::Rewrite` -> observe ->
-//! `ToolResultAction::Rewrite` redaction, and streaming lifecycle ordering / blocking-vs-
+//! injection + `active_tools` narrowing, chained `DispatchAction::Patch` -> observe ->
+//! `OutcomeAction::Replace` redaction, and streaming lifecycle ordering / blocking-vs-
 //! streaming parity.
 //!
 //! ## On loose assertions
@@ -24,9 +24,9 @@ use std::sync::Mutex;
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, ObservationAction, RequestPatch,
-    StreamingError, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+    AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
+    HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, OutcomeAction,
+    OutcomeEvent, RequestPatch, StreamingError,
 };
 use rig::completion::Document;
 use rig::prelude::*;
@@ -121,14 +121,6 @@ impl AgentHook for LifecycleRecorder {
         self.record(ctx, "CompletionCall");
         CompletionCallAction::continue_run()
     }
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "CompletionResponse");
-        ObservationAction::continue_run()
-    }
     async fn on_model_turn_finished(
         &self,
         ctx: &HookContext,
@@ -137,19 +129,22 @@ impl AgentHook for LifecycleRecorder {
         self.record(ctx, "ModelTurnFinished");
         ModelTurnAction::continue_run()
     }
-    async fn on_tool_call(&self, ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
+    async fn on_dispatch(&self, ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
         self.record(ctx, "ToolCall");
         ctx.scratchpad()
             .update(|tally: &mut ToolCallTally| tally.0 += 1);
-        ToolCallAction::run()
+        DispatchAction::proceed()
     }
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        _event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        self.record(ctx, "ToolResult");
-        ToolResultAction::keep()
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some() {
+            self.record(ctx, "CompletionResponse");
+        } else if event.tool_name().is_some() {
+            self.record(ctx, "ToolResult");
+        }
+        OutcomeAction::proceed()
     }
 }
 
@@ -218,11 +213,11 @@ struct ForceArgs {
 }
 
 impl AgentHook for ForceArgs {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            ToolCallAction::rewrite(self.args.clone())
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name() == Some(self.tool_name) {
+            DispatchAction::rewrite_tool_args(event.kind, self.args.clone())
         } else {
-            ToolCallAction::run()
+            DispatchAction::proceed()
         }
     }
 }
@@ -235,15 +230,11 @@ struct RedactResult {
 }
 
 impl AgentHook for RedactResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == self.tool_name {
-            ToolResultAction::rewrite(self.marker)
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some(self.tool_name) {
+            OutcomeAction::rewrite_tool_result(&event, self.marker)
         } else {
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
     }
 }
@@ -437,7 +428,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Chained tool lifecycle: ToolCallAction::Rewrite -> observe -> ToolResultAction::Rewrite.
+// 3. Chained tool lifecycle: DispatchAction::Patch -> observe -> OutcomeAction::Replace.
 // ---------------------------------------------------------------------------
 
 const REDACTION_MARKER: &str = "REDACTED-SUM-ZK7";

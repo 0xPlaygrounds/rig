@@ -466,6 +466,53 @@ impl ToolServerHandle {
         Ok(self.snapshot_tool_defs(prompt).await?.take_definitions())
     }
 
+    /// The `Retrieve` effects a request with `prompt` needs answered before
+    /// its dynamic tools can be advertised: one `TopNIds` query per
+    /// retrieval index, under the key the index is registered on every
+    /// attached bus. The engine dispatches them at the boundary and hands
+    /// the ids back to [`ToolServerHandle::snapshot_with_dynamic`].
+    pub fn retrieval_effects(
+        &self,
+        prompt: Option<String>,
+    ) -> Vec<(HandlerKey, rig_core::effect::EffectKind)> {
+        let Some(text) = prompt else {
+            return Vec::new();
+        };
+        let retrieval_indexes = {
+            let state = self.state();
+            state.retrieval_indexes.clone()
+        };
+        retrieval_indexes
+            .into_iter()
+            .map(|index| {
+                let req = rig_core::vector_store::request::VectorSearchRequest::builder()
+                    .query(text.clone())
+                    .samples(index.samples as u64)
+                    .build();
+                (
+                    index.key,
+                    rig_core::effect::EffectKind::Retrieve {
+                        query: rig_core::effect::RetrieveQuery::TopNIds {
+                            req: req.map_filter(rig_core::vector_store::request::Filter::interpret),
+                        },
+                    },
+                )
+            })
+            .collect()
+    }
+
+    /// The registrations a request advertises: the always-exposed ones plus
+    /// the retrieved tools named by `dynamic_tool_ids`.
+    pub fn snapshot_with_dynamic(&self, dynamic_tool_ids: &[String]) -> ToolRegistrySnapshot {
+        let (tools, leases) =
+            self.with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids));
+        ToolCatalog::from_registered(tools).with_leases(leases)
+    }
+
+    /// The registrations a request with `prompt` advertises, answering the
+    /// retrieval queries inline on the registry's own handlers. This is the
+    /// standalone registry read ([`ToolServerHandle::tool_defs`]); the
+    /// engine dispatches the same queries on the bus instead.
     pub(crate) async fn snapshot_tool_defs(
         &self,
         prompt: Option<String>,
