@@ -29,7 +29,7 @@ async fn context_propagates_into_sub_agent() {
         .build();
 
     let mut context = ToolContext::new();
-    context.insert(SessionId("abc-123".to_string()));
+    context.insert(SessionId("abc-123".to_string())).unwrap();
 
     let out = outer
         .prompt("start")

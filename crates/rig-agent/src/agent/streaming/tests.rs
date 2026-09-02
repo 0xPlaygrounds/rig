@@ -2135,7 +2135,9 @@ async fn tool_context_reaches_tool_through_streaming_loop() {
     let empty_history: &[Message] = &[];
 
     let mut tool_context = ToolContext::new();
-    tool_context.insert(SessionId("xyz-789".to_string()));
+    tool_context
+        .insert(SessionId("xyz-789".to_string()))
+        .unwrap();
 
     let mut stream = agent
         .stream_prompt("do tool work")

@@ -208,8 +208,8 @@ pub mod tool {
     };
     // Contextual authoring and the erased tool set — rig-core, always available.
     pub use rig_core::tool::{
-        DynamicTool, ErasedTool, MissingToolContext, RegisteredTool, Tool, ToolCatalog,
-        ToolContext, ToolDispatch, ToolEmbedding, ToolSet, dispatch_tool, tool_definition,
+        DynamicTool, ErasedTool, RegisteredTool, Tool, ToolCatalog, ToolContext, ToolContextError,
+        ToolDispatch, ToolEmbedding, ToolSet, dispatch_tool, tool_definition,
     };
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;

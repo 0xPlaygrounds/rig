@@ -915,7 +915,7 @@ async fn tool_context_reaches_tool_through_agent_loop() {
     let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
     let mut context = ToolContext::new();
-    context.insert(SessionId("abc-123".to_string()));
+    context.insert(SessionId("abc-123".to_string())).unwrap();
 
     let out = agent
         .prompt("use the tool")
@@ -942,7 +942,7 @@ async fn tool_context_persists_across_multiple_rounds() {
     let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
     let mut context = ToolContext::new();
-    context.insert(SessionId("abc-123".to_string()));
+    context.insert(SessionId("abc-123".to_string())).unwrap();
 
     let out = agent
         .prompt("use the tool twice")

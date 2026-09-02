@@ -11,14 +11,14 @@
 use rig_agent::tool::{Tool, ToolContext};
 use rig_derive::rig_tool;
 
-#[derive(Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Offset(i32);
 
-#[derive(Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Prefix(String);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Invocation(&'static str);
+#[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Invocation(String);
 
 #[rig_tool(
     description = "Add two numbers using a host-provided offset",
@@ -30,7 +30,7 @@ fn sync_context_in_the_middle(
     right: i32,
 ) -> Result<i32, rig_core::tool::ToolExecutionError> {
     let offset = context.require::<Offset>()?.0;
-    context.insert_result(Invocation("sync"));
+    context.insert_result(Invocation("sync".into()))?;
     Ok(left + right + offset)
 }
 
@@ -44,7 +44,7 @@ async fn required_context_uses_the_standard_tool_error_path() {
         .await
         .unwrap_err();
 
-    assert!(error.is::<rig_agent::tool::MissingToolContext>());
+    assert!(error.is::<rig_agent::tool::ToolContextError>());
 }
 
 #[rig_tool(description = "Prefix text using host context")]
@@ -57,7 +57,7 @@ async fn async_context_first(
         .map(|prefix| prefix.0.clone())
         .unwrap_or_default();
     std::future::ready(()).await;
-    context.insert_result(Invocation("async"));
+    context.insert_result(Invocation("async".into()))?;
     Ok(format!("{prefix}{value}"))
 }
 
@@ -82,7 +82,7 @@ fn marked_context_alias(
     #[rig(context)] context: &mut RuntimeContextAlias,
     value: String,
 ) -> Result<String, rig_core::tool::ToolExecutionError> {
-    context.insert_result(Invocation("alias"));
+    context.insert_result(Invocation("alias".into()))?;
     Ok(value)
 }
 
@@ -101,7 +101,7 @@ async fn sync_context_is_excluded_from_schema_and_passed_in_argument_order() {
     );
 
     let mut context = ToolContext::new();
-    context.insert(Offset(4));
+    context.insert(Offset(4)).unwrap();
     let output = SyncContextInTheMiddle
         .call(
             &mut context,
@@ -111,7 +111,10 @@ async fn sync_context_is_excluded_from_schema_and_passed_in_argument_order() {
         .unwrap();
 
     assert_eq!(output, 19);
-    assert_eq!(context.result::<Invocation>(), Some(&Invocation("sync")));
+    assert_eq!(
+        context.result::<Invocation>(),
+        Some(Invocation("sync".into()))
+    );
 }
 
 #[tokio::test]
@@ -127,7 +130,7 @@ async fn async_context_is_excluded_from_schema_and_passed_to_the_function() {
     );
 
     let mut context = ToolContext::new();
-    context.insert(Prefix("hello ".to_string()));
+    context.insert(Prefix("hello ".to_string())).unwrap();
     let output = AsyncContextFirst
         .call(
             &mut context,
@@ -139,7 +142,10 @@ async fn async_context_is_excluded_from_schema_and_passed_to_the_function() {
         .unwrap();
 
     assert_eq!(output, "hello world");
-    assert_eq!(context.result::<Invocation>(), Some(&Invocation("async")));
+    assert_eq!(
+        context.result::<Invocation>(),
+        Some(Invocation("async".into()))
+    );
 }
 
 #[tokio::test]
@@ -180,7 +186,10 @@ async fn explicit_marker_supports_imported_aliases() {
         .await
         .unwrap();
     assert_eq!(output, "ok");
-    assert_eq!(context.result::<Invocation>(), Some(&Invocation("alias")));
+    assert_eq!(
+        context.result::<Invocation>(),
+        Some(Invocation("alias".into()))
+    );
 }
 
 #[test]

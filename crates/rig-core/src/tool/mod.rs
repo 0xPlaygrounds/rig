@@ -22,7 +22,7 @@ mod output;
 pub mod portable;
 mod result;
 pub use catalog::ToolCatalog;
-pub use context::{MissingToolContext, ToolContext};
+pub use context::{ToolContext, ToolContextError};
 pub use contextual::{
     DynamicTool, ErasedEmbeddingTool, ErasedTool, RegisteredTool, Tool, ToolDispatch,
     ToolEmbedding, ToolSet, dispatch_tool, tool_definition,

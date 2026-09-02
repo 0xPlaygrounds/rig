@@ -207,7 +207,7 @@ impl AgentHook for ResultRewriter {
         self.seen.lock().unwrap().push((
             event.presentation.render(),
             event.raw_result.error().unwrap().kind(),
-            event.tool_context.result::<String>().unwrap().clone(),
+            event.tool_context.result::<String>().unwrap(),
         ));
         ToolResultAction::rewrite(self.replacement.clone())
     }
@@ -226,7 +226,9 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
     });
     let raw = ToolResult::failed(ToolExecutionError::timeout("raw failure"));
     let mut context = ToolContext::new();
-    context.insert_result("request-metadata".to_string());
+    context
+        .insert_result("request-metadata".to_string())
+        .unwrap();
 
     let action = stack
         .on_tool_result(
@@ -261,7 +263,7 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
     );
     assert_eq!(raw.output().as_text(), Some("raw failure"));
     assert_eq!(
-        context.result::<String>().map(String::as_str),
+        context.result::<String>().as_deref(),
         Some("request-metadata")
     );
 }

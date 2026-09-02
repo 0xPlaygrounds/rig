@@ -16,19 +16,9 @@ use rig_core::message::ToolChoice;
 
 struct MetadataFailingTool;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 struct SnapshotValue {
     value: usize,
-    clones: Arc<AtomicUsize>,
-}
-
-impl Clone for SnapshotValue {
-    fn clone(&self) -> Self {
-        self.clones.fetch_add(1, Ordering::SeqCst);
-        Self {
-            value: self.value,
-            clones: self.clones.clone(),
-        }
-    }
 }
 
 #[derive(Clone, Default)]
@@ -55,14 +45,9 @@ impl Tool for SnapshotMutatingTool {
     ) -> Result<Self::Output, ToolExecutionError> {
         let initial = context.require::<SnapshotValue>()?.value;
         self.0.lock().expect("observed values").push(initial);
-        let updated = {
-            let value = context
-                .get_mut::<SnapshotValue>()
-                .expect("required snapshot value");
-            value.value += 1;
-            value.value
-        };
-        context.insert_result(updated);
+        let updated = initial + 1;
+        context.insert(SnapshotValue { value: updated })?;
+        context.insert_result(updated)?;
         Ok(updated.to_string())
     }
 }
@@ -77,7 +62,7 @@ impl AgentHook for SnapshotResults {
         event: ToolResultEvent<'_>,
     ) -> ToolResultAction {
         self.0.lock().expect("result values").push(
-            *event
+            event
                 .tool_context
                 .require_result::<usize>()
                 .expect("per-dispatch result metadata"),
@@ -105,7 +90,7 @@ impl Tool for MetadataFailingTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result("shared-result-metadata".to_string());
+        context.insert_result("shared-result-metadata".to_string())?;
         Err(ToolExecutionError::timeout("raw timeout failure"))
     }
 }
@@ -395,13 +380,9 @@ async fn blocking_and_streaming_preserve_raw_failure_while_rewriting_presentatio
 }
 
 #[tokio::test]
-async fn agent_dispatch_snapshot_clones_once_and_isolates_tool_mutations() {
-    let clones = Arc::new(AtomicUsize::new(0));
+async fn agent_dispatch_snapshot_isolates_tool_mutations() {
     let mut context = ToolContext::new();
-    context.insert(SnapshotValue {
-        value: 0,
-        clones: clones.clone(),
-    });
+    context.insert(SnapshotValue { value: 0 }).unwrap();
     let tool = SnapshotMutatingTool::default();
     let results = SnapshotResults::default();
 
@@ -422,9 +403,4 @@ async fn agent_dispatch_snapshot_clones_once_and_isolates_tool_mutations() {
 
     assert_eq!(*tool.0.lock().expect("observed values"), vec![0, 0]);
     assert_eq!(*results.0.lock().expect("result values"), vec![1, 1]);
-    assert_eq!(
-        clones.load(Ordering::SeqCst),
-        2,
-        "each of the two agent dispatches should clone inbound context once"
-    );
 }

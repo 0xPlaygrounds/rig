@@ -33,7 +33,7 @@
 //!     value: i64,
 //! }
 //!
-//! #[derive(Clone, Debug, PartialEq)]
+//! #[derive(Serialize, Deserialize)]
 //! struct AuditRecord(i64);
 //!
 //! struct Add;
@@ -65,7 +65,7 @@
 //!         args: Self::Args,
 //!     ) -> Result<Self::Output, Self::Error> {
 //!         let value = args.left + args.right;
-//!         context.insert_result(AuditRecord(value));
+//!         let _ = context.insert_result(AuditRecord(value));
 //!         Ok(Sum { value })
 //!     }
 //! }

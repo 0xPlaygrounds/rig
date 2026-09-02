@@ -2,7 +2,7 @@ use std::{
     future::{Future, pending, poll_fn},
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     task::Poll,
     time::Duration,
@@ -30,15 +30,6 @@ fn assert_rich_error_output(result: &ToolResult, label: &str) {
     assert!(matches!(content.last(), Some(ToolResultContent::Image(_))));
 }
 
-struct CloneTracked(Arc<AtomicUsize>);
-
-impl Clone for CloneTracked {
-    fn clone(&self) -> Self {
-        self.0.fetch_add(1, Ordering::SeqCst);
-        Self(self.0.clone())
-    }
-}
-
 struct Echo;
 
 impl Tool for Echo {
@@ -60,10 +51,10 @@ impl Tool for Echo {
         context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        if let Some(value) = context.get_mut::<u32>() {
-            *value += 1;
+        if let Some(value) = context.get::<u32>() {
+            context.insert(value + 1)?;
         }
-        context.insert_result("result-metadata".to_string());
+        context.insert_result("result-metadata".to_string())?;
         Ok(args)
     }
 }
@@ -76,19 +67,20 @@ async fn toolset_dispatch_snapshot_is_canonical_and_returns_result_metadata() {
     assert_eq!(definitions[0].name, "echo");
 
     let mut context = ToolContext::new();
-    context.insert(7_u32);
-    let clones = Arc::new(AtomicUsize::new(0));
-    context.insert(CloneTracked(clones.clone()));
+    context.insert(7_u32).unwrap();
     let result = set.execute("echo", r#"{"value":1}"#, &mut context).await;
     assert!(result.is_success());
     assert_eq!(
         result.output(),
         &ToolOutput::json(serde_json::json!({"value": 1}))
     );
-    assert_eq!(context.get::<u32>(), Some(&7));
-    assert_eq!(clones.load(Ordering::SeqCst), 1);
     assert_eq!(
-        context.result::<String>().map(String::as_str),
+        context.get::<u32>(),
+        Some(7),
+        "tool-local inbound mutations must not change the caller's context"
+    );
+    assert_eq!(
+        context.result::<String>().as_deref(),
         Some("result-metadata")
     );
 }
@@ -114,7 +106,7 @@ impl Tool for PendingTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result("unpublished".to_string());
+        context.insert_result("unpublished".to_string())?;
         self.0.store(true, Ordering::SeqCst);
         pending().await
     }
@@ -126,7 +118,7 @@ async fn cancelled_toolset_dispatch_does_not_retain_stale_result_metadata() {
     let started = Arc::new(AtomicBool::new(false));
     set.add_tool(PendingTool(started.clone()));
     let mut context = ToolContext::new();
-    context.insert_result("stale".to_string());
+    context.insert_result("stale".to_string()).unwrap();
 
     let mut execution = Box::pin(set.execute(PendingTool::NAME, "null", &mut context));
     tokio::time::timeout(

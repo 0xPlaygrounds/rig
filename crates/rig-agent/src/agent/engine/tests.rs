@@ -2283,9 +2283,8 @@ mod structured_tool_results {
                     ..
                 } = event
                 {
-                    *self.seen.lock().expect("seen") = tool_context
-                        .result::<MockRequestId>()
-                        .map(|id| id.0.clone());
+                    *self.seen.lock().expect("seen") =
+                        tool_context.result::<MockRequestId>().map(|id| id.0);
                     *self.model_output.lock().expect("model_output") = Some(presentation.render());
                 }
                 ToolResultAction::keep()
