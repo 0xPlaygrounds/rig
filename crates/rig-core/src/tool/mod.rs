@@ -24,8 +24,8 @@ mod result;
 pub use catalog::ToolCatalog;
 pub use context::{ToolContext, ToolContextError};
 pub use contextual::{
-    DynamicTool, ErasedEmbeddingTool, ErasedTool, RegisteredTool, Tool, ToolDispatch,
-    ToolEmbedding, ToolSet, dispatch_tool, tool_definition,
+    DynamicTool, ErasedTool, RegisteredTool, Tool, ToolDispatch, ToolEmbedding, ToolSet,
+    dispatch_tool, tool_definition,
 };
 pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};

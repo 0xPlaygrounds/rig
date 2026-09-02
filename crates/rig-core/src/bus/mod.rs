@@ -26,6 +26,31 @@
 //! ambient executor. An agent therefore never hands out its dispatcher
 //! while keeping its driver; `into_parts` moves both.
 //!
+//! # Spawning on wasm
+//!
+//! A Bevy-shaped host needs **no spawner**: `bevy_tasks`' wasm pool accepts
+//! `!Send` futures, so the same call site compiles natively and in the
+//! browser.
+//!
+//! ```ignore
+//! // Bevy: one call site, both targets.
+//! let (dispatcher, mut driver) = rig_core::bus::Bus::channel();
+//! driver.register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model));
+//! let task = IoTaskPool::get().spawn(driver);   // BusDriver: Send on native, !Send ok on wasm
+//! world.insert_resource(BusRes(dispatcher));     // Dispatcher: Send + Sync + 'static everywhere
+//! ```
+//!
+//! A bare wasm host passes its own spawner to [`Bus::new_with`] — rig-core
+//! does not depend on `wasm-bindgen-futures`; the host supplies it.
+//!
+//! ```ignore
+//! let dispatcher = rig_core::bus::Bus::new_with(
+//!     rig_core::bus::BusConfig::default(),
+//!     |driver| driver.register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model)),
+//!     wasm_bindgen_futures::spawn_local,
+//! );
+//! ```
+//!
 //! # Frame-ticked executors
 //!
 //! On a host whose executor advances once per frame (web Bevy), the driver
@@ -64,12 +89,20 @@
 pub mod adapters;
 mod dispatcher;
 mod driver;
+mod handle;
 mod handler;
 mod replay;
 
 pub use dispatcher::{Dispatcher, EffectStream, Pending};
 pub use driver::{BusConfig, BusDriver, EffectLogRecorder};
-pub use handler::{Handler, HandlerFuture, OutcomeSink, SinkClosed, events_from_response};
+pub use handle::{
+    Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, Retrieval, ToolCall,
+    ToolHandle, Typed, wrap_stream,
+};
+pub use handler::{
+    ErasedHandler, Handler, HandlerFuture, OutcomeSink, SinkClosed, events_from_response,
+    serve_inline,
+};
 pub use replay::EffectLogReplayer;
 
 use std::sync::Arc;

@@ -10,7 +10,7 @@ use std::future::Future;
 
 use reqwest::{Client, StatusCode};
 use rig_core::{
-    embeddings::{EmbeddingModel, EmbeddingModelHandle},
+    embeddings::EmbeddingModel,
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -132,12 +132,12 @@ impl HelixDBClient for HelixDB {
 /// # }
 /// ```
 ///
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`], which is fixed for the store's lifetime: an index
-/// populated under one model is only meaningful when queried under that model.
-pub struct HelixDBVectorStore<C> {
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
+pub struct HelixDBVectorStore<C, M> {
     client: C,
-    model: EmbeddingModelHandle,
+    model: M,
 }
 
 pub type HelixDBFilter = Filter<serde_json::Value>;
@@ -176,13 +176,10 @@ struct VecResult {
     vec_docs: Vec<QueryResult>,
 }
 
-impl<C> HelixDBVectorStore<C> {
+impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M> {
     /// Creates a new HelixDB vector store.
-    pub fn new(client: C, model: impl EmbeddingModel + 'static) -> Self {
-        Self {
-            client,
-            model: EmbeddingModelHandle::new(model),
-        }
+    pub fn new(client: C, model: M) -> Self {
+        Self { client, model }
     }
 
     /// Returns the underlying HelixDB client.
@@ -191,7 +188,7 @@ impl<C> HelixDBVectorStore<C> {
     }
 }
 
-impl<C> HelixDBVectorStore<C>
+impl<C, M: EmbeddingModel> HelixDBVectorStore<C, M>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
@@ -216,7 +213,7 @@ where
     }
 }
 
-impl<C> InsertDocuments for HelixDBVectorStore<C>
+impl<C, M: EmbeddingModel> InsertDocuments for HelixDBVectorStore<C, M>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,
@@ -256,7 +253,7 @@ where
     }
 }
 
-impl<C> VectorStoreIndex for HelixDBVectorStore<C>
+impl<C, M: EmbeddingModel> VectorStoreIndex for HelixDBVectorStore<C, M>
 where
     C: HelixDBClient + WasmCompatSend + WasmCompatSync,
     C::Err: WasmCompatSend + WasmCompatSync + 'static,

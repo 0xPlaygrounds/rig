@@ -8,7 +8,7 @@
 //! `sqlite` feature is enabled.
 
 use rig_core::Embed;
-use rig_core::embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle};
+use rig_core::embeddings::{Embedding, EmbeddingModel};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -343,7 +343,7 @@ fn sqlite_metadata_value(
 /// The store does not name an embedding model in its type; the model is only
 /// consulted (for `ndims`) at construction, and the index built from it via
 /// [`SqliteVectorStore::index`] holds the model behind an erased
-/// [`EmbeddingModelHandle`].
+/// the embedding model `M`.
 #[derive(Clone)]
 pub struct SqliteVectorStore<T> {
     conn: Connection,
@@ -554,7 +554,7 @@ where
         })
     }
 
-    pub fn index(self, model: impl EmbeddingModel + 'static) -> SqliteVectorIndex<T> {
+    pub fn index<M: EmbeddingModel>(self, model: M) -> SqliteVectorIndex<T, M> {
         SqliteVectorIndex::new(model, self)
     }
 
@@ -1543,30 +1543,27 @@ fn sqlite_json_operator_operand_len(operand: &str) -> Option<usize> {
 /// # let _ = example();
 /// ```
 ///
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`], which is fixed for the index's lifetime: an index
-/// populated under one model is only meaningful when queried under that model.
-pub struct SqliteVectorIndex<T> {
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
+pub struct SqliteVectorIndex<T, M> {
     store: SqliteVectorStore<T>,
-    embedding_model: EmbeddingModelHandle,
+    embedding_model: M,
 }
 
-impl<T> SqliteVectorIndex<T>
+impl<T, M: EmbeddingModel> SqliteVectorIndex<T, M>
 where
     T: SqliteVectorStoreTable,
 {
-    pub fn new(
-        embedding_model: impl EmbeddingModel + 'static,
-        store: SqliteVectorStore<T>,
-    ) -> Self {
+    pub fn new(embedding_model: M, store: SqliteVectorStore<T>) -> Self {
         Self {
             store,
-            embedding_model: EmbeddingModelHandle::new(embedding_model),
+            embedding_model,
         }
     }
 }
 
-impl<T> SqliteVectorIndex<T>
+impl<T, M: EmbeddingModel> SqliteVectorIndex<T, M>
 where
     T: SqliteVectorStoreTable,
 {
@@ -1929,7 +1926,7 @@ fn sqlite_id_value_to_string(index: usize, value: ValueRef<'_>) -> rusqlite::Res
     }
 }
 
-impl<T: SqliteVectorStoreTable> VectorStoreIndex for SqliteVectorIndex<T> {
+impl<T: SqliteVectorStoreTable, M: EmbeddingModel> VectorStoreIndex for SqliteVectorIndex<T, M> {
     type Filter = SqliteSearchFilter;
 
     async fn top_n<D>(

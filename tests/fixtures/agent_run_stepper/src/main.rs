@@ -13,16 +13,18 @@
 
 use std::{
     future::Future,
-    pin::pin,
+    pin::{Pin, pin},
     sync::atomic::{AtomicUsize, Ordering},
     task::{Context, Poll, Waker},
 };
 
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
+use rig_core::bus::{Bus, BusDriver, ModelHandle, adapters::CompletionAdapter};
 use rig_core::completion::{
-    AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-    ModelHandle, ModelRef, Usage,
+    AssistantContent, CompletionError, CompletionModel, CompletionRequest,
+    CompletionRequestBuilder, CompletionResponse, ModelRef, Usage,
 };
+use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{PortableDynamicTool, ToolCatalog, ToolContext, ToolOutput, ToolSet};
@@ -38,6 +40,19 @@ fn block_on<F: Future>(future: F) -> F::Output {
         if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
             return output;
         }
+    }
+}
+
+/// Resolve a bus dispatch by driving the host's own driver whenever the
+/// dispatch is pending: the inline layer, without an executor.
+fn drive<F: Future + Unpin>(mut future: F, driver: &mut BusDriver) -> F::Output {
+    let waker = std::task::Waker::noop();
+    let mut cx = std::task::Context::from_waker(waker);
+    loop {
+        if let Poll::Ready(output) = Pin::new(&mut future).poll(&mut cx) {
+            return output;
+        }
+        let _ = Pin::new(&mut *driver).poll(&mut cx);
     }
 }
 
@@ -108,8 +123,15 @@ fn add_tool() -> PortableDynamicTool {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. An erased model with a serializable identity.
-    let model = ModelHandle::named(ModelRef::new("fixture"), ScriptedModel::default());
-    assert_eq!(model.label(), Some("fixture"));
+    // A layer-1 host: its own bus, driven inline while each dispatch is
+    // awaited — whoever holds the driver drives.
+    let (dispatcher, mut driver) = Bus::channel();
+    driver.register(
+        "model",
+        CompletionAdapter::new(ModelRef::new("fixture"), ScriptedModel::default()),
+    );
+    let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
+    assert_eq!(model.model_ref().as_str(), "fixture");
 
     // 2. An erased tool set, pinned into a catalog for the turn.
     let mut tools = ToolSet::default();
@@ -146,8 +168,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 run.advertise_tools(turn, prepared.tools.clone());
                 let executable = prepared.executable_tool_names.clone();
                 let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared.apply(model.completion_request(prompt)).build();
-                let response = block_on(model.completion(request))?;
+                let request = prepared
+                    .apply(CompletionRequestBuilder::unbound(prompt))
+                    .build();
+                let response = drive(model.complete(request), &mut driver)?;
                 model_calls += 1;
                 run.model_response(ModelTurn::new(
                     None,

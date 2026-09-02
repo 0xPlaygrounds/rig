@@ -2,15 +2,16 @@
 //!
 //! The first scripted model calls a search tool. After Rig commits the tool
 //! result to provider-neutral history, the second scripted model writes the
-//! final answer. Real applications can put handles from different providers in
-//! the same map and apply the same hook policy.
+//! final answer. Real applications can register models from different
+//! providers on the same bus under their own labels and apply the same hook
+//! policy.
 
 use std::convert::Infallible;
 
 use anyhow::Result;
 use futures::stream;
 use rig_agent::{
-    AgentBuilder, ModelHandle,
+    AgentBuilder,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
     completion::{CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Usage},
     streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse, ToolCallEnd},
@@ -153,10 +154,7 @@ impl Tool for Search {
 }
 
 #[derive(Clone)]
-struct RouteModels {
-    fast: ModelHandle,
-    strong: ModelHandle,
-}
+struct RouteModels;
 
 impl AgentHook for RouteModels {
     fn on_model_select(
@@ -165,28 +163,23 @@ impl AgentHook for RouteModels {
         _event: ModelSelection<'_>,
     ) -> ModelSelectionAction {
         if context.turn() == 1 {
-            ModelSelectionAction::select(self.fast.clone())
+            ModelSelectionAction::select("fast")
         } else {
-            ModelSelectionAction::select(self.strong.clone())
+            ModelSelectionAction::select("strong")
         }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let fast = ModelHandle::named("fast", FastResearchModel);
-    let strong = ModelHandle::named("strong", StrongSynthesisModel);
-
-    let agent = AgentBuilder::from_model_handle(fast.clone())
+    let agent = AgentBuilder::named_model("fast", FastResearchModel)
+        .model_route("strong", StrongSynthesisModel)
         .tool(Search)
         .build();
     let answer = agent
         .prompt("Research this, then synthesize a careful answer")
         .max_turns(2)
-        .add_hook(RouteModels {
-            fast: fast.clone(),
-            strong: strong.clone(),
-        })
+        .add_hook(RouteModels)
         .await?;
 
     println!("{answer}");

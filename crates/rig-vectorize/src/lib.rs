@@ -31,7 +31,7 @@ pub use client::{
 };
 
 use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
-use rig_core::embeddings::{EmbeddingModel, EmbeddingModelHandle};
+use rig_core::embeddings::EmbeddingModel;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::{Embed, embeddings::Embedding};
@@ -49,18 +49,18 @@ impl From<VectorizeError> for VectorStoreError {
 /// This struct implements [`VectorStoreIndex`] to provide vector similarity search
 /// using Cloudflare's globally distributed Vectorize service.
 ///
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an index
-/// populated under one model is only meaningful under that same model).
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
 #[derive(Debug, Clone)]
-pub struct VectorizeVectorStore {
+pub struct VectorizeVectorStore<M> {
     /// The embedding model used to generate query embeddings.
-    model: EmbeddingModelHandle,
+    model: M,
     /// The HTTP client for Vectorize API.
     client: VectorizeClient,
 }
 
-impl VectorizeVectorStore {
+impl<M: EmbeddingModel> VectorizeVectorStore<M> {
     /// Creates a new Vectorize vector store.
     ///
     /// # Arguments
@@ -69,19 +69,19 @@ impl VectorizeVectorStore {
     /// * `index_name` - Name of the Vectorize index
     /// * `api_token` - Cloudflare API token with Vectorize read permissions
     pub fn new(
-        model: impl EmbeddingModel + 'static,
+        model: M,
         account_id: impl Into<String>,
         index_name: impl Into<String>,
         api_token: impl Into<String>,
     ) -> Self {
         Self {
-            model: EmbeddingModelHandle::new(model),
+            model,
             client: VectorizeClient::new(account_id, index_name, api_token),
         }
     }
 }
 
-impl VectorizeVectorStore {
+impl<M: EmbeddingModel> VectorizeVectorStore<M> {
     /// Validates the filter, embeds the query, and returns the threshold-filtered matches.
     async fn query_matches(
         &self,
@@ -112,7 +112,7 @@ impl VectorizeVectorStore {
     }
 }
 
-impl VectorStoreIndex for VectorizeVectorStore {
+impl<M: EmbeddingModel> VectorStoreIndex for VectorizeVectorStore<M> {
     type Filter = VectorizeFilter;
 
     async fn top_n<T: for<'a> Deserialize<'a> + Send>(
@@ -145,7 +145,7 @@ impl VectorStoreIndex for VectorizeVectorStore {
     }
 }
 
-impl InsertDocuments for VectorizeVectorStore {
+impl<M: EmbeddingModel> InsertDocuments for VectorizeVectorStore<M> {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,

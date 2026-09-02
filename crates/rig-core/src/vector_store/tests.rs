@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use super::*;
-use crate::vector_store::request::Filter;
+use crate::vector_store::request::{DynamicSearchFilter, Filter};
 
 struct TestIndex {
     queries: Arc<Mutex<Vec<String>>>,
@@ -124,9 +124,19 @@ async fn dynamic_native_filter_preserves_backend_documents() {
         .filter(Filter::eq("tag", json!("example")))
         .build();
 
-    let results = VectorStoreIndexDyn::top_n(&NativeIndex, request)
-        .await
-        .expect("dynamic vector search should succeed");
+    let outcome = crate::bus::serve_inline(
+        &crate::bus::adapters::RetrieveAdapter::new(NativeIndex),
+        crate::effect::EffectKind::Retrieve {
+            query: crate::effect::RetrieveQuery::TopN { req: request },
+        },
+    )
+    .await
+    .expect("dynamic vector search should succeed");
+    let crate::effect::Outcome::Documents(crate::effect::RetrievedDocuments::Scored(results)) =
+        outcome
+    else {
+        panic!("expected scored documents");
+    };
 
     assert_eq!(results[0].2.as_array().map(Vec::len), Some(401));
 }

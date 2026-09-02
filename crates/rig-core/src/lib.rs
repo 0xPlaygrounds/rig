@@ -220,9 +220,10 @@ const _: fn() = || {
     assert_send_sync_static::<tool::PortableDynamicTool>();
     assert_send_sync_static::<tool::ManagedToolToken>();
     assert_send_sync_static::<streaming::StreamEvent>();
-    // The erased model every driver (futures agent, systems runtime, registry)
-    // holds, and the serializable identity it is resolved from.
-    assert_send_sync_static::<completion::ModelHandle>();
+    // The typed views every driver (futures agent, systems runtime, registry)
+    // holds, and the serializable identity they are resolved from.
+    assert_send_sync_static::<bus::ModelHandle>();
+    assert_send_sync_static::<bus::Dispatcher>();
     assert_send_sync_static::<completion::ModelRef>();
     // The erased tool set a driver forks and the per-turn catalog it pins.
     assert_send_sync_static::<tool::ToolSet>();

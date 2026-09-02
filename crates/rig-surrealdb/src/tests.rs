@@ -1,7 +1,7 @@
 use super::{Mem, SurrealSearchFilter, SurrealVectorStore};
 use rig_core::{
     embeddings::{Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse},
-    vector_store::{VectorStoreIndexDyn, request::Filter},
+    vector_store::{VectorStoreIndex, request::Filter},
 };
 use serde_json::json;
 use surrealdb::Surreal;
@@ -61,7 +61,7 @@ fn filter_from_json_preserves_nested_values() {
 #[allow(clippy::panic)]
 #[tokio::test]
 async fn surreal_vector_store_supports_type_erased_queries() {
-    fn assert_dyn<T: VectorStoreIndexDyn + Send + Sync + 'static>(_: T) {}
+    fn assert_dyn<T: VectorStoreIndex + Send + Sync + 'static>(_: T) {}
 
     let surreal = match Surreal::new::<Mem>(()).await {
         Ok(surreal) => surreal,

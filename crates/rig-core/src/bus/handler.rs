@@ -40,6 +40,77 @@ pub trait Handler: WasmCompatSend + WasmCompatSync {
     fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_>;
 }
 
+/// A handler behind the bus's one erasure, shareable between the driver
+/// and every dispatcher: `Clone + Send + Sync + 'static` on every target.
+///
+/// On native this is `Arc<dyn Handler + Send + Sync>` (every handler is,
+/// through the `WasmCompat*` supertraits). On browser wasm the supertraits
+/// are no-op markers — a provider client there is `!Send` — and the target
+/// has no threads, so the cell asserts `Send + Sync` for the single-threaded
+/// runtime the same way the markers do; nothing on that target can move a
+/// handler across a thread that does not exist.
+#[derive(Clone)]
+pub struct ErasedHandler(ErasedInner);
+
+#[cfg(not(target_family = "wasm"))]
+type ErasedInner = std::sync::Arc<dyn Handler + Send + Sync>;
+#[cfg(target_family = "wasm")]
+type ErasedInner = std::sync::Arc<dyn Handler>;
+
+// SAFETY: `wasm32-unknown-unknown` is single-threaded; there is no thread to
+// send to or share with, which is the premise of `WasmCompatSend` and
+// `WasmCompatSync` being no-op markers on this target.
+#[cfg(target_family = "wasm")]
+unsafe impl Send for ErasedHandler {}
+#[cfg(target_family = "wasm")]
+unsafe impl Sync for ErasedHandler {}
+
+impl ErasedHandler {
+    /// Erase `handler`.
+    pub fn new(handler: impl Handler + 'static) -> Self {
+        Self(std::sync::Arc::new(handler))
+    }
+
+    /// Whether two erased handlers are the same allocation.
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl std::fmt::Debug for ErasedHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ErasedHandler")
+            .field("key", &self.0.descriptor().key)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Handler for ErasedHandler {
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.0.descriptor()
+    }
+
+    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+        self.0.handle(kind, sink)
+    }
+}
+
+/// Serve one effect on `handler` right here, without a bus: the inline
+/// path a standalone tool set or catalog uses. The bus is still the only
+/// erasure — this is a direct call on a [`Handler`].
+pub async fn serve_inline(handler: &dyn Handler, kind: EffectKind) -> Result<Outcome, ErrorReport> {
+    let id = EffectId::from_raw(0);
+    let (reply, receiver) = oneshot::channel();
+    handler.handle(kind, OutcomeSink::unary(id, reply)).await;
+    match receiver.await {
+        Ok(outcome) => outcome,
+        Err(oneshot::Canceled) => Err(ErrorReport::new(
+            ErrorKind::Internal,
+            "the handler dropped its outcome sink without answering",
+        )),
+    }
+}
+
 /// The consumer dropped its [`Pending`](super::Pending) or
 /// [`EffectStream`](super::EffectStream): nobody is listening. A streaming
 /// handler stops on it — that is how cancellation reaches a provider stream.
@@ -93,7 +164,8 @@ enum SinkInner {
         message_id: Option<String>,
     },
     /// A streaming dispatch. A unary handler answering here has its
-    /// completion re-emitted as events.
+    /// completion re-emitted as events. `finished` is set once a unary
+    /// answer was re-emitted, so a later `send` is refused.
     Stream {
         events: mpsc::Sender<Result<StreamEvent, ErrorReport>>,
         finished: bool,
@@ -229,12 +301,12 @@ impl OutcomeSink {
                 if *finished {
                     return Err(SinkClosed);
                 }
-                let is_final = matches!(item, Ok(StreamEvent::Final(_)));
-                events.send(item).await.map_err(|_| SinkClosed)?;
-                if is_final {
-                    *finished = true;
-                }
-                Ok(())
+                // `Final` is not the end of the channel: a wire may still
+                // deliver frames after its terminal record (a late message
+                // id, a provider error), and the consumer's post-final rules
+                // are its own. The stream ends when the handler drops the
+                // sink.
+                events.send(item).await.map_err(|_| SinkClosed)
             }
             SinkInner::Unary {
                 reply,

@@ -27,14 +27,13 @@ use std::sync::{Arc, Mutex};
 use futures::StreamExt;
 
 use super::{
-    ModelHandle,
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
     hook::AgentHook,
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
-use rig_core::{memory::ConversationMemory, message::ToolChoice};
+use rig_core::{completion::ModelRef, message::ToolChoice};
 
 use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
@@ -78,7 +77,7 @@ pub struct AgentRunner {
 /// [`AgentRunner::resolve_history_and_memory`].
 pub(crate) type HistoryAndMemory = (
     Option<Vec<Message>>,
-    Option<(Arc<dyn ConversationMemory>, rig_core::id::ConversationId)>,
+    Option<(rig_core::bus::MemoryHandle, rig_core::id::ConversationId)>,
 );
 
 impl AgentRunner {
@@ -132,17 +131,19 @@ impl AgentRunner {
     /// replace the candidate before each model call (including retries).
     /// Append an unconditional selecting hook last when the run must always
     /// use one model.
-    pub fn using_model(mut self, model: ModelHandle) -> Self {
-        self.config.model = model;
+    pub fn using_model(mut self, label: impl Into<ModelRef>) -> Self {
+        self.config.model_key = rig_core::bus::model_key(label.into().as_str());
         self
     }
 
-    /// Erase and set a typed default model for this run.
-    pub fn using_model_value<M>(self, model: M) -> Self
+    /// Register `model` on the agent's bus under a generated label and use
+    /// it as this run's default.
+    pub fn using_model_value<M>(mut self, model: M) -> Self
     where
         M: CompletionModel + 'static,
     {
-        self.using_model(ModelHandle::new(model))
+        self.config.model_key = self.config.bus.register_anonymous_model(model);
+        self
     }
 
     /// Set the typed context cloned for every tool dispatch in this run.
@@ -325,7 +326,7 @@ impl AgentRunner {
 
     /// Disable conversation memory for this run (no load, no save).
     pub fn without_memory(mut self) -> Self {
-        self.config.memory = None;
+        self.config.memory_key = None;
         self.config.conversation_id = None;
         self
     }
@@ -432,10 +433,16 @@ impl AgentRunner {
     ) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
         match &self.chat_history {
             Some(_) => Ok((None, None)),
-            None => match (&self.config.memory, &self.config.conversation_id) {
+            None => match (self.config.memory_handle(), &self.config.conversation_id) {
                 (Some(memory), Some(id)) => {
-                    let loaded = memory.load(id).await?;
-                    Ok((Some(loaded), Some((memory.clone(), id.clone()))))
+                    let memory = memory.map_err(|report| {
+                        rig_core::memory::MemoryError::Internal(report.to_string())
+                    })?;
+                    let loaded = memory
+                        .load(id.clone())
+                        .await
+                        .map_err(memory_error_from_report)?;
+                    Ok((Some(loaded), Some((memory, id.clone()))))
                 }
                 _ => Ok((None, None)),
             },
@@ -447,7 +454,17 @@ impl AgentRunner {
     /// to terminate cancels the run.
     pub async fn run(self) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) = self.open_agent_span();
-        let (history_override, memory_handle) = self.resolve_history_and_memory().await?;
+        let bus = self.config.bus.clone();
+        // A memory load is a dispatch too: drive the bus while resolving.
+        let (history_override, memory_handle) = {
+            let resolve = self.resolve_history_and_memory();
+            futures::pin_mut!(resolve);
+            let mut driven = bus.drive(futures::stream::once(resolve));
+            match driven.next().await {
+                Some(resolved) => resolved?,
+                None => (None, None),
+            }
+        };
         let run = self.build_run(history_override);
 
         // Fold the shared engine to its final response. The blocking surface
@@ -465,6 +482,7 @@ impl AgentRunner {
             memory_handle,
             false,
         );
+        let driver = bus.drive(Box::pin(driver));
         futures::pin_mut!(driver);
 
         let mut response = None;
@@ -500,3 +518,33 @@ mod tests;
 
 #[cfg(test)]
 mod prompt_tests;
+
+/// A memory report back into the memory error the run surface names.
+pub(crate) fn memory_error_from_report(
+    report: rig_core::error::ErrorReport,
+) -> rig_core::memory::MemoryError {
+    match report.kind {
+        rig_core::error::ErrorKind::MemoryPolicy => {
+            rig_core::memory::MemoryError::Policy(report.message)
+        }
+        rig_core::error::ErrorKind::MemoryBackend => {
+            rig_core::memory::MemoryError::Backend(Box::new(report))
+        }
+        rig_core::error::ErrorKind::Http { .. }
+        | rig_core::error::ErrorKind::Json
+        | rig_core::error::ErrorKind::Url
+        | rig_core::error::ErrorKind::Request
+        | rig_core::error::ErrorKind::Response
+        | rig_core::error::ErrorKind::Provider
+        | rig_core::error::ErrorKind::ProviderResponse
+        | rig_core::error::ErrorKind::Tool(_)
+        | rig_core::error::ErrorKind::Internal
+        | rig_core::error::ErrorKind::Cancelled
+        | rig_core::error::ErrorKind::Timeout
+        | rig_core::error::ErrorKind::BusClosed
+        | rig_core::error::ErrorKind::HandlerUnavailable
+        | rig_core::error::ErrorKind::Other => {
+            rig_core::memory::MemoryError::Internal(report.to_string())
+        }
+    }
+}

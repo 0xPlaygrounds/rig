@@ -27,7 +27,7 @@ impl AgentHook for StartStopper {
 async fn run_start_rewrites_chain_in_registration_order() {
     let mut stack = HookStack::with(StartRewriter("-a"));
     stack.push(StartRewriter("-b"));
-    let ctx = HookContext::new(false, None);
+    let ctx = HookContext::new(false, None, None);
     let prompt = Message::user("p");
     let action = stack
         .on_run_start(
@@ -59,7 +59,7 @@ async fn run_start_first_stop_wins_and_short_circuits() {
         }
     }
     stack.push(Panicker);
-    let ctx = HookContext::new(false, None);
+    let ctx = HookContext::new(false, None, None);
     let prompt = Message::user("p");
     let action = stack
         .on_run_start(
@@ -75,7 +75,7 @@ async fn run_start_first_stop_wins_and_short_circuits() {
 
 #[test]
 fn append_entry_stamps_the_current_turn_and_reads_replay_in_order() {
-    let ctx = HookContext::new(false, None);
+    let ctx = HookContext::new(false, None, None);
     // A resumed run's carried entries come first.
     ctx.seed_entries(&[RunEntry {
         kind: "counter".into(),
@@ -130,7 +130,7 @@ async fn nested_completion_patches_compose() {
     let prompt = Message::user("hi");
     let action = outer
         .on_completion_call(
-            &HookContext::new(false, None),
+            &HookContext::new(false, None, None),
             CompletionCall {
                 prompt: &prompt,
                 history: &[],
@@ -174,7 +174,7 @@ async fn tool_call_rewrites_chain_in_registration_order() {
 
     let action = stack
         .on_tool_call(
-            &HookContext::new(false, None),
+            &HookContext::new(false, None, None),
             ToolCall {
                 tool_name: "tool",
                 tool_call_id: Some("provider-id"),
@@ -234,7 +234,7 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
 
     let action = stack
         .on_tool_result(
-            &HookContext::new(false, None),
+            &HookContext::new(false, None, None),
             ToolResultEvent {
                 tool_name: "tool",
                 tool_call_id: None,
@@ -305,7 +305,7 @@ async fn terminal_result_action_short_circuits_later_hooks() {
     let context = ToolContext::new();
     let action = stack
         .on_tool_result(
-            &HookContext::new(false, None),
+            &HookContext::new(false, None, None),
             ToolResultEvent {
                 tool_name: "tool",
                 tool_call_id: None,
@@ -332,16 +332,16 @@ use std::sync::{
 use serde_json::{Value, json};
 
 fn ctx() -> HookContext {
-    HookContext::new(false, Some("test-agent".to_string()))
+    HookContext::new(false, Some("test-agent".to_string()), None)
 }
 
-fn model(label: &str) -> ModelHandle {
-    ModelHandle::named(label, crate::test_utils::MockCompletionModel::default())
+fn model(label: &str) -> ModelRef {
+    ModelRef::new(label)
 }
 
 enum RouteDecision {
     Continue,
-    Select(ModelHandle),
+    Select(ModelRef),
     Stop,
 }
 
@@ -362,7 +362,7 @@ impl AgentHook for RouteRecorder {
         self.log
             .lock()
             .expect("route log")
-            .push((self.label, event.selected_model.label().map(str::to_owned)));
+            .push((self.label, Some(event.selected_model.to_string())));
         match &self.decision {
             RouteDecision::Continue => ModelSelectionAction::continue_run(),
             RouteDecision::Select(model) => ModelSelectionAction::select(model.clone()),
@@ -371,7 +371,7 @@ impl AgentHook for RouteRecorder {
     }
 }
 
-fn model_selection<'a>(prompt: &'a Message, default_model: &'a ModelHandle) -> ModelSelection<'a> {
+fn model_selection<'a>(prompt: &'a Message, default_model: &'a ModelRef) -> ModelSelection<'a> {
     ModelSelection {
         prompt,
         history: &[],
@@ -410,7 +410,7 @@ fn model_selections_chain_in_registration_order_and_last_wins() {
     let ModelSelectionAction::Select(selected) = action else {
         panic!("stack should select the last candidate");
     };
-    assert_eq!(selected.label(), Some("last"));
+    assert_eq!(selected.as_str(), "last");
     assert_eq!(
         log.lock().expect("route log").as_slice(),
         &[
@@ -474,7 +474,7 @@ fn nested_model_selection_stacks_preserve_candidate_chaining() {
     let ModelSelectionAction::Select(selected) = action else {
         panic!("nested stack should preserve the inner selection");
     };
-    assert_eq!(selected.label(), Some("inner"));
+    assert_eq!(selected.as_str(), "inner");
     assert_eq!(
         log.lock().expect("route log").as_slice(),
         &[
@@ -512,7 +512,7 @@ fn nested_model_selection_stack_without_a_selection_preserves_outer_candidate() 
     let ModelSelectionAction::Select(selected) = action else {
         panic!("outer selection should survive a continuing nested stack");
     };
-    assert_eq!(selected.label(), Some("outer"));
+    assert_eq!(selected.as_str(), "outer");
     assert_eq!(
         log.lock().expect("route log").as_slice(),
         &[
@@ -1034,7 +1034,7 @@ fn scratchpad_is_shared_across_clones() {
 
 #[test]
 fn hook_context_reports_identity_and_turn() {
-    let context = HookContext::new(true, Some("agent".into()));
+    let context = HookContext::new(true, Some("agent".into()), None);
     assert!(context.is_streaming());
     assert_eq!(context.agent_name(), Some("agent"));
     context.set_turn(3);

@@ -205,8 +205,13 @@ use rig_core::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
+use rig_core::{
+    completion::ModelRef,
+    effect::{EffectFamily, EffectId, EffectKind, Outcome},
+    error::{ErrorKind, ErrorReport},
+};
+
 use crate::{
-    agent::ModelHandle,
     completion::{ResponseIdentity, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
@@ -381,6 +386,8 @@ impl Drop for ToolCallResolutionFrame<'_> {
 /// Run-scoped context supplied to hooks.
 #[derive(Debug)]
 pub struct HookContext {
+    /// The bus the run dispatches through, when it has one.
+    dispatcher: Option<rig_core::bus::Dispatcher>,
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
@@ -397,8 +404,13 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
+    pub(crate) fn new(
+        is_streaming: bool,
+        agent_name: Option<String>,
+        dispatcher: Option<rig_core::bus::Dispatcher>,
+    ) -> Self {
         Self {
+            dispatcher,
             run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
@@ -435,6 +447,13 @@ impl HookContext {
     }
 
     /// Stable run identifier.
+    /// The bus this run dispatches through, for a hook that wants to
+    /// dispatch its own effects (a retrieval, a custom effect). `None` for
+    /// a context built outside a run.
+    pub fn dispatcher(&self) -> Option<&rig_core::bus::Dispatcher> {
+        self.dispatcher.as_ref()
+    }
+
     pub fn run_id(&self) -> RunId {
         self.run_id
     }
@@ -596,11 +615,11 @@ pub struct ModelSelection<'a> {
     /// (in hook registration order), when any hook patched the request.
     pub request_patch: Option<&'a RequestPatch>,
     /// Model that executed the preceding issued attempt in this run, if any.
-    pub previous_model: Option<&'a ModelHandle>,
+    pub previous_model: Option<&'a ModelRef>,
     /// Runner default used as the initial candidate for this call.
-    pub default_model: &'a ModelHandle,
+    pub default_model: &'a ModelRef,
     /// Candidate after all earlier model-selection hooks.
-    pub selected_model: &'a ModelHandle,
+    pub selected_model: &'a ModelRef,
 }
 
 impl<'a> ModelSelection<'a> {
@@ -612,9 +631,9 @@ impl<'a> ModelSelection<'a> {
         prompt: &'a Message,
         history: &'a [Message],
         request_patch: Option<&'a RequestPatch>,
-        previous_model: Option<&'a ModelHandle>,
-        default_model: &'a ModelHandle,
-        selected_model: &'a ModelHandle,
+        previous_model: Option<&'a ModelRef>,
+        default_model: &'a ModelRef,
+        selected_model: &'a ModelRef,
     ) -> Self {
         Self {
             prompt,
@@ -924,6 +943,136 @@ pub enum StepEventKind {
     TextDelta,
     ReasoningDelta,
     ToolCallDelta,
+    /// `on_dispatch`/`on_outcome` for a completion effect.
+    CompletionDispatch,
+    /// `on_dispatch`/`on_outcome` for a tool-call effect.
+    ToolDispatch,
+    /// `on_dispatch`/`on_outcome` for an embedding effect (observe-only by
+    /// default: opt in through `observes`).
+    EmbedDispatch,
+    /// `on_dispatch`/`on_outcome` for a conversation-memory effect
+    /// (observe-only by default).
+    MemoryDispatch,
+    /// `on_dispatch`/`on_outcome` for a retrieval effect (observe-only by
+    /// default).
+    RetrieveDispatch,
+    /// `on_dispatch`/`on_outcome` for a custom effect (observe-only by
+    /// default).
+    CustomDispatch,
+}
+
+impl StepEventKind {
+    /// The dispatch-boundary event kind for an effect family.
+    pub const fn for_family(family: EffectFamily) -> Self {
+        match family {
+            EffectFamily::Completion => Self::CompletionDispatch,
+            EffectFamily::Tool => Self::ToolDispatch,
+            EffectFamily::Embed => Self::EmbedDispatch,
+            EffectFamily::Memory => Self::MemoryDispatch,
+            EffectFamily::Retrieve => Self::RetrieveDispatch,
+            EffectFamily::Custom => Self::CustomDispatch,
+        }
+    }
+}
+
+/// An effect about to be dispatched: what `on_dispatch` sees.
+#[derive(Clone, Copy)]
+pub struct DispatchEvent<'a> {
+    /// The dispatch's id, minted before the hook runs so an observation can
+    /// be correlated with the bus-tap record.
+    pub id: EffectId,
+    /// The effect, after any earlier hook's patch.
+    pub kind: &'a EffectKind,
+    /// The turn the effect belongs to.
+    pub turn: usize,
+    /// The block the effect answers, for a tool call the model emitted.
+    pub block_id: Option<&'a BlockId>,
+}
+
+/// What a hook decides at the dispatch boundary. Closed on purpose.
+#[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a patch carries a whole effect by design; the common `Proceed` is returned by value once per dispatch"
+)]
+pub enum DispatchAction {
+    /// Dispatch as is.
+    Proceed,
+    /// Dispatch this effect instead. A patch must keep the family; the
+    /// engine rejects a family change as an internal error.
+    Patch(EffectKind),
+    /// Do not dispatch: the effect resolves failed with this report and
+    /// never reaches a handler. For a tool call a report of kind
+    /// `Cancelled` cancels the run; any other kind becomes the skipped
+    /// result the model sees. For a completion any report fails the turn.
+    Deny(ErrorReport),
+}
+
+impl DispatchAction {
+    /// Dispatch as is.
+    pub fn proceed() -> Self {
+        Self::Proceed
+    }
+
+    /// Dispatch this effect instead.
+    pub fn patch(kind: EffectKind) -> Self {
+        Self::Patch(kind)
+    }
+
+    /// Deny with a report.
+    pub fn deny(report: ErrorReport) -> Self {
+        Self::Deny(report)
+    }
+
+    /// Deny a tool call so the model sees it as skipped with `reason`.
+    pub fn skip(reason: impl Into<String>) -> Self {
+        Self::Deny(ErrorReport::new(ErrorKind::Other, reason))
+    }
+
+    /// Deny and cancel the run with `reason`.
+    pub fn stop(reason: impl Into<String>) -> Self {
+        Self::Deny(ErrorReport::new(ErrorKind::Cancelled, reason))
+    }
+}
+
+/// An effect's answer: what `on_outcome` sees.
+#[derive(Clone, Copy)]
+pub struct OutcomeEvent<'a> {
+    /// The dispatch's id.
+    pub id: EffectId,
+    /// The effect that was dispatched (after patches).
+    pub kind: &'a EffectKind,
+    /// The answer, after any earlier hook's replacement.
+    pub outcome: &'a Result<Outcome, ErrorReport>,
+    /// The turn the effect belongs to.
+    pub turn: usize,
+    /// The block the effect answered, for a tool call the model emitted.
+    pub block_id: Option<&'a BlockId>,
+}
+
+/// What a hook decides after an effect resolved. Closed on purpose.
+#[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a replacement carries a whole outcome by design; the common `Proceed` is returned by value once per dispatch"
+)]
+pub enum OutcomeAction {
+    /// Keep the answer.
+    Proceed,
+    /// Use this answer instead.
+    Replace(Result<Outcome, ErrorReport>),
+}
+
+impl OutcomeAction {
+    /// Keep the answer.
+    pub fn proceed() -> Self {
+        Self::Proceed
+    }
+
+    /// Use this answer instead.
+    pub fn replace(outcome: Result<Outcome, ErrorReport>) -> Self {
+        Self::Replace(outcome)
+    }
 }
 
 pub use crate::run::patch::RequestPatch;
@@ -933,8 +1082,9 @@ pub use crate::run::patch::RequestPatch;
 pub enum ModelSelectionAction {
     /// Keep the candidate supplied to this hook.
     Continue,
-    /// Replace the candidate and pass it to later hooks.
-    Select(ModelHandle),
+    /// Replace the candidate and pass it to later hooks: the label of a
+    /// model registered on the agent's bus.
+    Select(ModelRef),
     /// Stop the run before request preparation or model execution.
     Stop(String),
 }
@@ -946,8 +1096,8 @@ impl ModelSelectionAction {
     }
 
     /// Selects `model` and passes it to later hooks.
-    pub fn select(model: ModelHandle) -> Self {
-        Self::Select(model)
+    pub fn select(model: impl Into<ModelRef>) -> Self {
+        Self::Select(model.into())
     }
 
     /// Stops the run before the pending model attempt.
@@ -1251,9 +1401,39 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// Observation interest hint, primarily for high-frequency deltas.
-    fn observes(&self, _kind: StepEventKind) -> bool {
-        true
+    /// An effect is about to be dispatched on the agent's bus. Runs for
+    /// every family; `Memory`, `Retrieve`, `Embed` and `Custom` dispatches
+    /// are observe-only unless the hook opts in through
+    /// [`AgentHook::observes`] for their [`StepEventKind`].
+    fn on_dispatch(
+        &self,
+        _ctx: &HookContext,
+        _event: DispatchEvent<'_>,
+    ) -> impl Future<Output = DispatchAction> + WasmCompatSend {
+        async { DispatchAction::Proceed }
+    }
+
+    /// An effect resolved on the agent's bus.
+    fn on_outcome(
+        &self,
+        _ctx: &HookContext,
+        _event: OutcomeEvent<'_>,
+    ) -> impl Future<Output = OutcomeAction> + WasmCompatSend {
+        async { OutcomeAction::Proceed }
+    }
+
+    /// Observation interest hint, primarily for high-frequency deltas. The
+    /// internal `Memory`/`Retrieve`/`Embed`/`Custom` dispatch events are
+    /// off by default: no hook saw those calls before the bus, so a hook
+    /// that wants to gate them opts in here.
+    fn observes(&self, kind: StepEventKind) -> bool {
+        !matches!(
+            kind,
+            StepEventKind::EmbedDispatch
+                | StepEventKind::MemoryDispatch
+                | StepEventKind::RetrieveDispatch
+                | StepEventKind::CustomDispatch
+        )
     }
 }
 
@@ -1352,6 +1532,16 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         ctx: &'a HookContext,
         event: ToolCall<'a>,
     ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
+    fn dispatch<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: DispatchEvent<'a>,
+    ) -> WasmBoxedFuture<'a, DispatchAction>;
+    fn outcome<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: OutcomeEvent<'a>,
+    ) -> WasmBoxedFuture<'a, OutcomeAction>;
     for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
@@ -1399,6 +1589,20 @@ where
             let action = self.on_tool_call(ctx, event).await;
             (action, frame.finish())
         })
+    }
+    fn dispatch<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: DispatchEvent<'a>,
+    ) -> WasmBoxedFuture<'a, DispatchAction> {
+        Box::pin(self.on_dispatch(ctx, event))
+    }
+    fn outcome<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: OutcomeEvent<'a>,
+    ) -> WasmBoxedFuture<'a, OutcomeAction> {
+        Box::pin(self.on_outcome(ctx, event))
     }
     for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {
@@ -1659,6 +1863,45 @@ impl AgentHook for HookStack {
         }
         effective.map_or(ToolResultAction::Keep, ToolResultAction::Rewrite)
     }
+    async fn on_dispatch(&self, ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let kind = StepEventKind::for_family(event.kind.family());
+        let mut patched: Option<EffectKind> = None;
+        for hook in &self.hooks {
+            if !hook.observes(kind) {
+                continue;
+            }
+            let current = DispatchEvent {
+                kind: patched.as_ref().unwrap_or(event.kind),
+                ..event
+            };
+            match hook.dispatch(ctx, current).await {
+                DispatchAction::Proceed => {}
+                DispatchAction::Patch(next) => patched = Some(next),
+                deny @ DispatchAction::Deny(_) => return deny,
+            }
+        }
+        patched.map_or(DispatchAction::Proceed, DispatchAction::Patch)
+    }
+
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let kind = StepEventKind::for_family(event.kind.family());
+        let mut replaced: Option<Result<Outcome, ErrorReport>> = None;
+        for hook in &self.hooks {
+            if !hook.observes(kind) {
+                continue;
+            }
+            let current = OutcomeEvent {
+                outcome: replaced.as_ref().unwrap_or(event.outcome),
+                ..event
+            };
+            match hook.outcome(ctx, current).await {
+                OutcomeAction::Proceed => {}
+                OutcomeAction::Replace(next) => replaced = Some(next),
+            }
+        }
+        replaced.map_or(OutcomeAction::Proceed, OutcomeAction::Replace)
+    }
+
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))
     }

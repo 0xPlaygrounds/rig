@@ -2,7 +2,7 @@
 //! values a dispatch returns.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fmt,
     pin::Pin,
     sync::{
@@ -23,31 +23,16 @@ use crate::{
     streaming::StreamEvent,
 };
 
-use super::{Handler, OutcomeSink};
+use super::{ErasedHandler, Handler, OutcomeSink};
 
-/// A handler registered at runtime through a `Dispatcher`. It crosses the
-/// dispatcher/driver boundary, so it is `Send + Sync` on every target — the
-/// same requirement a control message on the command channel would carry.
-pub(super) type RuntimeHandler = Arc<dyn Handler + Send + Sync>;
-
-/// State shared between every `Dispatcher` clone and the driver: the
-/// descriptor snapshot of every handler, the runtime-registered handlers,
-/// and the closed flag. Pre-spawn handlers stay in the driver (they may be
-/// `!Send` on browser wasm); the driver publishes their descriptors here.
+/// State shared between every `Dispatcher` clone and the driver.
 pub(super) struct Shared {
     next_id: AtomicU64,
-    /// Every registered handler's descriptor, from either side — what
-    /// `Dispatcher::descriptor` snapshots without a round trip.
-    descriptors: RwLock<BTreeMap<HandlerKey, HandlerDescriptor>>,
-    /// Handlers registered at runtime. Written synchronously — no control
-    /// message, so a registration made while nobody is driving (an MCP
-    /// reconcile, a sync `add_tool`) never waits on the driver. A runtime
-    /// registration outranks a pre-spawn one under the same key.
-    runtime: RwLock<BTreeMap<HandlerKey, RuntimeHandler>>,
-    /// Keys deregistered through a dispatcher. The driver consults this
-    /// before serving from its own table, so a pre-spawn handler can be
-    /// retired from the client side.
-    tombstones: RwLock<BTreeSet<HandlerKey>>,
+    /// The handler table. Registration writes it synchronously from either
+    /// side — no control message, so a registration made while nobody is
+    /// driving (an MCP reconcile, a sync `add_tool`) never waits on the
+    /// driver — and the driver reads it when it serves a command.
+    handlers: RwLock<BTreeMap<HandlerKey, ErasedHandler>>,
     /// Set by the driver's drop guard: every reply that comes back
     /// `Canceled` after this is `BusClosed`, not a handler defect.
     closed: AtomicBool,
@@ -57,9 +42,7 @@ impl Shared {
     pub(super) fn new() -> Self {
         Self {
             next_id: AtomicU64::new(1),
-            descriptors: RwLock::new(BTreeMap::new()),
-            runtime: RwLock::new(BTreeMap::new()),
-            tombstones: RwLock::new(BTreeSet::new()),
+            handlers: RwLock::new(BTreeMap::new()),
             closed: AtomicBool::new(false),
         }
     }
@@ -72,86 +55,41 @@ impl Shared {
         self.closed.load(Ordering::SeqCst)
     }
 
-    /// A runtime registration (dispatcher side).
-    pub(super) fn register_runtime(&self, key: HandlerKey, handler: RuntimeHandler) {
-        let descriptor = handler.descriptor();
-        self.tombstones
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&key);
-        self.descriptors
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(key.clone(), descriptor);
-        self.runtime
+    pub(super) fn register(&self, key: HandlerKey, handler: ErasedHandler) {
+        self.handlers
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(key, handler);
     }
 
-    /// A pre-spawn registration (driver side): publish the descriptor and
-    /// clear anything that would outrank the driver's table entry.
-    pub(super) fn publish_local(&self, key: HandlerKey, descriptor: HandlerDescriptor) {
-        self.tombstones
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&key);
-        self.runtime
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&key);
-        self.descriptors
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(key, descriptor);
-    }
-
-    /// Retire `key` from either side. Returns whether it was registered.
     pub(super) fn deregister(&self, key: &HandlerKey) -> bool {
-        self.runtime
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(key);
-        let known = self
-            .descriptors
+        self.handlers
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(key)
-            .is_some();
-        if known {
-            self.tombstones
-                .write()
-                .unwrap_or_else(PoisonError::into_inner)
-                .insert(key.clone());
-        }
-        known
+            .is_some()
     }
 
-    pub(super) fn is_tombstoned(&self, key: &HandlerKey) -> bool {
-        self.tombstones
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .contains(key)
-    }
-
-    pub(super) fn runtime_handler(&self, key: &HandlerKey) -> Option<RuntimeHandler> {
-        self.runtime
+    pub(super) fn handler(&self, key: &HandlerKey) -> Option<ErasedHandler> {
+        self.handlers
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .get(key)
             .cloned()
     }
 
+    /// The descriptor of the handler under `key`, stamped with the key it
+    /// is registered under: the registration is authoritative, a handler's
+    /// self-declared key is only a default.
     pub(super) fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
-        self.descriptors
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(key)
-            .cloned()
+        self.handler(key).map(|handler| HandlerDescriptor {
+            key: key.clone(),
+            family: handler.descriptor().family,
+        })
     }
 
     pub(super) fn keys(&self) -> Vec<HandlerKey> {
-        self.descriptors
+        self.handlers
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .keys()
@@ -166,6 +104,15 @@ pub(super) struct Command {
     pub(super) key: HandlerKey,
     pub(super) kind: EffectKind,
     pub(super) reply: Reply,
+    /// The tracing span current at dispatch: the handler runs inside it,
+    /// so a provider's telemetry parents under the caller's span exactly
+    /// as a direct call would.
+    pub(super) span: tracing::Span,
+    /// Resolves `Canceled` when the consumer drops its `Pending` /
+    /// `EffectStream`: the driver races the handler against it, so a
+    /// dropped dispatch drops its handler future (and the provider call or
+    /// stream inside) the next time the driver is polled.
+    pub(super) cancel: oneshot::Receiver<()>,
 }
 
 pub(super) enum Reply {
@@ -224,6 +171,12 @@ impl Dispatcher {
         EffectId::from_raw(self.shared.next_id.fetch_add(1, Ordering::SeqCst))
     }
 
+    /// Mint the id a later [`Dispatcher::dispatch_with_id`] will carry, so a
+    /// hook can see the effect's identity before it is sent.
+    pub fn mint_id(&self) -> EffectId {
+        self.mint()
+    }
+
     /// Dispatch a unary effect. The returned [`Pending`] resolves to the
     /// handler's outcome, or to `BusClosed` / `HandlerUnavailable`.
     ///
@@ -231,8 +184,14 @@ impl Dispatcher {
     /// unary: the driver folds the handler's events and resolves the
     /// aggregated completion at `Final`.
     pub fn dispatch(&self, key: &HandlerKey, kind: EffectKind) -> Pending {
-        let id = self.mint();
+        self.dispatch_with_id(self.mint(), key, kind)
+    }
+
+    /// [`Dispatcher::dispatch`] under an id minted earlier with
+    /// [`Dispatcher::mint_id`].
+    pub fn dispatch_with_id(&self, id: EffectId, key: &HandlerKey, kind: EffectKind) -> Pending {
         let (reply, receiver) = oneshot::channel();
+        let (cancel_guard, cancel) = oneshot::channel();
         Pending {
             id,
             state: PendingState::Sending {
@@ -242,10 +201,13 @@ impl Dispatcher {
                     key: key.clone(),
                     kind,
                     reply: Reply::Unary(reply),
+                    span: tracing::Span::current(),
+                    cancel,
                 })),
             },
             receiver,
             shared: self.shared.clone(),
+            _cancel_guard: cancel_guard,
         }
     }
 
@@ -254,9 +216,20 @@ impl Dispatcher {
     /// dispatch of a unary kind resolves as one failed item with an
     /// invalid-dispatch report and never reaches a handler.
     pub fn dispatch_stream(&self, key: &HandlerKey, kind: EffectKind) -> EffectStream {
-        let id = self.mint();
+        self.dispatch_stream_with_id(self.mint(), key, kind)
+    }
+
+    /// [`Dispatcher::dispatch_stream`] under an id minted earlier with
+    /// [`Dispatcher::mint_id`].
+    pub fn dispatch_stream_with_id(
+        &self,
+        id: EffectId,
+        key: &HandlerKey,
+        kind: EffectKind,
+    ) -> EffectStream {
         if !kind.streams() {
             return EffectStream {
+                _cancel_guard: None,
                 id,
                 state: StreamState::Failed(Some(ErrorReport::new(
                     ErrorKind::Request,
@@ -269,6 +242,7 @@ impl Dispatcher {
             };
         }
         let (events, receiver) = mpsc::channel(self.stream_capacity);
+        let (cancel_guard, cancel) = oneshot::channel();
         EffectStream {
             id,
             state: StreamState::Sending {
@@ -278,10 +252,13 @@ impl Dispatcher {
                     key: key.clone(),
                     kind,
                     reply: Reply::Stream(events),
+                    span: tracing::Span::current(),
+                    cancel,
                 })),
                 receiver: Some(receiver),
             },
             shared: self.shared.clone(),
+            _cancel_guard: Some(cancel_guard),
         }
     }
 
@@ -299,26 +276,14 @@ impl Dispatcher {
     /// Register (or replace) the handler serving `key` on a live bus. Takes
     /// effect for the next dispatch; an in-flight dispatch keeps the handler
     /// it started with.
-    ///
-    /// The handler crosses from the client side to the driver, so it is
-    /// `Send + Sync` on every target (on native every handler already is).
-    /// A `!Send` browser-wasm handler is registered on the driver before it
-    /// is spawned ([`BusDriver::register`](super::BusDriver::register)).
-    pub fn register(
-        &self,
-        key: impl Into<HandlerKey>,
-        handler: impl Handler + Send + Sync + 'static,
-    ) {
-        self.shared.register_runtime(key.into(), Arc::new(handler));
+    pub fn register(&self, key: impl Into<HandlerKey>, handler: impl Handler + 'static) {
+        self.shared
+            .register(key.into(), ErasedHandler::new(handler));
     }
 
     /// Register an already-erased handler on a live bus.
-    pub fn register_erased(
-        &self,
-        key: impl Into<HandlerKey>,
-        handler: Arc<dyn Handler + Send + Sync>,
-    ) {
-        self.shared.register_runtime(key.into(), handler);
+    pub fn register_erased(&self, key: impl Into<HandlerKey>, handler: ErasedHandler) {
+        self.shared.register(key.into(), handler);
     }
 
     /// Remove the handler serving `key`; later dispatches answer
@@ -373,6 +338,8 @@ pub struct Pending {
     state: PendingState,
     receiver: oneshot::Receiver<Result<Outcome, ErrorReport>>,
     shared: Arc<Shared>,
+    /// Dropped with the value: the driver's cancel signal.
+    _cancel_guard: oneshot::Sender<()>,
 }
 
 impl Pending {
@@ -453,6 +420,8 @@ pub struct EffectStream {
     id: EffectId,
     state: StreamState,
     shared: Arc<Shared>,
+    /// Dropped with the value: the driver's cancel signal.
+    _cancel_guard: Option<oneshot::Sender<()>>,
 }
 
 impl EffectStream {
@@ -529,12 +498,16 @@ impl Stream for EffectStream {
                             Poll::Ready(Some(item))
                         }
                         Poll::Ready(None) => {
+                            // The handler dropped the sink. A provider stream
+                            // that ends without its terminal record is the
+                            // consumer's truncation rule to apply; only a bus
+                            // that closed under the dispatch is reported here.
                             let terminated = *saw_terminal;
                             this.state = StreamState::Done;
-                            if terminated {
-                                Poll::Ready(None)
+                            if !terminated && this.shared.is_closed() {
+                                Poll::Ready(Some(Err(bus_closed())))
                             } else {
-                                Poll::Ready(Some(Err(reply_dropped(&this.shared))))
+                                Poll::Ready(None)
                             }
                         }
                     };

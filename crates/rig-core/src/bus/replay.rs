@@ -2,7 +2,7 @@
 
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Mutex, PoisonError},
 };
 
 use crate::{
@@ -73,7 +73,7 @@ impl EffectLogReplayer {
     pub fn register_all(log: &EffectLog, driver: &mut super::BusDriver) {
         for replayer in Self::for_log(log) {
             let key = replayer.key.clone();
-            driver.register_erased(key, Arc::new(replayer));
+            driver.register_erased(key, super::ErasedHandler::new(replayer));
         }
     }
 
