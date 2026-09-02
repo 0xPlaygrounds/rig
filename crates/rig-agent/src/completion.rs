@@ -1,9 +1,6 @@
-//! High-level prompting traits and runtime errors for the classic agent runtime.
+//! Runtime errors for the classic agent runtime, plus the portable completion contracts.
 
-use serde::de::DeserializeOwned;
 use thiserror::Error;
-
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use rig_core::completion::*;
 
@@ -73,38 +70,6 @@ pub enum StructuredOutputError {
     /// The model returned no accepted content.
     #[error("EmptyResponse: model returned no content")]
     EmptyResponse,
-}
-
-/// High-level one-shot prompting for the classic runtime.
-pub trait Prompt: WasmCompatSend + WasmCompatSync {
-    /// Send a prompt and return accepted assistant text after runtime orchestration.
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
-}
-
-/// High-level prompting with caller-owned canonical chat history.
-pub trait Chat: WasmCompatSend + WasmCompatSync {
-    /// Execute one turn and append only committed messages to `chat_history`.
-    fn chat(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: &mut Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend;
-}
-
-/// High-level typed structured prompting for the classic runtime.
-pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
-    /// Request type returned for one target output type.
-    type TypedRequest<T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
-    where
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    /// Send a prompt and deserialize the accepted structured response as `T`.
-    fn prompt_typed<T>(&self, prompt: impl Into<Message> + WasmCompatSend) -> Self::TypedRequest<T>
-    where
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
 
 #[cfg(test)]

@@ -266,18 +266,16 @@ async fn run_agent(client: openrouter::Client, cell: Cell) -> Observation {
     let mut errors = Vec::new();
     match cell.transport {
         Transport::Blocking => {
-            if let Err(error) = rig::completion::Prompt::prompt(&agent, PROMPT).await {
+            if let Err(error) = agent.prompt(PROMPT).await {
                 errors.push(error.to_string());
             }
         }
         Transport::Streaming => {
-            let mut stream = rig::streaming::StreamingChat::stream_chat(
-                &agent,
-                PROMPT,
-                Vec::<rig::completion::Message>::new(),
-            )
-            .max_turns(1)
-            .await;
+            let mut stream = agent
+                .stream_chat(PROMPT, Vec::<rig::completion::Message>::new())
+                .max_turns(1)
+                .stream()
+                .await;
             errors = crate::support::collect_stream_observation(&mut stream)
                 .await
                 .errors;

@@ -13,11 +13,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
-use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -212,7 +210,8 @@ async fn request_overridden_by_hook_blocking() {
                 .prompt(PROMPT)
                 .max_turns(5)
                 .await
-                .expect("blocking prompt should succeed");
+                .expect("blocking prompt should succeed")
+                .output;
 
             assert!(!response.is_empty(), "agent should produce a final answer");
         },
@@ -242,7 +241,7 @@ async fn request_overridden_by_hook_streaming() {
                 .add_hook(ForceWeatherOnlyOnFirstTurn)
                 .build();
 
-            let mut stream = agent.stream_prompt(PROMPT).max_turns(5).await;
+            let mut stream = agent.stream_prompt(PROMPT).max_turns(5).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");

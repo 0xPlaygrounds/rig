@@ -1,6 +1,5 @@
 //! Z.AI Anthropic-compatible completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::zai;
 
@@ -18,5 +17,5 @@ async fn anthropic_compatible_completion_smoke() {
         .await
         .expect("Z.AI Anthropic-compatible completion should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 }

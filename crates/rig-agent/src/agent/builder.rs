@@ -275,7 +275,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// When set, the agent will automatically load prior conversation history before
     /// each prompt and append the new turn after a successful response. A
     /// `conversation_id` must be supplied either via [`AgentBuilder::conversation`]
-    /// or per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
+    /// or per-request via [`crate::agent::AgentRunner::conversation`].
     /// If neither is set, memory is silently bypassed.
     pub fn memory<B>(mut self, memory: B) -> Self
     where
@@ -288,7 +288,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// Set a default conversation id used when none is provided per-request.
     ///
     /// Most agents are reused across users or threads; prefer setting the id
-    /// per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
+    /// per-request via [`crate::agent::AgentRunner::conversation`].
     pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
         self

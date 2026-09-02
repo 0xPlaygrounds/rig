@@ -39,7 +39,11 @@ async fn main() -> Result<()> {
     let mut interval = tokio::time::interval(STEP_DELAY);
 
     loop {
-        let next_number = extractor.extract(&current_number.to_string()).await?.number;
+        let next_number = extractor
+            .extract(current_number.to_string())
+            .await?
+            .output
+            .number;
         println!("Step {step}: {current_number} -> {next_number}");
 
         current_number = next_number;

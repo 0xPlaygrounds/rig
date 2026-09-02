@@ -350,18 +350,16 @@ async fn run_agent(client: openai::Client, cell: Cell) -> Observation {
     let mut errors = Vec::new();
     match cell.transport {
         Transport::Blocking => {
-            if let Err(error) = rig::completion::Prompt::prompt(&agent, prompt(cell.shape)).await {
+            if let Err(error) = agent.prompt(prompt(cell.shape)).await {
                 errors.push(error.to_string());
             }
         }
         Transport::Streaming => {
-            let mut stream = rig::streaming::StreamingChat::stream_chat(
-                &agent,
-                prompt(cell.shape),
-                Vec::<rig::completion::Message>::new(),
-            )
-            .max_turns(1)
-            .await;
+            let mut stream = agent
+                .stream_chat(prompt(cell.shape), Vec::<rig::completion::Message>::new())
+                .max_turns(1)
+                .stream()
+                .await;
             errors = crate::support::collect_stream_observation(&mut stream)
                 .await
                 .errors;

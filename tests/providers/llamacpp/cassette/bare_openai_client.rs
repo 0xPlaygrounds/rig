@@ -22,10 +22,8 @@
 
 use rig::completion::CompletionModel;
 use rig::completion::NormalizeCompletionResponse;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::{llamacpp, openai};
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use crate::support::{
@@ -62,7 +60,7 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
                 .prompt("Say the single word: ok")
                 .await
                 .expect("a bare openai client should reach the local server");
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;
@@ -219,6 +217,7 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
             let mut stream = agent
                 .stream_prompt(STREAMING_TOOLS_PROMPT)
                 .max_turns(4)
+                .stream()
                 .await;
             let response = collect_stream_final_response(&mut stream)
                 .await
@@ -281,7 +280,7 @@ async fn agent_prompt_through_completions_api() {
                 .await
                 .expect("completions api prompt should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;

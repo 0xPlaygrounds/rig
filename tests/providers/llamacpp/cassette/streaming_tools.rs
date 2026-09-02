@@ -13,7 +13,6 @@
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::cassette_support::*;
 
@@ -46,6 +45,7 @@ async fn streaming_tools_smoke() {
             let mut stream = agent
                 .stream_prompt(STREAMING_TOOLS_PROMPT)
                 .max_turns(4)
+                .stream()
                 .await;
             let response = collect_stream_final_response(&mut stream)
                 .await
@@ -73,7 +73,7 @@ async fn example_streaming_with_tools() {
             .tool(Subtract)
             .build();
 
-        let mut stream = agent.stream_prompt("Calculate 2 - 5").max_turns(4).await;
+        let mut stream = agent.stream_prompt("Calculate 2 - 5").max_turns(4).stream().await;
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming tools prompt should succeed");
@@ -147,6 +147,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -174,6 +175,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

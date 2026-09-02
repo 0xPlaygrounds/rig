@@ -2,7 +2,6 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::vector_store::VectorStoreIndex;
@@ -74,7 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     };
 
-    let response = agent.prompt(prompt).await?;
+    let response = agent.prompt(prompt).await?.output;
     println!("{response}");
 
     Ok(())

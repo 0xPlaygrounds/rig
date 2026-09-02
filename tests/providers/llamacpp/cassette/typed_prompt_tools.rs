@@ -11,7 +11,6 @@ use rig::agent::{
     ObservationAction, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
     ToolResultEvent,
 };
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::tool::Tool;
 
@@ -198,8 +197,8 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
             "expected the weather tool to be executed at least once"
         );
         crate::support::assert_weather_tool_roundtrip_response(
-            &response.city,
-            &response.weather,
+            &response.output.city,
+            &response.output.weather,
             "London",
         );
 
@@ -235,7 +234,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
         let response: WeatherResponse = agent
             .prompt_typed("Hello, whats the weather in London?")
             .max_turns(4)
-            .await?;
+            .await?.output;
 
         anyhow::ensure!(
             call_count.load(Ordering::SeqCst) >= 1,

@@ -3,7 +3,6 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use super::super::support::with_ollama_cassette;
@@ -25,7 +24,7 @@ async fn completion_smoke() {
             .await
             .expect("completion should succeed");
 
-        assert_nonempty_response(&response);
+        assert_nonempty_response(&response.output);
     })
     .await;
 }
@@ -59,7 +58,7 @@ async fn completion_respects_max_tokens() {
             .await
             .expect("completion should succeed");
 
-        assert_nonempty_response(&response);
+        assert_nonempty_response(&response.output);
     })
     .await;
 }

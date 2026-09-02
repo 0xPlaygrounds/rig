@@ -29,7 +29,7 @@
 //!    (`CallTools` /
 //!    `Done`).
 //!
-//! `StreamingPrompt::stream_prompt` drives this protocol
+//! `AgentRunner::stream` drives this protocol
 //! internally; hand-driven runs can use it to stream any
 //! `AgentRun`.
 

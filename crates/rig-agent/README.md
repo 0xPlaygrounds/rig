@@ -71,10 +71,11 @@ selects it. Blocking and streaming prompts share this lifecycle: `Stop`
 cancels before request preparation and provider execution, and dropping an
 in-flight attempt still cancels it by dropping its retained future or stream.
 
-Extractors support the same run-local choice through
-`extractor.using_model(handle).extract(...)` or `using_model_value(model)`.
-That handle is the default candidate for each extraction retry, routing hooks
-may replace it, and the extractor's default is unchanged for later calls.
+Extractors support the same run-local choice: `extract(...)` returns a
+`TypedRun`, so `extractor.extract(text).using_model(handle)` or
+`.using_model_value(model)` sets that run's default candidate. That handle is
+the default candidate for each extraction retry, routing hooks may replace it,
+and the extractor's default is unchanged for later calls.
 
 ```rust,ignore
 #[derive(Clone)]

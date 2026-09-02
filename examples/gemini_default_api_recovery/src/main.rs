@@ -15,7 +15,7 @@ use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -351,6 +351,7 @@ async fn run_workspace_canary_attempt(
         .stream_prompt(workspace_canary_prompt(attempt))
         .add_hook(repair_hook.clone())
         .history(Vec::<rig::message::Message>::new())
+        .stream()
         .await;
 
     let mut observation = consume_workspace_like_stream(stream).await?;

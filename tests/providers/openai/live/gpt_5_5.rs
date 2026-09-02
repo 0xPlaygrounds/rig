@@ -1,13 +1,11 @@
 //! Dedicated GPT-5.5 live smoke tests.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::completion::{Chat, Message};
-use rig::completion::{Prompt, TypedPrompt};
 use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -50,7 +48,8 @@ async fn responses_prompt_smoke() {
     let response = agent
         .prompt(BASIC_PROMPT)
         .await
-        .expect("prompt should succeed");
+        .expect("prompt should succeed")
+        .output;
 
     assert_nonempty_response(&response);
 }
@@ -64,7 +63,7 @@ async fn responses_streaming_prompt_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -86,7 +85,8 @@ async fn responses_tools_smoke() {
     let response = agent
         .prompt(TOOLS_PROMPT)
         .await
-        .expect("tool prompt should succeed");
+        .expect("tool prompt should succeed")
+        .output;
 
     assert_mentions_expected_number(&response, -3);
 }
@@ -105,6 +105,7 @@ async fn responses_streaming_tools_smoke() {
     let mut stream = agent
         .stream_prompt(STREAMING_TOOLS_PROMPT)
         .max_turns(3)
+        .stream()
         .await;
     let response = collect_stream_final_response(&mut stream)
         .await
@@ -122,7 +123,8 @@ async fn responses_structured_output_smoke() {
     let response: Gpt55Event = agent
         .prompt_typed("Return a concise event object for a local Rust meetup in Seattle.")
         .await
-        .expect("typed prompt should succeed");
+        .expect("typed prompt should succeed")
+        .output;
 
     assert_nonempty_response(&response.title);
     assert_nonempty_response(&response.category);
@@ -135,7 +137,8 @@ async fn responses_structured_output_smoke() {
     let response = agent
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
         .await
-        .expect("output schema prompt should succeed");
+        .expect("output schema prompt should succeed")
+        .output;
     let structured: SmokeStructuredOutput =
         serde_json::from_str(&response).expect("structured output should deserialize");
     assert_smoke_structured_output(&structured);
@@ -148,20 +151,20 @@ async fn responses_extractor_smoke() {
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .output
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .output
             .last_name
             .as_deref()
             .expect("last name should be present"),
@@ -188,7 +191,8 @@ async fn responses_image_input_smoke() {
     let response = agent
         .prompt(image)
         .await
-        .expect("image prompt should succeed");
+        .expect("image prompt should succeed")
+        .output;
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
@@ -232,7 +236,8 @@ async fn responses_reasoning_tool_roundtrip_smoke() {
     let result = agent
         .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
         .await
-        .expect("reasoning tool chat should succeed");
+        .expect("reasoning tool chat should succeed")
+        .output;
 
     reasoning::assert_nonstreaming_universal(&result, &call_count, "openai");
 }
@@ -253,6 +258,7 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
     let stream = agent
         .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
         .max_turns(3)
+        .stream()
         .await;
 
     let stats = reasoning::collect_stream_stats(stream, "openai").await;
@@ -273,7 +279,8 @@ async fn chat_completions_prompt_smoke() {
     let response = agent
         .prompt(BASIC_PROMPT)
         .await
-        .expect("chat completions prompt should succeed");
+        .expect("chat completions prompt should succeed")
+        .output;
 
     assert_nonempty_response(&response);
 }
@@ -289,7 +296,7 @@ async fn chat_completions_streaming_prompt_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming prompt should succeed");
@@ -313,7 +320,8 @@ async fn chat_completions_tools_smoke() {
     let response = agent
         .prompt(TOOLS_PROMPT)
         .await
-        .expect("chat completions tool prompt should succeed");
+        .expect("chat completions tool prompt should succeed")
+        .output;
 
     assert_mentions_expected_number(&response, -3);
 }
@@ -331,7 +339,7 @@ async fn chat_completions_streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming tool prompt should succeed");
@@ -353,7 +361,8 @@ async fn chat_completions_structured_output_smoke() {
     let response = agent
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
         .await
-        .expect("chat completions output schema prompt should succeed");
+        .expect("chat completions output schema prompt should succeed")
+        .output;
     let structured: SmokeStructuredOutput =
         serde_json::from_str(&response).expect("structured output should deserialize");
 
@@ -369,20 +378,20 @@ async fn chat_completions_extractor_smoke() {
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("chat completions extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .output
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .output
             .last_name
             .as_deref()
             .expect("last name should be present"),
@@ -411,7 +420,8 @@ async fn chat_completions_image_input_smoke() {
     let response = agent
         .prompt(image)
         .await
-        .expect("chat completions image prompt should succeed");
+        .expect("chat completions image prompt should succeed")
+        .output;
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["ant", "insect"]);

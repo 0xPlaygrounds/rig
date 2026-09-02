@@ -8,11 +8,10 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingChat;
 use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
@@ -106,7 +105,7 @@ async fn sequential_tool_calls_ordering_nonstreaming() {
                 .await
                 .expect("sequential tool chat should succeed");
 
-            assert_mentions_expected_number(&result, 2);
+            assert_mentions_expected_number(&result.output, 2);
 
             let calls = history_tool_calls(&history);
             let results = history_tool_results(&history);
@@ -154,6 +153,7 @@ async fn sequential_tool_calls_ordering_streaming() {
             let mut stream = agent
                 .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
                 .max_turns(6)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

@@ -3,7 +3,7 @@
 //! `Terminate` from a `ToolResult` (post-execution), and model-driven recovery
 //! from a tool error. Recorded against real Gemini.
 
-use rig::completion::{Prompt, PromptError};
+use rig::completion::PromptError;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig_agent::test_utils::{
@@ -53,7 +53,7 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
                 .await
                 .expect("single-key arg rewrite run should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             assert!(add_calls.count() >= 1, "the tool should execute");
             let calls = recorder_probe.recorded_calls();
             assert_eq!(calls.len(), 1, "one add call, saw {calls:?}");
@@ -111,7 +111,7 @@ async fn two_arg_rewrites_chain_blocking() {
                 .await
                 .expect("chained arg rewrite run should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             let calls = recorder_probe.recorded_calls();
             assert_eq!(calls.len(), 1);
             let observed: serde_json::Value =
@@ -178,15 +178,20 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
                 .expect("chained result rewrite run should succeed");
 
             assert!(
-                response.contains("[SECRET]"),
+                response.output.contains("[SECRET]"),
                 "both chained result rewrites must compose (redact then wrap): {response:?}"
             );
             assert!(
-                !response.contains('4'),
+                !response.output.contains('4'),
                 "the raw tool result must not reach the model: {response:?}"
             );
-            validate_result_redaction("gemini_chained_result_rewrites", true, &response, "4")
-                .expect("portable result-rewrite contract should hold");
+            validate_result_redaction(
+                "gemini_chained_result_rewrites",
+                true,
+                &response.output,
+                "4",
+            )
+            .expect("portable result-rewrite contract should hold");
         },
     )
     .await;
@@ -220,11 +225,11 @@ async fn result_truncation_reaches_model_blocking() {
                 .expect("result truncation run should succeed");
 
             assert!(
-                response.contains("steady"),
+                response.output.contains("steady"),
                 "the truncated result prefix must reach the model: {response:?}"
             );
             assert!(
-                !response.contains("waters"),
+                !response.output.contains("waters"),
                 "the truncated-off suffix must not reach the model: {response:?}"
             );
         },
@@ -322,7 +327,10 @@ async fn tool_error_guidance_drives_model_retry_blocking() {
                 lookup_calls.count()
             );
             assert!(
-                response.to_ascii_lowercase().contains("azure-falcon"),
+                response
+                    .output
+                    .to_ascii_lowercase()
+                    .contains("azure-falcon"),
                 "the model should report the recovered codeword: {response:?}"
             );
         },

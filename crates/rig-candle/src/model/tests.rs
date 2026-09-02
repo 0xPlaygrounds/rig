@@ -821,7 +821,7 @@ fn gguf_metadata_shapes_and_tensor_encodings_are_validated_before_loading()
 #[cfg(not(target_family = "wasm"))]
 #[test]
 fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use rig_agent::{agent::AgentBuilder, completion::Prompt};
+    use rig_agent::agent::AgentBuilder;
 
     let runtime = tokio::runtime::Builder::new_current_thread().build()?;
     runtime.block_on(async {

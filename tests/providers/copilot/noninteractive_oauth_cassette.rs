@@ -1,6 +1,5 @@
 //! Copilot non-interactive OAuth cassette coverage.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_noninteractive_oauth_cassette};
@@ -24,7 +23,7 @@ async fn cached_oauth_allows_noninteractive_completion() {
                 .await
                 .expect("non-interactive OAuth completion should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;

@@ -16,7 +16,8 @@ async fn extractor_smoke() {
         let person = extractor
             .extract(EXTRACTOR_TEXT)
             .await
-            .expect("extractor request should succeed");
+            .expect("extractor request should succeed")
+            .output;
 
         let first_name = person
             .first_name

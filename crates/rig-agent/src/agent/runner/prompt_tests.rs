@@ -1,9 +1,8 @@
-use super::ResponseIdentity;
-use super::{
-    CompletionCall, PromptResponse, TypedPromptResponse, assistant_text_from_choice,
-    is_empty_assistant_turn,
-};
+use crate::agent::ResponseIdentity;
+use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
+use crate::run::response::{CompletionCall, PromptResponse};
 use crate::run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
+use crate::run::transcript::{assistant_text_from_choice, is_empty_assistant_turn};
 use crate::{
     agent::{
         AgentBuilder,
@@ -14,8 +13,8 @@ use crate::{
         },
     },
     completion::{
-        AssistantContent, CompletionError, CompletionRequest, FinishReason, Message, Prompt,
-        PromptError, StructuredOutputError, TypedPrompt, Usage,
+        AssistantContent, CompletionError, CompletionRequest, FinishReason, Message, PromptError,
+        StructuredOutputError, Usage,
     },
     test_utils::{
         AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
@@ -100,7 +99,6 @@ async fn blocking_prompt_keeps_partial_output_and_records_the_reason() {
 
     let response = agent
         .prompt("write a long essay")
-        .extended_details()
         .await
         .expect("a truncated turn that produced text must still succeed");
 
@@ -290,25 +288,24 @@ struct TypedAnswer {
 fn deserialize_structured_output_tolerates_fences_and_prose() {
     // Clean JSON (native / output-tool path).
     assert_eq!(
-        super::deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#).unwrap(),
+        deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#).unwrap(),
         TypedAnswer { value: "x".into() }
     );
     // Markdown-fenced JSON (weak Prompted-mode models).
     assert_eq!(
-        super::deserialize_structured_output::<TypedAnswer>("```json\n{\"value\":\"y\"}\n```")
-            .unwrap(),
+        deserialize_structured_output::<TypedAnswer>("```json\n{\"value\":\"y\"}\n```").unwrap(),
         TypedAnswer { value: "y".into() }
     );
     // Prose around the JSON object.
     assert_eq!(
-        super::deserialize_structured_output::<TypedAnswer>(
+        deserialize_structured_output::<TypedAnswer>(
             "Here you go: {\"value\":\"z\"} — hope that helps!"
         )
         .unwrap(),
         TypedAnswer { value: "z".into() }
     );
     // No JSON at all still errors.
-    assert!(super::deserialize_structured_output::<TypedAnswer>("no json here").is_err());
+    assert!(deserialize_structured_output::<TypedAnswer>("no json here").is_err());
 }
 
 #[derive(Clone)]
@@ -720,11 +717,7 @@ async fn prompt_response_records_completion_call_without_reported_usage() {
     let model = MockCompletionModel::new([MockTurn::text("ok")]);
     let agent = AgentBuilder::new(model).build();
 
-    let response = agent
-        .prompt("say ok")
-        .extended_details()
-        .await
-        .expect("prompt should succeed");
+    let response = agent.prompt("say ok").await.expect("prompt should succeed");
 
     assert_eq!(response.output, "ok");
     assert_eq!(response.usage, Usage::new());
@@ -751,7 +744,6 @@ async fn typed_prompt_response_preserves_completion_calls() {
 
     let response = agent
         .prompt_typed::<TypedAnswer>("return typed json")
-        .extended_details()
         .await
         .expect("typed prompt should succeed");
 
@@ -932,7 +924,7 @@ async fn tool_context_reaches_tool_through_agent_loop() {
         .await
         .expect("run succeeds");
 
-    assert_eq!(out, "done");
+    assert_eq!(out.output, "done");
     assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
 }
 
@@ -959,7 +951,7 @@ async fn tool_context_persists_across_multiple_rounds() {
         .await
         .expect("run succeeds");
 
-    assert_eq!(out, "done");
+    assert_eq!(out.output, "done");
     assert_eq!(
         probe.observations(),
         vec!["session:abc-123".to_string(), "session:abc-123".to_string()],
@@ -983,7 +975,7 @@ async fn tool_runs_with_empty_context_when_none_supplied() {
         .await
         .expect("run succeeds");
 
-    assert_eq!(out, "done");
+    assert_eq!(out.output, "done");
     // The single call path receives an empty context and observes no session.
     assert_eq!(probe.observed().as_deref(), Some("no-session"));
 }
@@ -1119,7 +1111,6 @@ async fn invalid_tool_call_hook_can_repair_non_streaming_tool_name() {
         .prompt("add")
         .add_hook(RepairDefaultApiHook)
         .max_turns(3)
-        .extended_details()
         .await
         .expect("repaired tool call should execute");
 
@@ -1162,7 +1153,6 @@ async fn invalid_tool_call_hook_retry_adds_feedback_and_retries_non_streaming() 
         .add_hook(RetryDefaultApiHook)
         .max_invalid_tool_call_retries(1)
         .max_turns(3)
-        .extended_details()
         .await
         .expect("retry should recover");
 
@@ -1222,7 +1212,6 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
         .add_hook(RetryDefaultApiHook)
         .max_invalid_tool_call_retries(1)
         .max_turns(3)
-        .extended_details()
         .await
         .expect("retry should recover");
 
@@ -1315,7 +1304,6 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
         .prompt("add")
         .add_hook(SkipDefaultApiAndPanicOnToolCallHook)
         .max_turns(3)
-        .extended_details()
         .await
         .expect("skip should recover without executing peer tools");
 
@@ -1404,7 +1392,6 @@ async fn invalid_tool_call_hook_can_skip_structured_non_streaming_call() {
         .prompt("add")
         .add_hook(SkipDefaultApiHook)
         .max_turns(3)
-        .extended_details()
         .await
         .expect("skip should continue with synthetic tool result");
 
@@ -1449,7 +1436,6 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
         .prompt("add")
         .add_hook(SkipDefaultApiHook)
         .max_turns(3)
-        .extended_details()
         .await
         .expect("skip should produce synthetic feedback under Specific");
 
@@ -1609,7 +1595,7 @@ async fn typed_prompt_invalid_tool_call_hook_can_repair_tool_name() {
         .expect("typed prompt should repair invalid tool call");
 
     assert_eq!(
-        response,
+        response.output,
         TypedAnswer {
             value: "repaired".to_string()
         }
@@ -1634,7 +1620,7 @@ async fn typed_prompt_invalid_tool_call_hook_can_retry_and_parse_response() {
         .expect("typed prompt should retry invalid tool call");
 
     assert_eq!(
-        response,
+        response.output,
         TypedAnswer {
             value: "retried".to_string()
         }
@@ -1718,7 +1704,7 @@ async fn allowed_specific_tool_call_executes_normally() {
         .await
         .expect("allowed specific tool should execute");
 
-    assert_eq!(response, "done");
+    assert_eq!(response.output, "done");
     assert_eq!(recorded.request_count(), 2);
 }
 
@@ -1753,7 +1739,6 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     let response = agent
         .prompt("do tool work")
         .max_turns(3)
-        .extended_details()
         .await
         .expect("empty terminal turn should not error");
 
@@ -1842,7 +1827,7 @@ async fn prompt_request_concatenates_text_blocks_without_inserted_newlines() {
         .expect("prompt should succeed");
 
     assert_eq!(
-        response,
+        response.output,
         "According to the document, the grass is green and the sky is blue."
     );
 }
@@ -1868,7 +1853,6 @@ async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
 
     let response = agent
         .prompt("answer with cited metadata")
-        .extended_details()
         .await
         .expect("metadata-only text turn should succeed");
 
@@ -2268,7 +2252,8 @@ async fn memory_append_error_does_not_drop_response() {
         .prompt("hello")
         .conversation("t1")
         .await
-        .expect("append failure must not block successful completion");
+        .expect("append failure must not block successful completion")
+        .output;
 
     assert!(!response.is_empty());
 }

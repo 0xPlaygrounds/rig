@@ -2,7 +2,7 @@
 //! terminate-early, and observation of every call/result pair.
 
 use rig::agent::AgentHook;
-use rig::completion::{Prompt, PromptError};
+use rig::completion::PromptError;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -39,7 +39,6 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
                     tool_name: CountingAdd::NAME,
                     reason: SKIP_REASON,
                 })
-                .extended_details()
                 .await
                 .expect("a skipped tool call should not fail the run");
 
@@ -82,7 +81,6 @@ async fn on_tool_call_terminate_cancels_run() {
                     tool_name: CountingAdd::NAME,
                     reason: TERMINATE_REASON,
                 })
-                .extended_details()
                 .await
                 .expect_err("a terminating hook should cancel the run");
 
@@ -156,7 +154,7 @@ async fn hooks_observe_every_tool_call_and_result() {
             );
 
             assert!(
-                response.contains("42"),
+                response.output.contains("42"),
                 "final answer should report 42: {response:?}"
             );
         },

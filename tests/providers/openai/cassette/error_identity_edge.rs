@@ -210,7 +210,7 @@ async fn verify_reports_invalid_authentication() {
 }
 
 /// Family C: an extractor run against a failing model — the failure chain
-/// exposes the identity accessors through `ExtractionError`'s prompt-error
+/// exposes the identity accessors through `StructuredOutputError`'s prompt-error
 /// wrap (or documents the gap).
 #[tokio::test]
 async fn extractor_failure_surfaces_provider_error_context() {

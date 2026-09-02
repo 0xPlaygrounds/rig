@@ -2,7 +2,6 @@
 
 use rig::agent::AgentBuilder;
 use rig::bedrock;
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
@@ -23,7 +22,8 @@ async fn completion_smoke() {
         let response = agent
             .prompt(BASIC_PROMPT)
             .await
-            .expect("completion should succeed");
+            .expect("completion should succeed")
+            .output;
 
         assert_nonempty_response(&response);
     })
@@ -44,7 +44,8 @@ async fn completion_with_context_smoke() {
         let response = agent
             .prompt(CONTEXT_PROMPT)
             .await
-            .expect("context completion should succeed");
+            .expect("context completion should succeed")
+            .output;
 
         assert_contains_any_case_insensitive(&response, &["ancient tool", "farm"]);
     })
@@ -66,7 +67,8 @@ async fn tool_roundtrip_smoke() {
         let response = agent
             .prompt(STREAMING_TOOLS_PROMPT)
             .await
-            .expect("tool prompt should succeed");
+            .expect("tool prompt should succeed")
+            .output;
 
         assert_mentions_expected_number(&response, -3);
     })
@@ -86,7 +88,8 @@ async fn prompt_caching_completion_smoke() {
             let response = agent
                 .prompt(BASIC_PROMPT)
                 .await
-                .expect("prompt-caching completion should succeed");
+                .expect("prompt-caching completion should succeed")
+                .output;
 
             assert_nonempty_response(&response);
         },

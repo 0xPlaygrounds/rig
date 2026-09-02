@@ -1,7 +1,6 @@
 //! Cassette-backed Cohere streaming tool-call coverage.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::{
     CASSETTE_MODEL,
@@ -25,7 +24,7 @@ async fn streaming_tool_call_roundtrip() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

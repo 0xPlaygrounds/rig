@@ -1,4 +1,4 @@
-use rig_agent::{agent::stream_to_stdout, prelude::*, streaming::StreamingPrompt};
+use rig_agent::{agent::stream_to_stdout, prelude::*};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
 use rig_core::client::ProviderClient;
 mod common;
@@ -20,7 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     println!("Calculate 2 + 5");
-    let mut stream = agent.stream_prompt("Calculate 2 + 5").await;
+    let mut stream = agent.stream_prompt("Calculate 2 + 5").stream().await;
     let _ = stream_to_stdout(&mut stream).await?;
     Ok(())
 }

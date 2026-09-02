@@ -7,7 +7,7 @@
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!
 //! ```no_run
-//! use rig_agent::{agent::AgentBuilder, completion::Prompt};
+//! use rig_agent::agent::AgentBuilder;
 //! use rig_candle::{CandleModel, ModelData};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +22,7 @@
 //!     .temperature(0.7)
 //!     .max_tokens(256)
 //!     .build();
-//! let answer = agent.prompt("Explain Rust ownership briefly.").await?;
+//! let answer = agent.prompt("Explain Rust ownership briefly.").await?.output;
 //! println!("{answer}");
 //! # Ok(())
 //! # }

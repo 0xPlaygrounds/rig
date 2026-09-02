@@ -6,7 +6,6 @@
 //! worth forcing that on every consumer of the facade. It is a plain module of
 //! this example now, so `serenity` stays out of the workspace lockfile.
 use rig::agent::Agent;
-use rig::completion::Chat;
 use rig::message::Message as RigMessage;
 use serenity::all::{
     Command, CommandInteraction, Context, CreateCommand, CreateThread, EventHandler,
@@ -169,7 +168,7 @@ impl Handler {
         // Generate response. `chat` appends the user prompt and generated
         // assistant/tool messages onto the history snapshot.
         let response = match self.state.agent.chat(&msg.content, &mut history).await {
-            Ok(resp) => resp,
+            Ok(resp) => resp.output,
             Err(e) => {
                 eprintln!("Agent error: {e}");
                 let _ = msg

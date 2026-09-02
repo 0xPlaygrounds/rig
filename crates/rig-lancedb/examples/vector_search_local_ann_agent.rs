@@ -1,6 +1,6 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_agent::{client::AgentModelExt, completion::Prompt};
+use rig_agent::client::AgentModelExt;
 use rig_core::client::{CompletionClient, EmbeddingsClient};
 use rig_core::providers::openai;
 use rig_core::{
@@ -84,7 +84,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "My boss says I zindle too much, what does that mean?";
 
-    let response = agent.prompt(query).await?;
+    let response = agent.prompt(query).await?.output;
 
     println!("Response: {response}");
 

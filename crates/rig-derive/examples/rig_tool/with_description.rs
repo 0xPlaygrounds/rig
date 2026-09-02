@@ -1,4 +1,3 @@
-use rig_agent::completion::Prompt;
 use rig_agent::prelude::*;
 use rig_core::providers;
 use rig_derive::rig_tool;
@@ -63,7 +62,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "What is 10 / 0?",
     ] {
         println!("User: {prompt}");
-        println!("Agent: {}", calculator_agent.prompt(prompt).await?);
+        println!("Agent: {}", calculator_agent.prompt(prompt).await?.output);
     }
 
     Ok(())

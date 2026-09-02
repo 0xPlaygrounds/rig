@@ -1,6 +1,6 @@
 //! Cassette-backed Cohere context-document coverage.
 
-use rig::completion::{CompletionModel, Document, Prompt};
+use rig::completion::{CompletionModel, Document};
 use rig::prelude::*;
 use std::collections::HashMap;
 
@@ -25,7 +25,7 @@ async fn context_documents_are_accepted() {
             .expect("context prompt should succeed");
 
         assert_contains_any_case_insensitive(
-            &response,
+            &response.output,
             &[
                 "ancient tool",
                 "farming tool",

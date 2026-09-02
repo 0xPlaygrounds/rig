@@ -1,7 +1,6 @@
 //! Cassette-backed Cohere streaming completion coverage.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{
@@ -20,7 +19,7 @@ async fn streaming_smoke() {
             .max_tokens(64)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
         let (response, provider_final) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await

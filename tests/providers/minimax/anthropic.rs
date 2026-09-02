@@ -1,6 +1,5 @@
 //! MiniMax Anthropic-compatible completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::minimax;
 
@@ -16,7 +15,8 @@ async fn anthropic_compatible_completion_smoke() {
         .build()
         .prompt(BASIC_PROMPT)
         .await
-        .expect("MiniMax Anthropic-compatible completion should succeed");
+        .expect("MiniMax Anthropic-compatible completion should succeed")
+        .output;
 
     assert_nonempty_response(&response);
 }

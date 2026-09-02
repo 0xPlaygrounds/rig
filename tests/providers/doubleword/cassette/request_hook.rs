@@ -7,7 +7,7 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::completion::{Message, Prompt};
+use rig::completion::Message;
 use rig::message::UserContent;
 use rig::prelude::*;
 
@@ -66,7 +66,7 @@ async fn request_hook_records_prompt_and_response() {
                 .add_hook(hook.clone())
                 .await
                 .expect("hooked prompt should succeed");
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             assert_eq!(hook.prompt_calls.load(Ordering::SeqCst), 1);
             assert_eq!(hook.response_calls.load(Ordering::SeqCst), 1);
             assert!(

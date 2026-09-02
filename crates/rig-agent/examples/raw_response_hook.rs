@@ -95,7 +95,6 @@ async fn main() -> Result<()> {
     println!("blocking:");
     let response = agent
         .prompt("What does a system fingerprint identify?")
-        .extended_details()
         .await?;
     println!("  => {}", response.output);
     // The same payload the hook saw is on the run's record, per call.
@@ -106,6 +105,7 @@ async fn main() -> Result<()> {
     println!("\nstreaming:");
     let mut stream = agent
         .stream_prompt("What does a system fingerprint identify?")
+        .stream()
         .await;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(final_response) = item? {

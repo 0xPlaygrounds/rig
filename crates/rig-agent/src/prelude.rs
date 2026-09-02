@@ -17,10 +17,8 @@ pub use crate::agent::{
 };
 pub use crate::client::{AgentClientExt, AgentModelExt};
 pub use crate::completion::{
-    Chat, CompletionError, CompletionModel, Message, Prompt, PromptError, StructuredOutputError,
-    TypedPrompt,
+    CompletionError, CompletionModel, Message, PromptError, StructuredOutputError,
 };
-pub use crate::streaming::{StreamingChat, StreamingPrompt};
 pub use crate::tool::{Tool, ToolSet};
 pub use rig_core::client::completion::CompletionClient;
 

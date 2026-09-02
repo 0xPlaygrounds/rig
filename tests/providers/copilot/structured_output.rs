@@ -1,6 +1,5 @@
 //! Copilot structured output coverage, including the migrated example path.
 
-use rig::completion::{Prompt, TypedPrompt};
 use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -54,7 +53,8 @@ async fn structured_output_smoke() {
             let response: SmokeStructuredOutput = agent
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
                 .await
-                .expect("structured output prompt should succeed");
+                .expect("structured output prompt should succeed")
+                .output;
 
             assert_smoke_structured_output(&response);
         },
@@ -77,12 +77,12 @@ async fn prompt_typed_and_output_schema() {
             let forecast: WeatherForecast = agent
                 .prompt_typed("What's the weather forecast for New York City today?")
                 .await
-                .expect("prompt_typed should succeed");
+                .expect("prompt_typed should succeed")
+                .output;
             assert_weather_forecast(&forecast, &["new york", "nyc"]);
 
             let extended = agent
                 .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
-                .extended_details()
                 .await
                 .expect("extended prompt_typed should succeed");
             assert_weather_forecast(&extended.output, &["los angeles", "la"]);
@@ -100,7 +100,7 @@ async fn prompt_typed_and_output_schema() {
                 .await
                 .expect("output schema prompt should succeed");
             let parsed: WeatherForecast =
-                serde_json::from_str(&response).expect("schema response should deserialize");
+                serde_json::from_str(&response.output).expect("schema response should deserialize");
             assert_weather_forecast(&parsed, &["chicago"]);
         },
     )

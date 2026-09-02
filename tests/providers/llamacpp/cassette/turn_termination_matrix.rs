@@ -45,7 +45,6 @@
 
 use rig::completion::FinishReason;
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_interaction_bodies, recorded_json_request};
@@ -174,7 +173,11 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let mut stream = agent.stream_prompt(TRUNCATING_PROMPT).add_hook(probe).await;
+            let mut stream = agent
+                .stream_prompt(TRUNCATING_PROMPT)
+                .add_hook(probe)
+                .stream()
+                .await;
             let _ = collect_stream_final_response(&mut stream).await;
         },
     )

@@ -18,12 +18,12 @@ use tokio::sync::{Barrier, Notify};
 
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
-use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
 use crate::agent::run::OutputMode;
+use crate::agent::streaming::{MultiTurnStreamItem, StreamingError};
 use crate::completion::{
-    CompletionError, CompletionModel, FinishReason, Message, Prompt, PromptError, Usage,
+    CompletionError, CompletionModel, FinishReason, Message, PromptError, Usage,
 };
-use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
 use crate::test_utils::{
     MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
     MockSubtractTool, MockToolError, MockTurn, mock_final,
@@ -712,7 +712,6 @@ async fn hook_events_carry_raw_blocking() {
     .add_hook(hook.clone())
     .build()
     .prompt("prompt")
-    .extended_details()
     .await
     .expect("blocking response");
 
@@ -738,6 +737,7 @@ async fn hook_events_carry_raw_streamed() {
     .add_hook(hook.clone())
     .build()
     .stream_prompt("prompt")
+    .stream()
     .await;
     let mut finals = Vec::new();
     let mut final_response = None;
@@ -777,7 +777,6 @@ async fn completion_calls_carry_each_attempts_own_raw_blocking() {
     .add_hook(hook.clone())
     .build()
     .prompt("add 2 and 3")
-    .extended_details()
     .max_turns(3)
     .await
     .expect("blocking tool run");
@@ -824,6 +823,7 @@ async fn completion_calls_carry_each_attempts_own_raw_streamed() {
         .build()
         .stream_prompt("add 2 and 3")
         .max_turns(3)
+        .stream()
         .await;
 
     let mut forwarded_calls = Vec::new();
@@ -904,7 +904,6 @@ async fn retried_turn_records_the_retried_attempts_own_raw_blocking() {
     .add_hook(hook.clone())
     .build()
     .prompt("prompt")
-    .extended_details()
     .max_turns(3)
     .await
     .expect("retried run");
@@ -953,6 +952,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
         .build()
         .stream_prompt("prompt")
         .max_turns(3)
+        .stream()
         .await;
 
     let mut finals = Vec::new();
@@ -1593,6 +1593,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
     let mut stream = streaming_agent
         .stream_prompt("add 2 and 3")
         .max_turns(1)
+        .stream()
         .await;
     let mut streaming_err = None;
     while let Some(item) = stream.next().await {
@@ -2511,8 +2512,7 @@ mod span_safety_net {
         AgentBuilder, HookContext, MultiTurnStreamItem, ToolResultAction, ToolResultEvent,
     };
     use crate::completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Prompt,
-        PromptError, Usage,
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, PromptError, Usage,
     };
     use crate::streaming::StreamedAssistantContent;
     use crate::streaming::StreamingCompletionResponse;
@@ -3112,7 +3112,7 @@ mod span_safety_net {
         })
         .build();
         let response = agent.prompt("hello").await.expect("prompt should succeed");
-        assert_eq!(response, "done");
+        assert_eq!(response.output, "done");
 
         let spans = captured.snapshot();
         let chat_spans = spans
@@ -3578,8 +3578,8 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
 /// Drive a stream to completion, panicking on any stream error, and return
 /// its final response.
 async fn drive_to_final_response(
-    mut stream: crate::agent::prompt_request::streaming::StreamingResult,
-) -> crate::agent::prompt_request::PromptResponse {
+    mut stream: crate::agent::streaming::StreamingResult,
+) -> crate::agent::PromptResponse {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(resp) =
@@ -9797,7 +9797,7 @@ mod run_lifecycle {
             .prompt("hi")
             .await
             .expect("prompt succeeds");
-        assert_eq!(response, "done");
+        assert_eq!(response.output, "done");
 
         assert_eq!(hook.starts.load(SeqCst), 1);
         assert_eq!(

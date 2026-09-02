@@ -25,7 +25,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -104,6 +104,7 @@ async fn main() -> Result<()> {
     let mut stream = agent
         .stream_prompt("Check ticket RIG-usage-42 and summarize the result in one sentence.")
         .max_turns(4)
+        .stream()
         .await;
 
     let mut final_response = None;

@@ -89,11 +89,12 @@ async fn streamed_agent_run_reports_identity() {
                 .add_hook(probe.clone())
                 .build();
 
-            let mut stream = rig::streaming::StreamingPrompt::stream_prompt(
-                &agent,
-                rig::completion::Message::user("Reply with exactly: streamed identity probe"),
-            )
-            .await;
+            let mut stream = agent
+                .stream_prompt(rig::completion::Message::user(
+                    "Reply with exactly: streamed identity probe",
+                ))
+                .stream()
+                .await;
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }

@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::groq;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
@@ -18,7 +17,7 @@ async fn parsed_reasoning_stream() {
         .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))
         .build();
 
-    let mut stream = agent.stream_prompt("Entertain me!").await;
+    let mut stream = agent.stream_prompt("Entertain me!").stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

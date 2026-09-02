@@ -55,7 +55,7 @@
 //! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
 //! let mut context = ToolContext::new();
 //! context.insert(meta);
-//! let answer = agent.prompt("…").tool_context(context).await?;
+//! let answer = agent.prompt("…").tool_context(context).await?.output;
 //! ```
 //!
 //! # Response metadata

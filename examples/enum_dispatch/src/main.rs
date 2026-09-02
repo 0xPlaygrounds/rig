@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use rig::agent::Agent;
-use rig::completion::{Prompt, PromptError};
+use rig::completion::PromptError;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::openai::GPT_4O;
@@ -16,8 +16,8 @@ enum Agents {
 impl Agents {
     async fn prompt(&self, prompt: &str) -> Result<String, PromptError> {
         match self {
-            Self::Anthropic(agent) => agent.prompt(prompt).await,
-            Self::OpenAI(agent) => agent.prompt(prompt).await,
+            Self::Anthropic(agent) => agent.prompt(prompt).await.map(|response| response.output),
+            Self::OpenAI(agent) => agent.prompt(prompt).await.map(|response| response.output),
         }
     }
 }

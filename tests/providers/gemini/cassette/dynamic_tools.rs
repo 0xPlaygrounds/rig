@@ -7,7 +7,7 @@
 //! build time, query embedding at prompt time) alongside the completion
 //! turns.
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::embeddings::EmbeddingsBuilder;
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -70,7 +70,7 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
                 .await
                 .expect("dynamic tool prompt should succeed");
 
-            assert_mentions_expected_number(&response, 42);
+            assert_mentions_expected_number(&response.output, 42);
             assert!(
                 history_has_assistant_tool_call(&history, "subtract"),
                 "the retrieved dynamic tool should be called: {history:?}"
@@ -112,7 +112,7 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
                 .await
                 .expect("dynamic-only tool prompt should succeed");
 
-            assert_mentions_expected_number(&response, 42);
+            assert_mentions_expected_number(&response.output, 42);
             let texts: Vec<String> = history.iter().flat_map(tool_result_texts).collect();
             assert_eq!(texts, vec!["42".to_string()]);
             assert_eq!(

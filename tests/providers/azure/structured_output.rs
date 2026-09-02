@@ -1,6 +1,5 @@
 use rig::client::DefaultTransportClient as _;
 use rig::{
-    completion::TypedPrompt,
     prelude::*,
     providers::{azure::Client, openai::GPT_5_MINI},
 };
@@ -28,7 +27,8 @@ async fn test_azure_structured_output() -> anyhow::Result<()> {
 
     let result: Person = agent
         .prompt_typed("Hello! My name is John Doe and I'm 54 years old.")
-        .await?;
+        .await?
+        .output;
 
     anyhow::ensure!(
         result.name == "John Doe",

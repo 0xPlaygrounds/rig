@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -135,10 +135,10 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                 .await
                 .expect("[gemini] Chat failed before it could update caller-owned history");
 
-            reasoning::assert_nonstreaming_universal(&result, &call_count, "gemini");
+            reasoning::assert_nonstreaming_universal(&result.output, &call_count, "gemini");
             reasoning::assert_chat_history_preserves_reasoning_tool_roundtrip(
                 &chat_history,
-                &result,
+                &result.output,
                 "gemini",
             );
         },
@@ -180,7 +180,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
         )
         .await
         .expect("[gemini] turn 1 should succeed");
-    assert_response_contains("turn 1", &turn1, "ACK-ALPHA");
+    assert_response_contains("turn 1", &turn1.output, "ACK-ALPHA");
 
     let turn2 = agent
         .chat(
@@ -190,7 +190,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
         )
         .await
         .expect("[gemini] turn 2 should succeed");
-    assert_response_contains("turn 2", &turn2, "200");
+    assert_response_contains("turn 2", &turn2.output, "200");
 
     let turn3 = agent
         .chat(
@@ -201,7 +201,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
         )
         .await
         .expect("[gemini] turn 3 should succeed");
-    assert_response_contains("turn 3", &turn3, "142");
+    assert_response_contains("turn 3", &turn3.output, "142");
 
     let turn4 = agent
         .chat(
@@ -212,7 +212,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
         )
         .await
         .expect("[gemini] turn 4 should succeed");
-    assert_response_contains("turn 4", &turn4, "ACK-SUFFIX");
+    assert_response_contains("turn 4", &turn4.output, "ACK-SUFFIX");
 
     let final_result = agent
         .chat(
@@ -224,7 +224,7 @@ async fn five_turn_chat_history_stress_preserves_context_and_tools() {
         .expect("[gemini] turn 5 should succeed");
 
     assert_eq!(
-        final_result.trim(),
+        final_result.output.trim(),
         STRESS_EXPECTED_FINAL,
         "[gemini] final stress result mismatch. Full chat history: {chat_history:#?}"
     );

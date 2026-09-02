@@ -7,6 +7,7 @@ use serde_json::json;
 
 use super::*;
 use crate::agent::{CompletionResponseEvent, HookContext, ModelTurnAction, ObservationAction};
+use crate::completion::{CompletionError, PromptError, StructuredOutputError, Usage};
 use crate::test_utils::{MockCompletionModel, MockTurn};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use rig_core::vector_store::{
@@ -244,7 +245,7 @@ async fn extractor_runs_through_full_response_lifecycle() {
         .await
         .expect("extraction should succeed");
 
-    assert_eq!(response.name, "John");
+    assert_eq!(response.output.name, "John");
     assert_eq!(model.request_count(), 1);
     assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
     assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
@@ -263,7 +264,7 @@ async fn extractor_hook_receives_canonical_response_fields() {
     .extract("John")
     .await
     .expect("extraction should succeed");
-    assert_eq!(response.name, "John");
+    assert_eq!(response.output.name, "John");
 
     let (prompt, content, observed_usage, message_id) = capture
         .snapshot
@@ -299,7 +300,7 @@ async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
         .await
         .expect("extraction should succeed");
 
-    assert_eq!(response.name, "John");
+    assert_eq!(response.output.name, "John");
     assert_eq!(
         *queries.lock().expect("extractor queries"),
         vec![("John".to_string(), 2)]
@@ -327,8 +328,11 @@ async fn extractor_completion_call_stop_prevents_provider_io() {
 
     assert!(matches!(
         error,
-        ExtractionError::PromptError(PromptError::PromptCancelled { reason, .. })
-            if reason == "extractor stopped"
+        StructuredOutputError::PromptError(err)
+            if matches!(
+                *err,
+                PromptError::PromptCancelled { ref reason, .. } if reason == "extractor stopped"
+            )
     ));
     assert_eq!(model.request_count(), 0);
 }
@@ -341,12 +345,12 @@ async fn usage_accumulates_across_failed_attempts() {
     ]);
 
     let response = extractor(model, 1)
-        .extract_with_usage("John")
+        .extract("John")
         .await
         .expect("second attempt should succeed");
 
     assert_eq!(
-        response.data,
+        response.output,
         Person {
             name: "John".to_string()
         }
@@ -366,11 +370,11 @@ async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) 
             calls: Arc::new(AtomicUsize::new(0)),
         })
         .build()
-        .extract_with_usage("John")
+        .extract("John")
         .await
         .expect("second attempt should succeed");
 
-    assert_eq!(response.data.name, "John");
+    assert_eq!(response.output.name, "John");
     assert_eq!(response.usage.total_tokens, 15);
 }
 
@@ -392,11 +396,11 @@ async fn unexpected_tool_call_preserves_usage_and_retries() {
     ]);
 
     let response = extractor(model, 1)
-        .extract_with_usage("John")
+        .extract("John")
         .await
         .expect("second attempt should succeed");
 
-    assert_eq!(response.data.name, "John");
+    assert_eq!(response.output.name, "John");
     assert_eq!(response.usage.total_tokens, 15);
 }
 
@@ -412,11 +416,11 @@ async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
         .retries(1)
         .add_hook(counts.clone())
         .build()
-        .extract_with_usage("John")
+        .extract("John")
         .await
         .expect("deferred invalid call should use extractor fallback");
 
-    assert_eq!(response.data.name, "John");
+    assert_eq!(response.output.name, "John");
     assert_eq!(response.usage.total_tokens, 15);
     assert_eq!(counts.invalid_tool_calls.load(Ordering::SeqCst), 1);
     assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 2);
@@ -436,8 +440,12 @@ async fn unexpected_tool_call_hook_can_stop_extraction() {
 
     assert!(matches!(
         error,
-        ExtractionError::PromptError(PromptError::PromptCancelled { reason, .. })
-            if reason == "unexpected extractor tool call"
+        StructuredOutputError::PromptError(err)
+            if matches!(
+                *err,
+                PromptError::PromptCancelled { ref reason, .. }
+                    if reason == "unexpected extractor tool call"
+            )
     ));
 }
 
@@ -456,7 +464,7 @@ async fn unexpected_tool_call_hook_can_repair_to_submit() {
         .await
         .expect("repaired output-tool call should finalize extraction");
 
-    assert_eq!(response.name, "John");
+    assert_eq!(response.output.name, "John");
 }
 
 #[tokio::test]
@@ -474,7 +482,7 @@ async fn skip_hook_preserves_valid_submit_sibling() {
         .await
         .expect("skipping an invalid sibling should preserve submit");
 
-    assert_eq!(response.name, "John");
+    assert_eq!(response.output.name, "John");
 }
 
 #[tokio::test]
@@ -487,11 +495,11 @@ async fn submit_call_wins_over_unexpected_sibling_call() {
     let model = MockCompletionModel::new([turn]);
 
     let response = extractor(model, 0)
-        .extract_with_usage("John")
+        .extract("John")
         .await
         .expect("submit should remain authoritative");
 
-    assert_eq!(response.data.name, "John");
+    assert_eq!(response.output.name, "John");
     assert_eq!(response.usage.total_tokens, 7);
 }
 
@@ -507,7 +515,7 @@ async fn submit_call_wins_before_unexpected_sibling_call() {
         .await
         .expect("an earlier submit should remain authoritative");
 
-    assert_eq!(response.name, "John");
+    assert_eq!(response.output.name, "John");
 }
 
 #[tokio::test]
@@ -523,7 +531,7 @@ async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
         .await
         .expect("unexpected siblings should not displace submit");
 
-    assert_eq!(response.name, "John");
+    assert_eq!(response.output.name, "John");
 }
 
 #[tokio::test]
@@ -534,7 +542,7 @@ async fn transport_errors_contribute_no_usage() {
     ]);
 
     let response = extractor(model, 1)
-        .extract_with_usage("John")
+        .extract("John")
         .await
         .expect("second attempt should succeed");
 
@@ -546,7 +554,7 @@ async fn single_successful_attempt_reports_its_own_usage() {
     let model = MockCompletionModel::new([submit_turn("John").with_usage(usage(7))]);
 
     let response = extractor(model, 0)
-        .extract_with_usage("John")
+        .extract("John")
         .await
         .expect("extraction should succeed");
 
@@ -562,7 +570,7 @@ async fn exhausted_retries_return_last_error() {
         .await
         .expect_err("extraction should fail");
 
-    assert!(matches!(err, ExtractionError::NoData));
+    assert!(matches!(err, StructuredOutputError::EmptyResponse));
 }
 
 #[tokio::test]
@@ -576,7 +584,11 @@ async fn exhausted_retries_return_error_from_final_attempt() {
 
     assert!(matches!(
         err,
-        ExtractionError::CompletionError(CompletionError::ProviderError(message))
-            if message == "second"
+        StructuredOutputError::PromptError(err)
+            if matches!(
+                *err,
+                PromptError::CompletionError(CompletionError::ProviderError(ref message))
+                    if message == "second"
+            )
     ));
 }

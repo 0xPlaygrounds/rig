@@ -1,6 +1,5 @@
 //! Moonshot agent completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::moonshot;
 
@@ -20,7 +19,8 @@ async fn completion_smoke() {
     let response = agent
         .prompt(BASIC_PROMPT)
         .await
-        .expect("completion should succeed");
+        .expect("completion should succeed")
+        .output;
 
     assert_nonempty_response(&response);
 }

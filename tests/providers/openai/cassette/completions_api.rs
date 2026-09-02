@@ -1,11 +1,9 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
 use rig::completion::CompletionModel;
 use rig::completion::NormalizeCompletionResponse;
-use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use super::super::support::with_openai_completions_cassette;
@@ -35,7 +33,8 @@ async fn completions_api_agent_prompt() {
             let response = agent
                 .prompt("Hello world!")
                 .await
-                .expect("completions api prompt should succeed");
+                .expect("completions api prompt should succeed")
+                .output;
 
             assert_nonempty_response(&response);
         },
@@ -95,6 +94,7 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -200,6 +200,7 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

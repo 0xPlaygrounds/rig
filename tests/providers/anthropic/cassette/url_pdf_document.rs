@@ -4,7 +4,6 @@
 //! explicit media type through the request-side message conversion: the
 //! document must map to a `"source": {"type": "url", ...}` content block.
 //! See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>.
-use rig::completion::Prompt;
 use rig::message::{Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
@@ -35,7 +34,8 @@ async fn url_pdf_document_prompt() {
                     ],
                 })
                 .await
-                .expect("URL PDF document prompt should succeed");
+                .expect("URL PDF document prompt should succeed")
+                .output;
 
             assert_nonempty_response(&response);
             assert_contains_any_case_insensitive(&response, &["bitcoin"]);

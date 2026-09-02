@@ -38,6 +38,6 @@ async fn context_propagates_into_sub_agent() {
         .await
         .expect("run succeeds");
 
-    assert_eq!(out, "outer done");
+    assert_eq!(out.output, "outer done");
     assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
 }

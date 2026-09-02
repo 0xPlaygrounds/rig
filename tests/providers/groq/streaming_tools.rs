@@ -3,7 +3,6 @@ use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::groq;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -74,6 +73,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
     let mut stream = agent
         .stream_prompt(TWO_TOOL_STREAM_PROMPT)
         .max_turns(8)
+        .stream()
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 
@@ -97,6 +97,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
     let mut stream = agent
         .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
         .max_turns(5)
+        .stream()
         .await;
     let observation = collect_stream_observation(&mut stream).await;
 

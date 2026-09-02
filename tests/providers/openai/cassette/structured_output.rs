@@ -1,7 +1,6 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
 use rig::agent::OutputMode;
-use rig::completion::{Prompt, TypedPrompt};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::test_utils::RecordingHttpClient;
@@ -82,7 +81,8 @@ async fn structured_output_smoke() {
             let response: SmokeStructuredOutput = agent
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
                 .await
-                .expect("structured output prompt should succeed");
+                .expect("structured output prompt should succeed")
+                .output;
 
             assert_smoke_structured_output(&response);
         },
@@ -107,7 +107,8 @@ async fn classic_tool_mode_maps_through_openai_responses() {
     let response = agent
         .prompt(STRUCTURED_OUTPUT_PROMPT)
         .await
-        .expect("classic OpenAI Tool-mode run should succeed");
+        .expect("classic OpenAI Tool-mode run should succeed")
+        .output;
     let structured: SmokeStructuredOutput =
         decode_structured_output("openai_classic_tool_mode", &response)
             .expect("output-tool arguments should deserialize");
@@ -139,12 +140,12 @@ async fn prompt_typed_and_output_schema() {
             let forecast: WeatherForecast = agent
                 .prompt_typed("What's the weather forecast for New York City today?")
                 .await
-                .expect("prompt_typed should succeed");
+                .expect("prompt_typed should succeed")
+                .output;
             assert_weather_forecast(&forecast, &["new york", "nyc"]);
 
             let extended = agent
                 .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
-                .extended_details()
                 .await
                 .expect("extended prompt_typed should succeed");
             assert_weather_forecast(&extended.output, &["los angeles", "la"]);
@@ -160,7 +161,8 @@ async fn prompt_typed_and_output_schema() {
             let response = agent_with_schema
                 .prompt("What's the weather forecast for Chicago?")
                 .await
-                .expect("output schema prompt should succeed");
+                .expect("output schema prompt should succeed")
+                .output;
             let parsed: WeatherForecast =
                 decode_structured_output("openai_output_schema_weather", &response)
                     .expect("schema response should deserialize");

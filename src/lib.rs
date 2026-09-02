@@ -78,7 +78,7 @@ pub mod http_client {
 
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};
+pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, TypedPromptResponse};
 
 /// Direct access to the portable provider and data contracts.
 pub mod core {
@@ -129,12 +129,10 @@ pub mod client {
     pub use rig_reqwest::client::{DefaultTransportBuilder, DefaultTransportClient};
 }
 
-/// Low-level completion contracts plus classic prompting traits and errors.
+/// Low-level completion contracts plus the classic runtime's errors.
 pub mod completion {
     #[cfg(feature = "agent")]
-    pub use rig_agent::completion::{
-        Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt,
-    };
+    pub use rig_agent::completion::{PromptError, StructuredOutputError};
     pub use rig_core::completion::*;
 }
 
@@ -166,9 +164,8 @@ pub mod prelude {
     // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
-        RunEvents, StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
-        TypedPrompt,
+        Agent, AgentClientExt, AgentModelExt, MultiTurnStreamItem, PromptError, RunEvents,
+        StreamingResult, StructuredOutputError, ToolSet,
     };
     pub use rig_core::prelude::*;
     // Default-transport construction traits: `Client::new(..)` / `from_env()` /
@@ -182,10 +179,8 @@ pub mod prelude {
     pub use rig_tungstenite::prelude::*;
 }
 
-/// Low-level streaming values plus classic streaming traits.
+/// Low-level streaming values.
 pub mod streaming {
-    #[cfg(feature = "agent")]
-    pub use rig_agent::streaming::{StreamingChat, StreamingPrompt};
     pub use rig_core::streaming::*;
 }
 

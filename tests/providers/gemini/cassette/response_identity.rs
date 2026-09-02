@@ -69,7 +69,6 @@ async fn streaming_request_id_is_none_by_design() {
 #[tokio::test]
 async fn agent_run_reports_none_identity() {
     use crate::support::IdentityProbe;
-    use rig::completion::Prompt;
 
     with_gemini_cassette(
         "response_identity/agent_run_reports_none_identity",
@@ -83,7 +82,6 @@ async fn agent_run_reports_none_identity() {
 
             let response = agent
                 .prompt("Reply with exactly: identity probe")
-                .extended_details()
                 .await
                 .expect("agent run should succeed");
 
@@ -114,11 +112,12 @@ async fn streamed_agent_run_reports_none_identity() {
                 .add_hook(probe.clone())
                 .build();
 
-            let mut stream = rig::streaming::StreamingPrompt::stream_prompt(
-                &agent,
-                rig::completion::Message::user("Reply with exactly: streamed identity probe"),
-            )
-            .await;
+            let mut stream = agent
+                .stream_prompt(rig::completion::Message::user(
+                    "Reply with exactly: streamed identity probe",
+                ))
+                .stream()
+                .await;
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }

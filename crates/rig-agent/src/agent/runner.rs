@@ -5,11 +5,9 @@
 //! performs no IO and carries no hooks. `AgentRunner` pairs that machine with
 //! the side-effecting concerns — building and sending completion requests,
 //! executing tools, loading/saving conversation memory — and fires an
-//! [`AgentHook`] at every observable point. Both the blocking
-//! [`PromptRequest`](crate::agent::prompt_request::PromptRequest) and the
-//! [`StreamingPromptRequest`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
-//! APIs are thin wrappers over an `AgentRunner`, and you can build one directly
-//! to drive an agent with custom, composable hooks:
+//! [`AgentHook`] at every observable point. [`Agent::prompt`] and
+//! [`Agent::stream_prompt`] both return an `AgentRunner`, and you can build
+//! one directly to drive an agent with custom, composable hooks:
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
@@ -33,8 +31,7 @@ use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
     hook::AgentHook,
-    prompt_request::PromptResponse,
-    run::AgentRun,
+    run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
 use rig_core::{memory::ConversationMemory, message::ToolChoice};
@@ -46,23 +43,17 @@ use crate::{
 
 use super::UNKNOWN_AGENT_NAME;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum UnhandledInvalidToolCallPolicy {
-    #[default]
-    Fail,
-    IgnoreForExtractor,
-}
-
 /// A hook-aware driver over [`AgentRun`].
 ///
 /// Construct one from an [`Agent`] with [`Agent::runner`], attach hooks with
 /// [`add_hook`](Self::add_hook), then call
 /// [`run`](Self::run) (blocking) or
-/// [`stream`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
+/// [`stream`](Self::stream)
 /// (incremental). Hooks are held in a [`HookStack`](super::hook::HookStack), an ordered,
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
+#[derive(Clone)]
 pub struct AgentRunner {
     /// The run's own copy of the agent's configuration, cloned as one unit by
     /// [`from_agent`](Self::from_agent). Per-run overrides mutate this copy and
@@ -78,7 +69,7 @@ pub struct AgentRunner {
     pub(crate) output_tool_name: Option<String>,
     pub(crate) output_tool_description: Option<String>,
     pub(crate) augment_output_preamble: bool,
-    pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
+    pub(crate) unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
@@ -104,7 +95,7 @@ impl AgentRunner {
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
-            unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
+            unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             concurrency: 1,
             error_usage: None,
         }
@@ -279,13 +270,10 @@ impl AgentRunner {
 
     /// Ignore invalid tool calls when every registered hook declines to act.
     ///
-    /// This is an internal compatibility policy for extractors, whose legacy
-    /// transport treated every non-`submit` call as irrelevant response
-    /// content. Hooks still receive the invalid-call event first and retain
-    /// full control over recovery or termination.
-    pub(crate) fn ignore_unhandled_invalid_tool_calls(mut self) -> Self {
-        self.unhandled_invalid_tool_call_policy =
-            UnhandledInvalidToolCallPolicy::IgnoreForExtractor;
+    /// Set what this run does with an invalid tool call no hook resolves.
+    /// See [`UnhandledInvalidToolCall`].
+    pub fn unhandled_invalid_tool_call(mut self, policy: UnhandledInvalidToolCall) -> Self {
+        self.unhandled_invalid_tool_call = policy;
         self
     }
 
@@ -362,6 +350,7 @@ impl AgentRunner {
             self.prompt.clone(),
             self.config.max_turns,
             self.max_invalid_tool_call_retries,
+            self.unhandled_invalid_tool_call,
             self.config.output_schema.as_ref(),
             history_override.or_else(|| self.chat_history.clone()),
             self.config.tool_choice.clone(),
@@ -380,6 +369,7 @@ pub(crate) fn build_agent_run(
     prompt: Message,
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
+    unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     output_schema: Option<&schemars::Schema>,
     history: Option<Vec<Message>>,
     tool_choice: Option<ToolChoice>,
@@ -387,6 +377,7 @@ pub(crate) fn build_agent_run(
     let spec = crate::run::spec::RunSpec {
         max_turns: Some(max_turns),
         max_invalid_tool_call_retries,
+        unhandled_invalid_tool_call,
         output_schema: output_schema.map(|schema| schema.as_value().clone()),
         tool_choice,
         ..crate::run::spec::RunSpec::new()
@@ -494,5 +485,18 @@ impl AgentRunner {
     }
 }
 
+/// `.await`ing a runner is [`run`](AgentRunner::run).
+impl std::future::IntoFuture for AgentRunner {
+    type Output = Result<PromptResponse, PromptError>;
+    type IntoFuture = rig_core::wasm_compat::WasmBoxedFuture<'static, Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.run())
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod prompt_tests;

@@ -1,7 +1,6 @@
 //! Anthropic structured output smoke test.
 
 use rig::agent::OutputMode;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
 use rig::test_utils::RecordingHttpClient;
@@ -69,7 +68,8 @@ async fn structured_output_smoke() {
             let response = agent
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
-                .expect("structured output prompt should succeed");
+                .expect("structured output prompt should succeed")
+                .output;
             let structured: SmokeStructuredOutput =
                 decode_structured_output("anthropic_structured_output_smoke", &response)
                     .expect("structured output should deserialize");
@@ -97,7 +97,8 @@ async fn classic_tool_mode_maps_through_anthropic_messages() {
     let response = agent
         .prompt(STRUCTURED_OUTPUT_PROMPT)
         .await
-        .expect("classic Anthropic Tool-mode run should succeed");
+        .expect("classic Anthropic Tool-mode run should succeed")
+        .output;
     let structured: SmokeStructuredOutput =
         decode_structured_output("anthropic_classic_tool_mode", &response)
             .expect("output-tool arguments should deserialize");
@@ -129,7 +130,8 @@ async fn classic_prompted_mode_maps_through_anthropic_messages() {
     let response = agent
         .prompt(STRUCTURED_OUTPUT_PROMPT)
         .await
-        .expect("classic Anthropic Prompted-mode run should succeed");
+        .expect("classic Anthropic Prompted-mode run should succeed")
+        .output;
     let structured: SmokeStructuredOutput =
         decode_structured_output("anthropic_classic_prompted_mode", &response)
             .expect("prompted JSON should deserialize");

@@ -207,16 +207,17 @@ async fn run_signed_agent(
 
     match transport {
         Transport::Blocking => {
-            rig::completion::Prompt::prompt(&agent, prompt(Shape::Single)).await?;
+            agent.prompt(prompt(Shape::Single)).await?;
         }
         Transport::Streaming => {
-            let mut stream = rig::streaming::StreamingChat::stream_chat(
-                &agent,
-                prompt(Shape::Single),
-                Vec::<rig::completion::Message>::new(),
-            )
-            .max_turns(2)
-            .await;
+            let mut stream = agent
+                .stream_chat(
+                    prompt(Shape::Single),
+                    Vec::<rig::completion::Message>::new(),
+                )
+                .max_turns(2)
+                .stream()
+                .await;
             while let Some(item) = stream.next().await {
                 item?;
             }

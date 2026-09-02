@@ -13,11 +13,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 
 use super::super::support::with_chatgpt_cassette;
@@ -113,7 +112,7 @@ async fn sequential_tool_calls_nonstreaming() {
                 .await
                 .expect("sequential tool chat should succeed");
 
-            assert_mentions_expected_number(&result, 2);
+            assert_mentions_expected_number(&result.output, 2);
 
             let calls = history_tool_calls(&history);
             let results = history_tool_results(&history);
@@ -181,6 +180,7 @@ async fn sequential_tool_calls_streaming() {
             let mut stream = agent
                 .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
                 .max_turns(6)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -231,7 +231,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() {
                 .await
                 .expect("parallel tool chat should succeed");
 
-            let lowered = result.to_ascii_lowercase();
+            let lowered = result.output.to_ascii_lowercase();
             assert!(
                 lowered.contains(ALPHA_SIGNAL_OUTPUT) && lowered.contains(BETA_SIGNAL_OUTPUT),
                 "final response should include both tool outputs, got {result:?}"
@@ -288,6 +288,7 @@ async fn parallel_tool_calls_single_turn_streaming() {
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -423,6 +424,7 @@ async fn reasoning_session_two_tool_calls_streaming() {
                     Vec::<Message>::new(),
                 )
                 .max_turns(5)
+                .stream()
                 .await;
 
             let stats = reasoning::collect_stream_stats(stream, "chatgpt").await;
@@ -485,6 +487,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
 
             let mut saw_tool_result = false;
