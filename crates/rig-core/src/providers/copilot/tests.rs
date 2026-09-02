@@ -5,6 +5,7 @@ use super::{
 };
 use crate::client::CompletionClient;
 use crate::completion::CompletionModel;
+use crate::error::ErrorKind;
 use crate::http_client;
 use crate::message::AssistantContent;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
@@ -487,11 +488,8 @@ async fn responses_stream_terminates_after_terminal_error() {
     // payload, so the full raw event JSON is preserved for inspection
     // (status: None — the error arrived over an already-established stream),
     // matching the OpenAI Responses SSE path.
-    assert!(matches!(
-        err,
-        crate::completion::CompletionError::ProviderResponse(_)
-    ));
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     let json = err
         .provider_response_json()
         .expect("preserved body should parse as JSON")
@@ -558,11 +556,8 @@ async fn responses_stream_object_less_failed_still_attaches_the_raw_event() {
         Ok(item) => panic!("stream should surface a provider error, got {item:?}"),
         Err(err) => err,
     };
-    assert!(matches!(
-        err,
-        crate::completion::CompletionError::ProviderResponse(_)
-    ));
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     assert!(
         err.provider_response_body()
             .is_some_and(|body| body.contains("response.failed")),
@@ -687,7 +682,7 @@ async fn chat_stream_surfaces_malformed_frame_and_still_completes() {
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(err) => {
                 assert!(
-                    matches!(err, crate::completion::CompletionError::JsonError(_)),
+                    err.kind == ErrorKind::Json,
                     "expected a JSON parse error item, got {err:?}"
                 );
                 saw_error = true;
@@ -737,7 +732,7 @@ async fn chat_stream_surfaces_recognizable_chunk_with_malformed_field() {
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(err) => {
                 assert!(
-                    matches!(err, crate::completion::CompletionError::JsonError(_)),
+                    err.kind == ErrorKind::Json,
                     "expected a JSON parse error item, got {err:?}"
                 );
                 saw_error = true;
@@ -917,10 +912,11 @@ async fn chat_stream_terminates_after_transport_error() {
                     "HttpError: Invalid status code: 502 Bad Gateway"
                 );
                 assert_eq!(
-                    err.provider_response_status(),
-                    Some(http::StatusCode::BAD_GATEWAY)
+                    err.http_status,
+                    Some(http::StatusCode::BAD_GATEWAY.as_u16())
                 );
-                assert_eq!(err.provider_response_body(), None);
+                // A status-only `HttpError` preserves no provider body.
+                assert!(err.provider_response_body().is_none_or(str::is_empty));
                 saw_error = true;
             }
             Ok(other) => panic!("unexpected stream item: {other:?}"),

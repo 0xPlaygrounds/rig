@@ -393,10 +393,25 @@ async fn failed_attempt_error_carries_its_own_request_id() {
     .await
     .expect_err("the second attempt fails");
 
+    let PromptError::Report(ref report) = error else {
+        panic!("expected the failing attempt's report, got {error:?}");
+    };
+    assert_eq!(
+        report.request_id.as_deref(),
+        Some("req-failed-2"),
+        "the surfaced error reports the failing attempt's id: {error:?}"
+    );
     assert_eq!(
         error.provider_request_id(),
         Some("req-failed-2"),
-        "the surfaced error reports the failing attempt's id: {error:?}"
+        "the run-surface accessor reads the wire report too"
+    );
+    assert_eq!(
+        error
+            .provider_response_status()
+            .map(|status| status.as_u16()),
+        report.http_status,
+        "and so does the status accessor"
     );
     let turns = hook.turns.lock().expect("turn identities").clone();
     assert_eq!(turns.len(), 1, "only the successful call fired the event");
@@ -1289,7 +1304,7 @@ async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() 
     assert_eq!(hook.model_turns.load(SeqCst), 0);
     assert!(matches!(
         error,
-        Some(StreamingError::Completion(CompletionError::Report(ref report)))
+        Some(StreamingError::Report(ref report))
             if report.kind == rig_core::error::ErrorKind::Provider
                 && report.message.ends_with("post-final failure")
     ));

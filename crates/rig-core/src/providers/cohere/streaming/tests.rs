@@ -242,7 +242,7 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
             Ok(_) => {}
             Err(err) => {
                 assert!(
-                    matches!(err, CompletionError::JsonError(_)),
+                    err.kind == crate::error::ErrorKind::Json,
                     "expected a JSON parse error item, got {err:?}"
                 );
                 saw_error = true;

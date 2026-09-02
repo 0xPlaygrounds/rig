@@ -100,6 +100,12 @@ pub struct ErrorReport {
     /// carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
+    /// The provider's response when the failure carries one — status,
+    /// body, headers (`Retry-After` on a 429), and its request id — so a
+    /// failure that crossed the wire loses nothing a caller could read off
+    /// the provider error it came from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_response: Option<Box<crate::provider_response::ProviderResponseError>>,
 }
 
 impl ErrorReport {
@@ -114,6 +120,7 @@ impl ErrorReport {
             refusal: false,
             source_chain: Vec::new(),
             request_id: None,
+            provider_response: None,
         }
     }
 
@@ -150,6 +157,38 @@ impl ErrorReport {
     /// Whether the same operation may reasonably be retried.
     pub const fn is_retryable(&self) -> bool {
         self.retryable
+    }
+}
+
+impl ErrorReport {
+    /// The provider response body preserved on this report, if any.
+    pub fn provider_response_body(&self) -> Option<&str> {
+        self.provider_response
+            .as_ref()
+            .map(|response| response.body.as_str())
+    }
+
+    /// The preserved provider response body parsed as JSON, when present.
+    pub fn provider_response_json(&self) -> Result<Option<serde_json::Value>, serde_json::Error> {
+        crate::provider_response::json(self.provider_response_body())
+    }
+
+    /// The preserved provider response headers, if any.
+    pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+        self.provider_response
+            .as_ref()
+            .and_then(|response| response.headers.as_deref())
+    }
+
+    /// The HTTP status this report carries, as a status code.
+    pub fn provider_response_status(&self) -> Option<http::StatusCode> {
+        self.http_status
+            .and_then(|status| http::StatusCode::from_u16(status).ok())
+    }
+
+    /// The provider's transport request id, if the failure carried one.
+    pub fn provider_request_id(&self) -> Option<&str> {
+        self.request_id.as_deref()
     }
 }
 
@@ -199,7 +238,6 @@ impl CompletionError {
             Self::ProviderResponse(response) => {
                 retryable_status(response.status.map(|s| s.as_u16()))
             }
-            Self::Report(report) => report.retryable,
             Self::JsonError(_)
             | Self::UrlError(_)
             | Self::RequestError(_)
@@ -230,7 +268,6 @@ impl From<&CompletionError> for ErrorReport {
                 let status = response.status.map(|s| s.as_u16());
                 (ErrorKind::ProviderResponse, status)
             }
-            CompletionError::Report(report) => return report.clone(),
         };
         let request_id = match error {
             CompletionError::ProviderResponse(response) => response.provider_request_id.clone(),
@@ -239,8 +276,31 @@ impl From<&CompletionError> for ErrorReport {
             | CompletionError::UrlError(_)
             | CompletionError::RequestError(_)
             | CompletionError::ResponseError(_)
-            | CompletionError::ProviderError(_)
-            | CompletionError::Report(_) => None,
+            | CompletionError::ProviderError(_) => None,
+        };
+        // The provider's response travels with the report: what the
+        // provider error exposed (status, body, headers, request id) stays
+        // readable after the failure crossed the wire.
+        let provider_response = match error {
+            CompletionError::ProviderResponse(response) => Some(Box::new(response.clone())),
+            CompletionError::HttpError(inner) => inner.non_success_status().map(|status| {
+                Box::new(
+                    crate::provider_response::ProviderResponseError::new(
+                        status,
+                        inner.non_success_body().unwrap_or_default(),
+                    )
+                    .with_headers(
+                        inner
+                            .non_success_headers()
+                            .map(|headers| Box::new(headers.clone())),
+                    ),
+                )
+            }),
+            CompletionError::JsonError(_)
+            | CompletionError::UrlError(_)
+            | CompletionError::RequestError(_)
+            | CompletionError::ResponseError(_)
+            | CompletionError::ProviderError(_) => None,
         };
         ErrorReport {
             kind,
@@ -251,6 +311,7 @@ impl From<&CompletionError> for ErrorReport {
             refusal: false,
             source_chain: source_chain(error),
             request_id,
+            provider_response,
         }
     }
 }
@@ -295,6 +356,7 @@ impl From<&ToolExecutionError> for ErrorReport {
             refusal: error.is_refusal(),
             source_chain: source_chain(error),
             request_id: None,
+            provider_response: None,
         }
     }
 }
@@ -328,6 +390,7 @@ impl From<&MemoryError> for ErrorReport {
             refusal: false,
             source_chain: source_chain(error),
             request_id: None,
+            provider_response: None,
         }
     }
 }
@@ -387,6 +450,7 @@ impl From<&EmbeddingError> for ErrorReport {
             refusal: false,
             source_chain: source_chain(error),
             request_id: None,
+            provider_response: None,
         }
     }
 }
@@ -429,6 +493,7 @@ impl From<&VectorStoreError> for ErrorReport {
             refusal: false,
             source_chain: source_chain(error),
             request_id: None,
+            provider_response: None,
         }
     }
 }

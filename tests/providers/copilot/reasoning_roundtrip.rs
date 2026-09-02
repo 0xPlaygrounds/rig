@@ -62,7 +62,7 @@ impl CompletionModel for CapturingProviderFinals {
             item
         });
 
-        Ok(StreamingCompletionResponse::stream(
+        Ok(StreamingCompletionResponse::from_events(
             copilot::PROVIDER_NAME,
             Box::pin(captured),
         ))

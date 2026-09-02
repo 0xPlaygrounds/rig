@@ -4,6 +4,7 @@ use super::{
     stream_events_from_sse_body,
 };
 use crate::completion::CompletionModel;
+use crate::error::{ErrorKind, ErrorReport};
 use crate::message::{AssistantContent, ReasoningContent};
 use crate::providers::internal::adapter::AdapterOutput;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
@@ -234,7 +235,7 @@ fn sample_response(status: ResponseStatus) -> CompletionResponse {
     }
 }
 
-async fn first_error_from_event(event: serde_json::Value) -> crate::completion::CompletionError {
+async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
     let client = openai::Client::builder()
         .http_client(MockStreamingClient {
             sse_bytes: sse_bytes_from_json_events(&[event]),
@@ -304,7 +305,7 @@ async fn stream_final_from_event(event: serde_json::Value) -> crate::streaming::
 /// carrying the completed call) come first, then the error, then nothing.
 async fn flushed_tool_call_then_error(
     stream: &mut crate::streaming::StreamingCompletionResponse,
-) -> (crate::message::ToolCall, crate::completion::CompletionError) {
+) -> (crate::message::ToolCall, ErrorReport) {
     let mut tool_call = None;
     let err = loop {
         match stream
@@ -732,11 +733,8 @@ async fn response_failed_chunk_surfaces_provider_error_without_empty_code_prefix
 
     let err = first_error_from_event(event).await;
 
-    assert!(matches!(
-        err,
-        crate::completion::CompletionError::ProviderResponse(_)
-    ));
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     assert!(err.provider_response_body().is_some_and(|body| {
         body.contains("response.failed") && body.contains("maximum context length exceeded")
     }));
@@ -758,11 +756,8 @@ async fn response_failed_chunk_surfaces_provider_error_with_code_prefix() {
 
     let err = first_error_from_event(event).await;
 
-    assert!(matches!(
-        err,
-        crate::completion::CompletionError::ProviderResponse(_)
-    ));
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     assert!(err.provider_response_body().is_some_and(|body| {
         body.contains("response.failed")
             && body.contains("context_length_exceeded")
@@ -969,11 +964,8 @@ async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
     assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
     assert_eq!(tool_call.function.name, "example_tool");
 
-    assert!(matches!(
-        err,
-        crate::completion::CompletionError::ProviderResponse(_)
-    ));
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     assert!(err.provider_response_body().is_some_and(|body| {
         body.contains("response.failed") && body.contains("response stream failed")
     }));
@@ -1028,8 +1020,8 @@ async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
     let provider = tool_call.provider.as_ref().expect("provider ids are kept");
     assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
     assert_eq!(
-        err.provider_response_status(),
-        Some(http::StatusCode::BAD_GATEWAY)
+        err.http_status,
+        Some(http::StatusCode::BAD_GATEWAY.as_u16())
     );
 
     assert!(
@@ -1070,7 +1062,7 @@ async fn known_terminal_with_malformed_usage_surfaces_error_without_terminal() {
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(err) => {
                 assert!(
-                    matches!(err, crate::completion::CompletionError::JsonError(_)),
+                    err.kind == ErrorKind::Json,
                     "expected a parse error item, got {err:?}"
                 );
                 saw_error = true;
@@ -1290,7 +1282,8 @@ async fn streaming_error_event_preserves_full_payload_in_live_loop() {
         .await
         .expect("stream should yield an item")
         .expect_err("stream should surface a provider response error");
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     assert!(
         err.provider_response_body()
             .is_some_and(|body| { body.contains("\"type\":\"error\"") && body.contains("boom") })
@@ -1326,8 +1319,8 @@ async fn streaming_http_non_success_preserves_status_and_body() {
         .expect("stream should yield transport error")
         .expect_err("HTTP non-success should surface as a stream error");
     assert_eq!(
-        err.provider_response_status(),
-        Some(http::StatusCode::TOO_MANY_REQUESTS)
+        err.http_status,
+        Some(http::StatusCode::TOO_MANY_REQUESTS.as_u16())
     );
     assert_eq!(err.provider_response_body(), Some(body));
     assert_eq!(
@@ -2270,13 +2263,10 @@ async fn streaming_non_http_transport_error_stays_provider_error() {
         err.to_string(),
         "ProviderError: Invalid content type was returned: \"application/json\""
     );
-    assert!(matches!(
-        err,
-        crate::completion::CompletionError::ProviderError(_)
-    ));
+    assert_eq!(err.kind, ErrorKind::Provider);
     // Rig-generated transport diagnostics are not provider response bodies.
     assert_eq!(err.provider_response_body(), None);
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.http_status, None);
 }
 
 #[tokio::test]
@@ -2590,7 +2580,7 @@ async fn malformed_frame_surfaces_error_and_stream_still_completes() {
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(err) => {
                 assert!(
-                    matches!(err, crate::completion::CompletionError::JsonError(_)),
+                    err.kind == ErrorKind::Json,
                     "expected a JSON parse error item, got {err:?}"
                 );
                 saw_error = true;

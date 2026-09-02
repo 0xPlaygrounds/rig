@@ -7,7 +7,7 @@ use serde_json::json;
 
 use super::*;
 use crate::agent::{HookContext, ModelTurnAction, OutcomeAction, OutcomeEvent};
-use crate::completion::{CompletionError, PromptError, StructuredOutputError, Usage};
+use crate::completion::{PromptError, StructuredOutputError, Usage};
 use crate::test_utils::{MockCompletionModel, MockTurn};
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
 use rig_core::vector_store::{
@@ -597,7 +597,7 @@ async fn exhausted_retries_return_error_from_final_attempt() {
         StructuredOutputError::PromptError(err)
             if matches!(
                 *err,
-                PromptError::CompletionError(CompletionError::Report(ref report))
+                PromptError::Report(ref report)
                     if report.kind == rig_core::error::ErrorKind::Provider
                         && report.message.ends_with("second")
             )

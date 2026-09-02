@@ -408,8 +408,8 @@ impl StreamTap {
                 {
                     self.message_id = Some(wire.to_owned());
                 }
-                if let Err(error) = self.accumulator.apply(event) {
-                    return Some(Err(ErrorReport::from(&error)));
+                if let Err(report) = self.accumulator.apply(event) {
+                    return Some(Err(report));
                 }
                 None
             }

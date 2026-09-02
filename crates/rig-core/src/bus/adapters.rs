@@ -101,7 +101,6 @@ where
                         }
                     };
                     while let Some(item) = stream.next().await {
-                        let item = item.map_err(ErrorReport::from);
                         if sink.send(item).await.is_err() {
                             // The consumer is gone: dropping the provider
                             // stream fires its abort.

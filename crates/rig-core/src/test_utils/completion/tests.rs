@@ -1,5 +1,6 @@
 use super::*;
 use crate::{
+    error::ErrorKind,
     message::Message,
     streaming::{Delta, StreamEvent, StreamFinal},
 };
@@ -223,10 +224,8 @@ async fn stream_error_event_is_returned() {
         .expect("stream should yield one event")
         .expect_err("scripted event should error");
 
-    assert!(matches!(
-        err,
-        CompletionError::ProviderError(message) if message == "boom"
-    ));
+    assert_eq!(err.kind, ErrorKind::Provider);
+    assert_eq!(err.message, "ProviderError: boom");
 }
 
 #[test]

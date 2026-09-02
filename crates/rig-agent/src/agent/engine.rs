@@ -164,6 +164,7 @@ pub(crate) trait TurnSource: WasmCompatSend {
 pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     match err {
         StreamingError::Completion(err) => PromptError::CompletionError(err),
+        StreamingError::Report(report) => PromptError::Report(report),
         StreamingError::Prompt(err) => *err,
     }
 }
@@ -382,8 +383,7 @@ where
                         Ok(model) => model,
                         Err(report) => {
                             store_error_usage(&runner, &run);
-                            let err: StreamingError =
-                                CompletionError::Report(report).into();
+                            let err = StreamingError::Report(report);
                             settled_error = Some(err.to_string());
                             yield Err(err);
                             break 'outer;
@@ -888,20 +888,20 @@ impl TurnSource for StreamingTurnSource {
             {
                 Ok(CompletionDispatch::Stream { id, kind, stream }) => (id, kind, stream),
                 Ok(CompletionDispatch::Response { .. }) => {
-                    yield Err(StreamingError::Completion(CompletionError::Report(
+                    yield Err(StreamingError::Report(
                         ErrorReport::new(
                             ErrorKind::Internal,
                             "a streaming completion dispatch answered unary",
                         ),
-                    )));
+                    ));
                     return;
                 }
                 Err(CompletionDispatchError::Cancelled(reason)) => {
                     yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                     return;
                 }
-                Err(CompletionDispatchError::Failed(err)) => {
-                    yield Err(StreamingError::Completion(err));
+                Err(CompletionDispatchError::Failed(report)) => {
+                    yield Err(StreamingError::Report(report));
                     return;
                 }
             };
@@ -1511,17 +1511,13 @@ pub(crate) async fn settle_model_turn(
             replaced = Some(replacement.choice);
         }
         OutcomeAction::Replace(Ok(other)) => {
-            return Err(PromptError::CompletionError(CompletionError::Report(
-                wrong_outcome("a completion", &other),
-            )));
+            return Err(PromptError::Report(wrong_outcome("a completion", &other)));
         }
         OutcomeAction::Replace(Err(report)) => {
             if report.kind == ErrorKind::Cancelled {
                 return Ok(ModelTurnDecision::Terminate(report.message));
             }
-            return Err(PromptError::CompletionError(CompletionError::Report(
-                report,
-            )));
+            return Err(PromptError::Report(report));
         }
     }
     let content = replaced.as_ref().unwrap_or(turn.content);
@@ -1898,12 +1894,12 @@ impl TurnSource for UnaryTurnSource {
             {
                 Ok(CompletionDispatch::Response { id, kind, response }) => (id, kind, response),
                 Ok(CompletionDispatch::Stream { .. }) => {
-                    yield Err(StreamingError::Completion(CompletionError::Report(
+                    yield Err(StreamingError::Report(
                         ErrorReport::new(
                             ErrorKind::Internal,
                             "a unary completion dispatch answered with a stream",
                         ),
-                    )));
+                    ));
                     return;
                 }
                 Err(CompletionDispatchError::Cancelled(reason)) => {
@@ -2079,7 +2075,7 @@ pub(crate) enum CompletionDispatchError {
     Cancelled(String),
     /// The dispatch failed (a denial with any other kind, a bus or handler
     /// failure, a wrong-family patch).
-    Failed(CompletionError),
+    Failed(ErrorReport),
 }
 
 fn wrong_family_patch(expected: &str, kind: &EffectKind) -> ErrorReport {
@@ -2125,8 +2121,9 @@ pub(crate) async fn dispatch_completion(
         DispatchAction::Patch(patched) => match patched {
             EffectKind::Completion { request, .. } => EffectKind::Completion { request, stream },
             other => {
-                return Err(CompletionDispatchError::Failed(CompletionError::Report(
-                    wrong_family_patch("completion", &other),
+                return Err(CompletionDispatchError::Failed(wrong_family_patch(
+                    "completion",
+                    &other,
                 )));
             }
         },
@@ -2134,7 +2131,7 @@ pub(crate) async fn dispatch_completion(
             return Err(if report.kind == ErrorKind::Cancelled {
                 CompletionDispatchError::Cancelled(report.message)
             } else {
-                CompletionDispatchError::Failed(CompletionError::Report(report))
+                CompletionDispatchError::Failed(report)
             });
         }
     };
@@ -2156,18 +2153,14 @@ pub(crate) async fn dispatch_completion(
             kind: Box::new(kind),
             response,
         }),
-        Ok(other) => Err(CompletionDispatchError::Failed(CompletionError::Report(
-            ErrorReport::new(
-                ErrorKind::Internal,
-                format!(
-                    "the completion handler answered with a {} outcome",
-                    other.family()
-                ),
+        Ok(other) => Err(CompletionDispatchError::Failed(ErrorReport::new(
+            ErrorKind::Internal,
+            format!(
+                "the completion handler answered with a {} outcome",
+                other.family()
             ),
         ))),
-        Err(report) => Err(CompletionDispatchError::Failed(CompletionError::Report(
-            report,
-        ))),
+        Err(report) => Err(CompletionDispatchError::Failed(report)),
     }
 }
 

@@ -337,11 +337,10 @@ impl OutcomeSink {
                         {
                             *message_id = Some(wire.to_owned());
                         }
-                        if let Err(error) = accumulator.apply(&event) {
-                            let report = ErrorReport::from(&error);
-                            if let Some(reply) = reply.take() {
-                                let _ = reply.send(Err(report));
-                            }
+                        if let Err(report) = accumulator.apply(&event)
+                            && let Some(reply) = reply.take()
+                        {
+                            let _ = reply.send(Err(report));
                         }
                         Ok(())
                     }

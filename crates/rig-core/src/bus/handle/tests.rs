@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use futures::StreamExt;
 use serde_json::json;
 
 use super::*;

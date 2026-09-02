@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::ErrorReport;
 use crate::message::AdditionalParams;
 use crate::streaming::non_empty_id;
 
@@ -183,7 +184,7 @@ fn tool_end(
     accumulator: &mut BlockAccumulator,
     id: &str,
     end: ToolCallEnd,
-) -> Result<Option<ToolCall>, CompletionError> {
+) -> Result<Option<ToolCall>, ErrorReport> {
     Ok(accumulator
         .apply(&StreamEvent::BlockEnd {
             id: pid(id),

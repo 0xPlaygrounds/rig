@@ -3968,12 +3968,21 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
     // Streaming *connect* failures stay transport-shaped (HttpError):
     // rig#2314's ProviderResponse classification covers the unary driver
     // and in-band stream envelopes, not the SSE handshake.
-    assert!(matches!(error, CompletionError::HttpError(_)));
     assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        error.kind,
+        crate::error::ErrorKind::Http {
+            status: Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())
+        }
     );
-    assert_eq!(error.provider_response_body(), Some(body));
+    assert_eq!(
+        error.http_status,
+        Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())
+    );
+    assert!(
+        error.message.contains(body),
+        "the preserved body must reach the consumer: {}",
+        error.message
+    );
 
     // The transport failure ends the stream: nothing may follow it that
     // would read as a successfully completed turn.
