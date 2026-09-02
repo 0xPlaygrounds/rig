@@ -49,7 +49,7 @@ pub enum ScenarioError {
     Json(#[from] serde_json::Error),
     /// Rig's structured extractor failed.
     #[error(transparent)]
-    Extraction(#[from] crate::extractor::ExtractionError),
+    Extraction(#[from] crate::completion::StructuredOutputError),
     /// The model or agent violated the portable behavioral contract.
     #[error("{scenario} conformance failed: {details}")]
     Contract {
@@ -1316,13 +1316,13 @@ where
         .max_tokens(384)
         .retries(0)
         .build()
-        .extract_with_usage(INPUT)
+        .extract(INPUT)
         .await?;
     validate_extraction_fields(
         SCENARIO,
-        response.data.first_name.as_deref(),
-        response.data.last_name.as_deref(),
-        response.data.job.as_deref(),
+        response.output.first_name.as_deref(),
+        response.output.last_name.as_deref(),
+        response.output.job.as_deref(),
         response.usage,
     )?;
     Ok(ScenarioReport {
@@ -1334,9 +1334,9 @@ where
         duration: started.elapsed(),
         response: format!(
             "{} {} — {}",
-            response.data.first_name.as_deref().unwrap_or_default(),
-            response.data.last_name.as_deref().unwrap_or_default(),
-            response.data.job.as_deref().unwrap_or_default()
+            response.output.first_name.as_deref().unwrap_or_default(),
+            response.output.last_name.as_deref().unwrap_or_default(),
+            response.output.job.as_deref().unwrap_or_default()
         ),
     })
 }

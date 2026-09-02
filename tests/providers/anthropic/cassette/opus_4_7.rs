@@ -147,29 +147,29 @@ async fn messages_extractor_smoke() {
             let extractor = client.extractor::<SmokePerson>(CLAUDE_OPUS_4_7).build();
 
             let response = extractor
-                .extract_with_usage(EXTRACTOR_TEXT)
+                .extract(EXTRACTOR_TEXT)
                 .await
                 .expect("extractor request should succeed");
 
             validate_extraction_fields(
                 "anthropic_opus_4_7_extractor_smoke",
-                response.data.first_name.as_deref(),
-                response.data.last_name.as_deref(),
-                response.data.job.as_deref(),
+                response.output.first_name.as_deref(),
+                response.output.last_name.as_deref(),
+                response.output.job.as_deref(),
                 response.usage,
             )
             .expect("portable extraction contract should hold");
 
             assert_nonempty_response(
                 response
-                    .data
+                    .output
                     .first_name
                     .as_deref()
                     .expect("first name should be present"),
             );
             assert_nonempty_response(
                 response
-                    .data
+                    .output
                     .last_name
                     .as_deref()
                     .expect("last name should be present"),

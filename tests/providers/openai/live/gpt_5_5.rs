@@ -151,20 +151,20 @@ async fn responses_extractor_smoke() {
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .output
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .output
             .last_name
             .as_deref()
             .expect("last name should be present"),
@@ -378,20 +378,20 @@ async fn chat_completions_extractor_smoke() {
     let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("chat completions extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .output
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .output
             .last_name
             .as_deref()
             .expect("last name should be present"),

@@ -104,7 +104,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Prompt the agent and print the response
-    let response = rag_extractor.extract(APPLICANT_INFO).await?;
+    let response = rag_extractor.extract(APPLICANT_INFO).await?.output;
 
     println!("{response:#?}");
 

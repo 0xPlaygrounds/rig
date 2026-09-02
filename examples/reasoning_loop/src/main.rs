@@ -37,7 +37,8 @@ impl ReasoningAgent {
             .map_err(|e| {
                 tracing::error!("Extraction error: {:?}", e);
                 CompletionError::ProviderError("".into())
-            })?;
+            })?
+            .output;
         if extracted.steps.is_empty() {
             return Ok("No reasoning steps provided.".into());
         }

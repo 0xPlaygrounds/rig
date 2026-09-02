@@ -68,8 +68,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     loop {
         let eval_result = evaluator_agent
-            .extract(&format!("{TASK}\n\n{response}"))
-            .await?;
+            .extract(format!("{TASK}\n\n{response}"))
+            .await?
+            .output;
         if eval_result.evaluation_status == EvalStatus::Pass {
             break;
         } else {

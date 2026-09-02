@@ -1,5 +1,7 @@
 //! xAI live coverage for batch multi-extract pipelines.
 
+use std::future::IntoFuture;
+
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::prelude::*;
@@ -107,15 +109,15 @@ async fn batch_multi_extract_chain() -> Result<()> {
                     let sentiment_extractor = &sentiment_extractor;
                     async move {
                         let (names, topics, sentiment) = futures::try_join!(
-                            names_extractor.extract(text),
-                            topics_extractor.extract(text),
-                            sentiment_extractor.extract(text),
+                            names_extractor.extract(text).into_future(),
+                            topics_extractor.extract(text).into_future(),
+                            sentiment_extractor.extract(text).into_future(),
                         )?;
                         anyhow::Ok(CombinedExtract {
-                            names: names.names,
-                            topics: topics.topics,
-                            sentiment: sentiment.sentiment,
-                            confidence: sentiment.confidence,
+                            names: names.output.names,
+                            topics: topics.output.topics,
+                            sentiment: sentiment.output.sentiment,
+                            confidence: sentiment.output.confidence,
                         })
                     }
                 })

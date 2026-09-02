@@ -1,9 +1,12 @@
 //! Typed runs: an [`AgentRunner`] whose accepted output is deserialized into
 //! `T`, with an optional retry budget.
 //!
-//! [`Agent::prompt_typed`] builds one: the schema for `T` is sent to the
-//! provider as the structured-output schema and the model's final text is
-//! parsed as `T`.
+//! [`Agent::prompt_typed`] builds one in *native* mode: the schema for `T` is
+//! sent to the provider as the structured-output schema and the model's final
+//! text is parsed as `T`. [`Extractor`](crate::extractor::Extractor) builds
+//! one in *output-tool* mode: the model must call a synthetic `submit` tool
+//! whose arguments are the value. Both are the same run type; only how the
+//! value is recovered from the [`PromptResponse`] differs.
 
 use std::{future::IntoFuture, marker::PhantomData};
 
@@ -72,6 +75,9 @@ impl<T> TypedPromptResponse<T> {
 pub(crate) enum TypedOutput {
     /// Parse the model's final text; tolerate prose or fences around the JSON.
     Native,
+    /// The value is the arguments of the run's output tool call; the model not
+    /// calling it is an empty response.
+    OutputTool,
 }
 
 /// A run that deserializes its accepted output as `T`.
@@ -300,6 +306,17 @@ where
         Self::from_runner(runner, TypedOutput::Native)
     }
 
+    /// An output-tool typed run over an already configured runner: the value
+    /// is the arguments of the run's output tool call. An invalid tool call
+    /// the hooks leave unhandled is ignored rather than failing the run, so a
+    /// model that fumbles the call once can still succeed within the budget.
+    pub(crate) fn output_tool(runner: AgentRunner) -> Self {
+        Self::from_runner(
+            runner.ignore_unhandled_invalid_tool_calls(),
+            TypedOutput::OutputTool,
+        )
+    }
+
     pub(crate) fn from_runner(runner: AgentRunner, output: TypedOutput) -> Self {
         Self {
             runner,
@@ -373,6 +390,21 @@ fn recover_output<T: DeserializeOwned>(
                 return Err(StructuredOutputError::EmptyResponse);
             }
             Ok(deserialize_structured_output(&response.output)?)
+        }
+        TypedOutput::OutputTool => {
+            let submissions = response.output_tool_calls();
+            if submissions == 0 {
+                tracing::warn!(
+                    "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
+                );
+                return Err(StructuredOutputError::EmptyResponse);
+            }
+            if submissions > 1 {
+                tracing::warn!(
+                    "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
+                );
+            }
+            Ok(serde_json::from_str(&response.output)?)
         }
     }
 }

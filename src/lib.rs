@@ -78,7 +78,7 @@ pub mod http_client {
 
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};
+pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, TypedPromptResponse};
 
 /// Direct access to the portable provider and data contracts.
 pub mod core {

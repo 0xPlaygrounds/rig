@@ -998,7 +998,7 @@ async fn normalized_stream_budget_thinking() {
 }
 
 /// The agent surface reaches the same mapping by a different route: usage
-/// arrives through `PromptRequest`'s per-call record
+/// arrives through the runner's per-call record
 /// (`completion_calls[].usage`) rather than off a `CompletionResponse`
 /// directly, so a regression in that plumbing would not show up in any raw
 /// model cell above. The preamble differs from `blocking_with_preamble` only

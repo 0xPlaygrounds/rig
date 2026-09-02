@@ -76,11 +76,11 @@ pub mod streaming;
 pub mod test_utils;
 pub mod tool;
 
+pub use agent::TypedPromptResponse;
 pub use agent::{
     Agent, AgentBuilder, AgentHook, AgentRun, AgentRunner, HookContext, ModelHandle, ModelRef,
     ModelSelection, ModelSelectionAction,
 };
-pub use extractor::ExtractionResponse;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]

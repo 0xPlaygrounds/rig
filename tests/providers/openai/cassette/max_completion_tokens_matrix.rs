@@ -570,7 +570,8 @@ async fn capped_extractor_turn_on_reasoning_model() {
             let person = extractor
                 .extract("Ada Lovelace works as a mathematician.")
                 .await
-                .expect("a capped extraction must be accepted");
+                .expect("a capped extraction must be accepted")
+                .output;
 
             assert_eq!(person.first_name.as_deref(), Some("Ada"));
         },

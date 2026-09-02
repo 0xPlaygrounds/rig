@@ -9,6 +9,7 @@ use rig::prelude::*;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::future::IntoFuture;
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -63,16 +64,16 @@ async fn main() -> Result<()> {
             let sentiment_extractor = &sentiment_extractor;
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    names_extractor.extract(text),
-                    topics_extractor.extract(text),
-                    sentiment_extractor.extract(text),
+                    names_extractor.extract(text).into_future(),
+                    topics_extractor.extract(text).into_future(),
+                    sentiment_extractor.extract(text).into_future(),
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
-                    names.names.join(", "),
-                    topics.topics.join(", "),
-                    sentiment.sentiment,
-                    sentiment.confidence,
+                    names.output.names.join(", "),
+                    topics.output.topics.join(", "),
+                    sentiment.output.sentiment,
+                    sentiment.output.confidence,
                 ))
             }
         })

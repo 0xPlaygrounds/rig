@@ -453,7 +453,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     .extract("extract a value")
     .await
     .expect("custom model extraction");
-    assert_eq!(extracted.value, "external model extraction");
+    assert_eq!(extracted.output.value, "external model extraction");
 
     let handle = ModelHandle::named("diagnostic-alpha", alpha);
     let debug = format!("{handle:?}");
@@ -698,27 +698,27 @@ async fn extraction_override_is_run_local_and_sets_each_retry_default() {
         .build();
 
     let specialist = extractor
-        .using_model(ModelHandle::new(BetaModel(specialist_script.clone())))
         .extract("use the specialist")
+        .using_model(ModelHandle::new(BetaModel(specialist_script.clone())))
         .await
         .expect("run-local extraction override");
-    assert_eq!(specialist.value, "specialist");
+    assert_eq!(specialist.output.value, "specialist");
     assert_eq!(specialist_script.requests().len(), 2);
     assert!(default_script.requests().is_empty());
 
     let typed = extractor
+        .extract("use a typed model value")
         .using_model_value(BetaModel(Script::new("typed", [], typed_turn)))
-        .extract_with_usage("use a typed model value")
         .await
         .expect("typed extraction override");
-    assert_eq!(typed.data.value, "typed specialist");
+    assert_eq!(typed.output.value, "typed specialist");
     assert_eq!(typed.usage, usage(3));
 
     let default = extractor
         .extract("use the default again")
         .await
         .expect("default extraction remains unchanged");
-    assert_eq!(default.value, "default");
+    assert_eq!(default.output.value, "default");
     assert_eq!(default_script.requests().len(), 1);
 }
 
@@ -769,7 +769,7 @@ async fn extraction_retries_reenter_model_selection_hooks() {
         .await
         .expect("hook-routed extraction retry");
 
-    assert_eq!(extracted.value, "hook selected");
+    assert_eq!(extracted.output.value, "hook selected");
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
     assert_eq!(first_script.requests().len(), 1);
     assert_eq!(second_script.requests().len(), 1);
