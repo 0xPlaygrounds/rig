@@ -17,7 +17,7 @@ use crate::{
 use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
 
 /// Scripted error returned by [`MockCompletionModel`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MockError {
     /// Provider error.
     Provider(String),
@@ -48,12 +48,15 @@ impl MockError {
 }
 
 /// A scripted non-streaming mock completion turn.
-#[derive(Clone, Debug)]
+///
+/// A turn is data: a script serializes, so a scripted model can be written
+/// to a fixture and read back (see [`MockCompletionModel::script`]).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MockTurn {
     response: Result<MockTurnResponse, MockError>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct MockTurnResponse {
     choice: Vec<AssistantContent>,
     usage: Usage,
@@ -295,6 +298,17 @@ impl MockCompletionModel {
     /// Return the number of requests received by this model.
     pub fn request_count(&self) -> usize {
         self.requests_guard().len()
+    }
+
+    /// The non-streaming turns not yet consumed, in order — the read-back
+    /// half of the script, so a script is serde in and serde out.
+    pub fn script(&self) -> Vec<MockTurn> {
+        self.turns_guard().iter().cloned().collect()
+    }
+
+    /// The streaming turns not yet consumed, in order.
+    pub fn stream_script(&self) -> Vec<Vec<MockStreamEvent>> {
+        self.stream_turns_guard().iter().cloned().collect()
     }
 
     fn record_request(&self, request: CompletionRequest) {
