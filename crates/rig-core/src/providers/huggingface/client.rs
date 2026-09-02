@@ -119,7 +119,7 @@ pub struct HuggingFaceBuilder {
 
 type HuggingFaceApiKey = BearerAuth;
 
-pub type Client<H> = client::Client<HuggingFaceExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<HuggingFaceExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HuggingFaceBuilder, HuggingFaceApiKey, H>;
 

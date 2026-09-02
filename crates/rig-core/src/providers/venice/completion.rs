@@ -51,7 +51,7 @@ pub const MISTRAL_SMALL_3_2_24B: &str = "mistral-small-3-2-24b-instruct";
 /// Venice completion model — the shared OpenAI-compatible
 /// [`GenericCompletionModel`](openai::completion::GenericCompletionModel)
 /// specialized to Venice.
-pub type CompletionModel<H> =
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     openai::completion::GenericCompletionModel<super::client::VeniceExt, H>;
 
 // ================================================================

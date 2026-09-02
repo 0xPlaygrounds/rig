@@ -78,7 +78,7 @@ pub trait JsonImageGenerationProvider: Provider {
 
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericImageGenerationModel<Ext, H> {
+pub struct GenericImageGenerationModel<Ext, H = crate::http_client::BoxedHttpClient> {
     client: Client<Ext, H>,
     /// Name of the image generation model.
     pub model: String,

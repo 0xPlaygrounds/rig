@@ -48,10 +48,12 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 }
 
 /// OpenAI image generation model.
-pub type ImageGenerationModel<T> = GenericImageGenerationModel<OpenAIResponsesExt, T>;
+pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
+    GenericImageGenerationModel<OpenAIResponsesExt, T>;
 
 /// OpenAI image generation model for a client using Chat Completions.
-pub type CompletionsImageGenerationModel<T> = GenericImageGenerationModel<OpenAICompletionsExt, T>;
+pub type CompletionsImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
+    GenericImageGenerationModel<OpenAICompletionsExt, T>;
 
 /// Build the `/v1/images/generations` body.
 ///

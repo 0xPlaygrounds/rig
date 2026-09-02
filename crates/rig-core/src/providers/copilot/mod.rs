@@ -165,7 +165,7 @@ impl Debug for CopilotExt {
     }
 }
 
-pub type Client<H> = client::Client<CopilotExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<CopilotExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<CopilotBuilder, CopilotAuth, H>;
 
@@ -692,7 +692,7 @@ impl<T> crate::providers::internal::envelope::ProviderEnvelope for ChatApiRespon
 }
 
 #[derive(Clone)]
-pub struct CompletionModel<H> {
+pub struct CompletionModel<H = crate::http_client::BoxedHttpClient> {
     client: Client<H>,
     pub model: String,
     pub strict_tools: bool,
@@ -1118,7 +1118,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<H> {
+pub struct EmbeddingModel<H = crate::http_client::BoxedHttpClient> {
     client: Client<H>,
     pub model: String,
     pub encoding_format: Option<openai::EncodingFormat>,
@@ -1410,7 +1410,7 @@ impl From<ListModelEntry> for Model {
 
 /// [`ModelLister`] implementation for the GitHub Copilot API (`GET /models`).
 #[derive(Clone)]
-pub struct CopilotModelLister<H> {
+pub struct CopilotModelLister<H = crate::http_client::BoxedHttpClient> {
     client: Client<H>,
 }
 

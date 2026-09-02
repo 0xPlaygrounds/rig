@@ -42,12 +42,13 @@ pub struct OpenAICompletionsExtBuilder;
 type OpenAIApiKey = BearerAuth;
 
 // Responses API client (default)
-pub type Client<H> = client::Client<OpenAIResponsesExt, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OpenAIResponsesExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
 
 // Completions API client
-pub type CompletionsClient<H> = client::Client<OpenAICompletionsExt, H>;
+pub type CompletionsClient<H = crate::http_client::BoxedHttpClient> =
+    client::Client<OpenAICompletionsExt, H>;
 pub type CompletionsClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
 

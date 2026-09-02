@@ -387,7 +387,7 @@ struct ListCachedContentsResponse {
 ///
 /// Obtained from [`Client::cached_contents`].
 #[derive(Clone, Debug)]
-pub struct CachedContentClient<H> {
+pub struct CachedContentClient<H = crate::http_client::BoxedHttpClient> {
     client: Client<H>,
 }
 

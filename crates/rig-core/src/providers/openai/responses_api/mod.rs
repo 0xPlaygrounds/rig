@@ -1481,7 +1481,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
 /// The completion model struct for OpenAI's response API.
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct GenericResponsesCompletionModel<Ext, H> {
+pub struct GenericResponsesCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> {
     /// The OpenAI client
     pub(crate) client: crate::client::Client<Ext, H>,
     /// Name of the model (e.g.: gpt-3.5-turbo-1106)
@@ -1498,7 +1498,7 @@ pub struct GenericResponsesCompletionModel<Ext, H> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
-pub type ResponsesCompletionModel<H> =
+pub type ResponsesCompletionModel<H = crate::http_client::BoxedHttpClient> =
     GenericResponsesCompletionModel<super::OpenAIResponsesExt, H>;
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>

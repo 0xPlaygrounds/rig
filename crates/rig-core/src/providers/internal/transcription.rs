@@ -149,7 +149,7 @@ where
 /// provider keeps its own [`TranscriptionModel`](transcription::TranscriptionModel)
 /// impl on its alias.
 #[derive(Clone)]
-pub struct GenericTranscriptionModel<Ext, H> {
+pub struct GenericTranscriptionModel<Ext, H = crate::http_client::BoxedHttpClient> {
     pub(crate) client: Client<Ext, H>,
     /// Name of the model (e.g.: `whisper-1`)
     pub model: String,

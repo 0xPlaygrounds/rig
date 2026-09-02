@@ -1651,7 +1651,8 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 /// [`raw_stream`](openai::completion::GenericCompletionModel::raw_stream) a
 /// stream whose terminal record stays provider-native — both over the same
 /// single request path as the normalized methods.
-pub type CompletionModel<H> = openai::completion::GenericCompletionModel<OpenRouterExt, H>;
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
+    openai::completion::GenericCompletionModel<OpenRouterExt, H>;
 
 /// Final streaming response, shared with the OpenAI Chat Completions path.
 pub type StreamingCompletionResponse =
