@@ -1,6 +1,5 @@
 //! Cassette-backed Venice structured output coverage.
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 
 // Recorded against `TOOL_MODEL`: Venice's `qwen3-5-9b` capacity for
@@ -21,7 +20,8 @@ async fn structured_output_smoke() {
                 .build()
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
                 .await
-                .expect("structured output prompt should succeed");
+                .expect("structured output prompt should succeed")
+                .output;
             assert_smoke_structured_output(&response);
         },
     )

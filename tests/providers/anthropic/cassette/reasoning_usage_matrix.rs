@@ -1019,7 +1019,6 @@ async fn agent_blocking_thinking() {
                 .build();
             let response = agent
                 .prompt(THINKING_PROMPT)
-                .extended_details()
                 .await
                 .expect("agent run should succeed");
             let call = response

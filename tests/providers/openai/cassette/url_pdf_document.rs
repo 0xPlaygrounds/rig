@@ -6,7 +6,6 @@
 //! with 400 `mutually_exclusive_parameters`.
 //! See <https://platform.openai.com/docs/guides/pdf-files>.
 use rig::client::AgentClientExt;
-use rig::completion::Prompt;
 use rig::message::{DocumentMediaType, Message, UserContent};
 use rig::providers::openai;
 
@@ -36,7 +35,8 @@ async fn url_pdf_document_prompt() {
                     ],
                 })
                 .await
-                .expect("URL PDF document prompt should succeed");
+                .expect("URL PDF document prompt should succeed")
+                .output;
 
             assert_nonempty_response(&response);
             assert_contains_any_case_insensitive(&response, &["bitcoin"]);

@@ -1,6 +1,5 @@
 //! DeepSeek tools smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::deepseek;
 
@@ -25,7 +24,7 @@ async fn tools_smoke() {
             .await
             .expect("tool prompt should succeed");
 
-        assert_mentions_expected_number(&response, -3);
+        assert_mentions_expected_number(&response.output, -3);
     })
     .await;
 }

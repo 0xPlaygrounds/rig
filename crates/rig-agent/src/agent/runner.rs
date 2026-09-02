@@ -5,11 +5,9 @@
 //! performs no IO and carries no hooks. `AgentRunner` pairs that machine with
 //! the side-effecting concerns — building and sending completion requests,
 //! executing tools, loading/saving conversation memory — and fires an
-//! [`AgentHook`] at every observable point. Both the blocking
-//! [`PromptRequest`](crate::agent::prompt_request::PromptRequest) and the
-//! [`StreamingPromptRequest`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
-//! APIs are thin wrappers over an `AgentRunner`, and you can build one directly
-//! to drive an agent with custom, composable hooks:
+//! [`AgentHook`] at every observable point. [`Agent::prompt`] and
+//! [`Agent::stream_prompt`] both return an `AgentRunner`, and you can build
+//! one directly to drive an agent with custom, composable hooks:
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
@@ -33,8 +31,7 @@ use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
     hook::AgentHook,
-    prompt_request::PromptResponse,
-    run::AgentRun,
+    run::{AgentRun, response::PromptResponse},
     telemetry::acquire_agent_span,
 };
 use rig_core::{memory::ConversationMemory, message::ToolChoice};
@@ -58,11 +55,12 @@ pub(crate) enum UnhandledInvalidToolCallPolicy {
 /// Construct one from an [`Agent`] with [`Agent::runner`], attach hooks with
 /// [`add_hook`](Self::add_hook), then call
 /// [`run`](Self::run) (blocking) or
-/// [`stream`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
+/// [`stream`](Self::stream)
 /// (incremental). Hooks are held in a [`HookStack`](super::hook::HookStack), an ordered,
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
+#[derive(Clone)]
 pub struct AgentRunner {
     /// The run's own copy of the agent's configuration, cloned as one unit by
     /// [`from_agent`](Self::from_agent). Per-run overrides mutate this copy and
@@ -494,5 +492,18 @@ impl AgentRunner {
     }
 }
 
+/// `.await`ing a runner is [`run`](AgentRunner::run).
+impl std::future::IntoFuture for AgentRunner {
+    type Output = Result<PromptResponse, PromptError>;
+    type IntoFuture = rig_core::wasm_compat::WasmBoxedFuture<'static, Self::Output>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        Box::pin(self.run())
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod prompt_tests;

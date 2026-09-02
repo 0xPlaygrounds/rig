@@ -7,8 +7,8 @@
 //! The [Agent] struct is highly configurable, allowing the user to define anything from
 //! a simple bot with a specific system prompt to a complex RAG system.
 //!
-//! The [Agent] struct implements the runner-backed [crate::completion::Prompt],
-//! [crate::completion::TypedPrompt], and [crate::completion::Chat] traits. All
+//! The [Agent] struct exposes the runner-backed [Agent::prompt],
+//! [Agent::prompt_typed], and [Agent::chat] methods. All
 //! agent execution goes through [AgentRunner], so hooks and lifecycle policies
 //! cannot be bypassed through a raw agent request builder.
 //!
@@ -55,7 +55,7 @@
 //!
 //! Passive RAG agent example
 //! ```no_run
-//! use rig_agent::{completion::Prompt, prelude::*};
+//! use rig_agent::prelude::*;
 //! use rig_reqwest::prelude::*;
 //! use rig_core::{
 //!     client::EmbeddingsClient,
@@ -105,16 +105,18 @@ mod builder;
 mod completion;
 mod engine;
 pub mod hook;
-pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
+mod streaming;
 mod telemetry;
 mod tool;
+mod typed;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
 /// configured name.
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
+pub use crate::run::response::{CompletionCall, PromptResponse};
 pub use crate::run::spec::RunSpec;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
@@ -127,16 +129,17 @@ pub use hook::{
     SettledOutcome, StepEventKind, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
     ToolResultAction, ToolResultEvent,
 };
-pub use prompt_request::streaming::{
-    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingPromptRequest,
-    StreamingResult, stream_to_stdout,
-};
-pub use prompt_request::{
-    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, ResponseIdentity,
-    Standard, TypedPromptRequest, TypedPromptResponse,
-};
+/// The provider-neutral identity carrier, re-exported from rig-core so agent
+/// callers name one type across core responses, stream terminals, completion
+/// calls, and hook events.
+pub use rig_core::completion::ResponseIdentity;
 pub use rig_core::completion::{ModelHandle, ModelRef};
 pub use rig_core::message::Text;
 pub use run::TurnTools;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;
+pub use streaming::{
+    MultiTurnStreamItem, RUN_EVENTS_CAPACITY, RunEvents, StreamingError, StreamingResult,
+    stream_to_stdout,
+};
+pub use typed::{TypedPromptResponse, TypedRun};

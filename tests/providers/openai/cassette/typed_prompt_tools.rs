@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::tool::Tool;
 
@@ -91,7 +90,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
 
             println!("prompt_typed result: {result:#?}");
 
-            let response: WeatherResponse = result?;
+            let response: WeatherResponse = result?.output;
             println!("agent response: {response:#?}");
 
             anyhow::ensure!(

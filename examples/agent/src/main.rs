@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
         .preamble(PREAMBLE)
         .build();
 
-    let response = agent.prompt(PROMPT).await?;
+    let response = agent.prompt(PROMPT).await?.output;
     println!("{response}");
 
     Ok(())

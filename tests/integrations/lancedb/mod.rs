@@ -14,7 +14,6 @@ use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
     client::{AgentModelExt, EmbeddingsClient},
-    completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     prelude::*,
     providers::openai,
@@ -404,7 +403,7 @@ async fn agent_with_dynamic_context_test() {
 
     let query = "My boss says I zindle too much, what does that mean?";
 
-    let response = agent.prompt(query).await.unwrap();
+    let response = agent.prompt(query).await.unwrap().output;
 
     assert!(response.contains("zindle") || response.contains("pretend to be working"));
     assert!(response.contains("important") || response.contains("unproductive"));

@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -311,7 +310,6 @@ async fn think_tool_with_other_tools() -> Result<()> {
              Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?",
         )
         .max_turns(10)
-        .extended_details()
         .await?;
 
     assert_mentions_expected_number(&response.output, 25);

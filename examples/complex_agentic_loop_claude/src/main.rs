@@ -2,8 +2,8 @@ use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Client};
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, message::Message,
-    tool::builtin::ThinkTool, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingsBuilder, message::Message, tool::builtin::ThinkTool,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -169,7 +169,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .prompt(query)
         .history(empty_history)
         .max_turns(15) // Allow multiple turns to demonstrate the complex loop
-        .extended_details()
         .await?;
 
     // Print the final response

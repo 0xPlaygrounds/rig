@@ -335,7 +335,6 @@ fn every_create_combination_serializes_as_expected() {
 #[tokio::test]
 async fn an_agent_with_tools_cannot_read_from_a_cache() {
     use rig::agent::AgentBuilder;
-    use rig::completion::Prompt as _;
 
     use super::super::tools_support::CountingPing;
 
@@ -385,7 +384,6 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 #[tokio::test]
 async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
     use rig::agent::AgentBuilder;
-    use rig::completion::Prompt as _;
     use rig::providers::gemini::completion::gemini_api_types::{CodeExecution, Tool};
 
     with_gemini_prompt_caching_cassette(
@@ -428,7 +426,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
                     );
 
                 assert!(
-                    answer.contains("54173879"),
+                    answer.output.contains("54173879"),
                     "the cached codeExecution tool should have run on Gemini's side: {answer:?}"
                 );
             })
@@ -465,7 +463,6 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
 #[tokio::test]
 async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
     use rig::agent::{AgentBuilder, RequestPatch};
-    use rig::completion::Prompt as _;
 
     use super::super::hook_stress_support::ApplyPatch;
     use super::super::tools_support::CountingPing;
@@ -508,7 +505,7 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
                     );
 
                 assert!(
-                    answer.to_lowercase().contains("suppressed"),
+                    answer.output.to_lowercase().contains("suppressed"),
                     "the turn should have run against the cache: {answer:?}"
                 );
             })

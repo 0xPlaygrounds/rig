@@ -3,7 +3,6 @@
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{DynamicTool, ToolOutput};
@@ -70,7 +69,7 @@ async fn main() -> Result<()> {
         .default_max_turns(2)
         .build();
 
-    let response = agent.prompt("Calculate 2 - 5.").await?;
+    let response = agent.prompt("Calculate 2 - 5.").await?.output;
     println!("{response}");
 
     Ok(())

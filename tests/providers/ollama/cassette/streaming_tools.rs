@@ -4,7 +4,6 @@
 //! local Ollama server.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_ollama_cassette;
 use crate::support::{
@@ -30,6 +29,7 @@ async fn streaming_tools_smoke() {
             let mut stream = agent
                 .stream_prompt(STREAMING_TOOLS_PROMPT)
                 .max_turns(3)
+                .stream()
                 .await;
             let response = collect_stream_final_response(&mut stream)
                 .await

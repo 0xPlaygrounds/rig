@@ -1,7 +1,6 @@
 //! Preserves the live default-max-turns example as provider-local regression coverage.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -104,7 +103,8 @@ async fn default_max_turns_allows_multi_step_tool_use() -> Result<()> {
 
             let response = agent
                 .prompt("Calculate (3 + 5) / 4 and describe the result.")
-                .await?;
+                .await?
+                .output;
 
             assert_mentions_expected_number(&response, 2);
 

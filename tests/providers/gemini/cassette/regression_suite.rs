@@ -4,13 +4,11 @@
 //! See `many_rigs/rig-regression-cassette-suite-proposal.md` for the catalogue.
 
 use rig::agent::OutputMode;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-use rig::streaming::StreamingPrompt;
 use rig_agent::test_utils::decode_structured_output;
 
 use super::super::support::assert_recorded_sampling_fields;
@@ -52,7 +50,7 @@ async fn agent_max_tokens_reaches_generation_config_without_additional_params() 
                 .max_tokens(512)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
@@ -112,7 +110,7 @@ async fn structured_output_without_max_tokens_sends_no_sampling_fields() {
                 .expect("structured output prompt should succeed");
             let structured: SmokeStructuredOutput = decode_structured_output(
                 "gemini_regression_structured_output_without_max_tokens",
-                &response,
+                &response.output,
             )
             .expect("structured output should deserialize");
 
@@ -149,7 +147,7 @@ async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
                 .expect("structured output prompt should succeed");
             let structured: SmokeStructuredOutput = decode_structured_output(
                 "gemini_regression_structured_output_with_max_tokens",
-                &response,
+                &response.output,
             )
             .expect("structured output should deserialize");
 
@@ -271,7 +269,7 @@ async fn streaming_structured_output_without_max_tokens_sends_no_sampling_fields
                 .output_mode(OutputMode::Native)
                 .build();
 
-            let mut stream = agent.stream_prompt(STRUCTURED_OUTPUT_PROMPT).await;
+            let mut stream = agent.stream_prompt(STRUCTURED_OUTPUT_PROMPT).stream().await;
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await

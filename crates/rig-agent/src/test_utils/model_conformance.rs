@@ -26,10 +26,8 @@ use crate::{
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
-        AssistantContent, CompletionError, CompletionModel, Message, Prompt, PromptError,
-        ToolDefinition,
+        AssistantContent, CompletionError, CompletionModel, Message, PromptError, ToolDefinition,
     },
-    streaming::StreamingPrompt,
     tool::{Tool, ToolContext},
 };
 use rig_core::message::{ToolChoice, UserContent};
@@ -1013,13 +1011,8 @@ where
         .build();
     let request = agent.prompt(PARALLEL_PROMPT).max_turns(3);
     let response = match tool_concurrency {
-        Some(concurrency) => {
-            request
-                .tool_concurrency(concurrency)
-                .extended_details()
-                .await?
-        }
-        None => request.extended_details().await?,
+        Some(concurrency) => request.tool_concurrency(concurrency).await?,
+        None => request.await?,
     };
     let scenario = if tool_concurrency == Some(1) {
         "parallel_tools_serial_execution"
@@ -1105,7 +1098,6 @@ where
     let response = agent
         .prompt("Call the ping tool, then report the exact marker it returns.")
         .max_turns(2)
-        .extended_details()
         .await?;
     let values = correlated_result_values(SCENARIO, &response)?;
     if calls.load(Ordering::SeqCst) != 1
@@ -1150,7 +1142,6 @@ where
     let response = agent
         .prompt("Call fetch_motto and fetch_config, then summarize both outputs in one sentence.")
         .max_turns(3)
-        .extended_details()
         .await?;
     let values = correlated_result_values(SCENARIO, &response)?;
     let expected_config = serde_json::to_value(ConfigOutput {
@@ -1218,7 +1209,6 @@ where
             "Call store_profile with profile.name exactly `Zoë \\\"Z\\\"`, profile.tags exactly [`rust`, `東京`], mode `careful`, note containing the two lines `line one` and `line two` separated by a newline, and quote exactly `path C:\\\\tmp and \\\"quoted\\\"`. Then confirm it was stored.",
         )
         .max_turns(3)
-        .extended_details()
         .await?;
     let observed = lock_recover(&captured).clone();
     if calls.load(Ordering::SeqCst) != 1 || observed.as_ref() != Some(&expected) {
@@ -1613,7 +1603,6 @@ where
         .add_hook(observed)
         .add_hook(ReplaceResult("portable-redacted"))
         .add_hook(WrapResult)
-        .extended_details()
         .await?;
     let observations = lock_recover(&observed_probe.0).clone();
     validate_rewritten_arguments(
@@ -1747,7 +1736,6 @@ where
         .prompt(
             "Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.",
         )
-        .extended_details()
         .await?;
     let response = result.output.clone();
     let tool_calls = calls.load(Ordering::SeqCst);
@@ -1784,7 +1772,6 @@ where
         .prompt(
             "Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.",
         )
-        .extended_details()
         .await?;
     let response = result.output.clone();
     let add = add_calls.load(Ordering::SeqCst);
@@ -1818,6 +1805,7 @@ where
     let mut stream = agent
         .stream_prompt("Use add to calculate 17 + 25, then state the final number.")
         .max_turns(4)
+        .stream()
         .await;
     let mut final_response = None;
     let mut final_count = 0_usize;
@@ -1918,7 +1906,6 @@ where
         .build();
     let result = agent
         .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
-        .extended_details()
         .await?;
     let response = result.output.clone();
     let parsed: ArithmeticResult = serde_json::from_str(&response)?;
@@ -2066,6 +2053,7 @@ where
             "Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.",
         )
         .max_turns(5)
+        .stream()
         .await;
     let mut final_response = None;
     let mut final_count = 0_usize;

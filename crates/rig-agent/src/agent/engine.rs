@@ -46,18 +46,18 @@ use super::{
         RunStartAction, SettledOutcome, StepEventKind, TextDelta, ToolCall as ToolCallEvent,
         ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
     },
-    prompt_request::{
-        PromptResponse, assistant_text_from_choice, is_empty_assistant_turn,
-        streaming::{
-            MultiTurnStreamItem, StreamingError, drain_stream_usage, finalize_streamed_choice,
-        },
-        tool_result_output,
-    },
     run::{
         AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
+    run::{
+        response::PromptResponse,
+        transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
+    },
     runner::{AgentRunner, UnhandledInvalidToolCallPolicy},
+    streaming::{
+        MultiTurnStreamItem, StreamingError, drain_stream_usage, finalize_streamed_choice,
+    },
     telemetry::{build_chat_span, new_execute_tool_span},
 };
 use crate::{
@@ -1516,7 +1516,7 @@ pub(crate) enum ToolExecution {
     /// The tool's body ran. Carries the **effective** tool call — the model's
     /// call with any [`ToolCallAction::Rewrite`] hook
     /// rewrite applied — so the driver can surface it in the
-    /// [`ToolExecutionCommitted`](crate::agent::prompt_request::streaming::MultiTurnStreamItem::ToolExecutionCommitted)
+    /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted)
     /// event (what actually ran, not the model's original arguments). Boxed to
     /// keep this enum small (a `ToolCall` is large next to the empty `Skipped`).
     Executed(Box<ToolCall>),

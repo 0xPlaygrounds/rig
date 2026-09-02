@@ -11,10 +11,8 @@
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, ToolResultAction, ToolResultEvent};
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_result_redaction;
 use serde::Deserialize;
@@ -157,7 +155,8 @@ async fn tool_result_redacted_by_hook_blocking() {
                 .prompt(LOOKUP_PROMPT)
                 .max_turns(5)
                 .await
-                .expect("blocking lookup should succeed");
+                .expect("blocking lookup should succeed")
+                .output;
 
             assert_answer_hides_secret(&response, execution_probe.produced_secret());
         },
@@ -186,7 +185,11 @@ async fn tool_result_redacted_by_hook_streaming() {
                 .add_hook(RedactSsnFromResult)
                 .build();
 
-            let mut stream = agent.stream_prompt(LOOKUP_PROMPT).max_turns(5).await;
+            let mut stream = agent
+                .stream_prompt(LOOKUP_PROMPT)
+                .max_turns(5)
+                .stream()
+                .await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming lookup should succeed");

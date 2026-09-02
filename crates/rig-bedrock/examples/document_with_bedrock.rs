@@ -43,7 +43,7 @@ async fn main() -> Result<(), anyhow::Error> {
         additional_params: None,
     };
 
-    let response = agent.prompt(document).await?;
+    let response = agent.prompt(document).await?.output;
     info!("{}", response);
 
     Ok(())

@@ -1,7 +1,6 @@
 //! Cassette-backed Anthropic coverage for provider file IDs in generic document messages.
 
 use futures::FutureExt;
-use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
@@ -11,7 +10,6 @@ use rig::providers::anthropic::completion::{
     ANTHROPIC_VERSION_2023_06_01, Content as AnthropicContent,
     DocumentSource as AnthropicDocumentSource, Message as AnthropicMessage, Role as AnthropicRole,
 };
-use rig::streaming::StreamingPrompt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::future::Future;
@@ -417,7 +415,7 @@ async fn messages_document_file_id_roundtrip_live() {
                 let response = agent
                     .chat(provider_native_roundtrip_message, &mut history)
                     .await
-                    .expect("Messages API should read uploaded PDF by file_id");
+                    .expect("Messages API should read uploaded PDF by file_id").output;
                 assert_verifier_response(&response, PAGE_TWO_VERIFIER);
                 assert_history_preserves_single_file_id(&history, &file_id);
 
@@ -427,7 +425,7 @@ async fn messages_document_file_id_roundtrip_live() {
                         &mut history,
                     )
                     .await
-                    .expect("Messages API should reuse file_id document from chat history");
+                    .expect("Messages API should reuse file_id document from chat history").output;
                 assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
                 assert_history_preserves_single_file_id(&history, &file_id);
 
@@ -437,7 +435,7 @@ async fn messages_document_file_id_roundtrip_live() {
                 let direct_response = agent
                     .prompt(direct_prompt)
                     .await
-                    .expect("Messages API should read direct generic file_id document");
+                    .expect("Messages API should read direct generic file_id document").output;
                 assert_verifier_response(&direct_response, PAGE_ONE_VERIFIER);
             })
             .await;
@@ -465,7 +463,7 @@ async fn streaming_document_file_id_roundtrip_live() {
                 assert_no_verifier_leaked_into_prompt(&stream_prompt);
                 assert_anthropic_wire_file_source(stream_prompt.clone(), &file_id);
 
-                let mut stream = agent.stream_prompt(stream_prompt).await;
+                let mut stream = agent.stream_prompt(stream_prompt).stream().await;
                 let response = collect_stream_final_response(&mut stream)
                     .await
                     .expect("streaming Messages API should read uploaded PDF by file_id");

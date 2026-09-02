@@ -5,7 +5,7 @@
 //! changes (e.g. swapping the handrolled definitions for rmcp-derived ones),
 //! replay fails with a body mismatch.
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -186,7 +186,7 @@ async fn rich_json_schema_survives_gemini_conversion() {
                 vec!["itinerary booked: 2 travellers to Lyon by train via Dijon -> Macon".to_string()],
                 "arguments matching the rich schema should deserialize and execute"
             );
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;
@@ -223,7 +223,7 @@ async fn duplicate_tool_name_uses_last_registration() {
                 "the last registration of a duplicated tool name should execute"
             );
             assert!(
-                response.to_ascii_lowercase().contains("lantern"),
+                response.output.to_ascii_lowercase().contains("lantern"),
                 "final answer should report the echoed word: {response:?}"
             );
         },
@@ -233,7 +233,6 @@ async fn duplicate_tool_name_uses_last_registration() {
 
 #[cfg(feature = "derive")]
 mod derive_macro {
-    use rig::completion::Chat;
     use rig::completion::Message;
     use rig::tool_macro as rig_tool;
 
@@ -292,7 +291,7 @@ mod derive_macro {
                     "the macro-generated tool should execute with the model's arguments"
                 );
                 assert!(
-                    response.contains("42"),
+                    response.output.contains("42"),
                     "final answer should report 42: {response:?}"
                 );
             },

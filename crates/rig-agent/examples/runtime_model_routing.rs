@@ -12,9 +12,7 @@ use futures::stream;
 use rig_agent::{
     AgentBuilder, ModelHandle,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
-    completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Prompt, Usage,
-    },
+    completion::{CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Usage},
     streaming::{RawStreamingChoice, StreamFinal, StreamingCompletionResponse},
     tool::{Tool, ToolContext},
 };

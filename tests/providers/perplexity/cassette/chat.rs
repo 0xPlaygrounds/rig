@@ -1,6 +1,6 @@
 //! Perplexity multi-turn chat cassette coverage.
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::perplexity;
 
@@ -25,13 +25,15 @@ async fn chat_history_smoke() {
                 &mut history,
             )
             .await
-            .expect("first chat turn should succeed");
+            .expect("first chat turn should succeed")
+            .output;
         assert_contains_any_case_insensitive(&first, &["amber", "remember"]);
 
         let second = agent
             .chat("What code word did I ask you to remember?", &mut history)
             .await
-            .expect("second chat turn should succeed");
+            .expect("second chat turn should succeed")
+            .output;
         assert_contains_any_case_insensitive(&second, &["amber-rig", "amber"]);
     })
     .await;

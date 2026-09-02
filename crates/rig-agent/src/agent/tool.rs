@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use crate::{
     agent::Agent,
-    completion::Prompt,
     tool::{DynamicTool, ToolExecutionError, ToolOutput},
 };
 use schemars::{JsonSchema, schema_for};
@@ -58,7 +57,7 @@ impl Agent {
                     .prompt(args.prompt)
                     .tool_context(inherited_context)
                     .await
-                    .map(ToolOutput::text)
+                    .map(|response| ToolOutput::text(response.output))
                     .map_err(ToolExecutionError::from_error)
             })
         })

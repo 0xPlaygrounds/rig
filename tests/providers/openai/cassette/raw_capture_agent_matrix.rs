@@ -55,11 +55,11 @@ use rig::agent::{
     AgentBuilder, AgentHook, CompletionResponseEvent, HookContext, ModelTurnAction,
     ModelTurnFinished, MultiTurnStreamItem, ObservationAction,
 };
-use rig::completion::{Prompt, ResponseIdentity};
+use rig::completion::ResponseIdentity;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use serde_json::Value;
 
 use super::super::support::{assert_matches_recorded_token, sse_json_frames, with_openai_cassette};
@@ -286,7 +286,7 @@ fn take(observed: &Observed) -> RunObservation {
         .expect("test body should save its observation")
 }
 
-/// A blocking `prompt(..).extended_details()` run.
+/// A blocking `prompt(..)` run.
 fn blocking_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
@@ -294,7 +294,6 @@ fn blocking_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
             let response = agent
                 .prompt(prompt)
                 .max_turns(3)
-                .extended_details()
                 .await
                 .expect("agent run should succeed");
             *sink.lock().expect("observation mutex") = Some(RunObservation {
@@ -311,7 +310,7 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
     Box::new(move |client| {
         Box::pin(async move {
             let (agent, prompt) = build_agent(route, client, tools, probe);
-            let mut stream = agent.stream_prompt(prompt).max_turns(3).await;
+            let mut stream = agent.stream_prompt(prompt).max_turns(3).stream().await;
             let mut observation = RunObservation::default();
             let mut final_response = None;
             while let Some(item) = stream.next().await {

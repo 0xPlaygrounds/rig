@@ -18,7 +18,7 @@ use rig::completion::{self, CompletionModel};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -118,6 +118,7 @@ pub(crate) async fn run_reasoning_delta_hook_streaming<M>(
     let mut stream = agent
         .stream_prompt(REASONING_DELTA_HOOK_PROMPT)
         .add_hook(hook)
+        .stream()
         .await;
     let mut final_text = None;
 

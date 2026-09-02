@@ -1,6 +1,5 @@
 use anyhow::Result;
 use rig::{
-    completion::Prompt,
     embeddings::EmbeddingsBuilder,
     prelude::*,
     providers::openai::{self, Client},
@@ -180,7 +179,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let response = calculator_rag
         .prompt("Calculate (3 - 7) + 17")
         .max_turns(10)
-        .await?;
+        .await?
+        .output;
 
     println!("{response}");
 

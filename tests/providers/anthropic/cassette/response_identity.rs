@@ -145,7 +145,6 @@ async fn agent_run_records_per_attempt_identity() {
             let response = agent
                 .prompt("What is 2 + 3? Use the tool, then state the result.")
                 .max_turns(3)
-                .extended_details()
                 .await
                 .expect("agent run should succeed");
 
@@ -210,11 +209,12 @@ async fn streamed_agent_run_hook_observes_identity() {
                 .add_hook(hook.clone())
                 .build();
 
-            let mut stream = rig::streaming::StreamingPrompt::stream_prompt(
-                &agent,
-                Message::user("Reply with exactly: streamed hook identity probe"),
-            )
-            .await;
+            let mut stream = agent
+                .stream_prompt(Message::user(
+                    "Reply with exactly: streamed hook identity probe",
+                ))
+                .stream()
+                .await;
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }

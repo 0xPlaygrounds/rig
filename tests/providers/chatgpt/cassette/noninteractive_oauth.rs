@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_chatgpt_noninteractive_oauth_cassette;
 use crate::support::{
@@ -23,7 +22,7 @@ async fn cached_oauth_allows_noninteractive_streaming_completion() {
                 .agent(chatgpt::GPT_5_4)
                 .preamble(BASIC_PREAMBLE)
                 .build();
-            let mut stream = agent.stream_prompt(BASIC_PROMPT).await;
+            let mut stream = agent.stream_prompt(BASIC_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("non-interactive OAuth streaming completion should succeed");

@@ -317,7 +317,13 @@ async fn hooks_observe_raw_streamed() {
                 .max_tokens(32)
                 .add_hook(hook)
                 .build();
-            let run = drain(agent.stream_prompt(Message::user(TEXT_PROMPT)).await).await;
+            let run = drain(
+                agent
+                    .stream_prompt(Message::user(TEXT_PROMPT))
+                    .stream()
+                    .await,
+            )
+            .await;
             assert!(run.output.is_some(), "the run finished");
             assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
             assert!(
@@ -379,7 +385,6 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
             let response = agent
                 .prompt(TOOL_PROMPT)
                 .max_turns(3)
-                .extended_details()
                 .await
                 .expect("tool run should succeed");
             let calls = &response.completion_calls;
@@ -429,6 +434,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
                 agent
                     .stream_prompt(Message::user(TOOL_PROMPT))
                     .max_turns(3)
+                    .stream()
                     .await,
             )
             .await;
@@ -484,6 +490,7 @@ async fn streamed_final_carries_final_turn_raw() {
                 agent
                     .stream_prompt(Message::user(TOOL_PROMPT))
                     .max_turns(3)
+                    .stream()
                     .await,
             )
             .await;
@@ -540,7 +547,6 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
             let response = agent
                 .prompt(TEXT_PROMPT)
                 .max_turns(3)
-                .extended_details()
                 .await
                 .expect("retried run should succeed");
             assert_eq!(
@@ -590,6 +596,7 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
                 agent
                     .stream_prompt(Message::user(TEXT_PROMPT))
                     .max_turns(3)
+                    .stream()
                     .await,
             )
             .await;

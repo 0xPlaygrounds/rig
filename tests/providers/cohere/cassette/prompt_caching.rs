@@ -125,7 +125,6 @@ async fn agent_loop_does_not_move_its_own_prefix() {
             .build()
             .prompt(AGENT_CACHE_PROMPT)
             .max_turns(6)
-            .extended_details()
             .await
             .expect("cohere agent cache probe should complete");
 

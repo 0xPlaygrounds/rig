@@ -3,7 +3,6 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use super::super::support::with_ollama_cassette;
@@ -28,8 +27,8 @@ async fn structured_output_smoke() {
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
                 .expect("structured output prompt should succeed");
-            let structured: SmokeStructuredOutput =
-                serde_json::from_str(&response).expect("structured output should deserialize");
+            let structured: SmokeStructuredOutput = serde_json::from_str(&response.output)
+                .expect("structured output should deserialize");
 
             assert_smoke_structured_output(&structured);
         },

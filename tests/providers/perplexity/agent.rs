@@ -1,6 +1,5 @@
 //! Migrated from `examples/perplexity_agent.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::perplexity::{self, SONAR};
 
@@ -23,7 +22,8 @@ async fn completion_smoke() {
     let response = agent
         .prompt("When and where and what type is the next solar eclipse?")
         .await
-        .expect("prompt should succeed");
+        .expect("prompt should succeed")
+        .output;
 
     assert_nonempty_response(&response);
 }

@@ -1,14 +1,13 @@
 use super::hook::{HookStack, RequestPatch};
-use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
+use super::typed::TypedRun;
 use crate::{
-    agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
-        Prompt, PromptError, ToolDefinition, TypedPrompt,
+        CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message, PromptError,
+        ToolDefinition,
     },
-    streaming::{StreamingChat, StreamingPrompt},
+    run::response::PromptResponse,
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
 use rig_core::completion::ModelHandle;
@@ -372,146 +371,83 @@ impl Agent {
     }
 }
 
-// Here, we need to ensure that usage of `.prompt` on agent uses these redefinitions on the opaque
-//  `Prompt` trait so that when `.prompt` is used at the call-site, it'll use the more specific
-//  `PromptRequest` implementation for `Agent`, making the builder's usage fluent.
-//
-// References:
-//  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
-
-#[allow(refining_impl_trait)]
-impl Prompt for Agent {
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard> {
-        PromptRequest::from_agent(self, prompt)
+impl Agent {
+    /// Run `prompt` through the agent loop. The returned [`AgentRunner`] is the
+    /// run: configure it (history, turn budget, tool context, hooks, …) and
+    /// `.await` it for the [`PromptResponse`], whose `output` is the accepted
+    /// assistant text.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::Agent;
+    /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
+    /// println!("{}", response.output);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
+        AgentRunner::from_agent(self, prompt)
     }
-}
 
-#[allow(refining_impl_trait)]
-impl Prompt for &Agent {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name_or_default()))]
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard> {
-        PromptRequest::from_agent(self, prompt)
-    }
-}
-
-#[allow(refining_impl_trait)]
-impl Chat for Agent {
+    /// Run one turn against caller-owned history, appending only the messages
+    /// the run committed. Returns the same [`PromptResponse`] as
+    /// [`prompt`](Self::prompt).
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
-    async fn chat(
+    pub async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: &mut Vec<Message>,
-    ) -> Result<String, PromptError> {
-        let response = PromptRequest::from_agent(self, prompt)
+    ) -> Result<PromptResponse, PromptError> {
+        let mut response = AgentRunner::from_agent(self, prompt)
             .history(chat_history.clone())
-            .extended_details()
             .await?;
-
-        if let Some(messages) = response.messages {
+        if let Some(messages) = response.messages.take() {
             chat_history.extend(messages);
         }
-
-        Ok(response.output)
+        Ok(response)
     }
-}
 
-impl StreamingPrompt for Agent {
-    fn stream_prompt(&self, prompt: impl Into<Message> + WasmCompatSend) -> StreamingPromptRequest {
-        StreamingPromptRequest::from_agent(self, prompt)
+    /// Run `prompt` as a stream: configure the returned runner, then call
+    /// [`AgentRunner::stream`] or [`AgentRunner::run_channel`].
+    pub fn stream_prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
+        AgentRunner::from_agent(self, prompt)
     }
-}
 
-impl StreamingChat for Agent {
-    fn stream_chat<I, T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> StreamingPromptRequest
+    /// [`stream_prompt`](Self::stream_prompt) with canonical chat history.
+    pub fn stream_chat<I, T>(&self, prompt: impl Into<Message>, chat_history: I) -> AgentRunner
     where
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        StreamingPromptRequest::from_agent(self, prompt).history(chat_history)
+        AgentRunner::from_agent(self, prompt).history(chat_history)
     }
-}
 
-use crate::agent::prompt_request::TypedPromptRequest;
-use schemars::JsonSchema;
-use serde::de::DeserializeOwned;
-
-#[allow(refining_impl_trait)]
-impl TypedPrompt for Agent {
-    type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    /// Send a prompt and receive a typed structured response.
+    /// Run `prompt` and deserialize the accepted structured response as `T`.
     ///
-    /// The JSON schema for `T` is automatically generated and sent to the provider.
-    /// Providers that support native structured outputs will constrain the model's
-    /// response to match this schema.
+    /// The JSON schema for `T` is generated and sent to the provider as the
+    /// run's structured-output schema. Providers that support native structured
+    /// outputs constrain the model's response to match it.
     ///
-    /// # Example
     /// ```rust,ignore
-    /// use rig_core::prelude::*;
-    /// use schemars::JsonSchema;
-    /// use serde::Deserialize;
-    ///
     /// #[derive(Debug, Deserialize, JsonSchema)]
-    /// struct WeatherForecast {
-    ///     city: String,
-    ///     temperature_f: f64,
-    ///     conditions: String,
-    /// }
+    /// struct WeatherForecast { city: String, temperature_f: f64 }
     ///
-    /// let agent = client.agent("gpt-4o").build();
-    ///
-    /// // Type inferred from variable
-    /// let forecast: WeatherForecast = agent
-    ///     .prompt_typed("What's the weather in NYC?")
-    ///     .await?;
-    ///
-    /// // Or explicit turbofish syntax
     /// let forecast = agent
     ///     .prompt_typed::<WeatherForecast>("What's the weather in NYC?")
     ///     .max_turns(3)
-    ///     .await?;
+    ///     .await?
+    ///     .output;
     /// ```
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard>
+    pub fn prompt_typed<T>(&self, prompt: impl Into<Message>) -> TypedRun<T>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
-        TypedPromptRequest::from_agent(self, prompt)
+        TypedRun::native(self, prompt)
     }
 }
 
-#[allow(refining_impl_trait)]
-impl TypedPrompt for &Agent {
-    type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    {
-        TypedPromptRequest::from_agent(self, prompt)
-    }
-}
+use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 
 #[cfg(test)]
 mod request_identity_tests;

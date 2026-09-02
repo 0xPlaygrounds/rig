@@ -86,7 +86,6 @@ use rig::completion::{CompletionModel, NormalizeCompletionResponse};
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openrouter;
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -197,7 +196,7 @@ async fn blocking_agent_prompt_surfaces_refusal() {
                 .await
                 .expect("an agent must deliver the refusal, not an empty-response error");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;
@@ -508,7 +507,7 @@ async fn streaming_agent_surfaces_refusal() {
                 .additional_params(refusal_request_params("OpenAI"))
                 .build();
 
-            let mut stream = agent.stream_prompt(REFUSED_PROMPT).await;
+            let mut stream = agent.stream_prompt(REFUSED_PROMPT).stream().await;
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);

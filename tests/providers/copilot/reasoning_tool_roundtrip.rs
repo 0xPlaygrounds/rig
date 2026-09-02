@@ -3,9 +3,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
-use rig::streaming::StreamingChat;
 
 use crate::copilot::{live_client, live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, WeatherTool};
@@ -27,6 +26,7 @@ async fn streaming() {
     let stream = agent
         .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
         .max_turns(3)
+        .stream()
         .await;
 
     let stats = reasoning::collect_stream_stats(stream, "copilot").await;
@@ -63,7 +63,7 @@ async fn nonstreaming() {
                 .await
                 .expect("[copilot] Non-streaming chat failed");
 
-            reasoning::assert_nonstreaming_universal(&result, &call_count, "copilot");
+            reasoning::assert_nonstreaming_universal(&result.output, &call_count, "copilot");
         },
     )
     .await;

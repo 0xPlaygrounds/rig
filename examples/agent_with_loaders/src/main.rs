@@ -4,7 +4,6 @@
 
 use anyhow::Result;
 use rig::agent::AgentBuilder;
-use rig::completion::Prompt;
 use rig::loaders::FileLoader;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -32,7 +31,7 @@ async fn main() -> Result<()> {
         })
         .build();
 
-    let response = agent.prompt(LOADERS_PROMPT).await?;
+    let response = agent.prompt(LOADERS_PROMPT).await?.output;
     println!("{response}");
 
     Ok(())

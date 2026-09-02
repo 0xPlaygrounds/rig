@@ -138,7 +138,6 @@ async fn chat_completions_streaming_carries_identity() {
 #[tokio::test]
 async fn agent_tool_run_reports_per_attempt_identity() {
     use crate::support::{Adder, IdentityProbe, TOOLS_PREAMBLE};
-    use rig::completion::Prompt;
 
     with_openai_cassette(
         "response_identity/agent_tool_run_reports_per_attempt_identity",
@@ -154,7 +153,6 @@ async fn agent_tool_run_reports_per_attempt_identity() {
             let response = agent
                 .prompt("What is 2 + 3? Use the tool, then state the result.")
                 .max_turns(3)
-                .extended_details()
                 .await
                 .expect("agent run should succeed");
 
@@ -192,11 +190,12 @@ async fn streamed_agent_run_reports_identity() {
                 .add_hook(probe.clone())
                 .build();
 
-            let mut stream = rig::streaming::StreamingPrompt::stream_prompt(
-                &agent,
-                rig::completion::Message::user("Reply with exactly: streamed identity probe"),
-            )
-            .await;
+            let mut stream = agent
+                .stream_prompt(rig::completion::Message::user(
+                    "Reply with exactly: streamed identity probe",
+                ))
+                .stream()
+                .await;
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }

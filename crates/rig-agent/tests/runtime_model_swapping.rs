@@ -15,19 +15,18 @@ use futures::{Stream, StreamExt, stream};
 use rig_agent::{
     Agent, AgentBuilder, ModelHandle,
     agent::{
-        AgentHook, CompletionCallAction, HookContext, InvalidToolCallAction, ModelSelection,
-        ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig, PromptRequest,
-        RequestPatch, Standard, StreamingError, StreamingResult, ToolCall as ToolCallEvent,
-        ToolCallAction, ToolResultAction, ToolResultEvent,
+        AgentHook, AgentRunner, CompletionCallAction, HookContext, InvalidToolCallAction,
+        ModelSelection, ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig,
+        RequestPatch, StreamingError, StreamingResult, ToolCall as ToolCallEvent, ToolCallAction,
+        ToolResultAction, ToolResultEvent,
     },
     completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt,
-        PromptError, ProviderCapabilities, TypedPrompt, Usage,
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message,
+        PromptError, ProviderCapabilities, Usage,
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
         RawStreamingChoice, StreamFinal, StreamedAssistantContent, StreamingCompletionResponse,
-        StreamingPrompt,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
@@ -396,7 +395,7 @@ struct ExtractedValue {
 
 fn assert_agent(_: Agent) {}
 fn assert_builder(_: AgentBuilder<NoToolConfig>) {}
-fn assert_prompt_request(_: PromptRequest<Standard>) {}
+fn assert_prompt_request(_: AgentRunner) {}
 fn assert_extractor(_: Extractor<ExtractedValue>) {}
 fn assert_agent_stream(_: StreamingResult) {}
 
@@ -414,7 +413,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_builder(AgentBuilder::new(alpha.clone()));
     assert_prompt_request(alpha_agent.prompt("typed request"));
     assert_extractor(ExtractorBuilder::<ExtractedValue>::new(alpha.clone()).build());
-    assert_agent_stream(alpha_agent.stream_prompt("stream type").await);
+    assert_agent_stream(alpha_agent.stream_prompt("stream type").stream().await);
 
     let unary = alpha
         .completion(request("low-level unary"))
@@ -482,18 +481,26 @@ async fn replacement_and_override_scopes_have_value_semantics() {
         "alpha"
     );
     assert_eq!(
-        agent.prompt("new runner").await.expect("new default"),
+        agent
+            .prompt("new runner")
+            .await
+            .expect("new default")
+            .output,
         "beta"
     );
 
     let original = AgentBuilder::new(alpha.clone()).build();
     let changed_clone = original.clone().with_model_handle(beta_handle.clone());
     assert_eq!(
-        original.prompt("original").await.expect("original"),
+        original.prompt("original").await.expect("original").output,
         "alpha"
     );
     assert_eq!(
-        changed_clone.prompt("clone").await.expect("changed clone"),
+        changed_clone
+            .prompt("clone")
+            .await
+            .expect("changed clone")
+            .output,
         "beta"
     );
 
@@ -502,11 +509,16 @@ async fn replacement_and_override_scopes_have_value_semantics() {
             .prompt("one run")
             .using_model(beta_handle.clone())
             .await
-            .expect("fixed override"),
+            .expect("fixed override")
+            .output,
         "beta"
     );
     assert_eq!(
-        original.prompt("default remains").await.expect("default"),
+        original
+            .prompt("default remains")
+            .await
+            .expect("default")
+            .output,
         "alpha"
     );
 
@@ -514,7 +526,8 @@ async fn replacement_and_override_scopes_have_value_semantics() {
         .prompt_typed("typed one-run override")
         .using_model(ModelHandle::new(beta_static(r#"{"value":"typed beta"}"#)))
         .await
-        .expect("typed override");
+        .expect("typed override")
+        .output;
     assert_eq!(typed.value, "typed beta");
 
     let observed_candidates = Arc::new(Mutex::new(Vec::new()));
@@ -536,7 +549,8 @@ async fn replacement_and_override_scopes_have_value_semantics() {
                 }
             ))
             .await
-            .expect("hook overrides run default"),
+            .expect("hook overrides run default")
+            .output,
         "beta"
     );
     assert_eq!(
@@ -563,7 +577,11 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
         .build();
 
     assert_eq!(
-        agent.prompt("agent hook").await.expect("agent hook route"),
+        agent
+            .prompt("agent hook")
+            .await
+            .expect("agent hook route")
+            .output,
         "agent routed"
     );
 
@@ -577,7 +595,8 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
                 }
             ))
             .await
-            .expect("request hook route"),
+            .expect("request hook route")
+            .output,
         "request routed"
     );
 
@@ -585,7 +604,8 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
         agent
             .prompt("agent hook remains")
             .await
-            .expect("agent hook remains"),
+            .expect("agent hook remains")
+            .output,
         "agent routed"
     );
 }
@@ -622,6 +642,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
         .add_hook(StopSelection {
             completion_calls: streaming_completion_calls.clone(),
         })
+        .stream()
         .await;
     let error = stream
         .next()
@@ -875,7 +896,7 @@ async fn runner_default_is_used_for_every_attempt_without_a_selecting_hook() {
         .await
         .expect("default multi-turn run");
 
-    assert_eq!(output, "default final");
+    assert_eq!(output.output, "default final");
     assert_eq!(script.requests().len(), 2);
 }
 
@@ -917,7 +938,6 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                     })
                 },
             ))
-            .extended_details()
             .await
             .expect("blocking routed run");
         let selections = selected.lock().expect("selection lock").clone();
@@ -972,6 +992,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                     })
                 },
             ))
+            .stream()
             .await;
         let mut final_response = None;
         let mut events = Vec::new();
@@ -1120,7 +1141,6 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
                 })
             },
         ))
-        .extended_details()
         .await
         .expect("retry routed run");
 
@@ -1196,7 +1216,7 @@ async fn invalid_tool_retry_reenters_selection_exactly_once() {
         .await
         .expect("invalid-tool retry run");
 
-    assert_eq!(output, "recovered after invalid tool");
+    assert_eq!(output.output, "recovered after invalid tool");
     assert_eq!(
         selections.lock().expect("selection lock").as_slice(),
         &[(1, None), (2, Some("alpha".to_owned()))]
@@ -1208,7 +1228,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     let rich = Turn::rich("final text", 13, "rich-message-id");
     let alpha = AlphaModel(Script::new("alpha", [rich.clone()], rich));
     let agent = AgentBuilder::new(alpha).build();
-    let mut stream = agent.stream_prompt("rich stream").await;
+    let mut stream = agent.stream_prompt("rich stream").stream().await;
     let mut saw_reasoning = false;
     let mut saw_reasoning_delta = false;
     let mut saw_unknown = false;
@@ -1401,7 +1421,8 @@ async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_
     assert_eq!(
         task.await
             .expect("routing task join")
-            .expect("routing task result"),
+            .expect("routing task result")
+            .output,
         "after tool"
     );
     assert_eq!(tool_calls.load(Ordering::SeqCst), 1);
@@ -1519,7 +1540,7 @@ async fn dropping_pending_unary_and_streaming_attempts_cancels_by_drop() {
         dropped: stream_dropped.clone(),
     })
     .build();
-    let pending_stream = stream_agent.stream_prompt("pending stream").await;
+    let pending_stream = stream_agent.stream_prompt("pending stream").stream().await;
     let stream_task = tokio::spawn(async move {
         let mut pending_stream = pending_stream;
         pending_stream.next().await
@@ -1547,15 +1568,18 @@ async fn concurrent_runs_and_handle_calls_are_independent() {
         },
     ));
     let (alpha, beta) = tokio::join!(alpha_run, beta_run);
-    assert_eq!(alpha.expect("alpha concurrent run"), "alpha concurrent");
-    assert_eq!(beta.expect("beta concurrent run"), "beta concurrent");
+    assert_eq!(
+        alpha.expect("alpha concurrent run").output,
+        "alpha concurrent"
+    );
+    assert_eq!(beta.expect("beta concurrent run").output, "beta concurrent");
 
     let shared = ModelHandle::new(alpha_static("shared handle"));
     let first = agent.prompt("first shared").using_model(shared.clone());
     let second = agent.prompt("second shared").using_model(shared);
     let (first, second) = tokio::join!(first, second);
-    assert_eq!(first.expect("first shared call"), "shared handle");
-    assert_eq!(second.expect("second shared call"), "shared handle");
+    assert_eq!(first.expect("first shared call").output, "shared handle");
+    assert_eq!(second.expect("second shared call").output, "shared handle");
 }
 
 // ---------------------------------------------------------------------------
@@ -1633,7 +1657,7 @@ async fn model_selection_hooks_observe_the_merged_request_patch_on_both_surfaces
             .build();
 
         if streaming {
-            drain_stream(agent.stream_prompt("merged patch").await)
+            drain_stream(agent.stream_prompt("merged patch").stream().await)
                 .await
                 .expect("streaming patched run");
         } else {
@@ -1682,7 +1706,7 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
             .build();
 
         if streaming {
-            drain_stream(agent.stream_prompt("route by patch").await)
+            drain_stream(agent.stream_prompt("route by patch").stream().await)
                 .await
                 .expect("streaming patch-routed run");
             assert_eq!(
@@ -1695,7 +1719,8 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
                 agent
                     .prompt("route by patch")
                     .await
-                    .expect("blocking patch-routed run"),
+                    .expect("blocking patch-routed run")
+                    .output,
                 "beta answer"
             );
         }
@@ -1714,7 +1739,7 @@ async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() 
             .build();
 
         if streaming {
-            let error = drain_stream(agent.stream_prompt("stopped").await)
+            let error = drain_stream(agent.stream_prompt("stopped").stream().await)
                 .await
                 .expect_err("streaming completion-call stop");
             assert!(matches!(
@@ -1765,9 +1790,15 @@ async fn failed_preparation_follows_selection_and_does_not_issue_an_attempt() {
             .build();
 
         let failed = if streaming {
-            drain_stream(agent.stream_prompt("prepare fails").max_turns(2).await)
-                .await
-                .is_err()
+            drain_stream(
+                agent
+                    .stream_prompt("prepare fails")
+                    .max_turns(2)
+                    .stream()
+                    .await,
+            )
+            .await
+            .is_err()
         } else {
             agent.prompt("prepare fails").max_turns(2).await.is_err()
         };
@@ -1838,7 +1869,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
 
         let failed_with_provider_error = if streaming {
             matches!(
-                drain_stream(agent.stream_prompt("boom").await).await,
+                drain_stream(agent.stream_prompt("boom").stream().await).await,
                 Err(StreamingError::Completion(CompletionError::ProviderError(message)))
                     if message == "provider exploded"
             )
@@ -1899,7 +1930,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         ))
         .await
         .expect("recovered run");
-    assert_eq!(output, "recovered");
+    assert_eq!(output.output, "recovered");
     let observed = observations.lock().expect("observation lock").clone();
     assert_eq!(observed[0], (1, None, None, None));
     assert_eq!(observed[1], (2, Some("alpha".to_owned()), None, None));

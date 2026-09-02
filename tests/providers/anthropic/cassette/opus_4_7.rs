@@ -1,12 +1,11 @@
 //! Dedicated Claude Opus 4.7 live smoke tests.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::completion::{Chat, Message, Prompt};
 use rig::message::{DocumentSourceKind, ImageMediaType};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig_agent::test_utils::validate_extraction_fields;
 
 use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
@@ -37,7 +36,8 @@ async fn messages_prompt_smoke() {
             let response = agent
                 .prompt(BASIC_PROMPT)
                 .await
-                .expect("prompt should succeed");
+                .expect("prompt should succeed")
+                .output;
 
             assert_nonempty_response(&response);
         },
@@ -55,7 +55,7 @@ async fn messages_streaming_prompt_smoke() {
                 .preamble(STREAMING_PREAMBLE)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
@@ -82,7 +82,8 @@ async fn messages_tools_smoke() {
             let response = agent
                 .prompt(TOOLS_PROMPT)
                 .await
-                .expect("tool prompt should succeed");
+                .expect("tool prompt should succeed")
+                .output;
 
             assert_mentions_expected_number(&response, -3);
         },
@@ -103,7 +104,7 @@ async fn messages_streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -127,7 +128,8 @@ async fn messages_structured_output_smoke() {
             let response = agent
                 .prompt(STRUCTURED_OUTPUT_PROMPT)
                 .await
-                .expect("structured output prompt should succeed");
+                .expect("structured output prompt should succeed")
+                .output;
             let structured: SmokeStructuredOutput =
                 serde_json::from_str(&response).expect("structured output should deserialize");
 
@@ -198,7 +200,8 @@ async fn messages_image_input_smoke() {
             let response = agent
                 .prompt(image)
                 .await
-                .expect("image prompt should succeed");
+                .expect("image prompt should succeed")
+                .output;
 
             assert_nonempty_response(&response);
             assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
@@ -305,7 +308,8 @@ async fn messages_adaptive_thinking_tool_roundtrip_smoke() {
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
                 .await
-                .expect("adaptive thinking tool chat should succeed");
+                .expect("adaptive thinking tool chat should succeed")
+                .output;
 
             reasoning::assert_nonstreaming_universal(&result, &call_count, "anthropic");
         },
@@ -330,6 +334,7 @@ async fn messages_adaptive_thinking_streaming_tool_roundtrip_smoke() {
             let stream = agent
                 .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
                 .max_turns(3)
+                .stream()
                 .await;
 
             let stats = reasoning::collect_stream_stats(stream, "anthropic").await;

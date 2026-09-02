@@ -1,5 +1,4 @@
 //! AWS Bedrock document prompt smoke tests inspired by Anthropic document tests.
-use rig::completion::Prompt;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::prelude::*;
 
@@ -42,7 +41,8 @@ async fn plaintext_document_prompt() {
     let response = agent
         .prompt(document)
         .await
-        .expect("document prompt should succeed");
+        .expect("document prompt should succeed")
+        .output;
 
     assert_nonempty_response(&response);
     assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
@@ -65,7 +65,8 @@ async fn plaintext_document_with_instruction() {
             ],
         })
         .await
-        .expect("instruction prompt should succeed");
+        .expect("instruction prompt should succeed")
+        .output;
 
     assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
 }

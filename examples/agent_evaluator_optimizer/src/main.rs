@@ -1,7 +1,5 @@
 use rig::prelude::*;
 
-use rig::completion::Prompt;
-
 use rig::providers::openai;
 use rig::providers::openai::Client;
 
@@ -65,7 +63,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let mut memories: Vec<String> = Vec::new();
-    let mut response = generator_agent.prompt(TASK).await?;
+    let mut response = generator_agent.prompt(TASK).await?.output;
     memories.push(response.clone());
 
     loop {
@@ -76,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
             break;
         } else {
             let context = format!("{TASK}\n\n{}", eval_result.feedback);
-            response = generator_agent.prompt(context).await?;
+            response = generator_agent.prompt(context).await?.output;
             memories.push(response.clone());
         }
     }

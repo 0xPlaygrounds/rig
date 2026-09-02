@@ -1,23 +1,18 @@
 use rig_core::id::InternalCallId;
-use rig_core::{
-    message::AssistantContent,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
-};
+use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
-    agent::hook::AgentHook,
-    agent::prompt_request::assistant_text_from_choice,
     agent::runner::AgentRunner,
     streaming::{StreamedAssistantContent, StreamedUserContent},
-    tool::ToolContext,
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing_futures::Instrument;
 
-use super::{CompletionCall, PromptResponse, forward_prompt_setters};
+use crate::run::response::{CompletionCall, PromptResponse};
+use crate::run::transcript::assistant_text_from_choice;
 use crate::{
     agent::Agent,
     completion::{CompletionError, PromptError},
@@ -241,90 +236,6 @@ impl From<rig_core::memory::MemoryError> for StreamingError {
     }
 }
 
-/// A builder for creating prompt requests with customizable options.
-/// Uses generics to track which options have been set during the build process.
-///
-/// When the agent has no configured `default_max_turns`, the implicit budget is
-/// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
-/// configured or implicit budget; a tool call followed by a model-authored final
-/// answer generally requires at least two model calls.
-pub struct StreamingPromptRequest {
-    /// The hook-aware driver this streaming request configures and runs.
-    runner: AgentRunner,
-}
-
-impl StreamingPromptRequest {
-    /// Create a new `StreamingPromptRequest` from an agent, including its
-    /// default hooks.
-    pub fn new(agent: &Agent, prompt: impl Into<Message>) -> StreamingPromptRequest {
-        Self::from_agent(agent, prompt)
-    }
-
-    /// Create a new StreamingPromptRequest from an agent, cloning the agent's
-    /// data and default hook stack.
-    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> StreamingPromptRequest {
-        StreamingPromptRequest {
-            runner: AgentRunner::from_agent(agent, prompt),
-        }
-    }
-
-    /// Set the total model-call budget, including the initial call and every
-    /// retry or continuation. Zero emits no model calls; one permits only the
-    /// initial call.
-    ///
-    /// Named to match the blocking
-    /// [`PromptRequest::max_turns`](super::PromptRequest::max_turns) and
-    /// [`TypedPromptRequest::max_turns`](super::TypedPromptRequest::max_turns)
-    /// builders so the same call reads identically on either surface.
-    pub fn max_turns(mut self, turns: usize) -> Self {
-        self.runner = self.runner.max_turns(turns);
-        self
-    }
-
-    /// Execute up to `concurrency` of a turn's tool calls at once (1 by default,
-    /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: at any
-    /// `concurrency` the stream emits the model's `ToolCall` items (call order),
-    /// then — atomically, after the whole tool batch settles successfully — the
-    /// per-tool `ToolExecutionCommitted` + `ToolResult` items in **call order** (not
-    /// completion order). The streamed message history is unchanged at any
-    /// `concurrency`.
-    pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.runner = self.runner.tool_concurrency(concurrency);
-        self
-    }
-
-    /// Append a hook to this request's hook stack (on top of any the agent
-    /// already carries). Hooks run in registration order; how their results
-    /// compose is event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
-    /// chain, `CompletionCall` request patches accumulate and merge, while model-turn
-    /// steering and observe-only/recovery events use first-non-`Continue`-wins). See the
-    /// [`hook`](crate::agent::hook) module docs.
-    pub fn add_hook<H>(mut self, hook: H) -> Self
-    where
-        H: AgentHook + 'static,
-    {
-        self.runner = self.runner.add_hook(hook);
-        self
-    }
-
-    forward_prompt_setters!(runner);
-
-    async fn send(self) -> StreamingResult {
-        self.runner.stream().await
-    }
-
-    /// Split the configured run into a driving future and a [`RunEvents`]
-    /// feed instead of a stream. See [`AgentRunner::run_channel`].
-    pub fn run_channel(
-        self,
-    ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend,
-        RunEvents,
-    ) {
-        self.runner.run_channel()
-    }
-}
-
 impl AgentRunner {
     /// Drive the agent loop, streaming assistant content, tool activity, and a
     /// final response. Hooks fire at every observable point, including streamed
@@ -499,9 +410,9 @@ impl AgentRunner {
 impl Agent {
     /// Run `prompt` with the agent's defaults, returning the driving future and
     /// a [`RunEvents`] feed. See [`AgentRunner::run_channel`]; to configure the
-    /// run first (history, turn budget, tool context, …), configure a
-    /// [`StreamingPromptRequest`] and call its
-    /// [`run_channel`](StreamingPromptRequest::run_channel).
+    /// run first (history, turn budget, tool context, …), configure the runner
+    /// from [`Agent::stream_prompt`] and call its
+    /// [`run_channel`](AgentRunner::run_channel).
     pub fn run_channel<P: Into<Message> + WasmCompatSend>(
         &self,
         prompt: P,
@@ -510,16 +421,6 @@ impl Agent {
         RunEvents,
     ) {
         AgentRunner::from_agent(self, prompt).run_channel()
-    }
-}
-
-impl IntoFuture for StreamingPromptRequest {
-    type Output = StreamingResult; // what `.await` returns
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        // Wrap send() in a future, because send() returns a stream immediately
-        Box::pin(async move { self.send().await })
     }
 }
 

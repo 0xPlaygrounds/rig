@@ -14,7 +14,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::openai;
 use serde::Deserialize;
@@ -49,7 +49,8 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
                 .await
-                .expect("OpenAI-compatible provider should accept replayed reasoning content");
+                .expect("OpenAI-compatible provider should accept replayed reasoning content")
+                .output;
 
             reasoning::assert_nonstreaming_universal(&result, &call_count, "openai-compatible");
         },

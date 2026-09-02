@@ -8,7 +8,7 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
     ObservationAction,
 };
-use rig::completion::{Message, Prompt};
+use rig::completion::Message;
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -86,7 +86,11 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
                 seen_response: Arc::new(Mutex::new(None)),
             };
 
-            let response = agent.prompt("Entertain me!").add_hook(hook.clone()).await?;
+            let response = agent
+                .prompt("Entertain me!")
+                .add_hook(hook.clone())
+                .await?
+                .output;
 
             assert_nonempty_response(&response);
             anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);

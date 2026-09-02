@@ -6,10 +6,8 @@
 //! matches on method, path, allowlisted headers and body bytes, so a boxed
 //! request that differed in any of them would not find its interaction.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_anthropic_boxed_cassette;
 use crate::support::{
@@ -28,7 +26,8 @@ async fn completion_smoke_through_boxed_transport() {
         let response = agent
             .prompt(BASIC_PROMPT)
             .await
-            .expect("completion should succeed");
+            .expect("completion should succeed")
+            .output;
 
         assert_nonempty_response(&response);
     })
@@ -43,7 +42,7 @@ async fn streaming_smoke_through_boxed_transport() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
         let (response, provider_final): (_, rig::streaming::StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await

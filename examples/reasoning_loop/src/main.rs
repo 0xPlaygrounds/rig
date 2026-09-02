@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::{
     agent::Agent,
-    completion::{CompletionError, Prompt, PromptError},
+    completion::{CompletionError, PromptError},
     extractor::Extractor,
     message::Message,
     providers::anthropic,
@@ -26,8 +26,7 @@ struct ReasoningAgent {
     executor: Agent,
 }
 
-impl Prompt for ReasoningAgent {
-    #[allow(refining_impl_trait)]
+impl ReasoningAgent {
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
         let prompt: Message = prompt.into();
         let chat_history = vec![prompt.clone()];
@@ -51,7 +50,6 @@ impl Prompt for ReasoningAgent {
             .prompt(reasoning_prompt.as_str())
             .history(&chat_history)
             .max_turns(20)
-            .extended_details()
             .await?;
         if let Some(messages) = &response.messages {
             let history_vec: Vec<_> = messages.clone().into_iter().collect();

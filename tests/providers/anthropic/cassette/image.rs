@@ -1,7 +1,6 @@
 //! Migrated from `examples/image.rs`.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::completion::Prompt;
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;
 use rig::message::ImageMediaType;
@@ -35,7 +34,8 @@ async fn image_prompt_from_fixture() {
         let response = agent
             .prompt(image)
             .await
-            .expect("image prompt should succeed");
+            .expect("image prompt should succeed")
+            .output;
 
         assert_nonempty_response(&response);
         assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
