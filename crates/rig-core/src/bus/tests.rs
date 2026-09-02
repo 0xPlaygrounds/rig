@@ -1,7 +1,7 @@
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     task::{Context, Poll},
     time::Duration,
@@ -513,6 +513,167 @@ fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
         1,
         "the handler never saw the dispatch dropped before it was sent"
     );
+}
+
+#[test]
+fn deregistering_a_serial_key_drains_its_queue_with_handler_unavailable() {
+    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+        serial_per_handler: true,
+        ..BusConfig::default()
+    });
+    let (blocked, open) = Echo::gated();
+    let key = HandlerKey::from("echo");
+    driver.register("echo", blocked);
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    // A goes in flight (gated); B and C queue behind it.
+    let mut a = dispatcher.dispatch(&key, custom(json!("a")));
+    let mut b = dispatcher.dispatch(&key, custom(json!("b")));
+    let mut c = dispatcher.dispatch(&key, custom(json!("c")));
+    for pending in [&mut a, &mut b, &mut c] {
+        assert!(pending.poll_unpin(&mut cx).is_pending());
+    }
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 1);
+    // The handler goes away with a non-empty queue: nothing waits on A.
+    assert!(dispatcher.deregister(&key));
+    let _ = driver.poll_unpin(&mut cx);
+    for (pending, name) in [(&mut b, "b"), (&mut c, "c")] {
+        match pending.poll_unpin(&mut cx) {
+            Poll::Ready(Err(report)) => {
+                assert_eq!(report.kind, ErrorKind::HandlerUnavailable, "{name}");
+                assert!(report.message.contains("echo"), "{name}: {report:?}");
+            }
+            other => panic!("{name} should have drained, got {other:?}"),
+        }
+    }
+    // A still completes on its own, and a re-registered key serves again.
+    let _ = open.send(());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(a.poll_unpin(&mut cx).is_ready());
+    let (echo, served) = Echo::new();
+    dispatcher.register("echo", echo);
+    let mut d = dispatcher.dispatch(&key, custom(json!("d")));
+    assert!(d.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(d.poll_unpin(&mut cx).is_ready());
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+}
+
+/// A handler that dispatches to its own key from inside its poll — once;
+/// the nested serve answers plainly.
+struct SelfCaller {
+    dispatcher: Dispatcher,
+    key: HandlerKey,
+    nested: AtomicBool,
+}
+
+impl SelfCaller {
+    fn new(dispatcher: Dispatcher, key: HandlerKey) -> Self {
+        Self {
+            dispatcher,
+            key,
+            nested: AtomicBool::new(false),
+        }
+    }
+}
+
+impl Handler for SelfCaller {
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: self.key.clone(),
+            family: FamilyDescriptor::Custom {
+                kind: "test:self-caller".into(),
+            },
+        }
+    }
+
+    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+        if self.nested.swap(true, Ordering::SeqCst) {
+            return Box::pin(async move {
+                sink.resolve(Ok(Outcome::Custom(json!("plain")))).await;
+            });
+        }
+        let dispatcher = self.dispatcher.clone();
+        let key = self.key.clone();
+        Box::pin(async move {
+            let mut nested = dispatcher.dispatch(&key, custom(json!("nested")));
+            // The first poll of the nested dispatch runs inside this
+            // handler's poll: the bus must answer it, not queue it.
+            let first = poll_fn(|cx| Poll::Ready(nested.poll_unpin(cx))).await;
+            let outcome = match first {
+                Poll::Ready(Err(report)) => Ok(Outcome::Custom(json!({
+                    "kind": format!("{:?}", report.kind),
+                    "message": report.message,
+                }))),
+                other => Err(ErrorReport::new(
+                    ErrorKind::Internal,
+                    format!("the nested dispatch was not refused: {other:?}"),
+                )),
+            };
+            sink.resolve(outcome).await;
+        })
+    }
+}
+
+#[test]
+fn a_reentrant_dispatch_to_the_in_flight_key_under_serial_serving_is_refused() {
+    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+        serial_per_handler: true,
+        ..BusConfig::default()
+    });
+    let key = HandlerKey::from("self");
+    driver.register("self", SelfCaller::new(dispatcher.clone(), key.clone()));
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let mut outer = dispatcher.dispatch(&key, custom(json!("outer")));
+    let mut outcome = None;
+    for _ in 0..8 {
+        if let Poll::Ready(result) = outer.poll_unpin(&mut cx) {
+            outcome = Some(result);
+            break;
+        }
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    let outcome = outcome
+        .expect("resolved, never queued behind itself")
+        .expect("served");
+    let Outcome::Custom(payload) = outcome else {
+        panic!("custom outcome expected, got {outcome:?}");
+    };
+    assert_eq!(payload["kind"], json!("Request"));
+    assert!(
+        payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("re-entrant") && message.contains("self")),
+        "{payload}"
+    );
+}
+
+#[test]
+fn concurrent_serving_lets_a_handler_dispatch_to_its_own_key() {
+    // Without serial serving a nested dispatch to the same key is served
+    // alongside — the refusal is a serial-mode rule only.
+    let (dispatcher, mut driver) = Bus::channel();
+    let key = HandlerKey::from("self");
+    driver.register("self", SelfCaller::new(dispatcher.clone(), key.clone()));
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let mut outer = dispatcher.dispatch(&key, custom(json!("outer")));
+    let mut outcome = None;
+    for _ in 0..8 {
+        if let Poll::Ready(result) = outer.poll_unpin(&mut cx) {
+            outcome = Some(result);
+            break;
+        }
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    // The nested dispatch was accepted (its first poll returned Pending), so
+    // the handler reports it as "not refused" — an Internal error here.
+    let report = outcome
+        .expect("resolved")
+        .expect_err("the nested dispatch was accepted, not refused");
+    assert_eq!(report.kind, ErrorKind::Internal);
 }
 
 #[test]

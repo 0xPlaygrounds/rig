@@ -97,6 +97,7 @@ impl fmt::Debug for EffectLogRecorder {
 }
 
 type InFlight = WasmBoxedFuture<'static, HandlerKey>;
+type InFlightServing = Pin<Box<Serving>>;
 
 /// The serving half of the bus: a plain future that owns the handler table
 /// and runs handlers as commands arrive.
@@ -115,7 +116,7 @@ type InFlight = WasmBoxedFuture<'static, HandlerKey>;
 pub struct BusDriver {
     shared: Arc<Shared>,
     config: BusConfig,
-    in_flight: FuturesUnordered<InFlight>,
+    in_flight: FuturesUnordered<InFlightServing>,
     queued: BTreeMap<HandlerKey, VecDeque<Command>>,
     busy: BTreeSet<HandlerKey>,
     recorder: Option<EffectLogRecorder>,
@@ -182,7 +183,10 @@ impl BusDriver {
         self.in_flight.len()
     }
 
-    fn serve(&mut self, command: Command) {
+    /// Start serving `command`. Returns whether it went in flight; a command
+    /// with no handler is answered `HandlerUnavailable` on the spot and
+    /// never occupies its key.
+    fn serve(&mut self, command: Command) -> bool {
         let Command {
             id,
             key,
@@ -193,7 +197,7 @@ impl BusDriver {
         } = command;
         let Some(handler) = self.shared.handler(&key) else {
             reply.fail(handler_unavailable(&key));
-            return;
+            return false;
         };
         if self.config.serial_per_handler {
             self.busy.insert(key.clone());
@@ -203,8 +207,8 @@ impl BusDriver {
             Some(recorder) => tap(sink, recorder.clone(), id, key.clone(), kind.clone()),
             None => sink,
         };
-        let task_key = key;
-        self.in_flight.push(Box::pin(
+        let task_key = key.clone();
+        let task = Box::pin(
             async move {
                 // Cancellation is drop: the consumer dropping its `Pending` or
                 // `EffectStream` resolves `cancel`, which drops the handler
@@ -215,7 +219,13 @@ impl BusDriver {
                 task_key
             }
             .instrument(span),
-        ));
+        );
+        self.in_flight.push(Box::pin(Serving {
+            key,
+            shared: Arc::clone(&self.shared),
+            task,
+        }));
+        true
     }
 
     fn accept(&mut self, command: Command) {
@@ -229,18 +239,66 @@ impl BusDriver {
         }
     }
 
+    /// The in-flight command for `key` finished: serve the next queued one
+    /// that can go in flight. A queued command whose handler is gone is
+    /// answered on the spot and the loop moves on — a key never strands
+    /// its queue behind a command that will not be served.
     fn release(&mut self, key: HandlerKey) {
         if !self.config.serial_per_handler {
             return;
         }
         self.busy.remove(&key);
-        let next = self.queued.get_mut(&key).and_then(VecDeque::pop_front);
-        if self.queued.get(&key).is_some_and(VecDeque::is_empty) {
-            self.queued.remove(&key);
+        loop {
+            let next = self.queued.get_mut(&key).and_then(VecDeque::pop_front);
+            let Some(command) = next else {
+                self.queued.remove(&key);
+                return;
+            };
+            if self.serve(command) {
+                return;
+            }
         }
-        if let Some(command) = next {
-            self.serve(command);
+    }
+
+    /// Answer every command queued for a key that no longer has a handler.
+    /// Deregistration wakes the driver so this runs promptly.
+    fn drain_orphaned_queues(&mut self) {
+        if !self.config.serial_per_handler || self.queued.is_empty() {
+            return;
         }
+        let orphaned: Vec<HandlerKey> = self
+            .queued
+            .keys()
+            .filter(|key| self.shared.handler(key).is_none())
+            .cloned()
+            .collect();
+        for key in orphaned {
+            if let Some(queue) = self.queued.remove(&key) {
+                for command in queue {
+                    command.reply.fail(handler_unavailable(&key));
+                }
+            }
+        }
+    }
+}
+
+/// An in-flight task that tells the bus which key is being polled, so a
+/// dispatch made from inside the handler can be recognised as re-entrant.
+struct Serving {
+    key: HandlerKey,
+    shared: Arc<Shared>,
+    task: InFlight,
+}
+
+impl Future for Serving {
+    type Output = HandlerKey;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<HandlerKey> {
+        let this = self.get_mut();
+        this.shared.set_serving(Some(this.key.clone()));
+        let polled = this.task.as_mut().poll(cx);
+        this.shared.set_serving(None);
+        polled
     }
 }
 
@@ -257,6 +315,7 @@ impl Future for BusDriver {
                 for command in this.shared.drain(cx) {
                     this.accept(*command);
                 }
+                this.drain_orphaned_queues();
                 // The bus is closed for commands once every dispatcher has
                 // dropped and nothing it enqueued remains.
                 if this.shared.dispatchers() == 0 && this.shared.buffered() == 0 {

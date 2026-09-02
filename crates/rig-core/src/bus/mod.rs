@@ -122,7 +122,10 @@ impl Bus {
 
     /// A bus with an explicit config.
     pub fn channel_with(config: BusConfig) -> (Dispatcher, BusDriver) {
-        let shared = Arc::new(dispatcher::Shared::new(config.command_capacity));
+        let shared = Arc::new(dispatcher::Shared::new(
+            config.command_capacity,
+            config.serial_per_handler,
+        ));
         let dispatcher = Dispatcher::open(shared.clone(), config.stream_capacity.max(1));
         let driver = BusDriver::new(shared, config);
         (dispatcher, driver)

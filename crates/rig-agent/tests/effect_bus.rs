@@ -684,6 +684,91 @@ async fn a_nested_agent_call_from_a_tool_is_served_by_the_driving_run() {
     assert_eq!(response.output, "done");
 }
 
+/// A tool that, from inside its own execution, runs a nested prompt whose
+/// model calls this same tool again.
+#[derive(Clone, Default)]
+struct NestedSameTool {
+    agent: Arc<OnceLock<Agent>>,
+    inner_outputs: Arc<Mutex<Vec<String>>>,
+}
+
+impl Tool for NestedSameTool {
+    const NAME: &'static str = "same";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "asks the agent to call me again".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: serde_json::Value,
+    ) -> Result<String, Self::Error> {
+        let agent = self.agent.get().expect("set after build").clone();
+        let response = agent
+            .prompt("nested")
+            .max_turns(2)
+            .run()
+            .await
+            .map_err(|err| {
+                ToolExecutionError::new(rig_agent::tool::ToolErrorKind::Other, err.to_string())
+            })?;
+        self.inner_outputs
+            .lock()
+            .expect("lock")
+            .push(response.output.clone());
+        Ok(response.output)
+    }
+}
+
+#[tokio::test]
+async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
+    // Outer turn: call `same`. Inside it the nested run's model calls `same`
+    // again — under serial serving that would queue behind the outer call
+    // that waits on it, so the bus refuses it and the nested model sees a
+    // skipped tool result, answers, and the outer run completes.
+    let tool = NestedSameTool::default();
+    let call_same = || {
+        MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
+            rig_core::message::ToolCall::from_wire(
+                "tc",
+                rig_core::message::ToolFunction::new("same".to_owned(), json!({})),
+            ),
+        )])
+    };
+    let agent = AgentBuilder::with_bus_config(
+        BusConfig {
+            serial_per_handler: true,
+            ..BusConfig::default()
+        },
+        "default",
+        MockCompletionModel::from_turns([
+            call_same(),
+            call_same(),
+            MockTurn::text("inner-done"),
+            MockTurn::text("done"),
+        ]),
+    )
+    .tool(tool.clone())
+    .build();
+    tool.agent.set(agent.clone()).ok().expect("unset");
+    let response = within(agent.prompt("go").max_turns(3).run())
+        .await
+        .expect("the outer run completes: the re-entrant call was refused, not queued");
+    assert_eq!(response.output, "done");
+    assert_eq!(
+        *tool.inner_outputs.lock().expect("lock"),
+        vec!["inner-done".to_string()]
+    );
+}
+
 fn _assertions(agent: Agent, driver: BusDriver) {
     fn assert_send<T: Send>(_: &T) {}
     assert_send(&agent);
