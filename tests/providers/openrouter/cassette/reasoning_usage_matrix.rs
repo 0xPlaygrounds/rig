@@ -24,7 +24,7 @@
 //! span, and every caller reading the field, saw a hardcoded zero no matter
 //! how much reasoning the route billed for.
 //!
-//! The same type is `OpenRouterExt::StreamingUsage`, so the streaming
+//! The same type is `OpenRouter::StreamingUsage`, so the streaming
 //! terminal record lost it too — the zero was consistent across transports,
 //! which is exactly why nothing caught it.
 //!
@@ -605,7 +605,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
 }
 
 /// One scenario, both transports: `openrouter::Usage` is also
-/// `OpenRouterExt::StreamingUsage`, so a fix that only reached the blocking
+/// `OpenRouter::StreamingUsage`, so a fix that only reached the blocking
 /// mapping would show up here.
 #[tokio::test]
 async fn transports_agree_on_reasoning_tokens() {

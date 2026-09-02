@@ -403,7 +403,7 @@ fn api_switch_preserves_non_completion_capabilities() {
     .completions_api();
 
     let _: crate::providers::openai::GenericEmbeddingModel<
-        crate::providers::openai::OpenAICompletionsExt,
+        crate::providers::openai::OpenAICompletions,
         crate::test_utils::RecordingHttpClient,
     > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
     let _: crate::providers::openai::CompletionsTranscriptionModel<_> =

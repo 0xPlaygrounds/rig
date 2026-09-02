@@ -1,5 +1,10 @@
-use crate::client::{self, BearerAuth, DebugExt, Provider, ProviderBuilder};
-use crate::http_client;
+#[cfg(feature = "image")]
+use crate::client::HasImageGeneration;
+use crate::client::{
+    self, BearerAuth, HasCompletion, HasTranscription, ModelTransport, Provider,
+    ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 use crate::transcription::TranscriptionError;
@@ -107,29 +112,84 @@ impl Display for SubProvider {
 // ================================================================
 const HUGGINGFACE_API_BASE_URL: &str = "https://router.huggingface.co";
 
+/// The Hugging Face Inference Providers router, routed to one sub-provider.
 #[derive(Debug, Default, Clone)]
-pub struct HuggingFaceExt {
+pub struct HuggingFace {
     subprovider: SubProvider,
 }
 
+/// Builder settings for [`HuggingFace`]: which sub-provider the router sends to.
 #[derive(Debug, Default, Clone)]
-pub struct HuggingFaceBuilder {
+pub struct HuggingFaceConfig {
     subprovider: SubProvider,
 }
 
 type HuggingFaceApiKey = BearerAuth;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<HuggingFaceExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<HuggingFaceBuilder, HuggingFaceApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<HuggingFace, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<HuggingFace, H>;
 
-impl Provider for HuggingFaceExt {
-    type Builder = HuggingFaceBuilder;
-
+impl Provider for HuggingFace {
+    const NAME: &'static str = "huggingface";
+    const BASE_URL: &'static str = HUGGINGFACE_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/api/whoami-v2";
+    type ApiKey = HuggingFaceApiKey;
+    type Config = HuggingFaceConfig;
+    type EnvInput = String;
+
+    fn build(config: HuggingFaceConfig, _: &HuggingFaceApiKey) -> http_client::Result<Self> {
+        Ok(HuggingFace {
+            subprovider: config.subprovider,
+        })
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("HUGGINGFACE_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingFaceExt {
+impl HasCompletion for HuggingFace {
+    type Model<H>
+        = super::completion::CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::completion::CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasTranscription for HuggingFace {
+    type Model<H>
+        = super::transcription::TranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::transcription::TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "image")]
+impl HasImageGeneration for HuggingFace {
+    type Model<H>
+        = super::image_generation::ImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::image_generation::ImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingFace {
     const PROVIDER_NAME: &'static str = "huggingface";
 
     type StreamingUsage = crate::providers::openai::Usage;
@@ -158,56 +218,16 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingF
     }
 }
 
-client::impl_capabilities!(
-    HuggingFaceExt,
-    completion = super::completion::CompletionModel<H>,
-    transcription = super::transcription::TranscriptionModel<H>,
-    image_generation = super::image_generation::ImageGenerationModel<H>,
-);
-
-impl DebugExt for HuggingFaceExt {
-    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
-        std::iter::once(("subprovider", (&self.subprovider as &dyn Debug)))
-    }
-}
-
-impl ProviderBuilder for HuggingFaceBuilder {
-    type Extension<H>
-        = HuggingFaceExt
-    where
-        H: http_client::HttpClientExt;
-    type ApiKey = HuggingFaceApiKey;
-
-    const BASE_URL: &'static str = HUGGINGFACE_API_BASE_URL;
-
-    fn build<H>(
-        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: http_client::HttpClientExt,
-    {
-        Ok(HuggingFaceExt {
-            subprovider: builder.ext().subprovider.clone(),
-        })
-    }
-}
-
-client::impl_provider_from_env!(
-    HuggingFaceExt,
-    input = String,
-    api_key_env = "HUGGINGFACE_API_KEY",
-);
-
 impl<H> ClientBuilder<H> {
     pub fn subprovider(mut self, subprovider: SubProvider) -> Self {
-        *self.ext_mut() = HuggingFaceBuilder { subprovider };
+        self.config_mut().subprovider = subprovider;
         self
     }
 }
 
 impl<H> Client<H> {
     pub(crate) fn subprovider(&self) -> &SubProvider {
-        &self.ext().subprovider
+        &self.provider().subprovider
     }
 }
 #[cfg(test)]

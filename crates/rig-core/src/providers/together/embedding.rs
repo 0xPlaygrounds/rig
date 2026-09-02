@@ -3,7 +3,7 @@
 //! From [Together AI Reference](https://docs.together.ai/reference/embeddings)
 // ================================================================
 
-use super::client::TogetherExt;
+use super::client::Together;
 use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
 
 // ================================================================
@@ -19,7 +19,7 @@ pub const M2_BERT_80M_8K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-8k-retr
 pub const SENTENCE_BERT: &str = "sentence-transformers/msmarco-bert-base-dot-v5";
 pub const UAE_LARGE_V1: &str = "WhereIsAI/UAE-Large-V1";
 
-impl OpenAIEmbeddingsCompatible for TogetherExt {
+impl OpenAIEmbeddingsCompatible for Together {
     const PROVIDER_NAME: &'static str = "together";
     const REQUIRES_USAGE: bool = false;
     const SUPPORTS_ENCODING_FORMAT: bool = false;
@@ -32,7 +32,7 @@ impl OpenAIEmbeddingsCompatible for TogetherExt {
 
 /// Together AI embedding model, driven by the shared OpenAI-compatible transport.
 pub type EmbeddingModel<H = crate::http_client::BoxedHttpClient> =
-    GenericEmbeddingModel<TogetherExt, H>;
+    GenericEmbeddingModel<Together, H>;
 
 #[cfg(test)]
 mod tests;

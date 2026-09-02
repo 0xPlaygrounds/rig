@@ -28,10 +28,7 @@ fn lister(
         .http_client(http_client.clone())
         .build()
         .expect("client should build");
-    (
-        <AnthropicModelLister<_> as crate::client::ConstructModelLister<_>>::construct(&client),
-        http_client,
-    )
+    (AnthropicModelLister::new(client), http_client)
 }
 
 /// The pagination loop follows the cursor across pages, sending `after_id`

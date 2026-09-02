@@ -1,7 +1,9 @@
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::client::{
+    self, BearerAuth, HasEmbeddings, HasRerank, ModelTransport, Provider, ProviderClientResult,
+};
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
-use crate::http_client::HttpClientExt;
+use crate::http_client::{self, HttpClientExt};
 use crate::rerank;
 use crate::rerank::RerankError;
 use bytes::Bytes;
@@ -14,39 +16,60 @@ use serde_json::json;
 const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct VoyageExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct VoyageBuilder;
+pub struct VoyageAi;
 
 type VoyageApiKey = BearerAuth;
 
-impl Provider for VoyageExt {
-    type Builder = VoyageBuilder;
-
+impl Provider for VoyageAi {
+    const NAME: &'static str = "voyageai";
+    const BASE_URL: &'static str = VOYAGEAI_API_BASE_URL;
     /// There is currently no way to verify a Voyage api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
+    type ApiKey = VoyageApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &VoyageApiKey) -> http_client::Result<Self> {
+        Ok(VoyageAi)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("VOYAGE_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    VoyageExt,
-    embeddings = EmbeddingModel<H>,
-    rerank = RerankModel<H>,
-);
+impl HasEmbeddings for VoyageAi {
+    type Model<H>
+        = EmbeddingModel<H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for VoyageExt {}
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        EmbeddingModel::make(client, model, ndims)
+    }
+}
 
-client::impl_default_provider_builder!(
-    VoyageBuilder => VoyageExt,
-    api_key = VoyageApiKey,
-    base_url = VOYAGEAI_API_BASE_URL,
-);
+impl HasRerank for VoyageAi {
+    type Model<H>
+        = RerankModel<H>
+    where
+        H: ModelTransport;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<VoyageExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<VoyageBuilder, VoyageApiKey, H>;
+    fn rerank_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        RerankModel::new(client.clone(), model)
+    }
+}
 
-client::impl_provider_from_env!(VoyageExt, input = String, api_key_env = "VOYAGE_API_KEY");
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<VoyageAi, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<VoyageAi, H>;
 
 impl<T> EmbeddingModel<T> {
     pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
@@ -334,11 +357,13 @@ where
     }
 }
 
-impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+    /// Build the model, defaulting `ndims` from the model identifier when the
+    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
+    pub fn make(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
         let dims = dims
             .or(model_dimensions_from_identifier(&model))
             .unwrap_or_default();
@@ -539,15 +564,6 @@ where
             },
         )
         .await
-    }
-}
-
-impl<T> crate::client::ConstructRerankModel<Client<T>> for RerankModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }
 

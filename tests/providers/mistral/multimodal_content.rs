@@ -1,6 +1,6 @@
 //! Cassette-backed matrix for Mistral multimodal request content (#2290).
 //!
-//! `MistralExt::finalize_request_body` used to flatten every message `content`
+//! `Mistral::finalize_request_body` used to flatten every message `content`
 //! array with the text-only helper, which keeps only parts carrying a
 //! `text`/`refusal` key. Every image, audio clip and document attached to a
 //! Mistral prompt was therefore removed from the request before it was sent,

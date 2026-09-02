@@ -1,4 +1,10 @@
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+#[cfg(feature = "audio")]
+use crate::client::HasAudioGeneration;
+use crate::client::{
+    self, BearerAuth, HasCompletion, HasEmbeddings, HasModelListing, HasTranscription,
+    ModelTransport, Provider, ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 use http::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -9,44 +15,98 @@ use std::fmt::Debug;
 const OPENROUTER_API_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenRouterExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OpenRouterExtBuilder;
-
+pub struct OpenRouter;
 type OpenRouterApiKey = BearerAuth;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OpenRouterExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<OpenRouterExtBuilder, OpenRouterApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OpenRouter, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<OpenRouter, H>;
 
-impl Provider for OpenRouterExt {
-    type Builder = OpenRouterExtBuilder;
-
+impl Provider for OpenRouter {
+    const NAME: &'static str = "openrouter";
+    const BASE_URL: &'static str = OPENROUTER_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/key";
+    type ApiKey = OpenRouterApiKey;
+    type Config = ();
+    type EnvInput = OpenRouterApiKey;
+
+    fn build(_: (), _: &OpenRouterApiKey) -> http_client::Result<Self> {
+        Ok(OpenRouter)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("OPENROUTER_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(
+        input: OpenRouterApiKey,
+        http: H,
+    ) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    OpenRouterExt,
-    completion = super::CompletionModel<H>,
-    embeddings = super::EmbeddingModel<H>,
-    transcription = super::transcription::TranscriptionModel<H>,
-    model_listing = super::OpenRouterModelLister<H>,
-    audio_generation = super::audio_generation::AudioGenerationModel<H>,
-);
+impl HasCompletion for OpenRouter {
+    type Model<H>
+        = super::CompletionModel<H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for OpenRouterExt {}
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::CompletionModel::new(client.clone(), model)
+    }
+}
 
-client::impl_default_provider_builder!(
-    OpenRouterExtBuilder => OpenRouterExt,
-    api_key = OpenRouterApiKey,
-    base_url = OPENROUTER_API_BASE_URL,
-);
+impl HasEmbeddings for OpenRouter {
+    type Model<H>
+        = super::EmbeddingModel<H>
+    where
+        H: ModelTransport;
 
-client::impl_provider_from_env!(
-    OpenRouterExt,
-    input = OpenRouterApiKey,
-    api_key_env = "OPENROUTER_API_KEY",
-);
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        super::EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasTranscription for OpenRouter {
+    type Model<H>
+        = super::transcription::TranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::transcription::TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for OpenRouter {
+    type Lister<H>
+        = super::OpenRouterModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        super::OpenRouterModelLister::new(client.clone())
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for OpenRouter {
+    type Model<H>
+        = super::audio_generation::AudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::audio_generation::AudioGenerationModel::new(client.clone(), model)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize)]
 pub struct Usage {
@@ -137,7 +197,7 @@ impl From<Usage> for crate::completion::Usage {
         crate::completion::Usage::from(&value)
     }
 }
-impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {
+impl<H> client::ClientBuilder<OpenRouter, H> {
     /// Attach OpenRouter app-identification headers (`X-OpenRouter-Title` and `HTTP-Referer`)
     /// to every request made by this client. `title` appears in the dashboard activity feed
     /// and rankings page; `url` is the primary app identifier required to create an app page

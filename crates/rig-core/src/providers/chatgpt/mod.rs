@@ -18,7 +18,7 @@
 
 mod auth;
 
-use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, Transport};
+use crate::client::{self, ApiKey, HasCompletion, ModelTransport, Provider, ProviderClientResult};
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
@@ -79,8 +79,10 @@ impl Debug for ChatGPTAuth {
     }
 }
 
+/// Builder settings for [`ChatGPT`]: auth cache location, device-code
+/// policy, and the request identity headers.
 #[derive(Debug, Clone)]
-pub struct ChatGPTBuilder {
+pub struct ChatGPTConfig {
     auth_file: Option<PathBuf>,
     default_instructions: Option<String>,
     device_code_handler: auth::DeviceCodeHandler,
@@ -89,17 +91,20 @@ pub struct ChatGPTBuilder {
     user_agent: Option<String>,
 }
 
+/// The ChatGPT backend provider. Authentication is a runtime token exchange
+/// driven by the `auth::Authenticator` built from the key the client was
+/// given; identity headers are added per request in [`Provider::prepare`].
 #[derive(Clone)]
-pub struct ChatGPTExt {
+pub struct ChatGPT {
     auth: auth::Authenticator,
     default_instructions: Option<String>,
     originator: String,
     user_agent: String,
 }
 
-impl Debug for ChatGPTExt {
+impl Debug for ChatGPT {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ChatGPTExt")
+        f.debug_struct("ChatGPT")
             .field("auth", &self.auth)
             .field("default_instructions", &self.default_instructions)
             .field("originator", &self.originator)
@@ -108,11 +113,10 @@ impl Debug for ChatGPTExt {
     }
 }
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<ChatGPTExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<ChatGPT, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<ChatGPT, H>;
 
-impl Default for ChatGPTBuilder {
+impl Default for ChatGPTConfig {
     fn default() -> Self {
         Self {
             auth_file: default_auth_file(),
@@ -135,56 +139,16 @@ impl Default for ChatGPTBuilder {
     }
 }
 
-impl Provider for ChatGPTExt {
-    type Builder = ChatGPTBuilder;
-
-    const VERIFY_PATH: &'static str = "";
-
-    fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
-        Ok(req
-            .header("originator", &self.originator)
-            .header("user-agent", &self.user_agent)
-            .header(http::header::ACCEPT, "text/event-stream"))
-    }
-
-    fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
-        format!(
-            "{}/{}",
-            base_url.trim_end_matches('/'),
-            path.trim_start_matches('/')
-        )
-    }
-}
-
-impl responses_api::ResponsesProviderExt for ChatGPTExt {
-    // The ChatGPT backend rejects the `system` role in `input`, so every
-    // system message — including mid-conversation ones — is lifted into the
-    // top-level `instructions` field.
-    fn system_instructions_placement(&self) -> responses_api::SystemInstructionsPlacement {
-        responses_api::SystemInstructionsPlacement::AllInstructions
-    }
-}
-
-client::impl_capabilities!(ChatGPTExt, completion = ResponsesCompletionModel<H>);
-
-impl DebugExt for ChatGPTExt {}
-
-impl ProviderBuilder for ChatGPTBuilder {
-    type Extension<H>
-        = ChatGPTExt
-    where
-        H: HttpClientExt;
-    type ApiKey = ChatGPTAuth;
-
+impl Provider for ChatGPT {
+    const NAME: &'static str = PROVIDER_NAME;
     const BASE_URL: &'static str = CHATGPT_API_BASE_URL;
+    const VERIFY_PATH: &'static str = "";
+    type ApiKey = ChatGPTAuth;
+    type Config = ChatGPTConfig;
+    type EnvInput = ChatGPTAuth;
 
-    fn build<H>(
-        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        let auth = match builder.get_api_key() {
+    fn build(config: ChatGPTConfig, api_key: &ChatGPTAuth) -> http_client::Result<Self> {
+        let auth = match api_key {
             ChatGPTAuth::AccessToken {
                 access_token,
                 account_id,
@@ -195,32 +159,36 @@ impl ProviderBuilder for ChatGPTBuilder {
             ChatGPTAuth::OAuth => auth::AuthSource::OAuth,
         };
 
-        let ext = builder.ext();
-
-        Ok(ChatGPTExt {
+        Ok(ChatGPT {
             auth: auth::Authenticator::new(
                 auth,
-                ext.auth_file.clone(),
-                ext.device_code_handler.clone(),
-                ext.allow_device_flow,
+                config.auth_file,
+                config.device_code_handler,
+                config.allow_device_flow,
             ),
-            default_instructions: ext.default_instructions.clone(),
-            originator: ext.originator.clone(),
-            user_agent: ext.user_agent.clone().unwrap_or_else(default_user_agent),
+            default_instructions: config.default_instructions,
+            originator: config.originator,
+            user_agent: config.user_agent.unwrap_or_else(default_user_agent),
         })
     }
-}
 
-impl crate::client::ProviderFromEnv for ChatGPTExt {
-    type Input = ChatGPTAuth;
-    fn from_env_with<H>(
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        let mut builder = crate::client::Client::<Self, crate::markers::Missing>::builder();
+    fn prepare(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
+        Ok(req
+            .header("originator", &self.originator)
+            .header("user-agent", &self.user_agent)
+            .header(http::header::ACCEPT, "text/event-stream"))
+    }
+
+    fn build_uri(&self, base_url: &str, path: &str) -> String {
+        format!(
+            "{}/{}",
+            base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        let mut builder = Client::builder();
 
         if let Some(base_url) = crate::client::optional_env_var("CHATGPT_API_BASE")?
             .or(crate::client::optional_env_var("OPENAI_CHATGPT_API_BASE")?)
@@ -237,34 +205,38 @@ impl crate::client::ProviderFromEnv for ChatGPTExt {
                 })
                 .http_client(http)
                 .build()
-                .map_err(Into::into)
         } else {
-            builder
-                .oauth()
-                .http_client(http)
-                .build()
-                .map_err(Into::into)
+            builder.oauth().http_client(http).build()
         }
     }
 
-    fn from_val_with<H>(
-        input: Self::Input,
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(input)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
+    fn from_val<H: HttpClientExt>(input: ChatGPTAuth, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
     }
 }
 
-impl<H> client::ClientBuilder<ChatGPTBuilder, crate::markers::Missing, H> {
-    pub fn oauth(self) -> client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H> {
+impl HasCompletion for ChatGPT {
+    type Model<H>
+        = ResponsesCompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        ResponsesCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl responses_api::ResponsesProviderExt for ChatGPT {
+    // The ChatGPT backend rejects the `system` role in `input`, so every
+    // system message — including mid-conversation ones — is lifted into the
+    // top-level `instructions` field.
+    fn system_instructions_placement(&self) -> responses_api::SystemInstructionsPlacement {
+        responses_api::SystemInstructionsPlacement::AllInstructions
+    }
+}
+
+impl<H> ClientBuilder<H> {
+    pub fn oauth(self) -> Self {
         self.api_key(ChatGPTAuth::OAuth)
     }
 }
@@ -274,7 +246,7 @@ impl<H> ClientBuilder<H> {
     where
         F: Fn(auth::DeviceCodePrompt) + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
             ext
         })
@@ -287,7 +259,7 @@ impl<H> ClientBuilder<H> {
     /// should set this to `false` so a stale refresh token returns an actionable
     /// auth error instead of printing a device code and waiting unattended.
     pub fn allow_device_flow(self, allow: bool) -> Self {
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.allow_device_flow = allow;
             ext
         })
@@ -295,7 +267,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn token_dir(self, path: impl AsRef<Path>) -> Self {
         let auth_file = path.as_ref().join("auth.json");
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.auth_file = Some(auth_file);
             ext
         })
@@ -303,7 +275,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn auth_file(self, path: impl AsRef<Path>) -> Self {
         let auth_file = path.as_ref().to_path_buf();
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.auth_file = Some(auth_file);
             ext
         })
@@ -311,7 +283,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn default_instructions(self, instructions: impl Into<String>) -> Self {
         let instructions = instructions.into();
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.default_instructions = Some(instructions);
             ext
         })
@@ -319,7 +291,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn originator(self, originator: impl Into<String>) -> Self {
         let originator = originator.into();
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.originator = originator;
             ext
         })
@@ -327,7 +299,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn user_agent(self, user_agent: impl Into<String>) -> Self {
         let user_agent = user_agent.into();
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.user_agent = Some(user_agent);
             ext
         })
@@ -344,7 +316,7 @@ pub struct ResponsesCompletionModel<H = crate::http_client::BoxedHttpClient> {
 
 impl<H> ResponsesCompletionModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
@@ -376,7 +348,7 @@ where
         self
     }
 
-    fn openai_model(&self) -> responses_api::GenericResponsesCompletionModel<ChatGPTExt, H> {
+    fn openai_model(&self) -> responses_api::GenericResponsesCompletionModel<ChatGPT, H> {
         let mut model = responses_api::GenericResponsesCompletionModel::new(
             self.client.clone(),
             self.model.clone(),
@@ -392,7 +364,7 @@ where
     ) -> Result<ResponsesRequest, CompletionError> {
         let mut request = self.openai_model().create_completion_request(request)?;
 
-        if let Some(default_instructions) = &self.client.ext().default_instructions {
+        if let Some(default_instructions) = &self.client.provider().default_instructions {
             request.instructions = Some(merge_instructions(
                 default_instructions,
                 request.instructions.as_deref(),
@@ -504,7 +476,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let auth = self
             .client
-            .ext()
+            .provider()
             .auth
             .auth_context(self.client.http_client())
             .await
@@ -569,7 +541,7 @@ where
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext()
+        self.provider()
             .auth
             .auth_context(self.http_client())
             .await
@@ -577,19 +549,9 @@ where
     }
 }
 
-impl<H> crate::client::ConstructCompletionModel<Client<H>> for ResponsesCompletionModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    fn construct(client: &Client<H>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn completion(
@@ -622,7 +584,7 @@ where
 
 impl<H> ResponsesCompletionModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Open a stream normalized to rig's terminal record.
@@ -661,7 +623,7 @@ where
         let body = serde_json::to_vec(&request)?;
         let auth = self
             .client
-            .ext()
+            .provider()
             .auth
             .auth_context(self.client.http_client())
             .await

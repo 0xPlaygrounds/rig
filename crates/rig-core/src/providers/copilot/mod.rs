@@ -22,7 +22,10 @@
 
 mod auth;
 
-use crate::client::{self, ApiKey, DebugExt, ModelLister, Provider, ProviderBuilder, Transport};
+use crate::client::{
+    self, ApiKey, HasCompletion, HasEmbeddings, HasModelListing, ModelLister, ModelTransport,
+    Provider, ProviderClientResult,
+};
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
@@ -144,32 +147,34 @@ impl Debug for CopilotAuth {
     }
 }
 
+/// Builder settings for [`Copilot`]: token cache locations and the
+/// device-code login policy.
 #[derive(Debug, Clone)]
-pub struct CopilotBuilder {
+pub struct CopilotConfig {
     access_token_file: Option<PathBuf>,
     api_key_file: Option<PathBuf>,
     device_code_handler: auth::DeviceCodeHandler,
     allow_device_flow: bool,
 }
 
+/// The GitHub Copilot provider. Authentication is a runtime token exchange
+/// driven by the `auth::Authenticator` built from the key the client was
+/// given; requests carry the exchanged token, not a default header.
 #[derive(Clone)]
-pub struct CopilotExt {
+pub struct Copilot {
     auth: auth::Authenticator,
 }
 
-impl Debug for CopilotExt {
+impl Debug for Copilot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CopilotExt")
-            .field("auth", &self.auth)
-            .finish()
+        f.debug_struct("Copilot").field("auth", &self.auth).finish()
     }
 }
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<CopilotExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<CopilotBuilder, CopilotAuth, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Copilot, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Copilot, H>;
 
-impl Default for CopilotBuilder {
+impl Default for CopilotConfig {
     fn default() -> Self {
         let token_dir = default_token_dir();
         Self {
@@ -181,37 +186,16 @@ impl Default for CopilotBuilder {
     }
 }
 
-impl Provider for CopilotExt {
-    type Builder = CopilotBuilder;
-
-    const VERIFY_PATH: &'static str = "";
-}
-
-client::impl_capabilities!(
-    CopilotExt,
-    completion = CompletionModel<H>,
-    embeddings = EmbeddingModel<H>,
-    model_listing = CopilotModelLister<H>,
-);
-
-impl DebugExt for CopilotExt {}
-
-impl ProviderBuilder for CopilotBuilder {
-    type Extension<H>
-        = CopilotExt
-    where
-        H: HttpClientExt;
-    type ApiKey = CopilotAuth;
-
+impl Provider for Copilot {
+    const NAME: &'static str = PROVIDER_NAME;
     const BASE_URL: &'static str = GITHUB_COPILOT_API_BASE_URL;
+    const VERIFY_PATH: &'static str = "";
+    type ApiKey = CopilotAuth;
+    type Config = CopilotConfig;
+    type EnvInput = CopilotAuth;
 
-    fn build<H>(
-        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        let auth = match builder.get_api_key() {
+    fn build(config: CopilotConfig, api_key: &CopilotAuth) -> http_client::Result<Self> {
+        let auth = match api_key {
             CopilotAuth::ApiKey(api_key) => auth::AuthSource::ApiKey(api_key.clone()),
             CopilotAuth::GitHubAccessToken(access_token) => {
                 auth::AuthSource::GitHubAccessToken(access_token.clone())
@@ -219,29 +203,19 @@ impl ProviderBuilder for CopilotBuilder {
             CopilotAuth::OAuth => auth::AuthSource::OAuth,
         };
 
-        let ext = builder.ext();
-        Ok(CopilotExt {
+        Ok(Copilot {
             auth: auth::Authenticator::new(
                 auth,
-                ext.access_token_file.clone(),
-                ext.api_key_file.clone(),
-                ext.device_code_handler.clone(),
-                ext.allow_device_flow,
+                config.access_token_file,
+                config.api_key_file,
+                config.device_code_handler,
+                config.allow_device_flow,
             ),
         })
     }
-}
 
-impl crate::client::ProviderFromEnv for CopilotExt {
-    type Input = CopilotAuth;
-    fn from_env_with<H>(
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        let mut builder = crate::client::Client::<Self, crate::markers::Missing>::builder();
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        let mut builder = Client::builder();
         fn get(name: &str) -> Option<String> {
             std::env::var(name).ok()
         }
@@ -251,51 +225,65 @@ impl crate::client::ProviderFromEnv for CopilotExt {
         }
 
         if let Some(api_key) = env_api_key(&get) {
-            builder
-                .api_key(api_key)
-                .http_client(http)
-                .build()
-                .map_err(Into::into)
+            builder.api_key(api_key).http_client(http).build()
         } else if let Some(access_token) = env_github_access_token(&get) {
             builder
                 .github_access_token(access_token)
                 .http_client(http)
                 .build()
-                .map_err(Into::into)
         } else {
-            builder
-                .oauth()
-                .http_client(http)
-                .build()
-                .map_err(Into::into)
+            builder.oauth().http_client(http).build()
         }
     }
 
-    fn from_val_with<H>(
-        input: Self::Input,
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(input)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
+    fn from_val<H: HttpClientExt>(input: CopilotAuth, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
     }
 }
 
-impl<H> client::ClientBuilder<CopilotBuilder, crate::markers::Missing, H> {
-    pub fn github_access_token(
-        self,
-        access_token: impl Into<String>,
-    ) -> client::ClientBuilder<CopilotBuilder, CopilotAuth, H> {
+impl HasCompletion for Copilot {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasEmbeddings for Copilot {
+    type Model<H>
+        = EmbeddingModel<H>
+    where
+        H: ModelTransport;
+
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasModelListing for Copilot {
+    type Lister<H>
+        = CopilotModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        CopilotModelLister::new(client.clone())
+    }
+}
+
+impl<H> ClientBuilder<H> {
+    pub fn github_access_token(self, access_token: impl Into<String>) -> Self {
         self.api_key(CopilotAuth::GitHubAccessToken(access_token.into()))
     }
 
-    pub fn oauth(self) -> client::ClientBuilder<CopilotBuilder, CopilotAuth, H> {
+    pub fn oauth(self) -> Self {
         self.api_key(CopilotAuth::OAuth)
     }
 }
@@ -305,7 +293,7 @@ impl<H> ClientBuilder<H> {
     where
         F: Fn(auth::DeviceCodePrompt) + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
             ext
         })
@@ -318,7 +306,7 @@ impl<H> ClientBuilder<H> {
     /// to `false` so unattended background work returns a clear auth error
     /// instead of printing a device code and waiting.
     pub fn allow_device_flow(self, allow: bool) -> Self {
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.allow_device_flow = allow;
             ext
         })
@@ -326,7 +314,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn token_dir(self, path: impl AsRef<Path>) -> Self {
         let path = path.as_ref();
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.access_token_file = Some(path.join("access-token"));
             ext.api_key_file = Some(path.join("api-key.json"));
             ext
@@ -335,7 +323,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn access_token_file(self, path: impl AsRef<Path>) -> Self {
         let path = path.as_ref().to_path_buf();
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.access_token_file = Some(path);
             ext
         })
@@ -343,7 +331,7 @@ impl<H> ClientBuilder<H> {
 
     pub fn api_key_file(self, path: impl AsRef<Path>) -> Self {
         let path = path.as_ref().to_path_buf();
-        self.over_ext(|mut ext| {
+        self.map_config(|mut ext| {
             ext.api_key_file = Some(path);
             ext
         })
@@ -390,7 +378,7 @@ where
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext()
+        self.provider()
             .auth
             .auth_context(self.http_client())
             .await
@@ -511,36 +499,34 @@ fn post_with_auth_base<H>(
     client: &Client<H>,
     auth: &auth::AuthContext,
     path: &str,
-    transport: Transport,
 ) -> http_client::Result<http_client::Builder> {
     let uri = client
-        .ext()
-        .build_uri(runtime_base_url(client, auth).as_ref(), path, transport);
+        .provider()
+        .build_uri(runtime_base_url(client, auth).as_ref(), path);
     let mut req = Request::post(uri);
 
     if let Some(headers) = req.headers_mut() {
         headers.extend(client.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
     }
 
-    client.ext().with_custom(req)
+    client.provider().prepare(req)
 }
 
 fn get_with_auth_base<H>(
     client: &Client<H>,
     auth: &auth::AuthContext,
     path: &str,
-    transport: Transport,
 ) -> http_client::Result<http_client::Builder> {
     let uri = client
-        .ext()
-        .build_uri(runtime_base_url(client, auth).as_ref(), path, transport);
+        .provider()
+        .build_uri(runtime_base_url(client, auth).as_ref(), path);
     let mut req = Request::get(uri);
 
     if let Some(headers) = req.headers_mut() {
         headers.extend(client.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
     }
 
-    client.ext().with_custom(req)
+    client.provider().prepare(req)
 }
 
 fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
@@ -702,7 +688,7 @@ pub struct CompletionModel<H = crate::http_client::BoxedHttpClient> {
 
 impl<H> CompletionModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
@@ -747,7 +733,7 @@ where
 
     async fn auth_context(&self) -> Result<auth::AuthContext, CompletionError> {
         self.client
-            .ext()
+            .provider()
             .auth
             .auth_context(self.client.http_client())
             .await
@@ -800,7 +786,6 @@ where
         &self,
         facts: &RequestFacts,
         path: &str,
-        transport: Transport,
         model: &str,
         operation: CompletionOperation,
         body: Vec<u8>,
@@ -813,12 +798,9 @@ where
             facts.has_vision,
             self.intent,
         );
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, path, transport)?,
-            &headers,
-        )
-        .body(body)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
+        let req = apply_headers(post_with_auth_base(&self.client, &auth, path)?, &headers)
+            .body(body)
+            .map_err(|err| CompletionError::HttpError(err.into()))?;
 
         let span = CompletionSpanBuilder::new("copilot", model, operation)
             .system_instructions(
@@ -843,7 +825,6 @@ where
             .signed_request(
                 &facts,
                 "/chat/completions",
-                Transport::Http,
                 &request.model,
                 CompletionOperation::Chat,
                 serde_json::to_vec(&request)?,
@@ -883,7 +864,6 @@ where
             .signed_request(
                 &facts,
                 "/responses",
-                Transport::Http,
                 &request.model,
                 CompletionOperation::Chat,
                 serde_json::to_vec(&request)?,
@@ -934,7 +914,6 @@ where
             .signed_request(
                 &facts,
                 "/chat/completions",
-                Transport::Sse,
                 &request.model,
                 CompletionOperation::ChatStreaming,
                 serde_json::to_vec(&request_json)?,
@@ -960,7 +939,6 @@ where
             .signed_request(
                 &facts,
                 "/responses",
-                Transport::Sse,
                 &request.model,
                 CompletionOperation::ChatStreaming,
                 serde_json::to_vec(&request)?,
@@ -1077,19 +1055,9 @@ where
     }
 }
 
-impl<H> crate::client::ConstructCompletionModel<Client<H>> for CompletionModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    fn construct(client: &Client<H>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 impl<H> completion::CompletionModel for CompletionModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn completion(
@@ -1179,7 +1147,7 @@ impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
 
 impl<H> EmbeddingModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    Client<H>: HttpClientExt + Clone + 'static,
     H: Clone + 'static,
 {
     pub fn new(client: Client<H>, model: impl Into<String>, ndims: usize) -> Self {
@@ -1195,7 +1163,7 @@ where
 
 impl<H> EmbeddingModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    Client<H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     /// Perform the request and return Copilot's native response instead of
@@ -1231,7 +1199,7 @@ where
     ) -> Result<(CopilotEmbeddingResponse, Option<String>), EmbeddingError> {
         let auth = self
             .client
-            .ext()
+            .provider()
             .auth
             .auth_context(self.client.http_client())
             .await
@@ -1258,7 +1226,7 @@ where
         }
 
         let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/embeddings", Transport::Http)?,
+            post_with_auth_base(&self.client, &auth, "/embeddings")?,
             &headers,
         )
         .body(serde_json::to_vec(&body)?)
@@ -1320,7 +1288,7 @@ where
 
 impl<H> embeddings::EmbeddingModel for EmbeddingModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    Client<H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn max_documents(&self) -> usize {
@@ -1356,12 +1324,14 @@ where
     }
 }
 
-impl<H> crate::client::ConstructEmbeddingModel<Client<H>> for EmbeddingModel<H>
+impl<H> EmbeddingModel<H>
 where
-    Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
+    Client<H>: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn construct(client: &Client<H>, model: String, ndims: Option<usize>) -> Self {
+    /// Build the model, defaulting `ndims` from the model identifier when the
+    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
+    pub fn make(client: &Client<H>, model: String, ndims: Option<usize>) -> Self {
         let dims = ndims.unwrap_or(match model.as_str() {
             TEXT_EMBEDDING_3_LARGE => 3072,
             TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => 1536,
@@ -1421,7 +1391,7 @@ where
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
         let auth = self
             .client
-            .ext()
+            .provider()
             .auth
             .auth_context(self.client.http_client())
             .await
@@ -1431,7 +1401,7 @@ where
 
         let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
         let req = apply_headers(
-            get_with_auth_base(&self.client, &auth, MODEL_LISTING_PATH, Transport::Http)?,
+            get_with_auth_base(&self.client, &auth, MODEL_LISTING_PATH)?,
             &headers,
         )
         .body(http_client::NoBody)?;
@@ -1457,12 +1427,12 @@ where
     }
 }
 
-impl<H> crate::client::ConstructModelLister<Client<H>> for CopilotModelLister<H>
+impl<H> CopilotModelLister<H>
 where
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    fn construct(client: &Client<H>) -> Self {
-        let client = client.clone();
+    /// Build the lister over `client`.
+    pub fn new(client: Client<H>) -> Self {
         Self { client }
     }
 }

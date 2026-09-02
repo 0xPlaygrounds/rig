@@ -93,7 +93,7 @@
 //!
 //! ```ignore
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! use rig_core::client::{CompletionClient, ProviderClient};
+//! use rig_core::client::CompletionClient;
 //! use rig_core::providers::gemini;
 //! use rig_core::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
 //! use std::time::Duration;
@@ -705,7 +705,7 @@ fn is_cache_id_char(ch: char) -> bool {
 /// Validates rather than interpolating, because this is the path `get`,
 /// `update_expiry` and — the one that matters — `delete` send. A handle
 /// carrying a `?` does not produce a malformed URL the provider rejects:
-/// `GeminiExt::build_uri` switches its key separator to `&` the moment it sees
+/// `Gemini::build_uri` switches its key separator to `&` the moment it sees
 /// a `?` in the path, so `delete("abc?stale")` would issue a perfectly
 /// well-formed `DELETE /v1beta/cachedContents/abc?stale&key=…` and destroy the
 /// cache named `abc`. A `#` truncates the path the same way, a `/` retargets it

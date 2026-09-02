@@ -38,7 +38,10 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::client::{self, ApiKey, DebugExt, ModelLister, Nothing, Provider};
+use crate::client::{
+    self, ApiKey, HasCompletion, HasEmbeddings, HasModelListing, ModelLister, ModelTransport,
+    Nothing, Provider, ProviderClientResult,
+};
 use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
@@ -79,6 +82,11 @@ impl ApiKey for OllamaApiKey {
     ) -> Option<http_client::Result<(http::header::HeaderName, http::header::HeaderValue)>> {
         self.0.map(http_client::make_auth_header)
     }
+
+    // Ollama needs no credential by default, so a builder without one is complete.
+    fn absent() -> Option<Self> {
+        Some(Self(None))
+    }
 }
 
 impl From<Nothing> for OllamaApiKey {
@@ -107,45 +115,27 @@ impl From<&str> for OllamaApiKey {
     }
 }
 
+/// The Ollama provider.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OllamaExt;
+pub struct Ollama;
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OllamaBuilder;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Ollama, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Ollama, H>;
 
-impl Provider for OllamaExt {
-    type Builder = OllamaBuilder;
+impl Provider for Ollama {
+    const NAME: &'static str = PROVIDER_NAME;
+    const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
     const VERIFY_PATH: &'static str = "api/tags";
-}
+    type ApiKey = OllamaApiKey;
+    type Config = ();
+    type EnvInput = OllamaApiKey;
 
-client::impl_capabilities!(
-    OllamaExt,
-    completion = CompletionModel<H>,
-    embeddings = EmbeddingModel<H>,
-    model_listing = OllamaModelLister<H>,
-);
+    fn build(_: (), _: &OllamaApiKey) -> http_client::Result<Self> {
+        Ok(Ollama)
+    }
 
-impl DebugExt for OllamaExt {}
-
-client::impl_default_provider_builder!(
-    OllamaBuilder => OllamaExt,
-    api_key = OllamaApiKey,
-    base_url = OLLAMA_API_BASE_URL,
-);
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OllamaExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<OllamaBuilder, OllamaApiKey, H>;
-
-impl crate::client::ProviderFromEnv for OllamaExt {
-    type Input = OllamaApiKey;
-    fn from_env_with<H>(
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
+    /// Read `OLLAMA_API_BASE_URL` (optional) and `OLLAMA_API_KEY` (optional).
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
         let api_base = crate::client::optional_env_var("OLLAMA_API_BASE_URL")?
             .unwrap_or_else(|| OLLAMA_API_BASE_URL.to_string());
 
@@ -153,27 +143,55 @@ impl crate::client::ProviderFromEnv for OllamaExt {
             .map(OllamaApiKey::from)
             .unwrap_or_default();
 
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
+        Client::builder()
             .api_key(api_key)
             .base_url(&api_base)
             .http_client(http)
             .build()
-            .map_err(Into::into)
     }
 
-    fn from_val_with<H>(
-        api_key: Self::Input,
+    fn from_val<H: HttpClientExt>(
+        api_key: OllamaApiKey,
         http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
+    ) -> ProviderClientResult<Client<H>> {
+        Client::new_with(api_key, http)
+    }
+}
+
+impl HasCompletion for Ollama {
+    type Model<H>
+        = CompletionModel<H>
     where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(api_key)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasEmbeddings for Ollama {
+    type Model<H>
+        = EmbeddingModel<H>
+    where
+        H: ModelTransport;
+
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasModelListing for Ollama {
+    type Lister<H>
+        = OllamaModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        OllamaModelLister::new(client.clone())
     }
 }
 
@@ -338,11 +356,13 @@ where
     }
 }
 
-impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+    /// Build the model, defaulting `ndims` from the model identifier when the
+    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
+    pub fn make(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
         let dims = dims
             .or(model_dimensions_from_identifier(&model))
             .unwrap_or_default();
@@ -656,15 +676,6 @@ impl<T> CompletionModel<T> {
             client,
             model: model.into(),
         }
-    }
-}
-
-impl<T> crate::client::ConstructCompletionModel<Client<T>> for CompletionModel<T>
-where
-    Client<T>: Clone,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
     }
 }
 
@@ -1109,12 +1120,12 @@ where
     }
 }
 
-impl<H> crate::client::ConstructModelLister<Client<H>> for OllamaModelLister<H>
+impl<H> OllamaModelLister<H>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
 {
-    fn construct(client: &Client<H>) -> Self {
-        let client = client.clone();
+    /// Build the lister over `client`.
+    pub fn new(client: Client<H>) -> Self {
         Self { client }
     }
 }

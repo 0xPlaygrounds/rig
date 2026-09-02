@@ -23,7 +23,7 @@ const TRANSCRIPTION_PREAMBLE: &str =
 
 pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
     crate::providers::internal::transcription::GenericTranscriptionModel<
-        crate::providers::gemini::client::GeminiExt,
+        crate::providers::gemini::client::Gemini,
         T,
     >;
 
@@ -140,15 +140,6 @@ where
             },
         )
         .await
-    }
-}
-
-impl<T> crate::client::ConstructTranscriptionModel<super::Client<T>> for TranscriptionModel<T>
-where
-    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
-{
-    fn construct(client: &super::Client<T>, model: String) -> Self {
-        TranscriptionModel::new(client.clone(), model)
     }
 }
 

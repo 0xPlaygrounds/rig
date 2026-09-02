@@ -90,11 +90,10 @@ async fn list_all_stops_on_a_cursor_that_does_not_advance() {
         .build()
         .expect("client should build");
 
-    let models =
-        <GeminiModelLister<_> as crate::client::ConstructModelLister<_>>::construct(&client)
-            .list_all()
-            .await
-            .expect("listing should terminate");
+    let models = GeminiModelLister::new(client)
+        .list_all()
+        .await
+        .expect("listing should terminate");
 
     assert_eq!(
         models.data.len(),

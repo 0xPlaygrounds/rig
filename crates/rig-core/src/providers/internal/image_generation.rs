@@ -162,17 +162,6 @@ where
     }
 }
 
-impl<Ext, H> crate::client::ConstructImageGenerationModel<Client<Ext, H>>
-    for GenericImageGenerationModel<Ext, H>
-where
-    Ext: JsonImageGenerationProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    fn construct(client: &Client<Ext, H>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 pub(crate) async fn send_image_generation<C, A>(
     client: &C,
     builder: http_client::Builder,

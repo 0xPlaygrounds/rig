@@ -39,11 +39,10 @@ pub const CHINA_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 pub const ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.ai/anthropic";
 
 impl_dual_dialect_provider!(
-    ext = MoonshotExt,
-    builder = MoonshotBuilder,
-    anthropic_ext = MoonshotAnthropicExt,
-    anthropic_builder = MoonshotAnthropicBuilder,
+    provider = Moonshot,
+    anthropic_provider = MoonshotAnthropic,
     client_input = String,
+    name = "moonshot",
     api_key_env = "MOONSHOT_API_KEY",
     base_url = GLOBAL_API_BASE_URL,
     base_url_env = "MOONSHOT_API_BASE",
@@ -52,11 +51,30 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "MOONSHOT_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(
-    MoonshotExt,
-    completion = CompletionModel<H>,
-    model_listing = MoonshotModelLister<H>,
-);
+impl client::HasCompletion for Moonshot {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: client::ModelTransport;
+
+    fn completion_model<H: client::ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl client::HasModelListing for Moonshot {
+    type Lister<H>
+        = MoonshotModelLister<H>
+    where
+        H: client::ModelTransport;
+
+    fn model_lister<H: client::ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        MoonshotModelLister::new(client.clone())
+    }
+}
 
 crate::providers::internal::model_listing::impl_model_lister!(
     /// [`ModelLister`](crate::client::ModelLister) implementation for the
@@ -112,9 +130,9 @@ pub const KIMI_K2_5: &str = "kimi-k2.5";
 
 /// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<MoonshotExt, H>;
+    openai::completion::GenericCompletionModel<Moonshot, H>;
 
-impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
+impl openai::completion::OpenAICompatibleProvider for Moonshot {
     const PROVIDER_NAME: &'static str = "moonshot";
 
     type StreamingUsage = openai::Usage;

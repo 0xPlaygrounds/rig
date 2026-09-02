@@ -5,7 +5,7 @@
 //! **The contract.** OpenRouter declares its own `Response` type
 //! ([`openrouter::CompletionResponse`]) on the shared OpenAI-compatible
 //! model, and — unlike Groq or Mistral — contracts *no* request-id header:
-//! `OpenRouterExt::REQUEST_ID_HEADER` is `None`. The typed route therefore
+//! `OpenRouter::REQUEST_ID_HEADER` is `None`. The typed route therefore
 //! has nothing to reassemble; `raw_completion_with_request_id` returns
 //! `(raw, None)` and `raw_completion(..).normalize(..)` already reproduces
 //! `completion` exactly. That is still worth pinning: the parity contract
@@ -153,7 +153,7 @@ async fn raw_with_request_id_reproduces_completion() {
     );
 
     assert_eq!(
-        <openrouter::OpenRouterExt as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+        <openrouter::OpenRouter as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
         None,
         "OpenRouter contracts no request-id header"
     );

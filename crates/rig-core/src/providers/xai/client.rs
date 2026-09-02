@@ -1,28 +1,87 @@
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+#[cfg(feature = "audio")]
+use crate::client::HasAudioGeneration;
+#[cfg(feature = "image")]
+use crate::client::HasImageGeneration;
+use crate::client::{
+    self, BearerAuth, HasCompletion, ModelTransport, Provider, ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
     ResponsesProviderExt, ResponsesToolDefinition, SystemInstructionsPlacement,
 };
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct XAiExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct XAiExtBuilder;
-
+pub struct XAi;
 type XAiApiKey = BearerAuth;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<XAiExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<XAiExtBuilder, XAiApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<XAi, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<XAi, H>;
 
 const XAI_BASE_URL: &str = "https://api.x.ai";
 
-impl Provider for XAiExt {
-    type Builder = XAiExtBuilder;
-
+impl Provider for XAi {
+    const NAME: &'static str = "xai";
+    const BASE_URL: &'static str = XAI_BASE_URL;
     const VERIFY_PATH: &'static str = "/v1/api-key";
+    type ApiKey = XAiApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &XAiApiKey) -> http_client::Result<Self> {
+        Ok(XAi)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("XAI_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl ResponsesProviderExt for XAiExt {
+impl HasCompletion for XAi {
+    type Model<H>
+        = super::completion::CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::completion::CompletionModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "image")]
+impl HasImageGeneration for XAi {
+    type Model<H>
+        = super::image_generation::ImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::image_generation::ImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for XAi {
+    type Model<H>
+        = super::audio_generation::AudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::audio_generation::AudioGenerationModel::new(client.clone(), model)
+    }
+}
+
+impl ResponsesProviderExt for XAi {
     const PROVIDER_NAME: &'static str = "xai";
     const RESPONSES_PATH: &'static str = "/v1/responses";
     const EMITS_COMPLETE_TOOL_CALLS_IMMEDIATELY: bool = true;
@@ -46,21 +105,5 @@ impl ResponsesProviderExt for XAiExt {
     }
 }
 
-client::impl_capabilities!(
-    XAiExt,
-    completion = super::completion::CompletionModel<H>,
-    image_generation = super::image_generation::ImageGenerationModel<H>,
-    audio_generation = super::audio_generation::AudioGenerationModel<H>,
-);
-
-impl DebugExt for XAiExt {}
-
-client::impl_default_provider_builder!(
-    XAiExtBuilder => XAiExt,
-    api_key = XAiApiKey,
-    base_url = XAI_BASE_URL,
-);
-
-client::impl_provider_from_env!(XAiExt, input = String, api_key_env = "XAI_API_KEY");
 #[cfg(test)]
 mod tests;

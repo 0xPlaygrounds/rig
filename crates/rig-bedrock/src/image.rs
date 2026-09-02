@@ -110,9 +110,3 @@ impl image_generation::ImageGenerationModel for ImageGenerationModel {
         .await
     }
 }
-
-impl rig_core::client::ConstructImageGenerationModel<Client> for ImageGenerationModel {
-    fn construct(client: &Client, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}

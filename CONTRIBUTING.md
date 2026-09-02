@@ -56,16 +56,14 @@ expectations:
   `finalize_request_body`) — not in a hand-rolled `CompletionModel`, request
   struct, or `TryFrom<message::Message>` conversion. The same applies to
   Anthropic-shaped APIs via `AnthropicCompatibleProvider`.
-- `Client` and `ClientBuilder` public aliases use the correct generic types;
-  the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`.
-- Provider extension and builder types are defined and wired through the
-  `Provider` implementation.
-- `Capabilities` declares each supported capability with `Capable<T>` and each
-  unsupported capability with `Nothing`.
-- `ProviderBuilder` sets the correct base URL, API-key type, and provider
-  extension construction behavior.
-- `ProviderClient::{from_env, from_val}` use the correct environment variable
-  and input type.
+- `Client<H = BoxedHttpClient>` and `ClientBuilder<H = Missing>` public aliases
+  point at `client::Client<Provider, H>` / `client::ClientBuilder<Provider, H>`.
+- One provider value type implements `Provider` with the correct `BASE_URL`,
+  `VERIFY_PATH`, `ApiKey`, `Config`, and `EnvInput`; `from_env` / `from_val`
+  use the correct environment variables and input type.
+- Each supported capability is a `Has*` impl (`HasCompletion`, `HasEmbeddings`,
+  …) naming the concrete model type; unsupported capabilities are simply not
+  implemented.
 - API-key marker/auth types are explicit, insert the intended headers, and keep
   credential-bearing debug output redacted.
 - Model constants are added where they are useful and are current with the

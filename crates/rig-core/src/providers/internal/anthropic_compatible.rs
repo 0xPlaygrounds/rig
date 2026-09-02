@@ -73,22 +73,21 @@ impl AnthropicBaseUrl {
 }
 
 /// Generates the client scaffolding shared by providers that expose both an
-/// OpenAI-compatible and an Anthropic-compatible endpoint: the marker/builder
-/// structs, `Client`/`ClientBuilder` aliases for both dialects, `Provider`,
-/// `DebugExt`, and `AnthropicCompatibleProvider` impls, builder wiring, and
-/// env-driven `ProviderClient` impls (the Anthropic one resolved through the
-/// module's `ANTHROPIC_BASE_URLS` rule).
+/// OpenAI-compatible and an Anthropic-compatible endpoint: the two provider
+/// types, `Client`/`ClientBuilder` aliases for both dialects, their
+/// `Provider` impls (env construction included; the Anthropic one resolved
+/// through the module's `ANTHROPIC_BASE_URLS` rule), and the Anthropic side's
+/// `HasCompletion` and `AnthropicCompatibleProvider` impls.
 ///
-/// The OpenAI-side capabilities and `OpenAICompatibleProvider` impl stay in
+/// The OpenAI-side `Has*` impls and `OpenAICompatibleProvider` impl stay in
 /// the provider module: they are where providers genuinely differ (extra
 /// capabilities, request preparation, response-format support).
 macro_rules! impl_dual_dialect_provider {
     (
-        ext = $ext:ident,
-        builder = $builder:ident,
-        anthropic_ext = $anthropic_ext:ident,
-        anthropic_builder = $anthropic_builder:ident,
+        provider = $provider:ident,
+        anthropic_provider = $anthropic_provider:ident,
         client_input = $client_input:ty,
+        name = $name:literal,
         api_key_env = $api_key_env:literal,
         base_url = $base_url:expr,
         base_url_env = $base_url_env:literal,
@@ -96,64 +95,113 @@ macro_rules! impl_dual_dialect_provider {
         anthropic_base_url = $anthropic_base_url:expr,
         anthropic_base_url_env = $anthropic_base_url_env:literal $(,)?
     ) => {
+        /// The OpenAI-compatible dialect of this provider.
         #[derive(Debug, Default, Clone, Copy)]
-        pub struct $ext;
+        pub struct $provider;
 
+        /// The Anthropic-compatible dialect of this provider.
         #[derive(Debug, Default, Clone, Copy)]
-        pub struct $builder;
+        pub struct $anthropic_provider;
 
-        #[derive(Debug, Default, Clone)]
-        pub struct $anthropic_builder {
-            anthropic: $crate::providers::anthropic::client::AnthropicBuilder,
-        }
-
-        #[derive(Debug, Default, Clone, Copy)]
-        pub struct $anthropic_ext;
-
-        pub type Client<H = $crate::http_client::BoxedHttpClient> = $crate::client::Client<$ext, H>;
+        pub type Client<H = $crate::http_client::BoxedHttpClient> =
+            $crate::client::Client<$provider, H>;
         pub type ClientBuilder<H = $crate::markers::Missing> =
-            $crate::client::ClientBuilder<$builder, $crate::client::BearerAuth, H>;
+            $crate::client::ClientBuilder<$provider, H>;
 
-        pub type AnthropicClient<H = $crate::http_client::BoxedHttpClient> = $crate::client::Client<$anthropic_ext, H>;
-        pub type AnthropicClientBuilder<H = $crate::markers::Missing> = $crate::client::ClientBuilder<
-            $anthropic_builder,
-            $crate::providers::anthropic::client::AnthropicKey,
-            H,
-        >;
+        pub type AnthropicClient<H = $crate::http_client::BoxedHttpClient> =
+            $crate::client::Client<$anthropic_provider, H>;
+        pub type AnthropicClientBuilder<H = $crate::markers::Missing> =
+            $crate::client::ClientBuilder<$anthropic_provider, H>;
 
-        impl $crate::client::Provider for $ext {
-            type Builder = $builder;
-
+        impl $crate::client::Provider for $provider {
+            const NAME: &'static str = $name;
+            const BASE_URL: &'static str = $base_url;
             const VERIFY_PATH: &'static str = "/models";
+            type ApiKey = $crate::client::BearerAuth;
+            type Config = ();
+            type EnvInput = $client_input;
+
+            fn build(_: (), _: &$crate::client::BearerAuth) -> $crate::http_client::Result<Self> {
+                Ok($provider)
+            }
+
+            fn from_env<H: $crate::http_client::HttpClientExt>(
+                http: H,
+            ) -> $crate::client::ProviderClientResult<Client<H>> {
+                Client::from_env_api_key($api_key_env, Some($base_url_env), http)
+            }
+
+            fn from_val<H: $crate::http_client::HttpClientExt>(
+                input: $client_input,
+                http: H,
+            ) -> $crate::client::ProviderClientResult<Client<H>> {
+                Client::new_with(input, http)
+            }
         }
 
-        impl $crate::client::Provider for $anthropic_ext {
-            type Builder = $anthropic_builder;
-
+        impl $crate::client::Provider for $anthropic_provider {
+            const NAME: &'static str = $name;
+            const BASE_URL: &'static str = $anthropic_base_url;
             const VERIFY_PATH: &'static str = "/v1/models";
+            type ApiKey = $crate::providers::anthropic::client::AnthropicKey;
+            type Config = $crate::providers::anthropic::client::AnthropicConfig;
+            type EnvInput = String;
+
+            fn build(_: Self::Config, _: &Self::ApiKey) -> $crate::http_client::Result<Self> {
+                Ok($anthropic_provider)
+            }
+
+            fn finish<H>(
+                &self,
+                builder: $crate::client::ClientBuilder<Self, H>,
+            ) -> $crate::http_client::Result<$crate::client::ClientBuilder<Self, H>> {
+                $crate::providers::anthropic::client::finish_anthropic_builder(builder)
+            }
+
+            fn from_env<H: $crate::http_client::HttpClientExt>(
+                http: H,
+            ) -> $crate::client::ProviderClientResult<AnthropicClient<H>> {
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                let mut builder =
+                    AnthropicClient::<$crate::markers::Missing>::builder().api_key(api_key);
+                if let Some(base_url) =
+                    ANTHROPIC_BASE_URLS.resolve_from_env($anthropic_base_url_env, $base_url_env)?
+                {
+                    builder = builder.base_url(base_url);
+                }
+                builder.http_client(http).build()
+            }
+
+            fn from_val<H: $crate::http_client::HttpClientExt>(
+                input: String,
+                http: H,
+            ) -> $crate::client::ProviderClientResult<AnthropicClient<H>> {
+                AnthropicClient::new_with(input, http)
+            }
         }
 
-        impl $crate::client::DebugExt for $ext {}
-        impl $crate::client::DebugExt for $anthropic_ext {}
+        impl $crate::client::HasCompletion for $anthropic_provider {
+            type Model<H>
+                = $crate::providers::anthropic::completion::GenericCompletionModel<
+                $anthropic_provider,
+                H,
+            >
+            where
+                H: $crate::client::ModelTransport;
 
-        $crate::client::impl_capabilities!(
-            $anthropic_ext,
-            completion =
-                $crate::providers::anthropic::completion::GenericCompletionModel<$anthropic_ext, H>,
-        );
-
-        $crate::client::impl_default_provider_builder!(
-            $builder => $ext,
-            api_key = $crate::client::BearerAuth,
-            base_url = $base_url,
-        );
-        $crate::providers::anthropic::client::impl_anthropic_compatible_builder!(
-            $anthropic_builder => $anthropic_ext,
-            base_url = $anthropic_base_url,
-        );
+            fn completion_model<H: $crate::client::ModelTransport>(
+                client: &AnthropicClient<H>,
+                model: String,
+            ) -> Self::Model<H> {
+                $crate::providers::anthropic::completion::GenericCompletionModel::new(
+                    client.clone(),
+                    model,
+                )
+            }
+        }
 
         impl $crate::providers::anthropic::completion::AnthropicCompatibleProvider
-            for $anthropic_ext
+            for $anthropic_provider
         {
             const PROVIDER_NAME: &'static str = $anthropic_name;
 
@@ -161,20 +209,6 @@ macro_rules! impl_dual_dialect_provider {
                 Some(4096)
             }
         }
-
-        $crate::client::impl_provider_from_env!(
-            $ext,
-            input = $client_input,
-            api_key_env = $api_key_env,
-            base_url_env = $base_url_env,
-        );
-
-        $crate::client::impl_provider_from_env!(
-            $anthropic_ext,
-            input = String,
-            api_key_env = $api_key_env,
-            base_url = ANTHROPIC_BASE_URLS.resolve_from_env($anthropic_base_url_env, $base_url_env)?,
-        );
     };
 }
 

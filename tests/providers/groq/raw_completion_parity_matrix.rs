@@ -4,7 +4,7 @@
 //!
 //! **The contract.** Groq is a compatible provider that reuses the shared
 //! [`openai::CompletionResponse`] wire type, so the transport request id —
-//! Groq's `x-request-id`, contracted by `GroqExt::REQUEST_ID_HEADER` — cannot
+//! Groq's `x-request-id`, contracted by `Groq::REQUEST_ID_HEADER` — cannot
 //! live on the raw type. `raw_completion` therefore drops it, and a caller
 //! reassembling a normalized response from the typed escape hatch would
 //! silently lack the `provider_request_id` that `completion` reports.
@@ -165,7 +165,7 @@ async fn raw_with_request_id_reproduces_completion() {
     );
 
     assert_eq!(
-        <groq::GroqExt as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+        <groq::Groq as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
         Some("x-request-id"),
         "Groq contracts x-request-id"
     );

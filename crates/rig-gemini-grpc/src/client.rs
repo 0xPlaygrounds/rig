@@ -88,20 +88,23 @@ impl Client {
     }
 }
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = Box<dyn std::error::Error + Send + Sync>;
-
+impl Client {
     /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
+    ///
+    /// The gRPC channel is not an HTTP transport, so this client is not a
+    /// `rig_core::client::Client`; construction is inherent.
+    pub fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let api_key = std::env::var("GEMINI_API_KEY")?;
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(Self::new(api_key))
         })
     }
 
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(Self::new(input)))
+    /// Create a new Google Gemini gRPC client from an explicit API key.
+    pub fn from_val(api_key: String) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(Self::new(api_key))
+        })
     }
 }
 

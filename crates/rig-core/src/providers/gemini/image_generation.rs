@@ -121,15 +121,6 @@ where
     }
 }
 
-impl<T> crate::client::ConstructImageGenerationModel<Client<T>> for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 fn generate_content_path(model: &str) -> String {
     format!("/v1beta/models/{model}:generateContent")
 }

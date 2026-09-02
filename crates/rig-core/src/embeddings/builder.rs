@@ -23,7 +23,7 @@ use crate::{
 /// # Example
 /// ```ignore
 /// use rig_core::{
-///     client::{EmbeddingsClient, ProviderClient},
+///     client::EmbeddingsClient,
 ///     embeddings::EmbeddingsBuilder,
 ///     providers::openai,
 /// };

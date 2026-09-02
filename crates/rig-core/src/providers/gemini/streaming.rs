@@ -425,7 +425,7 @@ where
 
         let req = self
             .client
-            .post_sse(streaming_endpoint(&request_model))?
+            .post(format!("{}?alt=sse", streaming_endpoint(&request_model)))?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;

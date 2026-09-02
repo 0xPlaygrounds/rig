@@ -1,8 +1,11 @@
 use crate::{
     Embed,
-    client::{self, BearerAuth, DebugExt, Provider},
+    client::{
+        self, BearerAuth, HasCompletion, HasEmbeddings, ModelTransport, Provider,
+        ProviderClientResult,
+    },
     embeddings::EmbeddingsBuilder,
-    http_client::HttpClientExt,
+    http_client::{self, HttpClientExt},
     wasm_compat::*,
 };
 
@@ -14,41 +17,59 @@ use serde::Deserialize;
 // ================================================================
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct CohereExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct CohereBuilder;
+pub struct Cohere;
 
 type CohereApiKey = BearerAuth;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<CohereExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<CohereBuilder, CohereApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Cohere, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Cohere, H>;
 
-impl Provider for CohereExt {
-    type Builder = CohereBuilder;
+impl Provider for Cohere {
+    const NAME: &'static str = "cohere";
+    const BASE_URL: &'static str = "https://api.cohere.ai";
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = CohereApiKey;
+    type Config = ();
+    type EnvInput = CohereApiKey;
+
+    fn build(_: (), _: &CohereApiKey) -> http_client::Result<Self> {
+        Ok(Cohere)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("COHERE_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: CohereApiKey, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    CohereExt,
-    completion = CompletionModel<H>,
-    embeddings = EmbeddingModel<H>,
-);
+impl HasCompletion for Cohere {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for CohereExt {}
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
 
-client::impl_default_provider_builder!(
-    CohereBuilder => CohereExt,
-    api_key = CohereApiKey,
-    base_url = "https://api.cohere.ai",
-);
+impl HasEmbeddings for Cohere {
+    type Model<H>
+        = EmbeddingModel<H>
+    where
+        H: ModelTransport;
 
-client::impl_provider_from_env!(
-    CohereExt,
-    input = CohereApiKey,
-    api_key_env = "COHERE_API_KEY",
-);
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        EmbeddingModel::make(client, model, ndims)
+    }
+}
 
 #[derive(Debug)]
 pub struct ApiErrorResponse {

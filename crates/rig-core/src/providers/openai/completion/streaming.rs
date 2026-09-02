@@ -328,16 +328,16 @@ where
             tool_result_array_content: self.tool_result_array_content,
             prompt_caching: self.prompt_caching,
         };
-        let mut request = self.client.ext().build_completion_request(
+        let mut request = self.client.provider().build_completion_request(
             self.model.clone(),
             completion_request,
             options,
         )?;
-        self.client.ext().prepare_request(&mut request)?;
+        self.client.provider().prepare_request(&mut request)?;
 
         // Deliberately the configured model, not the per-request override:
         // Azure's deployment URL is pinned to the model handle.
-        let path = self.client.ext().completion_path(&self.model);
+        let path = self.client.provider().completion_path(&self.model);
         let resolved_model = request.model.clone();
         let modern_output_cap = self.sends_modern_output_cap(&request.model);
         let mut request_as_json =
@@ -364,7 +364,7 @@ where
         }
         request_as_json = merge(request_as_json, json!({"stream": true}));
         self.client
-            .ext()
+            .provider()
             .finalize_request_body_with_options(&mut request_as_json, options)?;
 
         crate::providers::internal::trace_json(
@@ -397,7 +397,7 @@ where
                 req,
                 Ext::REQUEST_ID_HEADER,
                 OpenAICompatibleProfile::<Ext, Ext::StreamingUsage> {
-                    provider: self.client.ext().clone(),
+                    provider: self.client.provider().clone(),
                     emits_complete_single_chunk_tool_calls:
                         Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
                     usage: std::marker::PhantomData,
@@ -428,7 +428,7 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletionsExt, U = Usage> {
+struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletions, U = Usage> {
     provider: Ext,
     emits_complete_single_chunk_tool_calls: bool,
     usage: std::marker::PhantomData<U>,
@@ -555,8 +555,8 @@ where
     openai_chat_completions_compatible::send_compatible_raw_streaming_request(
         http_client,
         req,
-        <crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
-        OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletionsExt, Usage>::default(),
+        <crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+        OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletions, Usage>::default(),
     )
     .await
 }

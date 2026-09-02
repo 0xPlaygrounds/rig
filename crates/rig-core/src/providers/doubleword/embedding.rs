@@ -12,7 +12,7 @@ use crate::{
     },
 };
 
-use super::client::DoublewordExt;
+use super::client::Doubleword;
 
 // ================================================================
 // Doubleword Embedding API
@@ -41,7 +41,7 @@ fn documented_dimensions(model: &str) -> Option<RangeInclusive<usize>> {
     (model == QWEN3_EMBEDDING_8B).then_some(QWEN3_EMBEDDING_8B_DIMENSIONS)
 }
 
-impl OpenAIEmbeddingsCompatible for DoublewordExt {
+impl OpenAIEmbeddingsCompatible for Doubleword {
     const PROVIDER_NAME: &'static str = "doubleword";
 
     // Doubleword responses are not guaranteed to carry usage; usage is
@@ -113,7 +113,7 @@ impl OpenAIEmbeddingsCompatible for DoublewordExt {
 /// Doubleword embedding model, driven by the shared OpenAI-compatible
 /// embeddings path.
 pub type EmbeddingModel<T = crate::http_client::BoxedHttpClient> =
-    GenericEmbeddingModel<DoublewordExt, T>;
+    GenericEmbeddingModel<Doubleword, T>;
 
 #[cfg(test)]
 mod tests;

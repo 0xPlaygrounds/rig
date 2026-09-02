@@ -3,7 +3,7 @@
 //! Completions run through the shared OpenAI-compatible
 //! [`GenericCompletionModel`](openai::completion::GenericCompletionModel); the
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
-//! [`LlamacppExt`](super::client::LlamacppExt) in `client.rs`.
+//! [`Llamacpp`](super::client::Llamacpp) in `client.rs`.
 
 use crate::providers::openai;
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub const LLAMA_CPP: &str = "LLaMA_CPP";
 /// llama.cpp completion model, driven by the shared OpenAI Chat Completions
 /// path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<super::client::LlamacppExt, H>;
+    openai::completion::GenericCompletionModel<super::client::Llamacpp, H>;
 
 /// Server-side timing accounting `llama-server` reports beside `usage`.
 ///

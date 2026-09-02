@@ -44,9 +44,9 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 
 /// xAI image generation model.
 pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
-    GenericImageGenerationModel<super::client::XAiExt, T>;
+    GenericImageGenerationModel<super::client::XAi, T>;
 
-impl JsonImageGenerationProvider for super::client::XAiExt {
+impl JsonImageGenerationProvider for super::client::XAi {
     const IMAGE_GENERATION_PATH: &'static str = "/v1/images/generations";
     const PROVIDER_NAME: &'static str = "xai";
     type Response = ImageGenerationResponse;

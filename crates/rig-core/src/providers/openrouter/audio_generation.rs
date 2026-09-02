@@ -2,7 +2,7 @@ use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
 use crate::providers::internal::audio_generation::{
     GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::providers::openrouter::OpenRouterExt;
+use crate::providers::openrouter::OpenRouter;
 use serde_json::json;
 
 // ================================================================
@@ -22,9 +22,9 @@ pub const KOKORO_82M: &str = "hexgrad/kokoro-82m";
 
 /// OpenRouter audio generation model.
 pub type AudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
-    GenericAudioGenerationModel<OpenRouterExt, T>;
+    GenericAudioGenerationModel<OpenRouter, T>;
 
-impl RawAudioGenerationProvider for OpenRouterExt {
+impl RawAudioGenerationProvider for OpenRouter {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
     const PROVIDER_NAME: &'static str = "openrouter";
     const EXPLICIT_JSON_CONTENT_TYPE: bool = true;

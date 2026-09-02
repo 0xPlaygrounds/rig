@@ -3,7 +3,10 @@ use http::{HeaderName, HeaderValue};
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
-    client::{self, ApiKey, DebugExt, Provider, ProviderBuilder},
+    client::{
+        self, ApiKey, HasCompletion, HasModelListing, ModelTransport, Provider,
+        ProviderClientResult,
+    },
     http_client::{self, HttpClientExt},
     providers::anthropic::model_listing::AnthropicModelLister,
 };
@@ -11,26 +14,29 @@ use crate::{
 // ================================================================
 // Main Anthropic Client
 // ================================================================
-#[derive(Debug, Default, Clone)]
-pub struct AnthropicExt;
 
-impl Provider for AnthropicExt {
-    type Builder = AnthropicBuilder;
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
+/// The Anthropic Messages API provider.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Anthropic;
 
-client::impl_capabilities!(
-    AnthropicExt,
-    completion = CompletionModel<H>,
-    model_listing = AnthropicModelLister<H>,
-);
-
+/// Builder settings for [`Anthropic`] and every Anthropic-compatible
+/// provider: the `anthropic-version` header and the `anthropic-beta` flags.
 #[derive(Debug, Clone)]
-pub struct AnthropicBuilder {
+pub struct AnthropicConfig {
     pub(crate) anthropic_version: String,
     pub(crate) anthropic_betas: Vec<String>,
 }
 
+impl Default for AnthropicConfig {
+    fn default() -> Self {
+        Self {
+            anthropic_version: ANTHROPIC_VERSION_LATEST.into(),
+            anthropic_betas: Vec::new(),
+        }
+    }
+}
+
+/// Anthropic API key, sent as the `x-api-key` header.
 #[derive(Debug, Clone)]
 pub struct AnthropicKey(String);
 
@@ -53,55 +59,62 @@ impl ApiKey for AnthropicKey {
     }
 }
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<AnthropicExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<AnthropicBuilder, AnthropicKey, H>;
-
-impl Default for AnthropicBuilder {
-    fn default() -> Self {
-        Self {
-            anthropic_version: ANTHROPIC_VERSION_LATEST.into(),
-            anthropic_betas: Vec::new(),
-        }
-    }
-}
-
-impl ProviderBuilder for AnthropicBuilder {
-    type Extension<H>
-        = AnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
+impl Provider for Anthropic {
+    const NAME: &'static str = "anthropic";
     const BASE_URL: &'static str = "https://api.anthropic.com";
+    const VERIFY_PATH: &'static str = "/v1/models";
+    type ApiKey = AnthropicKey;
+    type Config = AnthropicConfig;
+    type EnvInput = String;
 
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(AnthropicExt)
+    fn build(_: AnthropicConfig, _: &AnthropicKey) -> http_client::Result<Self> {
+        Ok(Anthropic)
     }
 
     fn finish<H>(
         &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(self, builder)
+        builder: client::ClientBuilder<Self, H>,
+    ) -> http_client::Result<client::ClientBuilder<Self, H>> {
+        finish_anthropic_builder(builder)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("ANTHROPIC_API_KEY", Some("ANTHROPIC_BASE_URL"), http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
     }
 }
 
-impl DebugExt for AnthropicExt {}
+impl HasCompletion for Anthropic {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
 
-client::impl_provider_from_env!(
-    AnthropicExt,
-    input = String,
-    api_key_env = "ANTHROPIC_API_KEY",
-    base_url_env_first = "ANTHROPIC_BASE_URL",
-);
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
 
-/// Create a new anthropic client using the builder
+impl HasModelListing for Anthropic {
+    type Lister<H>
+        = AnthropicModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        AnthropicModelLister::new(client.clone())
+    }
+}
+
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Anthropic, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Anthropic, H>;
+
+/// Anthropic header settings, available on the builder of every provider
+/// whose settings are [`AnthropicConfig`] (Anthropic itself and the
+/// Anthropic-compatible dialects).
 ///
 /// # Example
 /// ```ignore
@@ -118,28 +131,32 @@ client::impl_provider_from_env!(
 /// # Ok(())
 /// # }
 /// ```
-impl<H> ClientBuilder<H> {
+impl<P, H> client::ClientBuilder<P, H>
+where
+    P: Provider<Config = AnthropicConfig>,
+{
     pub fn anthropic_version(self, anthropic_version: impl Into<String>) -> Self {
-        self.over_ext(|ext| AnthropicBuilder {
+        self.map_config(|config| AnthropicConfig {
             anthropic_version: anthropic_version.into(),
-            ..ext
+            ..config
         })
     }
 
     pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic_betas
+        self.map_config(|mut config| {
+            config
+                .anthropic_betas
                 .extend(anthropic_betas.iter().copied().map(String::from));
 
-            ext
+            config
         })
     }
 
     pub fn anthropic_beta(self, anthropic_beta: impl Into<String>) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic_betas.push(anthropic_beta.into());
+        self.map_config(|mut config| {
+            config.anthropic_betas.push(anthropic_beta.into());
 
-            ext
+            config
         })
     }
 }
@@ -158,78 +175,32 @@ pub fn normalize_anthropic_base_url(base_url: &str) -> String {
     }
 }
 
-pub fn finish_anthropic_builder<ExtBuilder, H>(
-    ext: &AnthropicBuilder,
-    mut builder: client::ClientBuilder<ExtBuilder, AnthropicKey, H>,
-) -> http_client::Result<client::ClientBuilder<ExtBuilder, AnthropicKey, H>>
+/// The [`Provider::finish`] body shared by every provider configured through
+/// [`AnthropicConfig`]: normalise the base URL and set the version/beta headers.
+pub fn finish_anthropic_builder<P, H>(
+    mut builder: client::ClientBuilder<P, H>,
+) -> http_client::Result<client::ClientBuilder<P, H>>
 where
-    ExtBuilder: Clone,
+    P: Provider<Config = AnthropicConfig>,
 {
     let normalized_base_url = normalize_anthropic_base_url(builder.get_base_url());
     builder = builder.base_url(normalized_base_url);
 
+    let config = builder.config().clone();
     builder.headers_mut().insert(
         "anthropic-version",
-        HeaderValue::from_str(&ext.anthropic_version)?,
+        HeaderValue::from_str(&config.anthropic_version)?,
     );
 
-    if !ext.anthropic_betas.is_empty() {
+    if !config.anthropic_betas.is_empty() {
         builder.headers_mut().insert(
             "anthropic-beta",
-            HeaderValue::from_str(&ext.anthropic_betas.join(","))?,
+            HeaderValue::from_str(&config.anthropic_betas.join(","))?,
         );
     }
 
     Ok(builder)
 }
-
-// The remaining compatible-client repetition is inherent builder methods and
-// a ProviderBuilder implementation, neither of which ordinary functions can
-// generate. Keep the actual header behavior in `finish_anthropic_builder` and
-// generate only this type-level plumbing.
-macro_rules! impl_anthropic_compatible_builder {
-    ($builder:ty => $extension:ty, base_url = $base_url:expr $(,)?) => {
-        $crate::client::impl_default_provider_builder!(
-            $builder => $extension,
-            api_key = $crate::providers::anthropic::client::AnthropicKey,
-            base_url = $base_url,
-            finish = $crate::providers::anthropic::client::finish_anthropic_builder,
-            state = anthropic,
-        );
-
-        impl<H>
-            $crate::client::ClientBuilder<
-                $builder,
-                $crate::providers::anthropic::client::AnthropicKey,
-                H,
-            >
-        {
-            pub fn anthropic_version(self, anthropic_version: impl Into<String>) -> Self {
-                self.over_ext(|mut ext| {
-                    ext.anthropic.anthropic_version = anthropic_version.into();
-                    ext
-                })
-            }
-
-            pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-                self.over_ext(|mut ext| {
-                    ext.anthropic
-                        .anthropic_betas
-                        .extend(anthropic_betas.iter().copied().map(String::from));
-                    ext
-                })
-            }
-
-            pub fn anthropic_beta(self, anthropic_beta: impl Into<String>) -> Self {
-                self.over_ext(|mut ext| {
-                    ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-                    ext
-                })
-            }
-        }
-    };
-}
-pub(crate) use impl_anthropic_compatible_builder;
 
 #[cfg(test)]
 mod tests;

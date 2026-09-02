@@ -17,7 +17,7 @@ use std::{thread, time::Duration};
 use anyhow::Result;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool, futures::check_ready};
 use rig::agent::MultiTurnStreamItem;
-use rig::client::ProviderFromEnv as _;
+use rig::client::Provider as _;
 use rig::http_client::ReqwestClient;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -30,10 +30,10 @@ const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
-    // client is `Client<OpenAIResponsesExt>` — `H` defaults to
+    // client is `Client<OpenAIResponses>` — `H` defaults to
     // `BoxedHttpClient`, so no transport type reaches this crate's signatures.
     let transport = ReqwestClient::default().boxed();
-    let agent = openai::OpenAIResponsesExt::from_env_boxed(transport)?
+    let agent = openai::OpenAIResponses::from_env(transport)?
         .agent(openai::GPT_4O)
         .preamble(PREAMBLE)
         .build();

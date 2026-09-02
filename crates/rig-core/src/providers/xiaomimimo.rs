@@ -44,11 +44,10 @@ pub const MIMO_V2_5: &str = "mimo-v2.5";
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
 
 impl_dual_dialect_provider!(
-    ext = XiaomiMimoExt,
-    builder = XiaomiMimoBuilder,
-    anthropic_ext = XiaomiMimoAnthropicExt,
-    anthropic_builder = XiaomiMimoAnthropicBuilder,
+    provider = XiaomiMimo,
+    anthropic_provider = XiaomiMimoAnthropic,
     client_input = client::BearerAuth,
+    name = "xiaomimimo",
     api_key_env = "XIAOMI_MIMO_API_KEY",
     base_url = API_BASE_URL,
     base_url_env = "XIAOMI_MIMO_API_BASE",
@@ -57,13 +56,32 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "XIAOMI_MIMO_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(
-    XiaomiMimoExt,
-    completion = super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>,
-    model_listing = XiaomiMimoModelLister<H>,
-);
+impl client::HasCompletion for XiaomiMimo {
+    type Model<H>
+        = super::openai::completion::GenericCompletionModel<XiaomiMimo, H>
+    where
+        H: client::ModelTransport;
 
-impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimoExt {
+    fn completion_model<H: client::ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl client::HasModelListing for XiaomiMimo {
+    type Lister<H>
+        = XiaomiMimoModelLister<H>
+    where
+        H: client::ModelTransport;
+
+    fn model_lister<H: client::ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        XiaomiMimoModelLister::new(client.clone())
+    }
+}
+
+impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimo {
     const PROVIDER_NAME: &'static str = "xiaomimimo";
 
     type StreamingUsage = super::openai::Usage;

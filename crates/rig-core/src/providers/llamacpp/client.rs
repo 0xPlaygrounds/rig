@@ -1,5 +1,8 @@
-use crate::client::{self, ApiKey, DebugExt, Nothing, Provider, Transport};
-use crate::http_client;
+use crate::client::{
+    self, ApiKey, HasCompletion, HasEmbeddings, HasModelListing, HasRerank, ModelTransport,
+    Nothing, Provider, ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::model_listing::{ListModelEntry, impl_model_lister};
 use crate::providers::openai;
 
@@ -31,6 +34,12 @@ impl ApiKey for LlamacppApiKey {
     ) -> Option<http_client::Result<(http::header::HeaderName, http::header::HeaderValue)>> {
         self.0.map(http_client::make_auth_header)
     }
+
+    // A local `llama-server` needs no credential by default, so a builder
+    // without one is complete.
+    fn absent() -> Option<Self> {
+        Some(Self(None))
+    }
 }
 
 impl From<Nothing> for LlamacppApiKey {
@@ -60,10 +69,7 @@ impl From<&str> for LlamacppApiKey {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct LlamacppExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct LlamacppBuilder;
+pub struct Llamacpp;
 
 /// `llama-server` routes that live **outside** the `/v1` namespace.
 ///
@@ -91,8 +97,12 @@ const UNVERSIONED_ROUTES: &[&str] = &[
     "/lora-adapters",
 ];
 
-impl Provider for LlamacppExt {
-    type Builder = LlamacppBuilder;
+impl Provider for Llamacpp {
+    const NAME: &'static str = "llamacpp";
+    const BASE_URL: &'static str = LLAMACPP_API_BASE_URL;
+    type ApiKey = LlamacppApiKey;
+    type Config = ();
+    type EnvInput = LlamacppApiKey;
 
     // `/v1/models` and `/health` are the only two routes `llama-server`
     // serves without an API-key check, so neither can distinguish a good
@@ -120,7 +130,7 @@ impl Provider for LlamacppExt {
     /// the segment (a reverse proxy at `https://gw.example/v1/llama`) still
     /// gets the prefix, because the OpenAI routes are relative to that mount
     /// point rather than to the segment that happens to appear inside it.
-    fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
+    fn build_uri(&self, base_url: &str, path: &str) -> String {
         let base_url = base_url.trim_end_matches('/');
         let trimmed = path.trim_start_matches('/');
 
@@ -139,9 +149,41 @@ impl Provider for LlamacppExt {
             format!("{base_url}/v1/{trimmed}")
         }
     }
+
+    fn build(_: (), _: &LlamacppApiKey) -> http_client::Result<Self> {
+        Ok(Llamacpp)
+    }
+
+    /// Read `LLAMACPP_API_BASE_URL` (optional, defaults to
+    /// `http://localhost:8080`) and `LLAMACPP_API_KEY` (optional).
+    ///
+    /// The base URL is optional where the predecessor `llamafile` provider
+    /// required it: a llama.cpp server on its default port is the overwhelming
+    /// case, and demanding an environment variable to reach `localhost:8080`
+    /// bought nothing.
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        let api_base = crate::client::optional_env_var("LLAMACPP_API_BASE_URL")?
+            .unwrap_or_else(|| LLAMACPP_API_BASE_URL.to_string());
+        let api_key = crate::client::optional_env_var("LLAMACPP_API_KEY")?
+            .map(LlamacppApiKey::from)
+            .unwrap_or_default();
+
+        Client::builder()
+            .api_key(api_key)
+            .base_url(&api_base)
+            .http_client(http)
+            .build()
+    }
+
+    fn from_val<H: HttpClientExt>(
+        api_key: LlamacppApiKey,
+        http: H,
+    ) -> ProviderClientResult<Client<H>> {
+        Client::new_with(api_key, http)
+    }
 }
 
-impl openai::completion::OpenAICompatibleProvider for LlamacppExt {
+impl openai::completion::OpenAICompatibleProvider for Llamacpp {
     const PROVIDER_NAME: &'static str = "llamacpp";
 
     type StreamingUsage = openai::Usage;
@@ -234,42 +276,76 @@ impl_model_lister!(
     "/models"
 );
 
-client::impl_capabilities!(
-    LlamacppExt,
-    completion = openai::completion::GenericCompletionModel<LlamacppExt, H>,
-    embeddings = openai::embedding::GenericEmbeddingModel<LlamacppExt, H>,
-    model_listing = LlamacppModelLister<H>,
-    rerank = super::rerank::RerankModel<H>,
-    // Deliberately `Nothing`, each for a stated reason:
-    //
-    // * `transcription` — `llama-server` does serve
-    //   `POST /v1/audio/transcriptions`, but only by rewriting the upload into
-    //   a chat-template ASR prompt, so it answers
-    //   `501 "The current model does not support audio input."` unless the
-    //   loaded model is audio-multimodal (`--mmproj` with an audio projector).
-    //   Rig's `TranscriptionModel` contract has no way to express "this
-    //   endpoint exists but depends on which weights are loaded", and the
-    //   endpoint additionally rejects every `response_format` except `json`,
-    //   which rig's shared multipart driver does not send. Left unimplemented
-    //   rather than shipped as a capability that 501s on most servers; the
-    //   501 itself is recorded in the error matrix.
-    // * `image_generation` — `llama-server` registers no image route at all
-    //   (there is no `/v1/images/generations` in its route table).
-    // * `audio_generation` — likewise no `/v1/audio/speech`; llama.cpp's TTS
-    //   support lives in a separate `llama-tts` binary, not in the server.
-);
+impl HasCompletion for Llamacpp {
+    type Model<H>
+        = openai::completion::GenericCompletionModel<Llamacpp, H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for LlamacppExt {}
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
 
-client::impl_default_provider_builder!(
-    LlamacppBuilder => LlamacppExt,
-    api_key = LlamacppApiKey,
-    base_url = LLAMACPP_API_BASE_URL,
-);
+impl HasEmbeddings for Llamacpp {
+    type Model<H>
+        = openai::embedding::GenericEmbeddingModel<Llamacpp, H>
+    where
+        H: ModelTransport;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<LlamacppExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<LlamacppBuilder, LlamacppApiKey, H>;
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        openai::embedding::GenericEmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasModelListing for Llamacpp {
+    type Lister<H>
+        = LlamacppModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        LlamacppModelLister::new(client.clone())
+    }
+}
+
+impl HasRerank for Llamacpp {
+    type Model<H>
+        = super::rerank::RerankModel<H>
+    where
+        H: ModelTransport;
+
+    fn rerank_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::rerank::RerankModel::new(client.clone(), model)
+    }
+}
+
+// Capabilities deliberately left unimplemented, each for a stated reason:
+//
+// Deliberately `Nothing`, each for a stated reason:
+//
+// * `transcription` — `llama-server` does serve
+//   `POST /v1/audio/transcriptions`, but only by rewriting the upload into
+//   a chat-template ASR prompt, so it answers
+//   `501 "The current model does not support audio input."` unless the
+//   loaded model is audio-multimodal (`--mmproj` with an audio projector).
+//   Rig's `TranscriptionModel` contract has no way to express "this
+//   endpoint exists but depends on which weights are loaded", and the
+//   endpoint additionally rejects every `response_format` except `json`,
+//   which rig's shared multipart driver does not send. Left unimplemented
+//   rather than shipped as a capability that 501s on most servers; the
+//   501 itself is recorded in the error matrix.
+// * `image_generation` — `llama-server` registers no image route at all
+//   (there is no `/v1/images/generations` in its route table).
+// * `audio_generation` — likewise no `/v1/audio/speech`; llama.cpp's TTS
+//   support lives in a separate `llama-tts` binary, not in the server.
+
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Llamacpp, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Llamacpp, H>;
 
 impl<H> Client<H>
 where
@@ -281,58 +357,10 @@ where
     /// For a server started with `--api-key`, use
     /// [`Client::builder`] and set [`ClientBuilder::api_key`].
     pub fn from_url_with(base_url: &str, http: H) -> crate::client::ProviderClientResult<Self> {
-        Client::<crate::markers::Missing>::builder()
-            .api_key(LlamacppApiKey::default())
+        Client::builder()
             .base_url(base_url)
             .http_client(http)
             .build()
-            .map_err(Into::into)
-    }
-}
-
-impl crate::client::ProviderFromEnv for LlamacppExt {
-    type Input = LlamacppApiKey;
-    /// Read `LLAMACPP_API_BASE_URL` (optional, defaults to
-    /// `http://localhost:8080`) and `LLAMACPP_API_KEY` (optional).
-    ///
-    /// The base URL is optional where the predecessor `llamafile` provider
-    /// required it: a llama.cpp server on its default port is the overwhelming
-    /// case, and demanding an environment variable to reach `localhost:8080`
-    /// bought nothing.
-    fn from_env_with<H>(
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        let api_base = crate::client::optional_env_var("LLAMACPP_API_BASE_URL")?
-            .unwrap_or_else(|| LLAMACPP_API_BASE_URL.to_string());
-        let api_key = crate::client::optional_env_var("LLAMACPP_API_KEY")?
-            .map(LlamacppApiKey::from)
-            .unwrap_or_default();
-
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(api_key)
-            .base_url(&api_base)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
-    }
-
-    fn from_val_with<H>(
-        api_key: Self::Input,
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(api_key)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
     }
 }
 

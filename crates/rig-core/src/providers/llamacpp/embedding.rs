@@ -12,7 +12,7 @@ use crate::embeddings::EmbeddingError;
 use crate::providers::openai;
 use crate::providers::openai::embedding::{EmbeddingDimensions, OpenAIEmbeddingsCompatible};
 
-impl OpenAIEmbeddingsCompatible for super::client::LlamacppExt {
+impl OpenAIEmbeddingsCompatible for super::client::Llamacpp {
     const PROVIDER_NAME: &'static str = "llamacpp";
 
     /// Never send `dimensions`.
@@ -45,4 +45,4 @@ impl OpenAIEmbeddingsCompatible for super::client::LlamacppExt {
 
 /// llama.cpp embedding model, driven by the shared OpenAI embeddings path.
 pub type EmbeddingModel<H = crate::http_client::BoxedHttpClient> =
-    openai::embedding::GenericEmbeddingModel<super::client::LlamacppExt, H>;
+    openai::embedding::GenericEmbeddingModel<super::client::Llamacpp, H>;

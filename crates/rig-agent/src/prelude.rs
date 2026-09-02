@@ -1,6 +1,5 @@
 //! Common imports for Rig's classic runtime.
 
-pub use rig_core::client::ProviderClient;
 pub use rig_core::client::embeddings::EmbeddingsClient;
 pub use rig_core::client::model_listing::ModelListingClient;
 pub use rig_core::client::transcription::TranscriptionClient;

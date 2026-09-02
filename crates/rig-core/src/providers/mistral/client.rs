@@ -1,5 +1,9 @@
 use crate::{
-    client::{self, BearerAuth, DebugExt, Provider},
+    client::{
+        self, BearerAuth, HasCompletion, HasEmbeddings, HasModelListing, HasTranscription,
+        ModelTransport, Provider, ProviderClientResult,
+    },
+    http_client::{self, HttpClientExt},
     providers::mistral::MistralModelLister,
 };
 use serde::{Deserialize, Serialize};
@@ -8,26 +12,86 @@ use std::fmt::Debug;
 const MISTRAL_API_BASE_URL: &str = "https://api.mistral.ai";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct MistralExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MistralBuilder;
-
+pub struct Mistral;
 type MistralApiKey = BearerAuth;
 
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<MistralExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MistralBuilder, MistralApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Mistral, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Mistral, H>;
 
-impl Provider for MistralExt {
-    type Builder = MistralBuilder;
+impl Provider for Mistral {
+    const NAME: &'static str = "mistral";
+    const BASE_URL: &'static str = MISTRAL_API_BASE_URL;
     // The client base URL is the bare host, so every Mistral path carries its
     // own `/v1` — as `completion_path` and `MistralModelLister` already do.
     // `/models` is a gateway 404 ("no Route matched with those values"), which
     // made `verify()` fail for every key, valid or not.
     const VERIFY_PATH: &'static str = "/v1/models";
+    type ApiKey = MistralApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &MistralApiKey) -> http_client::Result<Self> {
+        Ok(Mistral)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("MISTRAL_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralExt {
+impl HasCompletion for Mistral {
+    type Model<H>
+        = super::CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasEmbeddings for Mistral {
+    type Model<H>
+        = super::EmbeddingModel<H>
+    where
+        H: ModelTransport;
+
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        super::EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasTranscription for Mistral {
+    type Model<H>
+        = super::TranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for Mistral {
+    type Lister<H>
+        = MistralModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        MistralModelLister::new(client.clone())
+    }
+}
+
+impl crate::providers::openai::completion::OpenAICompatibleProvider for Mistral {
     const PROVIDER_NAME: &'static str = "mistral";
 
     /// Mistral labels its transport request id `mistral-correlation-id`, and
@@ -144,24 +208,6 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
         Ok(())
     }
 }
-
-client::impl_capabilities!(
-    MistralExt,
-    completion = super::CompletionModel<H>,
-    embeddings = super::EmbeddingModel<H>,
-    transcription = super::TranscriptionModel<H>,
-    model_listing = MistralModelLister<H>,
-);
-
-impl DebugExt for MistralExt {}
-
-client::impl_default_provider_builder!(
-    MistralBuilder => MistralExt,
-    api_key = MistralApiKey,
-    base_url = MISTRAL_API_BASE_URL,
-);
-
-client::impl_provider_from_env!(MistralExt, input = String, api_key_env = "MISTRAL_API_KEY");
 
 /// In-depth details on prompt tokens.
 ///

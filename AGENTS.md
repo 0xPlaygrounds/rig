@@ -56,15 +56,27 @@ let agent = client
     .build();
 ```
 
-Provider clients use the generic client architecture:
+Provider clients use the generic client architecture in `rig_core::client`:
 
 ```rust
-pub struct Client<Ext = Nothing, H = reqwest::Client> {
-    // ...
+pub struct Client<P, H = BoxedHttpClient> {
+    // base URL, default headers, transport `H`, provider value `P`
 }
 ```
 
-Providers declare capabilities explicitly with `Capable<T>` and `Nothing`.
+`P` is a value type implementing `Provider` (base URL, API-key type, builder
+`Config`, URI assembly, per-request customisation, environment construction).
+Each capability a provider offers is one more trait implementation on the same
+type — `HasCompletion`, `HasEmbeddings`, `HasRerank`, `HasTranscription`,
+`HasModelListing`, `HasImageGeneration` (feature `image`), `HasAudioGeneration`
+(feature `audio`) — whose `Model<H>` names the concrete model. The blanket
+impls in `rig_core::client` turn those into the user-facing `CompletionClient`,
+`EmbeddingsClient`, … traits on `Client<P, H>`, so `client.completion_model(..)`
+returns the provider's own model type. A capability a provider lacks is a trait
+it does not implement. rig-core names no transport: `H` defaults to the erased
+`BoxedHttpClient`, and `rig-reqwest` supplies `new(key)` / `from_env()` / a
+transport-less `build()` through `DefaultTransportClient` /
+`DefaultTransportBuilder` (re-exported by the `rig` facade prelude).
 
 ## WASM Compatibility
 
@@ -114,14 +126,22 @@ implementation. For OpenAI-compatible chat APIs, start with:
 
 `crates/rig-core/src/providers/openai/`
 
-Provider implementations should include:
+Provider implementations should include, in the order a new author writes them:
 
-- Provider extension and builder types
-- `Provider` implementation
-- `Capabilities` declaration
-- `ProviderBuilder` implementation
-- `ProviderClient::{from_env, from_val}`
-- public `Client` and `ClientBuilder` aliases; the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`
+- one provider value type named for the provider (`Perplexity`, `Azure`, …),
+  `Clone + Debug`, holding whatever the requests need (a query-string key, an
+  endpoint); credential-bearing fields get a redacting `Debug` impl
+- a `Provider` impl: `NAME`, `BASE_URL`, `VERIFY_PATH`, `type ApiKey`
+  (`BearerAuth`, `Nothing`, or a provider key type implementing `ApiKey`),
+  `type Config` (`()` unless the builder needs settings; otherwise a plain
+  `*Config` struct with setters on `ClientBuilder<H>`), `type EnvInput`,
+  `build`, `from_env` (`Client::from_env_api_key` covers the common shape),
+  `from_val`, and — only when needed — `finish`, `build_uri`, `prepare`
+- one `Has*` impl per supported capability, each naming the concrete model
+  type in `Model<H>` and constructing it from `&Client<Self, H>`
+- public `Client<H = BoxedHttpClient>` and `ClientBuilder<H = Missing>` aliases
+  over `client::Client<Provider, H>` / `client::ClientBuilder<Provider, H>`,
+  and re-exports of the provider type and every model type from the module root
 - explicit API-key marker/auth types with redacted debug behavior for credential-bearing values
 - model constants where useful
 - request conversion from Rig request types

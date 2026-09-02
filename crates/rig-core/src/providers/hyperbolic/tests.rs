@@ -22,12 +22,12 @@ fn hyperbolic_prepare_request_drops_tools_and_tool_choice() {
         request,
         strict_tools: false,
         tool_result_array_content: false,
-        supports_response_format: super::HyperbolicExt::SUPPORTS_RESPONSE_FORMAT,
+        supports_response_format: super::Hyperbolic::SUPPORTS_RESPONSE_FORMAT,
         supports_image_tool_results: false,
         supports_tools: false,
     })
     .expect("request should convert");
-    super::HyperbolicExt
+    super::Hyperbolic
         .prepare_request(&mut request)
         .expect("prepare_request should succeed");
 

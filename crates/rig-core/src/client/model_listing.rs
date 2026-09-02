@@ -1,3 +1,4 @@
+use super::{Client, ModelTransport, Provider};
 use crate::model::{ModelList, ModelListingError};
 use crate::wasm_compat::WasmCompatSend;
 use crate::wasm_compat::WasmCompatSync;
@@ -55,7 +56,8 @@ pub trait ModelListingClient {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use rig_core::client::{ModelListingClient, ProviderClient};
+    /// use rig_core::client::ModelListingClient;
+    /// use rig_core::prelude::*;
     /// use rig_core::providers::openai::Client;
     ///
     /// let openai = Client::from_env()?;
@@ -85,11 +87,11 @@ pub trait ModelListingClient {
 /// # Example Implementation
 ///
 /// ```rust,ignore
-/// use crate::client::ModelLister;
+/// use crate::client::{Client, HasModelListing, ModelLister, ModelTransport};
 /// use crate::model::{Model, ModelList, ModelListingError};
 ///
 /// struct MyProviderModelLister<H> {
-///     client: Client<MyProviderExt, H>,
+///     client: Client<MyProvider, H>,
 /// }
 ///
 /// impl<H> ModelLister<H> for MyProviderModelLister<H>
@@ -102,14 +104,11 @@ pub trait ModelListingClient {
 ///     }
 /// }
 ///
-/// // Construction is separate: the public hook the blanket
-/// // `ModelListingClient` impl over `Client<Ext, H>` calls.
-/// impl<H> ConstructModelLister<Client<MyProviderExt, H>> for MyProviderModelLister<H>
-/// where
-///     H: Clone,
-/// {
-///     fn construct(client: &Client<MyProviderExt, H>) -> Self {
-///         Self { client: client.clone() }
+/// impl HasModelListing for MyProvider {
+///     type Lister<H> = MyProviderModelLister<H> where H: ModelTransport;
+///
+///     fn model_lister<H: ModelTransport>(client: &Client<Self, H>) -> Self::Lister<H> {
+///         MyProviderModelLister { client: client.clone() }
 ///     }
 /// }
 /// ```
@@ -130,20 +129,31 @@ pub trait ModelLister<H>: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend;
 }
 
-/// Construction hook for the blanket [`ModelListingClient`] implementation
-/// over [`crate::client::Client`] — the model-listing twin of
-/// [`crate::client::ConstructCompletionModel`], and the last construction
-/// associated type to leave a trait in this crate.
-///
-/// Public for the same reason as the others: an out-of-tree provider extension
-/// built on the generic `Client<Ext, H>` cannot implement
-/// [`ModelListingClient`] for that foreign type (orphan rule), so it
-/// implements this trait on its own lister type and the blanket
-/// implementation supplies `list_models`. Takes `&C`, like every other
-/// `Construct*` hook; every implementation clones the client anyway.
-pub trait ConstructModelLister<C>: Sized {
-    /// Build this lister from its provider client.
-    fn construct(client: &C) -> Self;
+/// A [`Provider`] that can list its models. Implementing this is what makes
+/// [`ModelListingClient`] available on `Client<Self, H>`.
+pub trait HasModelListing: Provider {
+    /// The concrete lister built over transport `H`.
+    type Lister<H>: ModelLister<H>
+    where
+        H: ModelTransport;
+
+    /// Build the lister from `client`.
+    fn model_lister<H>(client: &Client<Self, H>) -> Self::Lister<H>
+    where
+        H: ModelTransport;
+}
+
+impl<P, H> ModelListingClient for Client<P, H>
+where
+    P: HasModelListing,
+    H: ModelTransport,
+{
+    fn list_models(
+        &self,
+    ) -> impl Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend {
+        let lister = P::model_lister(self);
+        async move { lister.list_all().await }
+    }
 }
 
 #[cfg(test)]

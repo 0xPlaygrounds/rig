@@ -3,7 +3,7 @@ use crate::json_utils::merge_inplace;
 use crate::providers::internal::audio_generation::{
     GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::providers::xai::client::XAiExt;
+use crate::providers::xai::client::XAi;
 use serde_json::json;
 
 // ================================================================
@@ -13,9 +13,9 @@ pub const TTS_1: &str = "tts-1";
 
 /// xAI audio generation model.
 pub type AudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
-    GenericAudioGenerationModel<XAiExt, T>;
+    GenericAudioGenerationModel<XAi, T>;
 
-impl RawAudioGenerationProvider for XAiExt {
+impl RawAudioGenerationProvider for XAi {
     const AUDIO_GENERATION_PATH: &'static str = "/v1/tts";
     const PROVIDER_NAME: &'static str = "xai";
 

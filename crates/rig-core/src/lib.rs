@@ -25,7 +25,7 @@
 //! # Simple example
 //! ```ignore
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
+//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };

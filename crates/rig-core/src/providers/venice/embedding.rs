@@ -5,7 +5,7 @@
 
 use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
 
-use super::client::VeniceExt;
+use super::client::Venice;
 
 // ================================================================
 // Venice Embedding API
@@ -26,11 +26,10 @@ pub const TEXT_EMBEDDING_MULTILINGUAL_E5_LARGE_INSTRUCT: &str =
 // `model`, `input`, `encoding_format`, `dimensions` (honored — a request for
 // 256 dimensions returns 256), and `user` (accepted for compatibility), and it
 // answers with `usage`.
-impl OpenAIEmbeddingsCompatible for VeniceExt {
+impl OpenAIEmbeddingsCompatible for Venice {
     const PROVIDER_NAME: &'static str = "venice";
 }
 
 /// Venice embedding model, driven by the shared OpenAI-compatible
 /// embeddings path.
-pub type EmbeddingModel<T = crate::http_client::BoxedHttpClient> =
-    GenericEmbeddingModel<VeniceExt, T>;
+pub type EmbeddingModel<T = crate::http_client::BoxedHttpClient> = GenericEmbeddingModel<Venice, T>;

@@ -1,4 +1,4 @@
-use super::{OpenAICompletionsExt, OpenAIResponsesExt};
+use super::{OpenAICompletions, OpenAIResponses};
 use crate::image_generation;
 use crate::image_generation::{
     ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
@@ -49,11 +49,11 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 
 /// OpenAI image generation model.
 pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
-    GenericImageGenerationModel<OpenAIResponsesExt, T>;
+    GenericImageGenerationModel<OpenAIResponses, T>;
 
 /// OpenAI image generation model for a client using Chat Completions.
 pub type CompletionsImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
-    GenericImageGenerationModel<OpenAICompletionsExt, T>;
+    GenericImageGenerationModel<OpenAICompletions, T>;
 
 /// Build the `/v1/images/generations` body.
 ///
@@ -98,7 +98,7 @@ fn build_request(model: &str, generation_request: ImageGenerationRequest) -> ser
     request
 }
 
-impl JsonImageGenerationProvider for OpenAIResponsesExt {
+impl JsonImageGenerationProvider for OpenAIResponses {
     const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
@@ -112,7 +112,7 @@ impl JsonImageGenerationProvider for OpenAIResponsesExt {
     }
 }
 
-impl JsonImageGenerationProvider for OpenAICompletionsExt {
+impl JsonImageGenerationProvider for OpenAICompletions {
     const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");

@@ -39,13 +39,16 @@
 //!   [`GenericCompletionModel`](crate::providers::openai::completion::GenericCompletionModel)
 //!   via an
 //!   [`OpenAICompatibleProvider`](crate::providers::openai::completion::OpenAICompatibleProvider)
-//!   impl on the provider extension (never a hand-rolled completion model,
+//!   impl on the provider type (never a hand-rolled completion model,
 //!   request struct, or message conversion — dialect differences go in the
 //!   trait's hooks);
-//! - public `Client` and `ClientBuilder` aliases with the correct generics,
-//!   including a `ClientBuilder` API-key generic matching `ProviderBuilder::ApiKey`;
-//! - the `Provider`, `ProviderBuilder`, `Capabilities`, and `ProviderClient`
-//!   implementations;
+//! - public `Client<H = BoxedHttpClient>` and `ClientBuilder<H = Missing>`
+//!   aliases over [`client::Client`](crate::client::Client) /
+//!   [`client::ClientBuilder`](crate::client::ClientBuilder), plus root
+//!   re-exports of the provider type and every model type;
+//! - one provider value type implementing [`Provider`](crate::client::Provider)
+//!   and one `Has*` impl per supported capability
+//!   ([`HasCompletion`](crate::client::HasCompletion) and friends);
 //! - explicit API-key marker/auth types with redacted debug behavior for
 //!   credential-bearing values;
 //! - model constants where they are useful and current;
@@ -80,7 +83,7 @@
 //! # Example
 //! ```ignore
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
+//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };

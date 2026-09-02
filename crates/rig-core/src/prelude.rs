@@ -10,7 +10,6 @@
 //! imported explicitly from their modules so those imports document intent.
 
 // Provider-client traits.
-pub use crate::client::ProviderClient;
 pub use crate::client::completion::CompletionClient;
 pub use crate::client::embeddings::EmbeddingsClient;
 pub use crate::client::model_listing::ModelListingClient;

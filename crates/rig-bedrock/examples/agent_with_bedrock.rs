@@ -1,6 +1,6 @@
 use rig_agent::{agent::AgentBuilder, prelude::*};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
-use rig_core::{client::ProviderClient, loaders::FileLoader};
+use rig_core::loaders::FileLoader;
 use tracing::info;
 
 mod common;

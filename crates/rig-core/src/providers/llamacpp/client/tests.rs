@@ -35,11 +35,11 @@ fn client_initialization() {
 /// case produced `/v1/v1/chat/completions`.
 #[test]
 fn build_uri_adds_v1_once_and_only_once() {
-    let ext = LlamacppExt;
+    let ext = Llamacpp;
 
     for base in ["http://localhost:8080", "http://localhost:8080/"] {
         assert_eq!(
-            ext.build_uri(base, "/chat/completions", Transport::Http),
+            ext.build_uri(base, "/chat/completions"),
             "http://localhost:8080/v1/chat/completions",
             "bare host base URL should gain /v1"
         );
@@ -47,7 +47,7 @@ fn build_uri_adds_v1_once_and_only_once() {
 
     for base in ["http://localhost:8080/v1", "http://localhost:8080/v1/"] {
         assert_eq!(
-            ext.build_uri(base, "/chat/completions", Transport::Http),
+            ext.build_uri(base, "/chat/completions"),
             "http://localhost:8080/v1/chat/completions",
             "a base URL that already ends in /v1 must not double it"
         );
@@ -55,15 +55,15 @@ fn build_uri_adds_v1_once_and_only_once() {
 
     // Every path this provider uses composes the same way.
     assert_eq!(
-        ext.build_uri("http://localhost:8080", "/embeddings", Transport::Http),
+        ext.build_uri("http://localhost:8080", "/embeddings"),
         "http://localhost:8080/v1/embeddings"
     );
     assert_eq!(
-        ext.build_uri("http://localhost:8080", "/rerank", Transport::Http),
+        ext.build_uri("http://localhost:8080", "/rerank"),
         "http://localhost:8080/v1/rerank"
     );
     assert_eq!(
-        ext.build_uri("http://localhost:8080", "/models", Transport::Http),
+        ext.build_uri("http://localhost:8080", "/models"),
         "http://localhost:8080/v1/models"
     );
 }
@@ -73,7 +73,7 @@ fn build_uri_adds_v1_once_and_only_once() {
 /// the two accepted base-URL spellings the caller used.
 #[test]
 fn build_uri_keeps_the_unversioned_routes_off_the_v1_namespace() {
-    let ext = LlamacppExt;
+    let ext = Llamacpp;
     for base in [
         "http://localhost:8080",
         "http://localhost:8080/",
@@ -81,19 +81,19 @@ fn build_uri_keeps_the_unversioned_routes_off_the_v1_namespace() {
         "http://localhost:8080/v1/",
     ] {
         assert_eq!(
-            ext.build_uri(base, LlamacppExt::VERIFY_PATH, Transport::Http),
+            ext.build_uri(base, Llamacpp::VERIFY_PATH),
             "http://localhost:8080/props",
             "the verify path must reach the server root from base URL `{base}`"
         );
     }
     assert_eq!(
-        ext.build_uri("http://localhost:8080/v1", "/health", Transport::Http),
+        ext.build_uri("http://localhost:8080/v1", "/health"),
         "http://localhost:8080/health"
     );
     // Only the routes llama.cpp actually serves unversioned are exempt; an
     // OpenAI route that merely looks operational is not.
     assert_eq!(
-        ext.build_uri("http://localhost:8080", "/models", Transport::Http),
+        ext.build_uri("http://localhost:8080", "/models"),
         "http://localhost:8080/v1/models"
     );
 }
@@ -103,21 +103,13 @@ fn build_uri_keeps_the_unversioned_routes_off_the_v1_namespace() {
 /// the OpenAI routes hang off the mount point.
 #[test]
 fn build_uri_only_treats_a_trailing_v1_as_the_prefix() {
-    let ext = LlamacppExt;
+    let ext = Llamacpp;
     assert_eq!(
-        ext.build_uri(
-            "https://gw.example/v1/llama",
-            "/chat/completions",
-            Transport::Http
-        ),
+        ext.build_uri("https://gw.example/v1/llama", "/chat/completions"),
         "https://gw.example/v1/llama/v1/chat/completions"
     );
     assert_eq!(
-        ext.build_uri(
-            "https://gw.example/v10",
-            "/chat/completions",
-            Transport::Http
-        ),
+        ext.build_uri("https://gw.example/v10", "/chat/completions"),
         "https://gw.example/v10/v1/chat/completions"
     );
 }

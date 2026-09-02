@@ -3,7 +3,7 @@
 //! Completions run through the shared OpenAI-compatible
 //! [`GenericCompletionModel`](openai::completion::GenericCompletionModel); the
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
-//! [`VeniceExt`](super::client::VeniceExt) in `client.rs`.
+//! [`Venice`](super::client::Venice) in `client.rs`.
 //!
 //! Venice's chat payload is OpenAI's plus two blocks it adds itself: the
 //! resolved [`VeniceParameters`] echo (which is where web-search citations
@@ -52,7 +52,7 @@ pub const MISTRAL_SMALL_3_2_24B: &str = "mistral-small-3-2-24b-instruct";
 /// [`GenericCompletionModel`](openai::completion::GenericCompletionModel)
 /// specialized to Venice.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<super::client::VeniceExt, H>;
+    openai::completion::GenericCompletionModel<super::client::Venice, H>;
 
 // ================================================================
 // Venice-specific request parameters
@@ -78,7 +78,7 @@ pub enum WebSearchMode {
 /// there is no separate request abstraction to keep in sync:
 ///
 /// ```ignore
-/// use rig_core::client::{CompletionClient, ProviderClient};
+/// use rig_core::client::CompletionClient;
 /// use rig_core::completion::CompletionModel;
 /// use rig_core::providers::venice::{self, VeniceParameters, WebSearchMode};
 ///

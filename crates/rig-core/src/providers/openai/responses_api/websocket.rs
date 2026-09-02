@@ -45,7 +45,7 @@ const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// HTTP twins through [`ResponsesProviderExt::REQUEST_ID_HEADER`](crate::providers::openai::responses_api::ResponsesProviderExt::REQUEST_ID_HEADER) — the
 /// websocket upgrade is answered by the same service and reports the same id.
 const REQUEST_ID_HEADER: Option<&'static str> =
-    <crate::providers::openai::OpenAIResponsesExt as crate::providers::openai::responses_api::ResponsesProviderExt>::REQUEST_ID_HEADER;
+    <crate::providers::openai::OpenAIResponses as crate::providers::openai::responses_api::ResponsesProviderExt>::REQUEST_ID_HEADER;
 
 /// Options for a `response.create` message sent over OpenAI WebSocket mode.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-use super::client::{OpenRouterExt, Usage};
+use super::client::{OpenRouter, Usage};
 use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -1541,7 +1541,7 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
     }
 }
 
-impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
+impl openai::completion::OpenAICompatibleProvider for OpenRouter {
     const PROVIDER_NAME: &'static str = self::PROVIDER_NAME;
 
     type StreamingUsage = Usage;
@@ -1652,13 +1652,13 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 /// stream whose terminal record stays provider-native — both over the same
 /// single request path as the normalized methods.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<OpenRouterExt, H>;
+    openai::completion::GenericCompletionModel<OpenRouter, H>;
 
 /// Final streaming response, shared with the OpenAI Chat Completions path.
 pub type StreamingCompletionResponse =
     openai::completion::streaming::StreamingCompletionResponse<Usage>;
 
-impl<H> openai::completion::GenericCompletionModel<OpenRouterExt, H> {
+impl<H> openai::completion::GenericCompletionModel<OpenRouter, H> {
     /// Enable explicit prompt caching for supported OpenRouter models.
     ///
     /// Adds `cache_control: {"type": "ephemeral"}` to the system-prompt

@@ -7,29 +7,61 @@
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!
 //! ```
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::client::{
+    self, BearerAuth, HasCompletion, HasModelListing, ModelTransport, Provider,
+    ProviderClientResult,
+};
 use crate::completion::{self, CompletionError};
+use crate::http_client::{self, HttpClientExt};
 use serde::{Deserialize, Serialize};
 use tracing::{self};
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct MiraExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MiraBuilder;
-
+pub struct Mira;
 type MiraApiKey = BearerAuth;
 
-impl Provider for MiraExt {
-    type Builder = MiraBuilder;
-
+impl Provider for Mira {
+    const NAME: &'static str = "mira";
+    const BASE_URL: &'static str = MIRA_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/user-credits";
+    type ApiKey = MiraApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &MiraApiKey) -> http_client::Result<Self> {
+        Ok(Mira)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("MIRA_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    MiraExt,
-    completion = CompletionModel<H>,
-    model_listing = MiraModelLister<H>,
-);
+impl HasCompletion for Mira {
+    type Model<H>
+        = CompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        CompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for Mira {
+    type Lister<H>
+        = MiraModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        MiraModelLister::new(client.clone())
+    }
+}
 
 crate::providers::internal::model_listing::impl_model_lister!(
     /// [`ModelLister`](crate::client::ModelLister) implementation for the
@@ -41,9 +73,7 @@ crate::providers::internal::model_listing::impl_model_lister!(
     "/v1/models"
 );
 
-impl DebugExt for MiraExt {}
-
-impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt {
+impl crate::providers::openai::completion::OpenAICompatibleProvider for Mira {
     const PROVIDER_NAME: &'static str = "mira";
 
     // Mira's gateway rejects tool parameters.
@@ -101,15 +131,8 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt 
     }
 }
 
-client::impl_default_provider_builder!(
-    MiraBuilder => MiraExt,
-    api_key = MiraApiKey,
-    base_url = MIRA_API_BASE_URL,
-);
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<MiraExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Mira, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Mira, H>;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct RawMessage {
@@ -143,11 +166,9 @@ pub struct ChatChoice {
     pub index: Option<usize>,
 }
 
-client::impl_provider_from_env!(MiraExt, input = String, api_key_env = "MIRA_API_KEY");
-
 /// Mira completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    crate::providers::openai::completion::GenericCompletionModel<MiraExt, H>;
+    crate::providers::openai::completion::GenericCompletionModel<Mira, H>;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;

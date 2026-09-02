@@ -3,7 +3,7 @@
 //! Completions run through the shared OpenAI-compatible
 //! [`GenericCompletionModel`](openai::completion::GenericCompletionModel); the
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
-//! [`DoublewordExt`](super::client::DoublewordExt) in `client.rs`.
+//! [`Doubleword`](super::client::Doubleword) in `client.rs`.
 
 use crate::providers::openai;
 
@@ -28,4 +28,4 @@ pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 /// [`GenericCompletionModel`](openai::completion::GenericCompletionModel)
 /// specialized to Doubleword.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<super::client::DoublewordExt, H>;
+    openai::completion::GenericCompletionModel<super::client::Doubleword, H>;

@@ -27,7 +27,7 @@ fn resource_path_accepts_a_bare_id_or_a_full_handle() {
 ///
 /// `resource_path`'s unit tests prove the string is refused; this proves the
 /// refusal happens *before* the request is built. It matters because the
-/// URL these handles produce is not malformed — `GeminiExt::build_uri`
+/// URL these handles produce is not malformed — `Gemini::build_uri`
 /// appends the API key with `&` once the path contains a `?`, so
 /// `DELETE /v1beta/cachedContents/abc?stale&key=…` is a well-formed request
 /// that deletes cache `abc` and returns 200.
