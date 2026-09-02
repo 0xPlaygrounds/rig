@@ -539,7 +539,7 @@ fn get_env_or_skip(var: &str) -> Option<String> {
     std::env::var(var).ok()
 }
 
-fn create_vector_store() -> Option<VectorizeVectorStore> {
+fn create_vector_store() -> Option<VectorizeVectorStore<MockEmbeddingModel>> {
     let account_id = get_env_or_skip("CLOUDFLARE_ACCOUNT_ID")?;
     let api_token = get_env_or_skip("CLOUDFLARE_API_TOKEN")?;
     let index_name = get_env_or_skip("VECTORIZE_INDEX_NAME")?;

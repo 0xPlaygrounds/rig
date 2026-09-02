@@ -1,7 +1,8 @@
 //! Handlers over the impl-side traits.
 //!
 //! Each adapter translates its family's [`EffectKind`] arm into the trait
-//! call and the result into an [`Outcome`] (or [`StreamEvent`]s), so a
+//! call and the result into an [`Outcome`] (or
+//! [`StreamEvent`](crate::streaming::StreamEvent)s), so a
 //! provider or tool author writes the impl-side trait exactly as before and
 //! registers the adapter.
 

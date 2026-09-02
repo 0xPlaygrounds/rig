@@ -730,7 +730,7 @@ impl WireAdapter for AnthropicAdapter {
 /// Anthropic's own terminal stream record.
 ///
 /// The adapter maps it once into the normalized [`StreamFinal`] (see
-/// [`terminal_record`]) and serializes it onto [`StreamFinal::raw`]; callers
+/// `terminal_record`) and serializes it onto [`StreamFinal::raw`]; callers
 /// who want the provider-native shape deserialize it from there.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
@@ -763,7 +763,7 @@ pub struct StreamingCompletionResponse {
     /// transport stamps the id onto the normalized
     /// [`StreamFinal::provider_request_id`] instead; the field survives for
     /// records built elsewhere (and re-normalizes through
-    /// [`terminal_record`]).
+    /// `terminal_record`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
 }

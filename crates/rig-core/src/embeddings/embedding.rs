@@ -102,8 +102,8 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// request.
     ///
     /// A method rather than an associated constant so the value survives type
-    /// erasure: [`EmbeddingModelHandle`](super::EmbeddingModelHandle) captures
-    /// it by value at construction.
+    /// erasure: [`FamilyDescriptor::Embed`](crate::effect::FamilyDescriptor::Embed)
+    /// captures it by value when the model registers on the bus.
     fn max_documents(&self) -> usize;
 
     /// The number of dimensions in the embedding vector.
@@ -325,8 +325,8 @@ pub trait ImageEmbeddingModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of images the provider accepts in one request.
     ///
     /// A method rather than an associated constant so the value survives type
-    /// erasure: [`ImageEmbeddingModelHandle`](super::ImageEmbeddingModelHandle)
-    /// captures it by value at construction.
+    /// erasure: [`FamilyDescriptor::Embed`](crate::effect::FamilyDescriptor::Embed)
+    /// captures it by value when the model registers on the bus.
     fn max_documents(&self) -> usize;
 
     /// The number of dimensions in the embedding vector.

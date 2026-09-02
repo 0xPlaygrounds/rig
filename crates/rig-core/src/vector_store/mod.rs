@@ -4,7 +4,6 @@
 //!
 //! - [`VectorStoreIndex`]: Query a vector store for similar documents.
 //! - [`InsertDocuments`]: Insert documents and their embeddings.
-//! - [`VectorStoreIndexDyn`]: Type-erased vector queries for runtime-defined retrieval policies.
 //!
 //! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
 //!

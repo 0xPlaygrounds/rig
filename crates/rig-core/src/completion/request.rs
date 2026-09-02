@@ -269,8 +269,9 @@ impl FinishReason {
     ///
     /// This is the single place the upgrade happens. Construct normalized
     /// responses through [`CompletionResponse::with_finish_reason`] or
-    /// [`CompletionResponse::with_optional_finish_reason`] (and, for streams,
-    /// [`crate::streaming::normalize_stream`]) so it is always applied.
+    /// [`CompletionResponse::with_optional_finish_reason`] (streams apply it
+    /// in [`crate::streaming::StreamingCompletionResponse`] against the tool
+    /// calls the accumulator actually saw) so it is always applied.
     pub fn reconcile_with_output(self, has_tool_call: bool) -> Self {
         if has_tool_call && matches!(self, Self::Stop) {
             Self::ToolCalls
