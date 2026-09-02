@@ -278,7 +278,7 @@ async fn streaming_empty_stop_sequence() {
                 errors.is_empty(),
                 "streamed twin must not error: {errors:?}"
             );
-            assert!(stream.choice.is_empty());
+            assert!(stream.snapshot().is_empty());
             assert_eq!(
                 stream
                     .response

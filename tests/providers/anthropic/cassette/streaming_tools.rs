@@ -1,11 +1,13 @@
 //! Anthropic streaming tools smoke test.
 
+use rig::message::AssistantContent;
+
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::message::{Message, ToolCallId, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -272,10 +274,7 @@ async fn collect_concurrent_tool_observation(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
                 tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.clone());
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
@@ -303,28 +302,34 @@ async fn collect_concurrent_tool_observation(
                 }
                 observation.events.push("final_response");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text: _ },
+                ..
+            })) => {
                 observation.events.push("text");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(_)),
                 ..
             })) => {
                 observation.events.push("reasoning");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { .. },
+                ..
+            })) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
                 observation.events.push("stream_final");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Unknown(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Unknown(_))) => {
                 observation.events.push("unknown");
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {}

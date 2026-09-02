@@ -11,4 +11,5 @@ workspace = true
 anyhow = { workspace = true }
 futures = { workspace = true }
 rig = { workspace = true, features = ["candle"] }
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

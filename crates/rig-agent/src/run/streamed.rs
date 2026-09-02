@@ -1,7 +1,6 @@
 //! Streamed-turn assembly for [`AgentRun`](super::AgentRun).
 //!
-//! A streamed model turn arrives as incremental [`StreamedAssistantContent`]
-//! items. [`StreamedTurnAssembler`] is the sans-IO accumulator that turns that
+//! A streamed model turn arrives as incremental [`StreamEvent`]s. [`StreamedTurnAssembler`] is the sans-IO accumulator that turns that
 //! item stream into the same canonical complete turn the non-streaming path
 //! feeds the machine — while telling the driver what to forward to its
 //! consumer and surfacing invalid tool calls the moment they appear, so a
@@ -46,7 +45,7 @@ use rig_core::streaming::BlockId;
 use super::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message};
 use rig_core::completion::{CompletionError, Message, Usage};
 use rig_core::json_utils;
-use rig_core::streaming::{StreamedAssistantContent, ToolCallDeltaContent};
+use rig_core::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
 /// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
@@ -79,7 +78,7 @@ pub fn ordered_streaming_assistant_content(
     ))
 }
 
-/// Whether a [`StreamedAssistantContent::Unknown`] payload is rig assistant
+/// Whether a [`StreamEvent::Unknown`] payload is rig assistant
 /// content, so excluding it from assembly loses transcript content.
 ///
 /// The predicate is the decoder itself — a payload that parses as a tagged
@@ -92,7 +91,7 @@ pub fn ordered_streaming_assistant_content(
 /// Well-formed text does not reach this path: the tolerant block decode
 /// ignores unknown keys, so a tagged text block or a text item with stray
 /// sibling keys (0.41's flatten shape) decodes as
-/// `StreamedAssistantContent::Text` and its text is *assembled*, with only
+/// a text delta and its text is *assembled*, with only
 /// the stray keys dropped. The one way a text-carrying item can still land
 /// in `Unknown` is a *malformed known field* — a non-object
 /// `additional_params` fails the strict decode — and that item carries real
@@ -300,10 +299,10 @@ pub enum StreamedTurnEvent {
     /// Forward this tool-call delta. Argument deltas buffered while the tool
     /// name awaited validation are replayed through this event.
     EmitToolCallDelta {
-        /// Rig-generated identifier correlating this call's stream items.
+        /// The block this call streams under.
         block_id: BlockId,
         /// The (possibly repaired) name or argument delta.
-        content: ToolCallDeltaContent,
+        delta: Delta,
     },
     /// The model emitted an unknown or disallowed tool call. Resolve it via
     /// `AgentRun::resolve_streamed_invalid_tool_call`,
@@ -484,6 +483,15 @@ impl StreamedTurnAssembler {
     /// Completed parts are deliberately skipped: a later delta may reuse a
     /// correlator after a completed restatement, in which case ingestion opens
     /// a new pending part and this returns that new part's aggregate.
+    /// The provider-issued id of the reasoning part identified by
+    /// `correlator`, when its block start carried one.
+    pub fn reasoning_provider_id(&self, correlator: &BlockId) -> Option<&str> {
+        self.reasoning_parts
+            .iter()
+            .find(|part| part.correlator.as_ref() == Some(correlator))
+            .and_then(|part| part.provider_id.as_deref())
+    }
+
     pub fn aggregated_reasoning(&self, correlator: &BlockId) -> Option<&str> {
         self.reasoning_parts
             .iter()
@@ -613,7 +621,7 @@ impl StreamedTurnAssembler {
     /// tool call is still awaiting resolution.
     pub fn ingest(
         &mut self,
-        item: &StreamedAssistantContent,
+        item: &StreamEvent,
     ) -> Result<Vec<StreamedTurnEvent>, CompletionError> {
         if self.pending_invalid.is_some() {
             return Err(CompletionError::ResponseError(
@@ -622,22 +630,72 @@ impl StreamedTurnAssembler {
         }
 
         match item {
-            StreamedAssistantContent::Text(text) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => {
                 if !self.saw_text {
                     self.text.clear();
                     self.saw_text = true;
                 }
-                self.text.push_str(&text.text);
+                self.text.push_str(text);
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
-            StreamedAssistantContent::Reasoning { reasoning, id } => {
-                self.ingest_completed_reasoning(reasoning, id);
-                Ok(vec![StreamedTurnEvent::EmitIngested])
+            // Block bookkeeping the assembler does not fold: the message id
+            // (read off the stream by the driver), text block boundaries and
+            // metadata (the provider's aggregate carries them), a tool-call
+            // block opening (its deltas open the assembly).
+            StreamEvent::BlockStart {
+                kind: BlockKind::Message | BlockKind::Text { .. } | BlockKind::ToolCall,
+                ..
             }
-            StreamedAssistantContent::ReasoningDelta {
+            | StreamEvent::BlockDelta {
+                delta: Delta::TextMeta { .. },
+                ..
+            }
+            | StreamEvent::BlockEnd {
+                end: BlockClose::Text,
+                ..
+            } => Ok(vec![StreamedTurnEvent::EmitIngested]),
+            StreamEvent::BlockStart {
                 id,
-                reasoning,
-                provider_id,
+                kind: BlockKind::Reasoning { provider_id },
+            } => {
+                // The block's durable provider id arrives at its start; the
+                // part opens here (or on its first delta) and keeps it.
+                let pending = self.reasoning_parts.iter_mut().find(|part| {
+                    part.correlator.as_ref() == Some(id)
+                        && matches!(part.state, ReasoningPartState::Pending(_))
+                });
+                match pending {
+                    Some(part) => {
+                        if part.provider_id.is_none() {
+                            part.provider_id.clone_from(provider_id);
+                        }
+                    }
+                    None => self.reasoning_parts.push(ReasoningPart {
+                        correlator: Some(id.clone()),
+                        provider_id: provider_id.clone(),
+                        state: ReasoningPartState::Pending(String::new()),
+                    }),
+                }
+                Ok(vec![StreamedTurnEvent::EmitIngested])
+            }
+            StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::Reasoning { .. },
+                block,
+            } => {
+                // An authoritative close carries the completed block; a
+                // synthesized silent boundary carries nothing to fold.
+                if let Some(AssistantContent::Reasoning(reasoning)) = block {
+                    self.ingest_completed_reasoning(reasoning, id);
+                }
+                Ok(vec![StreamedTurnEvent::EmitIngested])
+            }
+            StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning { text: reasoning },
             } => {
                 // Deltas lack signatures/encrypted content that full blocks
                 // carry; mixing them into completed reasoning causes
@@ -662,20 +720,27 @@ impl StreamedTurnAssembler {
                         });
                         self.reasoning_parts.len() - 1
                     });
-                if let Some(part) = self.reasoning_parts.get_mut(index) {
-                    if let ReasoningPartState::Pending(text) = &mut part.state {
-                        text.push_str(reasoning);
-                    }
-                    if part.provider_id.is_none() {
-                        part.provider_id.clone_from(provider_id);
-                    }
+                if let Some(part) = self.reasoning_parts.get_mut(index)
+                    && let ReasoningPartState::Pending(text) = &mut part.state
+                {
+                    text.push_str(reasoning);
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
-            StreamedAssistantContent::ToolCall {
-                tool_call,
+            StreamEvent::BlockEnd {
                 id: block_id,
+                end: BlockClose::ToolCall(_),
+                block,
             } => {
+                // The completed call is on the end event when the accumulator
+                // finalized one; an end that dropped its call (never fully
+                // arrived) assembles nothing. Neither is forwarded: the
+                // driver reports the model's completed calls itself when the
+                // turn commits.
+                let Some(AssistantContent::ToolCall(tool_call)) = block else {
+                    self.delta_states.remove(block_id);
+                    return Ok(Vec::new());
+                };
                 if !self.allowed_tool_names.contains(&tool_call.function.name) {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
@@ -694,13 +759,13 @@ impl StreamedTurnAssembler {
                     .push((tool_call.clone(), block_id.clone()));
                 Ok(Vec::new())
             }
-            StreamedAssistantContent::ToolCallDelta {
+            StreamEvent::BlockDelta {
                 id: block_id,
-                content,
+                delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
             } => {
                 let key = block_id.clone();
-                match content {
-                    ToolCallDeltaContent::Name(name) => {
+                match delta {
+                    Delta::ToolName { name } => {
                         if !self.allowed_tool_names.contains(name) {
                             let buffered_args = self
                                 .delta_states
@@ -721,21 +786,27 @@ impl StreamedTurnAssembler {
 
                         Ok(self.validate_delta_name(key, name.clone()))
                     }
-                    ToolCallDeltaContent::Delta(arguments) => {
+                    Delta::ToolArguments { arguments } => {
                         let state = self.delta_states.entry(key).or_default();
                         if state.name_validated {
                             Ok(vec![StreamedTurnEvent::EmitToolCallDelta {
                                 block_id: block_id.clone(),
-                                content: ToolCallDeltaContent::Delta(arguments.clone()),
+                                delta: Delta::ToolArguments {
+                                    arguments: arguments.clone(),
+                                },
                             }])
                         } else {
                             state.buffered_arguments.push(arguments.clone());
                             Ok(Vec::new())
                         }
                     }
+                    Delta::Text { .. } | Delta::TextMeta { .. } | Delta::Reasoning { .. } => {
+                        // Excluded by the arm's pattern.
+                        Ok(vec![StreamedTurnEvent::EmitIngested])
+                    }
                 }
             }
-            StreamedAssistantContent::Final(final_response) => {
+            StreamEvent::Final(final_response) => {
                 if let Some(err) = self.pending_delta_error() {
                     return Err(err);
                 }
@@ -754,7 +825,7 @@ impl StreamedTurnAssembler {
                     finish_reason,
                 }])
             }
-            StreamedAssistantContent::Unknown(payload) => {
+            StreamEvent::Unknown(payload) => {
                 // Unmodeled provider item (e.g. a hosted-tool result): forward it
                 // to the consumer but do not fold it into the accumulated
                 // assistant message — there is no `AssistantContent::Unknown`, and
@@ -919,12 +990,12 @@ impl StreamedTurnAssembler {
 
         let mut events = vec![StreamedTurnEvent::EmitToolCallDelta {
             block_id: key.clone(),
-            content: ToolCallDeltaContent::Name(name),
+            delta: Delta::ToolName { name },
         }];
         events.extend(buffered_arguments.into_iter().map(|arguments| {
             StreamedTurnEvent::EmitToolCallDelta {
                 block_id: key.clone(),
-                content: ToolCallDeltaContent::Delta(arguments),
+                delta: Delta::ToolArguments { arguments },
             }
         }));
         events

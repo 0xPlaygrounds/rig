@@ -42,10 +42,9 @@
 use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
-use rig::providers::copilot::{self, CopilotStreamingResponse};
+use rig::providers::copilot;
 use rig::providers::openai::responses_api;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
-use serde::Deserialize;
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde_json::Value;
 
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
@@ -73,7 +72,7 @@ fn assert_single_interaction(scenario: &str) {
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
     let mut finals = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(record) = item.expect("stream item should be ok") {
+        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
             finals.push(record);
         }
     }
@@ -148,16 +147,13 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
             let raw = &terminal.raw;
-            assert_eq!(raw["api"], "chat", "the route tag rides along on raw");
-            let typed = CopilotStreamingResponse::deserialize(raw)
-                .expect("raw must deserialize into CopilotStreamingResponse");
-            let CopilotStreamingResponse::Chat(chat) = &typed else {
-                panic!("chat-route raw must read back as the Chat variant");
-            };
+            let chat: rig::providers::openai::completion::streaming::StreamingCompletionResponse =
+                serde_json::from_value(raw.clone())
+                    .expect("chat-route raw must read back as the OpenAI chat record");
             assert_eq!(
-                serde_json::to_value(&typed).expect("terminal type should serialize"),
+                serde_json::to_value(&chat).expect("terminal type should serialize"),
                 *raw,
-                "CopilotStreamingResponse must round-trip through its own serde"
+                "the chat record must round-trip through its own serde"
             );
             assert_eq!(chat.usage.prompt_tokens as u64, terminal.usage.input_tokens);
             assert_eq!(
@@ -251,11 +247,9 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let CopilotStreamingResponse::Chat(typed) =
-        CopilotStreamingResponse::deserialize(&raw).expect("raw must deserialize")
-    else {
-        panic!("chat-route raw must read back as the Chat variant");
-    };
+    let typed: rig::providers::openai::completion::streaming::StreamingCompletionResponse =
+        serde_json::from_value(raw.clone())
+            .expect("chat-route raw must read back as the OpenAI chat record");
     let typed_params = typed
         .additional_params
         .expect("typed terminal must carry additional_params");
@@ -290,16 +284,13 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
             let raw = &terminal.raw;
-            assert_eq!(raw["api"], "responses", "the route tag rides along on raw");
-            let typed = CopilotStreamingResponse::deserialize(raw)
-                .expect("raw must deserialize into CopilotStreamingResponse");
-            let CopilotStreamingResponse::Responses(responses) = &typed else {
-                panic!("responses-route raw must read back as the Responses variant");
-            };
+            let responses: responses_api::streaming::StreamingCompletionResponse =
+                serde_json::from_value(raw.clone())
+                    .expect("responses-route raw must read back as the Responses record");
             assert_eq!(
-                serde_json::to_value(&typed).expect("terminal type should serialize"),
+                serde_json::to_value(&responses).expect("terminal type should serialize"),
                 *raw,
-                "CopilotStreamingResponse must round-trip through its own serde"
+                "the Responses record must round-trip through its own serde"
             );
             assert_eq!(responses.usage.total_tokens, terminal.usage.total_tokens);
             assert_eq!(responses.response_id, terminal.response_id);
@@ -359,10 +350,7 @@ async fn responses_stream_raw_exposes_terminal_status() {
     assert_eq!(terminal["status"], Value::String("completed".to_string()));
     assert_eq!(raw["status"], terminal["status"]);
     assert_eq!(raw["usage"], terminal["usage"]);
-    let CopilotStreamingResponse::Responses(typed) =
-        CopilotStreamingResponse::deserialize(&raw).expect("raw must deserialize")
-    else {
-        panic!("responses-route raw must read back as the Responses variant");
-    };
+    let typed: responses_api::streaming::StreamingCompletionResponse =
+        serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(typed.status, Some(responses_api::ResponseStatus::Completed));
 }

@@ -4,11 +4,9 @@
 //! # The feature
 //!
 //! Capture is always on. The terminal record of every stream the provider seam
-//! yields carries `raw`: the value the model's inherent
-//! [`CompletionModel::raw_stream`](rig::providers::ollama::CompletionModel::raw_stream)
-//! would have yielded as its `FinalResponse` — Ollama's terminal NDJSON record
-//! as [`ollama::StreamingCompletionResponse`] carries it — serialized with
-//! `serde_json::to_value` by `normalize_stream`. It is the terminal record
+//! yields carries `raw`: Ollama's terminal NDJSON record as
+//! [`ollama::StreamingCompletionResponse`] carries it — serialized with
+//! `serde_json::to_value` by the provider adapter. It is the terminal record
 //! only, never the stream's frames, and nothing about it is sent to the daemon.
 //! `raw == Value::Null` means only that a `StreamFinal` was built by hand
 //! without a provider terminal behind it, which no cell here can produce.
@@ -39,7 +37,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use rig::providers::ollama;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -62,7 +60,7 @@ fn request(model: &ollama::CompletionModel) -> rig::completion::CompletionReques
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
     let mut finals = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(record) = item.expect("stream item should be ok") {
+        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
             finals.push(record);
         }
     }
@@ -113,7 +111,7 @@ fn recorded_terminal_line(scenario: &str) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the raw_stream FinalResponse, serialized
+// 1: raw is the provider terminal record, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -141,7 +139,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             );
 
             // The typed terminal agrees with the normalized one: raw is the
-            // record normalize_stream mapped, not a divergent copy.
+            // record the adapter mapped, not a divergent copy.
             assert_eq!(Some(typed.model.as_str()), terminal.model.as_deref());
             assert_eq!(
                 typed.eval_count.unwrap_or_default(),

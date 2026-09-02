@@ -26,11 +26,14 @@ use rig_agent::{
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
-        RawStreamingChoice, StreamFinal, StreamedAssistantContent, StreamingCompletionResponse,
+        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
+        StreamingCompletionResponse, ToolCallEnd, UnparseableToolInput,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_core::message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent};
+use rig_core::message::{
+    AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction, UserContent,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
@@ -265,10 +268,14 @@ fn stream_from_script(
     if let Turn::Error(message) = &turn {
         return Err(CompletionError::ProviderError(message.clone()));
     }
-    let mut events = vec![Ok(RawStreamingChoice::MessageId(turn.message_id()))];
+    let mut events = vec![Ok(StreamEvent::BlockStart {
+        id: BlockId::wire(turn.message_id()),
+        kind: BlockKind::Message,
+    })];
+    let text_block = MintKind::Text.for_wire_index(0);
     match &turn {
         Turn::Text { text, .. } => {
-            events.push(Ok(RawStreamingChoice::Message(text.clone())));
+            events.push(Ok(StreamEvent::text(text_block, text.clone())));
         }
         Turn::Tool {
             id,
@@ -277,47 +284,62 @@ fn stream_from_script(
             ..
         } => {
             // Canonical fragmenting-wire shape: name/args fragments closed by
-            // a tool-input end; the shared accumulator assembles the call and
-            // mints the correlation id at the first fragment.
-            events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::BlockId::wire(id.clone()),
-                content: rig_agent::streaming::ToolCallDeltaContent::Name(name.clone()),
+            // a tool-call end; the shared accumulator assembles the call and
+            // opens the block at the first fragment.
+            events.push(Ok(StreamEvent::BlockDelta {
+                id: BlockId::wire(id.clone()),
+                delta: Delta::ToolName { name: name.clone() },
             }));
-            events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::BlockId::wire(id.clone()),
-                content: rig_agent::streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
+            events.push(Ok(StreamEvent::BlockDelta {
+                id: BlockId::wire(id.clone()),
+                delta: Delta::ToolArguments {
+                    arguments: arguments.to_string(),
+                },
             }));
-            events.push(Ok(RawStreamingChoice::ToolInputEnd(
-                rig_agent::streaming::ToolInputEnd::new(
-                    id.clone(),
-                    rig_agent::streaming::UnparseableToolInput::Drop,
-                ),
-            )));
+            events.push(Ok(StreamEvent::BlockEnd {
+                id: BlockId::wire(id.clone()),
+                end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Drop)),
+                block: None,
+            }));
         }
         Turn::Rich { text, .. } => {
-            events.push(Ok(RawStreamingChoice::Reasoning {
-                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(1),
-                provider_id: None,
-                content: ReasoningContent::Summary("summary".to_owned()),
+            // A whole reasoning block restated at its (wire-sent) end.
+            let whole = MintKind::Reasoning.for_wire_index(1);
+            events.push(Ok(StreamEvent::BlockStart {
+                id: whole.clone(),
+                kind: BlockKind::Reasoning { provider_id: None },
             }));
-            events.push(Ok(RawStreamingChoice::ReasoningDelta {
-                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(2),
-                provider_id: None,
-                reasoning: "reasoning delta".to_owned(),
+            events.push(Ok(StreamEvent::BlockEnd {
+                id: whole,
+                end: BlockClose::Reasoning {
+                    reasoning: Some(Reasoning {
+                        id: None,
+                        content: vec![ReasoningContent::Summary("summary".to_owned())],
+                    }),
+                    signature: None,
+                    wire_sent: true,
+                },
+                block: None,
             }));
-            events.push(Ok(RawStreamingChoice::Unknown(
+            events.push(Ok(StreamEvent::BlockDelta {
+                id: MintKind::Reasoning.for_wire_index(2),
+                delta: Delta::Reasoning {
+                    text: "reasoning delta".to_owned(),
+                },
+            }));
+            events.push(Ok(StreamEvent::Unknown(
                 serde_json::json!({
                     "type": "provider_native_event",
                     "provider": script.provider,
                 })
                 .into(),
             )));
-            events.push(Ok(RawStreamingChoice::Message(text.clone())));
+            events.push(Ok(StreamEvent::text(text_block, text.clone())));
         }
         // Handled by the early return above.
         Turn::Error(_) => return Err(CompletionError::ProviderError("unreachable".to_owned())),
     }
-    events.push(Ok(RawStreamingChoice::FinalResponse(
+    events.push(Ok(StreamEvent::Final(
         StreamFinal::new(script.provider, turn.usage()).with_message_id(turn.message_id()),
     )));
 
@@ -427,7 +449,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
         .expect("direct provider stream");
     let mut stream_final: Option<StreamFinal> = None;
     while let Some(item) = low_level_stream.next().await {
-        if let StreamedAssistantContent::Final(final_) = item.expect("stream item") {
+        if let StreamEvent::Final(final_) = item.expect("stream item") {
             stream_final = Some(final_);
         }
     }
@@ -1000,14 +1022,15 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
                 rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::ToolCallDelta { id: block_id, .. },
+                    StreamEvent::BlockDelta {
+                        id: block_id,
+                        delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                    },
                 ) => {
                     events.push("tool-delta");
                     block_ids.push(block_id);
                 }
-                rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::ToolCall { id: block_id, .. },
-                ) => {
+                rig_agent::agent::MultiTurnStreamItem::ToolCall { block_id, .. } => {
                     events.push("tool-call");
                     block_ids.push(block_id);
                 }
@@ -1231,20 +1254,24 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
 
     while let Some(item) = stream.next().await {
         match item.expect("normalized stream item") {
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(_)),
+                ..
+            }) => saw_reasoning = true,
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Reasoning { .. },
-            ) => saw_reasoning = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { .. },
+                StreamEvent::BlockDelta {
+                    delta: Delta::Reasoning { .. },
+                    ..
+                },
             ) => saw_reasoning_delta = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Unknown(value),
-            ) => {
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Unknown(
+                value,
+            )) => {
                 saw_unknown = value.value()["type"] == "provider_native_event";
             }
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Final(final_),
-            ) => provider_final = Some(final_),
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(
+                final_,
+            )) => provider_final = Some(final_),
             rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response);
             }
@@ -1363,11 +1390,11 @@ impl CompletionModel for GatedToolModel {
         Ok(StreamingCompletionResponse::stream(
             "gated",
             Box::pin(stream::iter([
-                Ok(RawStreamingChoice::Message("unused".to_owned())),
-                Ok(RawStreamingChoice::FinalResponse(StreamFinal::new(
-                    "gated",
-                    usage(1),
-                ))),
+                Ok(StreamEvent::text(
+                    MintKind::Text.for_wire_index(0),
+                    "unused",
+                )),
+                Ok(StreamEvent::Final(StreamFinal::new("gated", usage(1)))),
             ])),
         ))
     }
@@ -1464,7 +1491,7 @@ struct PendingRawStream {
 }
 
 impl Stream for PendingRawStream {
-    type Item = Result<RawStreamingChoice, CompletionError>;
+    type Item = Result<StreamEvent, CompletionError>;
 
     fn poll_next(mut self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if !self.notified {

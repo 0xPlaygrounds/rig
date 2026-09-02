@@ -5,37 +5,77 @@ use super::super::completion::{
 use super::*;
 use crate::completion::Message as RigMessage;
 use crate::completion::request::Document as RigDocument;
-use crate::streaming::RawStreamingToolCall;
-use async_stream::stream;
+use crate::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 use futures::StreamExt;
 
-/// Normalize a hand-built Anthropic raw stream exactly as
-/// [`GenericCompletionModel::stream`] does, so aggregation assertions run
-/// against the same terminal-record mapping as the real path.
+/// A fresh adapter labelled the way [`GenericCompletionModel::stream`]
+/// labels Anthropic proper.
+fn adapter() -> AnthropicAdapter {
+    AnthropicAdapter::new("anthropic")
+}
+
+/// Interpret one event, returning exactly what the adapter emitted (an
+/// `Err` item fails the test — use [`interpret_items`] to inspect one).
+fn interpret(adapter: &mut AnthropicAdapter, event: StreamingEvent) -> Vec<StreamEvent> {
+    interpret_items(adapter, event)
+        .into_iter()
+        .map(|item| item.expect("not an error"))
+        .collect()
+}
+
+/// Interpret one event, returning the adapter's raw output items.
+fn interpret_items(
+    adapter: &mut AnthropicAdapter,
+    event: StreamingEvent,
+) -> Vec<Result<StreamEvent, CompletionError>> {
+    let mut out = AdapterOutput::new();
+    adapter.interpret(event, &mut out);
+    out.into_items()
+}
+
+/// Interpret a sequence of events through one adapter and one output
+/// buffer, so the text-block bookkeeping spans the whole sequence exactly
+/// as it does on the live driver.
+fn interpret_all(
+    adapter: &mut AnthropicAdapter,
+    events: impl IntoIterator<Item = StreamingEvent>,
+) -> Vec<Result<StreamEvent, CompletionError>> {
+    let mut out = AdapterOutput::new();
+    for event in events {
+        adapter.interpret(event, &mut out);
+    }
+    out.into_items()
+}
+
+/// The one terminal frame: a `message_delta` carrying `stop_reason`.
+fn message_delta(stop_reason: &str, usage: PartialUsage) -> StreamingEvent {
+    StreamingEvent::MessageDelta {
+        delta: MessageDelta {
+            stop_reason: Some(stop_reason.to_string()),
+            stop_sequence: None,
+        },
+        usage,
+    }
+}
+
+/// Wrap hand-built adapter output as the stream
+/// [`crate::streaming::StreamingCompletionResponse`] consumes, exactly as
+/// the driver would yield it.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn to_stream_result(
-    stream: impl futures::Stream<
-        Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
-    > + Send
-    + 'static,
+    items: Vec<Result<StreamEvent, CompletionError>>,
 ) -> crate::streaming::StreamingResult {
-    crate::streaming::normalize_stream(Box::pin(stream), |response| {
-        Ok(StreamFinal::from(("anthropic", response)))
-    })
+    Box::pin(futures::stream::iter(items))
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 fn to_stream_result(
-    stream: impl futures::Stream<
-        Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
-    > + 'static,
+    items: Vec<Result<StreamEvent, CompletionError>>,
 ) -> crate::streaming::StreamingResult {
-    crate::streaming::normalize_stream(Box::pin(stream), |response| {
-        Ok(StreamFinal::from(("anthropic", response)))
-    })
+    Box::pin(futures::stream::iter(items))
 }
 
-/// Build the streaming request body the way [`GenericCompletionModel::raw_stream`]
+/// Build the streaming request body the way [`GenericCompletionModel::stream`]
 /// does — the shared typed request, then the streaming-only patches — without
 /// needing a client to reach the prelude.
 fn built_streaming_body(
@@ -347,20 +387,6 @@ fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
     assert!(additional_params.get("cache_control").is_none());
 }
 
-fn handle_event(
-    event: &StreamingEvent,
-    current_tool_call: &mut Option<String>,
-    current_thinking: &mut Option<ThinkingState>,
-) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
-    let mut server_tool_uses = HashMap::new();
-    super::handle_event(
-        event,
-        current_tool_call,
-        &mut server_tool_uses,
-        current_thinking,
-    )
-}
-
 #[test]
 fn test_thinking_delta_deserialization() {
     let json = r#"{"type": "thinking_delta", "thinking": "Let me think about this..."}"#;
@@ -450,24 +476,30 @@ fn test_handle_thinking_delta_event() {
         },
     };
 
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let mut adapter = adapter();
+    let events = interpret(&mut adapter, event);
 
-    assert!(result.is_some());
-    let choice = result.unwrap().unwrap();
-
-    match choice {
-        RawStreamingChoice::ReasoningDelta { id, reasoning, .. } => {
-            assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(0));
-            assert_eq!(reasoning, "Analyzing the request...");
-        }
-        _ => panic!("Expected ReasoningDelta choice"),
-    }
+    // An unseen reasoning id opens its block before the first delta.
+    let id = crate::streaming::MintKind::Block.for_wire_index(0);
+    assert_eq!(
+        events,
+        vec![
+            StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: BlockKind::Reasoning { provider_id: None },
+            },
+            StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning {
+                    text: "Analyzing the request...".to_string(),
+                },
+            },
+        ]
+    );
 
     // The block is tracked (its signature may still arrive); the text
     // itself accumulates in the shared accumulator, not here.
-    assert!(thinking_state.is_some());
+    assert!(adapter.current_thinking.is_some());
 }
 
 #[test]
@@ -479,16 +511,18 @@ fn test_handle_signature_delta_event() {
         },
     };
 
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let mut adapter = adapter();
+    let events = interpret(&mut adapter, event);
 
-    // SignatureDelta should not yield anything (returns None)
-    assert!(result.is_none());
+    // SignatureDelta should not yield anything
+    assert!(events.is_empty());
 
     // But signature should be captured in thinking state
-    assert!(thinking_state.is_some());
-    assert_eq!(thinking_state.unwrap().signature, "test_signature");
+    assert!(adapter.current_thinking.is_some());
+    assert_eq!(
+        adapter.current_thinking.unwrap().signature,
+        "test_signature"
+    );
 }
 
 #[test]
@@ -499,19 +533,39 @@ fn test_handle_redacted_thinking_content_block_start_event() {
             data: "redacted_blob".to_string(),
         },
     };
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let mut adapter = adapter();
+    let events = interpret(&mut adapter, event);
 
-    assert!(result.is_some());
-    match result.unwrap().unwrap() {
-        RawStreamingChoice::Reasoning {
-            content: ReasoningContent::Redacted { data },
+    // A whole reasoning block is its start and its authoritative end.
+    let id = crate::streaming::MintKind::Block.for_wire_index(0);
+    assert_eq!(events.len(), 2);
+    assert_eq!(
+        events[0],
+        StreamEvent::BlockStart {
+            id: id.clone(),
+            kind: BlockKind::Reasoning { provider_id: None },
+        }
+    );
+    match &events[1] {
+        StreamEvent::BlockEnd {
+            id: end_id,
+            end:
+                BlockClose::Reasoning {
+                    reasoning: Some(reasoning),
+                    signature: None,
+                    wire_sent: true,
+                },
             ..
         } => {
-            assert_eq!(data, "redacted_blob");
+            assert_eq!(*end_id, id);
+            assert_eq!(
+                reasoning.content,
+                vec![ReasoningContent::Redacted {
+                    data: "redacted_blob".to_string()
+                }]
+            );
         }
-        _ => panic!("Expected Redacted reasoning chunk"),
+        other => panic!("Expected Redacted reasoning block end, got {other:?}"),
     }
 }
 
@@ -523,8 +577,7 @@ fn test_handle_redacted_thinking_content_block_start_event() {
 /// signature, and it must survive `content_block_stop`.
 #[test]
 fn signature_only_thinking_block_survives_content_block_stop() {
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
+    let mut adapter = adapter();
 
     let start = StreamingEvent::ContentBlockStart {
         index: 0,
@@ -533,7 +586,7 @@ fn signature_only_thinking_block_survives_content_block_stop() {
             signature: Some(String::new()),
         },
     };
-    assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+    assert!(interpret(&mut adapter, start).is_empty());
 
     let signature = StreamingEvent::ContentBlockDelta {
         index: 0,
@@ -541,16 +594,21 @@ fn signature_only_thinking_block_survives_content_block_stop() {
             signature: "the_whole_signature".to_string(),
         },
     };
-    assert!(handle_event(&signature, &mut tool_call_state, &mut thinking_state).is_none());
+    assert!(interpret(&mut adapter, signature).is_empty());
 
     let stop = StreamingEvent::ContentBlockStop { index: 0 };
-    let result = handle_event(&stop, &mut tool_call_state, &mut thinking_state)
-        .expect("signature-only thinking block must not be dropped")
-        .expect("thinking block should not be an error");
+    let events = interpret(&mut adapter, stop);
+    let end = events
+        .last()
+        .expect("signature-only thinking block must not be dropped");
 
-    match result {
-        RawStreamingChoice::ReasoningEnd { id, signature, .. } => {
-            assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(0));
+    match end {
+        StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::Reasoning { signature, .. },
+            ..
+        } => {
+            assert_eq!(*id, crate::streaming::MintKind::Block.for_wire_index(0));
             assert_eq!(signature.as_deref(), Some("the_whole_signature"));
         }
         other => panic!("Expected a signed lifecycle end, got {other:?}"),
@@ -561,8 +619,7 @@ fn signature_only_thinking_block_survives_content_block_stop() {
 /// `content_block_start` and sends no `signature_delta` keeps it.
 #[test]
 fn signature_delivered_only_on_content_block_start_is_kept() {
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
+    let mut adapter = adapter();
 
     let start = StreamingEvent::ContentBlockStart {
         index: 0,
@@ -571,14 +628,18 @@ fn signature_delivered_only_on_content_block_start_is_kept() {
             signature: Some("up_front_signature".to_string()),
         },
     };
-    assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+    assert!(interpret(&mut adapter, start).is_empty());
 
     let stop = StreamingEvent::ContentBlockStop { index: 0 };
-    match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+    let events = interpret(&mut adapter, stop);
+    match events
+        .last()
         .expect("an up-front signature must not be dropped")
-        .expect("thinking block should not be an error")
     {
-        RawStreamingChoice::ReasoningEnd { signature, .. } => {
+        StreamEvent::BlockEnd {
+            end: BlockClose::Reasoning { signature, .. },
+            ..
+        } => {
             assert_eq!(signature.as_deref(), Some("up_front_signature"));
         }
         other => panic!("Expected a signed lifecycle end, got {other:?}"),
@@ -590,8 +651,7 @@ fn signature_delivered_only_on_content_block_start_is_kept() {
 /// assembled, or the value replayed to Anthropic is corrupt.
 #[test]
 fn signature_deltas_supersede_the_opening_signature() {
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
+    let mut adapter = adapter();
 
     let start = StreamingEvent::ContentBlockStart {
         index: 0,
@@ -600,7 +660,7 @@ fn signature_deltas_supersede_the_opening_signature() {
             signature: Some("opening".to_string()),
         },
     };
-    assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+    assert!(interpret(&mut adapter, start).is_empty());
 
     for fragment in ["delta_", "assembled"] {
         let signature = StreamingEvent::ContentBlockDelta {
@@ -609,15 +669,16 @@ fn signature_deltas_supersede_the_opening_signature() {
                 signature: fragment.to_string(),
             },
         };
-        assert!(handle_event(&signature, &mut tool_call_state, &mut thinking_state).is_none());
+        assert!(interpret(&mut adapter, signature).is_empty());
     }
 
     let stop = StreamingEvent::ContentBlockStop { index: 0 };
-    match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
-        .expect("thinking block should be restated")
-        .expect("thinking block should not be an error")
-    {
-        RawStreamingChoice::ReasoningEnd { signature, .. } => {
+    let events = interpret(&mut adapter, stop);
+    match events.last().expect("thinking block should be closed") {
+        StreamEvent::BlockEnd {
+            end: BlockClose::Reasoning { signature, .. },
+            ..
+        } => {
             assert_eq!(signature.as_deref(), Some("delta_assembled"));
         }
         other => panic!("Expected a signed lifecycle end, got {other:?}"),
@@ -625,11 +686,11 @@ fn signature_deltas_supersede_the_opening_signature() {
 }
 
 /// `content_block_start` can carry the block's opening text; discarding it
-/// would truncate the restatement the accumulator supersedes deltas with.
+/// would truncate the block the accumulator assembles from deltas.
 #[test]
 fn thinking_block_start_text_streams_as_the_first_delta() {
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
+    let mut adapter = adapter();
+    let id = crate::streaming::MintKind::Block.for_wire_index(2);
 
     let start = StreamingEvent::ContentBlockStart {
         index: 2,
@@ -641,16 +702,21 @@ fn thinking_block_start_text_streams_as_the_first_delta() {
     // The opening payload's text is a delta like any other; the shared
     // accumulator owns the block's text — no adapter-side restatement
     // buffer exists to seed.
-    match handle_event(&start, &mut tool_call_state, &mut thinking_state)
-        .expect("the opening text streams")
-        .expect("not an error")
-    {
-        RawStreamingChoice::ReasoningDelta { id, reasoning, .. } => {
-            assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(2));
-            assert_eq!(reasoning, "opening ");
-        }
-        other => panic!("Expected the opening delta, got {other:?}"),
-    }
+    assert_eq!(
+        interpret(&mut adapter, start),
+        vec![
+            StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: BlockKind::Reasoning { provider_id: None },
+            },
+            StreamEvent::BlockDelta {
+                id: id.clone(),
+                delta: Delta::Reasoning {
+                    text: "opening ".to_string(),
+                },
+            },
+        ]
+    );
 
     let delta = StreamingEvent::ContentBlockDelta {
         index: 2,
@@ -658,20 +724,24 @@ fn thinking_block_start_text_streams_as_the_first_delta() {
             thinking: "rest".to_string(),
         },
     };
-    assert!(handle_event(&delta, &mut tool_call_state, &mut thinking_state).is_some());
+    assert!(!interpret(&mut adapter, delta).is_empty());
 
     let stop = StreamingEvent::ContentBlockStop { index: 2 };
-    match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+    match interpret(&mut adapter, stop)
+        .last()
         .expect("the stop emits the lifecycle end")
-        .expect("not an error")
     {
-        RawStreamingChoice::ReasoningEnd {
-            id,
-            reasoning: None,
-            signature: None,
-            wire_sent: true,
+        StreamEvent::BlockEnd {
+            id: end_id,
+            end:
+                BlockClose::Reasoning {
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: true,
+                },
+            ..
         } => {
-            assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(2));
+            assert_eq!(*end_id, id);
         }
         other => panic!("Expected a bare lifecycle end, got {other:?}"),
     }
@@ -680,8 +750,7 @@ fn thinking_block_start_text_streams_as_the_first_delta() {
 /// A block with neither text nor signature carries nothing to replay.
 #[test]
 fn wholly_empty_thinking_block_is_dropped() {
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
+    let mut adapter = adapter();
 
     let start = StreamingEvent::ContentBlockStart {
         index: 0,
@@ -690,19 +759,23 @@ fn wholly_empty_thinking_block_is_dropped() {
             signature: None,
         },
     };
-    assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+    assert!(interpret(&mut adapter, start).is_empty());
 
     let stop = StreamingEvent::ContentBlockStop { index: 0 };
     // The stop emits a bare lifecycle end; with nothing streamed and no
     // signature, the shared accumulator records no part (a bare end for
     // a never-opened key is a no-op).
-    match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+    match interpret(&mut adapter, stop)
+        .last()
         .expect("the stop emits the lifecycle end")
-        .expect("not an error")
     {
-        RawStreamingChoice::ReasoningEnd {
-            reasoning: None,
-            signature: None,
+        StreamEvent::BlockEnd {
+            end:
+                BlockClose::Reasoning {
+                    reasoning: None,
+                    signature: None,
+                    ..
+                },
             ..
         } => {}
         other => panic!("Expected a bare lifecycle end, got {other:?}"),
@@ -718,18 +791,28 @@ fn test_handle_text_delta_event() {
         },
     };
 
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let mut adapter = adapter();
+    let events = interpret(&mut adapter, event);
 
-    assert!(result.is_some());
-    let choice = result.unwrap().unwrap();
-
-    match choice {
-        RawStreamingChoice::Message(text) => {
+    // A bare text delta with no open text block opens a minted one first.
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0],
+        StreamEvent::BlockStart {
+            kind: BlockKind::Text {
+                additional_params: None
+            },
+            ..
+        }
+    ));
+    match &events[1] {
+        StreamEvent::BlockDelta {
+            delta: Delta::Text { text },
+            ..
+        } => {
             assert_eq!(text, "Hello, world!");
         }
-        _ => panic!("Expected Message choice"),
+        other => panic!("Expected a text delta, got {other:?}"),
     }
 }
 
@@ -744,19 +827,18 @@ fn test_handle_text_block_start_event() {
         },
     };
 
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let mut adapter = adapter();
+    let events = interpret(&mut adapter, event);
 
-    assert!(result.is_some());
-    let choice = result.unwrap().unwrap();
-    assert!(matches!(
-        choice,
-        RawStreamingChoice::TextStart {
-            additional_params: None,
-            ..
-        }
-    ));
+    assert_eq!(
+        events,
+        vec![StreamEvent::BlockStart {
+            id: crate::streaming::MintKind::Block.for_wire_index(0),
+            kind: BlockKind::Text {
+                additional_params: None
+            },
+        }]
+    );
 }
 
 #[test]
@@ -769,23 +851,23 @@ fn test_thinking_delta_does_not_interfere_with_tool_calls() {
         },
     };
 
-    let mut tool_call_state = Some("tool_123".to_string());
-    let mut thinking_state = None;
+    let mut adapter = adapter();
+    adapter.current_tool_call = Some("tool_123".to_string());
 
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let events = interpret(&mut adapter, event);
 
-    assert!(result.is_some());
-    let choice = result.unwrap().unwrap();
-
-    match choice {
-        RawStreamingChoice::ReasoningDelta { reasoning, .. } => {
-            assert_eq!(reasoning, "Thinking while tool is active...");
+    match events.last() {
+        Some(StreamEvent::BlockDelta {
+            delta: Delta::Reasoning { text },
+            ..
+        }) => {
+            assert_eq!(text, "Thinking while tool is active...");
         }
-        _ => panic!("Expected ReasoningDelta choice"),
+        other => panic!("Expected a reasoning delta, got {other:?}"),
     }
 
     // Tool call state should remain unchanged
-    assert!(tool_call_state.is_some());
+    assert!(adapter.current_tool_call.is_some());
 }
 
 #[test]
@@ -797,35 +879,39 @@ fn test_handle_input_json_delta_event() {
         },
     };
 
-    let mut tool_call_state = Some("tool_123".to_string());
-    let mut thinking_state = None;
+    let mut adapter = adapter();
+    adapter.current_tool_call = Some("tool_123".to_string());
 
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let events = interpret(&mut adapter, event);
 
-    // Should emit a ToolCallDelta
-    assert!(result.is_some());
-    let choice = result.unwrap().unwrap();
-
-    match choice {
-        RawStreamingChoice::ToolCallDelta { id, content } => {
-            assert_eq!(id, crate::streaming::BlockId::wire("tool_123"));
-            match content {
-                ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
-                _ => panic!("Expected Delta content"),
-            }
-        }
-        _ => panic!("Expected ToolCallDelta choice, got {choice:?}"),
-    }
+    // Should emit an arguments delta for the open call (the helper opens
+    // the block first, since this adapter never saw its start).
+    let id = crate::streaming::BlockId::wire("tool_123");
+    assert_eq!(
+        events,
+        vec![
+            StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: BlockKind::ToolCall,
+            },
+            StreamEvent::BlockDelta {
+                id,
+                delta: Delta::ToolArguments {
+                    arguments: "{\"arg\":\"value".to_string(),
+                },
+            },
+        ]
+    );
 
     // The open block stays open; assembly of the fragment happens in the
     // shared accumulator.
-    assert!(tool_call_state.is_some());
+    assert!(adapter.current_tool_call.is_some());
 }
 
 #[test]
 fn test_tool_call_accumulation_with_multiple_deltas() {
-    let mut tool_call_state = Some("tool_123".to_string());
-    let mut thinking_state = None;
+    let mut adapter = adapter();
+    adapter.current_tool_call = Some("tool_123".to_string());
 
     // First delta
     let event1 = StreamingEvent::ContentBlockDelta {
@@ -834,8 +920,7 @@ fn test_tool_call_accumulation_with_multiple_deltas() {
             partial_json: "{\"location\":".to_string(),
         },
     };
-    let result1 = handle_event(&event1, &mut tool_call_state, &mut thinking_state);
-    assert!(result1.is_some());
+    assert!(!interpret(&mut adapter, event1).is_empty());
 
     // Second delta
     let event2 = StreamingEvent::ContentBlockDelta {
@@ -844,8 +929,7 @@ fn test_tool_call_accumulation_with_multiple_deltas() {
             partial_json: "\"Paris\",".to_string(),
         },
     };
-    let result2 = handle_event(&event2, &mut tool_call_state, &mut thinking_state);
-    assert!(result2.is_some());
+    assert!(!interpret(&mut adapter, event2).is_empty());
 
     // Third delta
     let event3 = StreamingEvent::ContentBlockDelta {
@@ -854,32 +938,34 @@ fn test_tool_call_accumulation_with_multiple_deltas() {
             partial_json: "\"temp\":\"20C\"}".to_string(),
         },
     };
-    let result3 = handle_event(&event3, &mut tool_call_state, &mut thinking_state);
-    assert!(result3.is_some());
+    assert!(!interpret(&mut adapter, event3).is_empty());
 
-    assert!(tool_call_state.is_some());
+    assert!(adapter.current_tool_call.is_some());
 
     // Final ContentBlockStop hands the block to the shared accumulator,
     // which finalizes the assembled fragments (`Error` policy: a stopped
     // block promised complete input). End-to-end assembly of exactly this
-    // fragment sequence is pinned in `streaming::parts` unit tests.
+    // fragment sequence is pinned in `streaming::accumulator` unit tests.
     let stop_event = StreamingEvent::ContentBlockStop { index: 0 };
-    let final_result = handle_event(&stop_event, &mut tool_call_state, &mut thinking_state);
-    assert!(final_result.is_some());
+    let events = interpret(&mut adapter, stop_event);
 
-    match final_result.unwrap().unwrap() {
-        RawStreamingChoice::ToolInputEnd(end) => {
-            assert_eq!(end.id, crate::streaming::BlockId::wire("tool_123"));
+    match events.last() {
+        Some(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::ToolCall(end),
+            ..
+        }) => {
+            assert_eq!(*id, crate::streaming::BlockId::wire("tool_123"));
             assert!(matches!(
                 end.on_unparseable,
                 crate::streaming::UnparseableToolInput::Error
             ));
         }
-        other => panic!("Expected ToolInputEnd, got {other:?}"),
+        other => panic!("Expected a tool-call end, got {other:?}"),
     }
 
     // Tool call state should be taken
-    assert!(tool_call_state.is_none());
+    assert!(adapter.current_tool_call.is_none());
 }
 
 #[test]
@@ -1126,27 +1212,19 @@ fn test_code_execution_tool_result_block_is_preserved() {
         }
     }))
     .unwrap();
-    let mut tool_call_state = None;
-    let mut server_tool_uses = HashMap::new();
-    let mut thinking_state = None;
+    let mut adapter = adapter();
 
-    let choice = super::handle_event(
-        &event,
-        &mut tool_call_state,
-        &mut server_tool_uses,
-        &mut thinking_state,
-    )
-    .expect("code_execution_tool_result block should produce raw metadata")
-    .unwrap();
-
-    let RawStreamingChoice::TextStart {
+    let events = interpret(&mut adapter, event);
+    let Some(StreamEvent::BlockStart {
         id,
-        additional_params: Some(additional_params),
-    } = choice
+        kind: BlockKind::Text {
+            additional_params: Some(additional_params),
+        },
+    }) = events.first()
     else {
         panic!("expected text-start metadata for code_execution_tool_result");
     };
-    assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(1));
+    assert_eq!(*id, crate::streaming::MintKind::Block.for_wire_index(1));
     assert_eq!(
         additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
         "code_execution_tool_result"
@@ -1160,132 +1238,113 @@ fn test_code_execution_tool_result_block_is_preserved() {
 
 #[tokio::test]
 async fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
-    let raw_stream = stream! {
-        let mut tool_call_state = None;
-        let mut server_tool_uses = HashMap::new();
-        let mut thinking_state = None;
+    let mut adapter = adapter();
+    let mut out = AdapterOutput::new();
 
-        let server_tool_use_start = super::handle_event(
-            &StreamingEvent::ContentBlockStart {
-                index: 0,
-                content_block: Content::ServerToolUse {
-                    id: "srvtoolu_01".to_string(),
-                    name: "web_search".to_string(),
-                    input: serde_json::Value::Null,
-                },
+    adapter.interpret(
+        StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::ServerToolUse {
+                id: "srvtoolu_01".to_string(),
+                name: "web_search".to_string(),
+                input: serde_json::Value::Null,
             },
-            &mut tool_call_state,
-            &mut server_tool_uses,
-            &mut thinking_state,
-        );
-        assert!(
-            server_tool_use_start.is_none(),
-            "server_tool_use start should be accumulated until its input JSON is complete"
-        );
+        },
+        &mut out,
+    );
+    assert!(
+        out.is_empty(),
+        "server_tool_use start should be accumulated until its input JSON is complete"
+    );
 
-        let server_tool_use_delta = super::handle_event(
-            &StreamingEvent::ContentBlockDelta {
-                index: 0,
-                delta: ContentDelta::InputJsonDelta {
-                    partial_json: r#"{"query":"claude shannon birth date"}"#.to_string(),
-                },
+    adapter.interpret(
+        StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::InputJsonDelta {
+                partial_json: r#"{"query":"claude shannon birth date"}"#.to_string(),
             },
-            &mut tool_call_state,
-            &mut server_tool_uses,
-            &mut thinking_state,
-        );
-        assert!(
-            server_tool_use_delta.is_none(),
-            "server_tool_use input JSON should not be emitted as a Rig tool-call delta"
-        );
+        },
+        &mut out,
+    );
+    assert!(
+        out.is_empty(),
+        "server_tool_use input JSON should not be emitted as a Rig tool-call delta"
+    );
 
-        yield super::handle_event(
-            &StreamingEvent::ContentBlockStop { index: 0 },
-            &mut tool_call_state,
-            &mut server_tool_uses,
-            &mut thinking_state,
-        )
-        .expect("server_tool_use stop should produce completed raw metadata");
+    adapter.interpret(StreamingEvent::ContentBlockStop { index: 0 }, &mut out);
+    assert_eq!(
+        out.len(),
+        1,
+        "server_tool_use stop should produce completed raw metadata"
+    );
 
-        yield super::handle_event(
-            &StreamingEvent::ContentBlockStart {
-                index: 1,
-                content_block: Content::WebSearchToolResult {
-                    tool_use_id: "srvtoolu_01".to_string(),
-                    content: serde_json::json!([{
-                        "type": "web_search_result",
-                        "url": "https://example.com/shannon",
-                        "title": "Claude Shannon",
-                        "encrypted_content": "encrypted-content"
-                    }]),
-                },
+    adapter.interpret(
+        StreamingEvent::ContentBlockStart {
+            index: 1,
+            content_block: Content::WebSearchToolResult {
+                tool_use_id: "srvtoolu_01".to_string(),
+                content: serde_json::json!([{
+                    "type": "web_search_result",
+                    "url": "https://example.com/shannon",
+                    "title": "Claude Shannon",
+                    "encrypted_content": "encrypted-content"
+                }]),
             },
-            &mut tool_call_state,
-            &mut server_tool_uses,
-            &mut thinking_state,
-        )
-        .expect("web_search_tool_result block should produce raw metadata");
+        },
+        &mut out,
+    );
+    assert_eq!(
+        out.len(),
+        2,
+        "web_search_tool_result block should produce raw metadata"
+    );
 
-        yield super::handle_event(
-            &StreamingEvent::ContentBlockStart {
-                index: 2,
-                content_block: Content::Text {
-                    text: String::new(),
-                    citations: Vec::new(),
-                    cache_control: None,
-                },
+    adapter.interpret(
+        StreamingEvent::ContentBlockStart {
+            index: 2,
+            content_block: Content::Text {
+                text: String::new(),
+                citations: Vec::new(),
+                cache_control: None,
             },
-            &mut tool_call_state,
-            &mut server_tool_uses,
-            &mut thinking_state,
-        )
-        .expect("text block start should produce a raw choice");
-
-        yield super::handle_event(
-            &StreamingEvent::ContentBlockDelta {
-                index: 2,
-                delta: ContentDelta::TextDelta {
-                    text: "Claude Shannon was born on April 30, 1916.".to_string(),
-                },
+        },
+        &mut out,
+    );
+    adapter.interpret(
+        StreamingEvent::ContentBlockDelta {
+            index: 2,
+            delta: ContentDelta::TextDelta {
+                text: "Claude Shannon was born on April 30, 1916.".to_string(),
             },
-            &mut tool_call_state,
-            &mut server_tool_uses,
-            &mut thinking_state,
-        )
-        .expect("text delta should produce a raw choice");
-
-        yield super::handle_event(
-            &StreamingEvent::ContentBlockDelta {
-                index: 2,
-                delta: ContentDelta::CitationsDelta {
-                    citation: crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
+        },
+        &mut out,
+    );
+    adapter.interpret(
+        StreamingEvent::ContentBlockDelta {
+            index: 2,
+            delta: ContentDelta::CitationsDelta {
+                citation:
+                    crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
                         crate::providers::anthropic::completion::WebSearchResultLocationCitation {
-                            cited_text: "Claude Shannon was born on April 30, 1916."
-                                .to_string(),
+                            cited_text: "Claude Shannon was born on April 30, 1916.".to_string(),
                             url: "https://example.com/shannon".to_string(),
                             title: Some("Claude Shannon".to_string()),
                             encrypted_index: "encrypted-index".to_string(),
                         },
                     ),
-                },
             },
-            &mut tool_call_state,
-            &mut server_tool_uses,
-            &mut thinking_state,
-        )
-        .expect("citation delta should produce a raw choice");
-
-        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse::default()));
-    };
+        },
+        &mut out,
+    );
+    adapter.interpret(message_delta("end_turn", PartialUsage::default()), &mut out);
 
     let mut stream = crate::streaming::StreamingCompletionResponse::stream(
         "anthropic",
-        to_stream_result(raw_stream),
+        to_stream_result(out.into_items()),
     );
     while stream.next().await.is_some() {}
 
-    let choice_items: Vec<crate::message::AssistantContent> =
-        stream.choice.clone().into_iter().collect();
+    let choice_items = stream.snapshot();
     assert_eq!(choice_items.len(), 3);
     assert!(
         choice_items
@@ -1348,14 +1407,15 @@ fn test_handle_citations_delta_event_preserves_metadata() {
         },
     };
 
-    let mut tool_call_state = None;
-    let mut thinking_state = None;
-    let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
+    let mut adapter = adapter();
+    let events = interpret(&mut adapter, event);
 
-    assert!(result.is_some());
-    let choice = result.unwrap().unwrap();
-    let RawStreamingChoice::TextAdditionalParams(additional_params) = choice else {
-        panic!("expected TextAdditionalParams choice");
+    let Some(StreamEvent::BlockDelta {
+        delta: Delta::TextMeta { additional_params },
+        ..
+    }) = events.last()
+    else {
+        panic!("expected a text-metadata delta, got {events:?}");
     };
     assert_eq!(additional_params["citations"][0]["type"], "char_location");
 }
@@ -1372,12 +1432,11 @@ async fn test_streaming_citation_deltas_are_preserved_on_final_text() {
         },
     );
 
-    let raw_stream = stream! {
-        let mut tool_call_state = None;
-        let mut thinking_state = None;
-
-        yield handle_event(
-            &StreamingEvent::ContentBlockStart {
+    let mut adapter = adapter();
+    let items = interpret_all(
+        &mut adapter,
+        [
+            StreamingEvent::ContentBlockStart {
                 index: 0,
                 content_block: Content::Text {
                     text: String::new(),
@@ -1385,54 +1444,27 @@ async fn test_streaming_citation_deltas_are_preserved_on_final_text() {
                     cache_control: None,
                 },
             },
-            &mut tool_call_state,
-            &mut thinking_state,
-        )
-        .expect("text block start should produce a raw choice");
-
-        yield handle_event(
-            &StreamingEvent::ContentBlockDelta {
+            StreamingEvent::ContentBlockDelta {
                 index: 0,
                 delta: ContentDelta::TextDelta {
                     text: "the grass is green".to_string(),
                 },
             },
-            &mut tool_call_state,
-            &mut thinking_state,
-        )
-        .expect("text delta should produce a raw choice");
-
-        yield handle_event(
-            &StreamingEvent::ContentBlockDelta {
+            StreamingEvent::ContentBlockDelta {
                 index: 0,
                 delta: ContentDelta::CitationsDelta {
-                    citation: crate::providers::anthropic::completion::Citation::CharLocation(
-                        crate::providers::anthropic::completion::CharLocationCitation {
-                            cited_text: "The grass is green.".to_string(),
-                            document_index: 0,
-                            document_title: Some("Example".to_string()),
-                            start_char_index: 0,
-                            end_char_index: 20,
-                        },
-                    ),
+                    citation: citation.clone(),
                 },
             },
-            &mut tool_call_state,
-            &mut thinking_state,
-        )
-        .expect("citation delta should produce a raw choice");
-
-        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse::default()));
-    };
-
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
-        "anthropic",
-        to_stream_result(raw_stream),
+            message_delta("end_turn", PartialUsage::default()),
+        ],
     );
+
+    let mut stream =
+        crate::streaming::StreamingCompletionResponse::stream("anthropic", to_stream_result(items));
     while stream.next().await.is_some() {}
 
-    let choice_items: Vec<crate::message::AssistantContent> =
-        stream.choice.clone().into_iter().collect();
+    let choice_items = stream.snapshot();
     let Some(crate::message::AssistantContent::Text(text)) = choice_items.first() else {
         panic!("expected accumulated text item");
     };
@@ -1452,7 +1484,7 @@ async fn test_streaming_citation_deltas_are_preserved_on_final_text() {
 /// no-op — see the dedicated tests below.
 #[test]
 fn classify_dispatches_on_the_known_event_list() {
-    let adapter = AnthropicAdapter::default();
+    let adapter = adapter();
 
     let frame = WireFrame::Text(r#"{"type":"something_new_from_anthropic","field":"x"}"#.into());
     assert!(matches!(
@@ -1480,16 +1512,17 @@ fn classify_dispatches_on_the_known_event_list() {
 /// stream continues.
 #[test]
 fn novel_nested_delta_type_is_a_known_noop() {
-    let adapter = AnthropicAdapter::default();
+    let classifier = adapter();
     let frame = WireFrame::Text(
         r#"{"type":"content_block_delta","index":0,"delta":{"type":"banana_delta","x":1}}"#.into(),
     );
-    let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(frame) else {
+    let crate::providers::internal::wire::WireEvent::Known(event) = classifier.classify(frame)
+    else {
         panic!("a novel nested delta type must stay a Known event");
     };
 
-    let mut adapter = AnthropicAdapter::default();
-    let mut out = Vec::new();
+    let mut adapter = adapter();
+    let mut out = AdapterOutput::new();
     adapter.interpret(event, &mut out);
     assert!(out.is_empty(), "an unmodeled nested delta is a no-op");
 }
@@ -1502,8 +1535,8 @@ fn novel_nested_delta_type_is_a_known_noop() {
 /// cassettes, whose `message_start` frames hold the split.
 #[test]
 fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
-    let mut adapter = AnthropicAdapter::default();
-    let mut out = Vec::new();
+    let mut adapter = adapter();
+    let mut out = AdapterOutput::new();
 
     let start = WireFrame::Text(
         r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":9366,"ephemeral_5m_input_tokens":336}}}}"#
@@ -1526,19 +1559,21 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     let terminal = out
         .iter()
         .find_map(|item| match item {
-            Ok(crate::streaming::RawStreamingChoice::FinalResponse(response)) => {
-                Some(response.clone())
-            }
+            Ok(StreamEvent::Final(record)) => Some(record.clone()),
             _ => None,
         })
-        .expect("terminal message_delta must yield a final response");
-    let split = terminal
+        .expect("terminal message_delta must yield a final record");
+    // The native record rides on `raw`; the split is Anthropic-specific, so
+    // it is readable only there.
+    let native: StreamingCompletionResponse =
+        serde_json::from_value(terminal.raw).expect("raw must be the native terminal");
+    let split = native
         .usage
         .cache_creation
         .expect("terminal usage must carry the message_start cache_creation split");
     assert_eq!(split.ephemeral_1h_input_tokens, 9366);
     assert_eq!(split.ephemeral_5m_input_tokens, 336);
-    assert_eq!(terminal.usage.cache_creation_input_tokens, Some(9702));
+    assert_eq!(native.usage.cache_creation_input_tokens, Some(9702));
 }
 
 /// A `content_block_delta` whose `delta` omits `type` is malformed, not
@@ -1548,7 +1583,7 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
 /// (#2258 B5).
 #[test]
 fn delta_missing_its_type_is_corrupt_not_skipped() {
-    let adapter = AnthropicAdapter::default();
+    let adapter = adapter();
     let frame = WireFrame::Text(
         r#"{"type":"content_block_delta","index":0,"delta":{"text":"hello"}}"#.into(),
     );
@@ -1563,7 +1598,7 @@ fn delta_missing_its_type_is_corrupt_not_skipped() {
 /// `Corrupt` instead of degrading to an `Unknown` no-op.
 #[test]
 fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
-    let adapter = AnthropicAdapter::default();
+    let adapter = adapter();
     let frame = WireFrame::Text(
         r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":42}}"#
             .into(),
@@ -1580,20 +1615,21 @@ fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
 /// no `message_delta` follows, the stream ends with no terminal record.
 #[test]
 fn top_level_error_event_surfaces_as_a_provider_error() {
-    let adapter = AnthropicAdapter::default();
+    let classifier = adapter();
     let frame = WireFrame::Text(
         r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#.into(),
     );
-    let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(frame) else {
+    let crate::providers::internal::wire::WireEvent::Known(event) = classifier.classify(frame)
+    else {
         panic!("the error envelope must classify as a Known event");
     };
 
-    let mut adapter = AnthropicAdapter::default();
-    let mut out = Vec::new();
+    let mut adapter = adapter();
+    let mut out = AdapterOutput::new();
     adapter.interpret(event, &mut out);
 
     assert_eq!(out.len(), 1, "the error envelope maps to one error item");
-    let Some(Err(error)) = out.pop() else {
+    let Some(Err(error)) = out.into_items().pop() else {
         panic!("the error envelope must surface as an Err item");
     };
     let body = error
@@ -1609,24 +1645,30 @@ fn top_level_error_event_surfaces_as_a_provider_error() {
 /// Known no-op, not a corrupt frame.
 #[test]
 fn message_start_with_null_message_is_a_known_noop() {
-    let adapter = AnthropicAdapter::default();
+    let classifier = adapter();
     let frame = WireFrame::Text(r#"{"type":"message_start","message":null}"#.into());
-    let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(frame) else {
+    let crate::providers::internal::wire::WireEvent::Known(event) = classifier.classify(frame)
+    else {
         panic!("null-message message_start must stay a known event");
     };
 
-    let mut adapter = AnthropicAdapter::default();
-    let mut out = Vec::new();
+    let mut adapter = adapter();
+    let mut out = AdapterOutput::new();
     adapter.interpret(event, &mut out);
     assert!(out.is_empty(), "a message-less message_start is a no-op");
 }
 
 #[tokio::test]
 async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
-    let raw_stream = stream! {
-        yield Ok(RawStreamingChoice::Message("hi".to_string()));
-        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            usage: PartialUsage {
+    let mut adapter = adapter();
+    let mut out = AdapterOutput::new();
+    adapter.message_id = Some("msg_1".to_string());
+    adapter.response_model = Some(CLAUDE_OPUS_4_8.to_string());
+    out.text("hi");
+    adapter.interpret(
+        message_delta(
+            "max_tokens",
+            PartialUsage {
                 output_tokens: 5,
                 input_tokens: Some(3),
                 cache_creation_input_tokens: None,
@@ -1634,17 +1676,13 @@ async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
                 cache_read_input_tokens: Some(2),
                 output_tokens_details: None,
             },
-            stop_reason: Some("max_tokens".to_string()),
-            stop_sequence: None,
-            message_id: Some("msg_1".to_string()),
-            model: Some(CLAUDE_OPUS_4_8.to_string()),
-            provider_request_id: None,
-        }));
-    };
+        ),
+        &mut out,
+    );
 
     let mut stream = crate::streaming::StreamingCompletionResponse::stream(
         "anthropic",
-        to_stream_result(raw_stream),
+        to_stream_result(out.into_items()),
     );
     while stream.next().await.is_some() {}
 
@@ -1665,23 +1703,19 @@ async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
 #[tokio::test]
 async fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() {
     // Anthropic normally reports `tool_use`, but the reconciliation
-    // `normalize_stream` applies must hold whenever the turn actually
-    // emitted a tool call.
-    let raw_stream = stream! {
-        yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
-            "toolu_1".to_string(),
-            "add".to_string(),
-            json!({"x": 1}),
-        )));
-        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            stop_reason: Some("end_turn".to_string()),
-            ..Default::default()
-        }));
-    };
+    // `StreamingCompletionResponse` applies must hold whenever the turn
+    // actually emitted a tool call.
+    let mut adapter = adapter();
+    let mut out = AdapterOutput::new();
+    out.tool_call(
+        crate::streaming::BlockId::wire("toolu_1"),
+        ToolCallEnd::whole("add", json!({"x": 1})).with_tool_id("toolu_1"),
+    );
+    adapter.interpret(message_delta("end_turn", PartialUsage::default()), &mut out);
 
     let mut stream = crate::streaming::StreamingCompletionResponse::stream(
         "anthropic",
-        to_stream_result(raw_stream),
+        to_stream_result(out.into_items()),
     );
     while stream.next().await.is_some() {}
 
@@ -1694,17 +1728,14 @@ async fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_c
 
 #[tokio::test]
 async fn unknown_stop_reason_survives_onto_the_terminal_record() {
-    let raw_stream = stream! {
-        yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-            stop_reason: Some("pause_turn".to_string()),
-            ..Default::default()
-        }));
-    };
-
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(
-        "anthropic",
-        to_stream_result(raw_stream),
+    let mut adapter = adapter();
+    let items = interpret_all(
+        &mut adapter,
+        [message_delta("pause_turn", PartialUsage::default())],
     );
+
+    let mut stream =
+        crate::streaming::StreamingCompletionResponse::stream("anthropic", to_stream_result(items));
     while stream.next().await.is_some() {}
 
     let terminal = stream.response.expect("expected a terminal record");
@@ -1722,7 +1753,7 @@ mod terminal_emission {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::providers::anthropic::Client;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1766,8 +1797,11 @@ mod terminal_emission {
         let mut saw_terminal = false;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
-                Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                Ok(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                }) => texts.push(text),
+                Ok(StreamEvent::Final(_)) => saw_terminal = true,
                 Ok(_) => {}
                 Err(_) => saw_error = true,
             }
@@ -1818,8 +1852,11 @@ mod terminal_emission {
         let mut saw_terminal = false;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
-                Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                Ok(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                }) => texts.push(text),
+                Ok(StreamEvent::Final(_)) => saw_terminal = true,
                 Ok(_) => {}
                 Err(_) => saw_error = true,
             }
@@ -1971,8 +2008,8 @@ mod terminal_emission {
 
     /// Raw capture on the streaming terminal, through the real
     /// `CompletionModel::stream` seam over the mock transport:
-    /// `normalize_stream` serializes the terminal before mapping it, so
-    /// the terminal `StreamFinal.raw` is Anthropic's own
+    /// the adapter serializes the native terminal onto the record it maps,
+    /// so the terminal `StreamFinal.raw` is Anthropic's own
     /// `StreamingCompletionResponse`. A `message_delta` with
     /// `stop_sequence` set is used because the normalized terminal folds
     /// it into `FinishReason::Stop` and keeps neither Anthropic's spelling
@@ -2012,7 +2049,8 @@ mod terminal_emission {
 
         // Re-normalizing the capture tells the same story as the terminal
         // the stream produced.
-        let renormalized = crate::streaming::StreamFinal::from(("anthropic", typed));
+        let renormalized =
+            super::super::terminal_record("anthropic", &typed).expect("re-normalize the capture");
         assert_eq!(terminal.identity(), renormalized.identity());
         assert_eq!(terminal.finish_reason, renormalized.finish_reason);
         assert_eq!(terminal.model, renormalized.model);

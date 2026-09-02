@@ -191,7 +191,7 @@ fn streaming_terminal_record_is_normalized() {
         eval_duration: None,
     };
 
-    let final_record = StreamFinal::from(terminal);
+    let final_record = stream_final(terminal);
     assert_eq!(final_record.provider, PROVIDER_NAME);
     assert_eq!(final_record.model.as_deref(), Some("llama3.2"));
     assert_eq!(
@@ -1325,7 +1325,7 @@ fn ndjson_buffer_yields_parseable_chunks_when_split_arbitrarily() {
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1349,8 +1349,11 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(_) => saw_terminal = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(_) => saw_terminal = true,
             _ => {}
         }
     }
@@ -1370,7 +1373,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1400,8 +1403,11 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
-            Ok(StreamedAssistantContent::Final(final_response)) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => texts.push(text),
+            Ok(StreamEvent::Final(final_response)) => {
                 terminal = Some(final_response);
             }
             Ok(_) => {}
@@ -1423,7 +1429,7 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
 async fn content_after_the_done_record_is_not_yielded() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1451,14 +1457,19 @@ async fn content_after_the_done_record_is_not_yielded() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(final_response) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(final_response) => {
                 assert!(
                     terminal.is_none(),
                     "the terminal record must be yielded exactly once"
                 );
                 terminal = Some(final_response);
             }
+            // The text block's minted start/end bracket the deltas.
+            StreamEvent::BlockStart { .. } | StreamEvent::BlockEnd { .. } => {}
             other => panic!("unexpected stream item: {other:?}"),
         }
     }

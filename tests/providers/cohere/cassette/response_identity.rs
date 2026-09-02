@@ -36,7 +36,7 @@ async fn nonstreaming_request_id_is_none_by_design() {
 #[tokio::test]
 async fn streaming_request_id_is_none_by_design() {
     use futures::StreamExt;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::StreamEvent;
 
     with_cohere_cassette(
         "response_identity/streaming_request_id_is_none_by_design",
@@ -51,8 +51,7 @@ async fn streaming_request_id_is_none_by_design() {
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }

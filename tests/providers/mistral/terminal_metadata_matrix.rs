@@ -43,7 +43,7 @@ use futures::StreamExt as _;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::mistral;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::with_mistral_terminal_metadata_cassette_result;
@@ -138,15 +138,15 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedObservati
             serde_json::to_value(response)?
         }
         Transport::Streaming => {
-            let mut stream = model.raw_stream(request).await?;
+            let mut stream = model.stream(request).await?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let RawStreamingChoice::FinalResponse(response) = item? {
+                if let StreamEvent::Final(response) = item? {
                     terminal = Some(response);
                 }
             }
             let terminal = terminal.context("raw stream should carry a terminal response")?;
-            serde_json::to_value(terminal)?
+            terminal.raw
         }
     };
 

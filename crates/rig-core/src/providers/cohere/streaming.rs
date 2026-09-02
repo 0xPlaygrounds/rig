@@ -10,14 +10,9 @@ use crate::providers::internal::sse_transport::{
     OpenLog, SseTransportOptions, open_wire_stream, skip_blank_and_done,
 };
 use crate::providers::internal::wire;
-use crate::streaming::{
-    BlockId, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, ToolCallDeltaContent,
-    ToolInputEnd, UnparseableToolInput,
-};
+use crate::streaming::{BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 
-/// Cohere thinking deltas carry no id; a per-stream constant minted identity
-/// keys their accumulation and can never reach a request.
 use crate::{json_utils, streaming};
 use serde::{Deserialize, Serialize};
 
@@ -100,8 +95,9 @@ struct MessageEndDelta {
     finish_reason: Option<FinishReason>,
 }
 
-/// Cohere's terminal stream record, kept provider-native for
-/// [`CompletionModel::raw_stream`].
+/// Cohere's terminal stream record: the `message-end` payload as rig parsed
+/// it, serialized onto [`StreamFinal::raw`] by the adapter's terminal
+/// mapping.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
@@ -111,26 +107,6 @@ pub struct StreamingCompletionResponse {
     /// The `message-start` event's message identifier, when reported.
     #[serde(default)]
     pub message_id: Option<String>,
-}
-
-impl From<&StreamingCompletionResponse> for crate::completion::Usage {
-    fn from(response: &StreamingCompletionResponse) -> crate::completion::Usage {
-        response
-            .usage
-            .as_ref()
-            .map(crate::completion::Usage::from)
-            .unwrap_or_default()
-    }
-}
-
-impl From<StreamingCompletionResponse> for StreamFinal {
-    fn from(response: StreamingCompletionResponse) -> StreamFinal {
-        // Cohere's streaming events carry no model identifier, so the
-        // normalized `model` stays unset.
-        StreamFinal::new(PROVIDER_NAME, crate::completion::Usage::from(&response))
-            .with_optional_finish_reason(response.finish_reason.as_ref().map(map_finish_reason))
-            .with_optional_response_id(response.message_id)
-    }
 }
 
 /// The Cohere v2 chat SSE wire as a [`WireAdapter`].
@@ -165,7 +141,6 @@ impl Default for CohereAdapter {
 impl WireAdapter for CohereAdapter {
     type Frame = WireFrame;
     type Event = StreamingEvent;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: WireFrame) -> wire::WireEvent<StreamingEvent> {
         wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
@@ -173,7 +148,7 @@ impl WireAdapter for CohereAdapter {
         })
     }
 
-    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput<Self::Response>) {
+    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
         match event {
             StreamingEvent::MessageStart { id: Some(id) } => {
                 self.message_id = Some(id);
@@ -215,13 +190,28 @@ impl WireAdapter for CohereAdapter {
                     .map(crate::completion::Usage::from)
                     .unwrap_or_default();
                 span.record_token_usage(&recorded_usage);
-                out.push(Ok(RawStreamingChoice::FinalResponse(
-                    StreamingCompletionResponse {
-                        usage,
-                        finish_reason,
-                        message_id: self.message_id.take(),
-                    },
-                )));
+                let native = StreamingCompletionResponse {
+                    usage,
+                    finish_reason,
+                    message_id: self.message_id.take(),
+                };
+                let raw = match serde_json::to_value(&native) {
+                    Ok(raw) => raw,
+                    Err(err) => {
+                        out.error(err.into());
+                        return;
+                    }
+                };
+                // Cohere's streaming events carry no model identifier, so the
+                // normalized `model` stays unset.
+                out.final_record(
+                    StreamFinal::new(PROVIDER_NAME, recorded_usage)
+                        .with_optional_finish_reason(
+                            native.finish_reason.as_ref().map(map_finish_reason),
+                        )
+                        .with_optional_response_id(native.message_id)
+                        .with_raw(raw),
+                );
             }
 
             StreamingEvent::ToolCallStart { delta: Some(delta) } => {
@@ -246,17 +236,13 @@ impl WireAdapter for CohereAdapter {
 
                 self.current_tool_call = Some(id.clone());
 
-                let mut tool_events = vec![RawStreamingChoice::ToolCallDelta {
-                    id: BlockId::wire(id.clone()),
-                    content: ToolCallDeltaContent::Name(name),
-                }];
+                let key = BlockId::wire(id);
+                let mut tool_events = AdapterOutput::new();
+                tool_events.tool_name(&key, name);
                 // `tool-call-start` may carry initial argument text; on the
                 // wire it is empty, but any payload must still enter assembly.
                 if !arguments.is_empty() {
-                    tool_events.push(RawStreamingChoice::ToolCallDelta {
-                        id: BlockId::wire(id),
-                        content: ToolCallDeltaContent::Delta(arguments),
-                    });
+                    tool_events.tool_arguments(&key, arguments);
                 }
                 // Tool content interleaving an open thinking block: the
                 // shared lifecycle synthesizes the boundary end.
@@ -265,7 +251,11 @@ impl WireAdapter for CohereAdapter {
                         reasoning: None,
                         reasoning_signature: None,
                         text: None,
-                        tool_events,
+                        tool_events: tool_events
+                            .into_items()
+                            .into_iter()
+                            .filter_map(Result::ok)
+                            .collect(),
                     },
                     out,
                 );
@@ -292,10 +282,7 @@ impl WireAdapter for CohereAdapter {
                 };
 
                 // Emit the delta so UI can show progress
-                out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: BlockId::wire(id),
-                    content: ToolCallDeltaContent::Delta(arguments),
-                }));
+                out.tool_arguments(&BlockId::wire(id), arguments);
             }
 
             StreamingEvent::ToolCallEnd => {
@@ -304,17 +291,17 @@ impl WireAdapter for CohereAdapter {
                 };
                 // Unparseable assembled input drops in the accumulator,
                 // matching the old skip.
-                out.push(Ok(RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(
-                    id,
-                    UnparseableToolInput::Drop,
-                ))));
+                out.tool_end(
+                    BlockId::wire(id),
+                    ToolCallEnd::new(UnparseableToolInput::Drop),
+                );
             }
 
             _ => {}
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, _out: &mut AdapterOutput) {
         // Only Cohere's `message-end` event counts as the provider completing
         // the turn. A stream that reached EOF without it (truncation) has no
         // terminal record to report; synthesizing one would present a partial
@@ -326,17 +313,10 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    /// Open a stream whose terminal record stays Cohere-native.
-    ///
-    /// This is the escape hatch for Cohere's own terminal payload; it shares the
-    /// request builder, transport, telemetry, and error handling with
-    /// [`CompletionModel::stream`](crate::completion::CompletionModel::stream),
-    /// which calls it and normalizes the terminal record once through
-    /// [`streaming::normalize_stream`] — one network request either way.
-    pub async fn raw_stream(
+    pub(crate) async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let system_instructions = request.system_instructions().map(str::to_owned);
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
@@ -369,7 +349,7 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        Ok(open_wire_stream(
+        let stream = open_wire_stream(
             GenericEventSource::new(self.client.clone(), req),
             SseTransportOptions {
                 open_log: OpenLog::Trace,
@@ -379,22 +359,11 @@ where
             |data: String| skip_blank_and_done(&data),
             CohereAdapter::default(),
             span,
-        ))
-    }
-
-    pub(crate) async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let stream = self.raw_stream(request).await?;
-        let normalized =
-            streaming::normalize_stream(stream, |response: StreamingCompletionResponse| {
-                Ok(response.into())
-            });
+        );
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            normalized,
+            stream,
         ))
     }
 }

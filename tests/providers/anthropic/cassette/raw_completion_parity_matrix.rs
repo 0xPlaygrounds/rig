@@ -50,7 +50,7 @@ use rig::completion::{
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{RawStreamingChoice, StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use rig::tool::Tool;
 
 use super::super::support::{
@@ -262,29 +262,13 @@ async fn drain_normalized_terminal(
 ) -> StreamFinal {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(final_record) =
+        if let StreamEvent::Final(final_record) =
             item.expect("normalized stream item should succeed")
         {
             terminal = Some(final_record);
         }
     }
     terminal.expect("normalized stream should yield a terminal record")
-}
-
-async fn drain_raw_terminal(
-    mut stream: rig::streaming::RawStreamingResult<
-        anthropic::streaming::StreamingCompletionResponse,
-    >,
-) -> anthropic::streaming::StreamingCompletionResponse {
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        if let RawStreamingChoice::FinalResponse(response) =
-            item.expect("raw stream item should succeed")
-        {
-            terminal = Some(response);
-        }
-    }
-    terminal.expect("raw stream should yield a terminal record")
 }
 
 type ReportedSink = std::sync::Arc<std::sync::Mutex<Vec<Reported>>>;
@@ -338,21 +322,26 @@ async fn streamed_body(
             .expect("`stream` should open"),
     )
     .await;
-    let typed = drain_raw_terminal(
+    // The second route: the same request opened again, read through the
+    // terminal record's `raw` — the provider's own record, serialized.
+    let second_record = drain_normalized_terminal(
         model
-            .raw_stream(build(&model))
+            .stream(build(&model))
             .await
-            .expect("`raw_stream` should open"),
+            .expect("second `stream` should open"),
     )
     .await;
-    assert!(
-        typed.provider_request_id.is_some(),
-        "the raw terminal carries the transport id itself"
+    let typed: anthropic::streaming::StreamingCompletionResponse =
+        serde_json::from_value(second_record.raw.clone())
+            .expect("the terminal's raw is the provider record");
+    assert_eq!(
+        typed.usage.input_tokens.map(|n| n as u64),
+        Some(second_record.usage.input_tokens),
+        "the raw record and the normalized record agree on usage"
     );
-    let via_raw = StreamFinal::from((ANTHROPIC_PROVIDER, typed));
 
     let first = Reported::from_terminal(&normalized);
-    let second = Reported::from_terminal(&via_raw);
+    let second = Reported::from_terminal(&second_record);
     assert_route_parity(&first, &second, expected);
     *sink.lock().expect("sink") = vec![first, second];
 }

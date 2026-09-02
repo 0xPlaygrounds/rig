@@ -19,7 +19,7 @@ use rig::message::{
 };
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde_json::json;
 
 use super::super::support::with_openai_cassette;
@@ -66,22 +66,34 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => run.text.push_str(&text),
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            } => {
                 run.reasoning_blocks.push(reasoning);
             }
-            StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text: reasoning },
+                ..
+            } => {
                 run.reasoning_delta.push_str(&reasoning);
             }
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => {
                 run.tool_calls.push(tool_call);
             }
-            StreamedAssistantContent::Final(response) => run.finals.push(response),
+            StreamEvent::Final(response) => run.finals.push(response),
             _ => {}
         }
     }
 
-    run.choice = stream.choice.clone();
+    run.choice = stream.snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);

@@ -3,11 +3,11 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: `normalize_stream` serializes the value the
-//! inherent `raw_stream` yielded as its `FinalResponse` — the Interactions
-//! API's own [`StreamingCompletionResponse`] terminal record
-//! (`map_stream_final`'s input, built from the `interaction.completed` event)
-//! — onto the terminal [`rig::streaming::StreamFinal::raw`]. There is no
+//! Raw capture is always on: the adapter serializes its provider-native
+//! terminal record — the Interactions API's own
+//! [`StreamingCompletionResponse`], built from the `interaction.completed`
+//! event — onto the terminal [`rig::streaming::StreamFinal::raw`] it yields
+//! as `StreamEvent::Final`. There is no
 //! opt-in and nothing about it reaches the wire; `raw` is `Value::Null` only
 //! on a terminal constructed without a provider stream behind it, never
 //! because capture "was not requested".
@@ -37,7 +37,7 @@ use rig::completion::{CompletionModel as _, FinishReason};
 use rig::prelude::*;
 use rig::providers::gemini::interactions_api::InteractionsCompletionModel;
 use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -64,8 +64,11 @@ async fn stream_to_terminal(
     let mut text = String::new();
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::Final(final_record) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::Final(final_record) => {
                 assert!(
                     terminal.replace(final_record).is_none(),
                     "a stream yields exactly one terminal record"

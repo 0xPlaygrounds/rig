@@ -3,8 +3,10 @@
 use crate::{
     completion::{CompletionError, Usage},
     message::ReasoningContent,
-    streaming::{RawStreamingChoice, RawStreamingToolCall, StreamFinal, ToolCallDeltaContent},
+    streaming::{StreamFinal, ToolCallEnd},
 };
+
+use crate::providers::internal::adapter::AdapterOutput;
 
 /// Provider descriptor name reported by the test doubles.
 pub const MOCK_PROVIDER: &str = "mock";
@@ -53,11 +55,10 @@ pub enum MockStreamEvent {
         arguments: serde_json::Value,
         call_id: Option<String>,
     },
-    /// Tool call delta event.
-    ToolCallDelta {
-        id: String,
-        content: ToolCallDeltaContent,
-    },
+    /// Tool call name delta event.
+    ToolCallNameDelta { id: String, name: String },
+    /// Tool call arguments delta event.
+    ToolCallArgumentsDelta { id: String, arguments: String },
     /// Complete reasoning event.
     Reasoning {
         id: String,
@@ -146,17 +147,17 @@ impl MockStreamEvent {
 
     /// Create a tool call name delta.
     pub fn tool_call_name_delta(id: impl Into<String>, name: impl Into<String>) -> Self {
-        Self::ToolCallDelta {
+        Self::ToolCallNameDelta {
             id: id.into(),
-            content: ToolCallDeltaContent::Name(name.into()),
+            name: name.into(),
         }
     }
 
     /// Create a tool call arguments delta.
     pub fn tool_call_arguments_delta(id: impl Into<String>, arguments: impl Into<String>) -> Self {
-        Self::ToolCallDelta {
+        Self::ToolCallArgumentsDelta {
             id: id.into(),
-            content: ToolCallDeltaContent::Delta(arguments.into()),
+            arguments: arguments.into(),
         }
     }
 
@@ -226,29 +227,34 @@ impl MockStreamEvent {
         Self::Error(MockError::provider(message))
     }
 
-    pub(crate) fn into_raw_choice(self) -> Result<RawStreamingChoice, CompletionError> {
+    /// Emit this scripted event as canonical stream events into `out` — the
+    /// same helper adapters use, so a script speaks exactly the grammar a
+    /// wire would.
+    pub(crate) fn emit(self, out: &mut AdapterOutput) -> Result<(), CompletionError> {
         match self {
-            Self::Text(text) => Ok(RawStreamingChoice::Message(text)),
+            Self::Text(text) => out.text(text),
             Self::TextStart {
                 id,
                 additional_params,
-            } => Ok(RawStreamingChoice::TextStart {
-                id: fixture_part_id(id),
-                additional_params: additional_params
+            } => out.text_start(
+                fixture_part_id(id),
+                additional_params
                     .map(fixture_additional_params)
                     .transpose()?
                     .flatten(),
-            }),
+            ),
             Self::TextAdditionalParams(additional_params) => {
                 match fixture_additional_params(additional_params)? {
                     // The real variant is non-empty by construction; an empty
                     // fixture object is a scripting mistake, not a no-op.
-                    None => Err(CompletionError::ProviderError(
-                        "mock stream fixture `TextAdditionalParams` carries no data — \
-                         drop the event instead"
-                            .to_string(),
-                    )),
-                    Some(params) => Ok(RawStreamingChoice::TextAdditionalParams(params)),
+                    None => {
+                        return Err(CompletionError::ProviderError(
+                            "mock stream fixture `TextAdditionalParams` carries no data — \
+                             drop the event instead"
+                                .to_string(),
+                        ));
+                    }
+                    Some(params) => out.text_meta(params),
                 }
             }
             Self::ToolCall {
@@ -257,16 +263,23 @@ impl MockStreamEvent {
                 arguments,
                 call_id,
             } => {
-                let mut tool_call = RawStreamingToolCall::new(fixture_part_id(id), name, arguments);
-                if let Some(call_id) = call_id {
-                    tool_call = tool_call.with_call_id(call_id);
+                let key = fixture_part_id(id.clone());
+                // A wire-derived key doubles as the durable id (the common
+                // case: providers key by the id the wire issued); minted
+                // keys carry none.
+                let mut end = ToolCallEnd::whole(name, arguments);
+                if let Some(tool_id) = key.wire_str() {
+                    end = end.with_tool_id(tool_id);
                 }
-                Ok(RawStreamingChoice::ToolCall(tool_call))
+                if let Some(call_id) = call_id {
+                    end = end.with_call_id(call_id);
+                }
+                out.tool_call(key, end);
             }
-            Self::ToolCallDelta { id, content } => Ok(RawStreamingChoice::ToolCallDelta {
-                id: fixture_part_id(id),
-                content,
-            }),
+            Self::ToolCallNameDelta { id, name } => out.tool_name(&fixture_part_id(id), name),
+            Self::ToolCallArgumentsDelta { id, arguments } => {
+                out.tool_arguments(&fixture_part_id(id), arguments)
+            }
             Self::Reasoning { id, content } => {
                 // Fixture syntax: a wire-shaped id is both the key and the
                 // durable handle; a legacy minted rendering is a key only.
@@ -274,27 +287,26 @@ impl MockStreamEvent {
                 let provider_id = key
                     .wire_str()
                     .and_then(|_| crate::streaming::non_empty_id(id));
-                Ok(RawStreamingChoice::Reasoning {
-                    id: key,
-                    provider_id,
-                    content,
-                })
+                out.reasoning_block(key, provider_id, content);
             }
             Self::ReasoningDelta { id, reasoning } => {
                 let key = fixture_part_id(id.clone());
                 let provider_id = key
                     .wire_str()
                     .and_then(|_| crate::streaming::non_empty_id(id));
-                Ok(RawStreamingChoice::ReasoningDelta {
-                    id: key,
-                    provider_id,
-                    reasoning,
-                })
+                out.reasoning_delta(&key, provider_id, reasoning);
             }
-            Self::MessageId(id) => Ok(RawStreamingChoice::MessageId(id)),
-            Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value.into())),
-            Self::FinalResponse(response) => Ok(RawStreamingChoice::FinalResponse(response)),
-            Self::Error(error) => Err(error.into_completion_error()),
+            Self::MessageId(id) => out.message_id(id),
+            Self::Unknown(value) => out.unknown(value.into()),
+            Self::FinalResponse(response) => {
+                // The mock's terminal type is `StreamFinal` itself, so `raw`
+                // is the scripted terminal serialized — the same capture
+                // every real adapter performs.
+                let raw = serde_json::to_value(&response)?;
+                out.final_record(response.with_raw(raw));
+            }
+            Self::Error(error) => out.error(error.into_completion_error()),
         }
+        Ok(())
     }
 }

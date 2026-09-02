@@ -30,7 +30,7 @@ use crate::{
     completion::{CompletionError, FinishReason},
     http_client,
     message::AssistantContent,
-    streaming::{StreamFinal, StreamedAssistantContent},
+    streaming::{Delta, StreamEvent, StreamFinal},
 };
 
 /// Typed failure from a wire-conformance scenario.
@@ -366,7 +366,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///
 /// Laws (universal — they hold for truncated and errored streams too):
 ///
-/// 1. **Terminal latch.** At most one [`StreamedAssistantContent::Final`],
+/// 1. **Terminal latch.** At most one [`StreamEvent::Final`],
 ///    and no content item (text, reasoning, tool call or delta) follows it —
 ///    only in-band errors and `Unknown` passthrough may.
 /// 2. **Text conservation.** The aggregated text is exactly the
@@ -382,18 +382,17 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///    yielded (no full block), the aggregated reasoning text is exactly
 ///    their concatenation.
 pub fn assert_valid_event_stream(
-    items: &[Result<crate::streaming::StreamedAssistantContent, CompletionError>],
+    items: &[Result<StreamEvent, CompletionError>],
     choice: &[AssistantContent],
 ) {
     use crate::message::AssistantContent;
-    use crate::streaming::StreamedAssistantContent as Item;
 
-    let ok_items: Vec<&Item> = items.iter().filter_map(|item| item.as_ref().ok()).collect();
+    let ok_items: Vec<&StreamEvent> = items.iter().filter_map(|item| item.as_ref().ok()).collect();
 
     // Law 1: terminal latch.
     let final_count = ok_items
         .iter()
-        .filter(|item| matches!(item, Item::Final(_)))
+        .filter(|item| matches!(item, StreamEvent::Final(_)))
         .count();
     assert!(
         final_count <= 1,
@@ -401,11 +400,11 @@ pub fn assert_valid_event_stream(
     );
     if let Some(final_index) = ok_items
         .iter()
-        .position(|item| matches!(item, Item::Final(_)))
+        .position(|item| matches!(item, StreamEvent::Final(_)))
     {
         for item in ok_items.get(final_index + 1..).unwrap_or_default() {
             assert!(
-                matches!(item, Item::Unknown(_)),
+                matches!(item, StreamEvent::Unknown(_)),
                 "law 1 (terminal latch): content item after the terminal record: {item:?}"
             );
         }
@@ -415,7 +414,10 @@ pub fn assert_valid_event_stream(
     let streamed_text: String = ok_items
         .iter()
         .filter_map(|item| match item {
-            Item::Text(text) => Some(text.text.as_str()),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -434,7 +436,15 @@ pub fn assert_valid_event_stream(
     // Law 3: completed-call conservation.
     let yielded_calls = ok_items
         .iter()
-        .filter(|item| matches!(item, Item::ToolCall { .. }))
+        .filter(|item| {
+            matches!(
+                item,
+                StreamEvent::BlockEnd {
+                    block: Some(AssistantContent::ToolCall(_)),
+                    ..
+                }
+            )
+        })
         .count();
     let aggregated_calls = choice
         .iter()
@@ -451,26 +461,38 @@ pub fn assert_valid_event_stream(
     let mut completed_ids: Vec<BlockId> = Vec::new();
     for item in &ok_items {
         match item {
-            Item::ToolCallDelta { id, .. } => {
+            StreamEvent::BlockDelta {
+                id,
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            } => {
                 assert!(
                     !completed_ids.contains(id),
                     "law 4: a delta for block {id} arrived after its completed call"
                 );
                 seen_delta_ids.push(id.clone());
             }
-            Item::ToolCall { id, .. } => completed_ids.push(id.clone()),
+            StreamEvent::BlockEnd {
+                id,
+                block: Some(AssistantContent::ToolCall(_)),
+                ..
+            } => completed_ids.push(id.clone()),
             _ => {}
         }
     }
 
     // Law 4b: reasoning correlation. Every completed reasoning block
-    // carries a non-empty correlator no other completed block shares (a
-    // delta-only part may legitimately have no completed block — e.g. a
-    // visible chain of thought whose synthesized end stays silent — so
-    // delta ids are not required to appear among the completed ids).
+    // carries a block id no other completed block shares (a delta-only
+    // part may legitimately have no completed block — e.g. a visible chain
+    // of thought whose synthesized end stays silent — so delta ids are not
+    // required to appear among the completed ids).
     let mut completed_reasoning_ids: Vec<&BlockId> = Vec::new();
     for item in &ok_items {
-        if let Item::Reasoning { id, .. } = item {
+        if let StreamEvent::BlockEnd {
+            id,
+            block: Some(AssistantContent::Reasoning(_)),
+            ..
+        } = item
+        {
             assert!(
                 id.wire_str() != Some(""),
                 "law 4b (reasoning correlation): a completed block carries an empty wire id"
@@ -484,9 +506,25 @@ pub fn assert_valid_event_stream(
     }
 
     // Law 5: reasoning provenance.
-    let yielded_reasoning = ok_items
-        .iter()
-        .any(|item| matches!(item, Item::Reasoning { .. } | Item::ReasoningDelta { .. }));
+    let yielded_full_block = ok_items.iter().any(|item| {
+        matches!(
+            item,
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(_)),
+                ..
+            }
+        )
+    });
+    let yielded_reasoning = yielded_full_block
+        || ok_items.iter().any(|item| {
+            matches!(
+                item,
+                StreamEvent::BlockDelta {
+                    delta: Delta::Reasoning { .. },
+                    ..
+                }
+            )
+        });
     let aggregated_reasoning = choice
         .iter()
         .any(|content| matches!(content, AssistantContent::Reasoning(_)));
@@ -494,14 +532,14 @@ pub fn assert_valid_event_stream(
         yielded_reasoning || !aggregated_reasoning,
         "law 5 (reasoning provenance): aggregated reasoning with no reasoning yielded"
     );
-    let yielded_full_block = ok_items
-        .iter()
-        .any(|item| matches!(item, Item::Reasoning { .. }));
     if yielded_reasoning && !yielded_full_block {
         let streamed_reasoning: String = ok_items
             .iter()
             .filter_map(|item| match item {
-                Item::ReasoningDelta { reasoning, .. } => Some(reasoning.as_str()),
+                StreamEvent::BlockDelta {
+                    delta: Delta::Reasoning { text },
+                    ..
+                } => Some(text.as_str()),
                 _ => None,
             })
             .collect();
@@ -530,7 +568,7 @@ pub fn assert_valid_event_stream(
 #[derive(Debug)]
 pub struct DrainedStream {
     /// Every item the stream yielded, in order.
-    pub items: Vec<Result<StreamedAssistantContent, CompletionError>>,
+    pub items: Vec<Result<StreamEvent, CompletionError>>,
     /// The final aggregated assistant message.
     pub choice: Vec<AssistantContent>,
     /// The normalized terminal record, absent on truncation or terminal error.
@@ -543,7 +581,10 @@ impl DrainedStream {
         self.items
             .iter()
             .filter_map(|item| match item {
-                Ok(StreamedAssistantContent::Text(text)) => Some(text.text.as_str()),
+                Ok(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                }) => Some(text.as_str()),
                 _ => None,
             })
             .collect()
@@ -554,9 +595,10 @@ impl DrainedStream {
         self.items
             .iter()
             .filter_map(|item| match item {
-                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
-                    Some(tool_call.function.name.as_str())
-                }
+                Ok(StreamEvent::BlockEnd {
+                    block: Some(AssistantContent::ToolCall(tool_call)),
+                    ..
+                }) => Some(tool_call.function.name.as_str()),
                 _ => None,
             })
             .collect()
@@ -568,7 +610,7 @@ impl DrainedStream {
         self.items
             .iter()
             .filter_map(|item| match item {
-                Ok(StreamedAssistantContent::Unknown(value)) => Some(value.value()),
+                Ok(StreamEvent::Unknown(value)) => Some(value.value()),
                 _ => None,
             })
             .collect()
@@ -583,7 +625,7 @@ impl DrainedStream {
     pub fn final_count(&self) -> usize {
         self.items
             .iter()
-            .filter(|item| matches!(item, Ok(StreamedAssistantContent::Final(_))))
+            .filter(|item| matches!(item, Ok(StreamEvent::Final(_))))
             .count()
     }
 
@@ -1524,7 +1566,7 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
 /// content.
 ///
 /// Pins the interleaved-reasoning replacement contract on
-/// [`StreamedAssistantContent::Reasoning`] (round six,
+/// completed reasoning block (round six,
 /// `rig-2257-code-review-findings-34ee8ba5.md`, "Verified sound" section).
 pub async fn interleaved_reasoning_aggregates_to_one_item(
     driver: &WireDriver,
@@ -1750,7 +1792,7 @@ pub mod fixtures {
         }
         let drained = DrainedStream {
             items,
-            choice: stream.choice.clone(),
+            choice: stream.snapshot(),
             response: stream.response.clone(),
         };
         // Every fixture and cassette that drains through this helper runs

@@ -2064,6 +2064,7 @@ dependencies = [
  "anyhow",
  "futures",
  "rig",
+ "serde_json",
  "tokio",
 ]
 

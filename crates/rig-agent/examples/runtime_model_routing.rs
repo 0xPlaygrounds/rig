@@ -13,7 +13,7 @@ use rig_agent::{
     AgentBuilder, ModelHandle,
     agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
     completion::{CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Usage},
-    streaming::{RawStreamingChoice, StreamFinal, StreamingCompletionResponse},
+    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse, ToolCallEnd},
     tool::{Tool, ToolContext},
 };
 use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
@@ -63,17 +63,18 @@ impl CompletionModel for FastResearchModel {
         Ok(StreamingCompletionResponse::stream(
             "fast",
             Box::pin(stream::iter([
-                Ok(RawStreamingChoice::ToolCall(
-                    rig_agent::streaming::RawStreamingToolCall::new(
-                        "search-1".to_owned(),
-                        "search".to_owned(),
-                        serde_json::json!({"query": "runtime model routing"}),
+                Ok(StreamEvent::BlockEnd {
+                    id: BlockId::wire("search-1"),
+                    end: rig_agent::streaming::BlockClose::ToolCall(
+                        ToolCallEnd::whole(
+                            "search",
+                            serde_json::json!({"query": "runtime model routing"}),
+                        )
+                        .with_tool_id("search-1"),
                     ),
-                )),
-                Ok(RawStreamingChoice::FinalResponse(StreamFinal::new(
-                    "fast",
-                    usage(3),
-                ))),
+                    block: None,
+                }),
+                Ok(StreamEvent::Final(StreamFinal::new("fast", usage(3)))),
             ])),
         ))
     }
@@ -106,13 +107,11 @@ impl CompletionModel for StrongSynthesisModel {
         Ok(StreamingCompletionResponse::stream(
             "strong",
             Box::pin(stream::iter([
-                Ok(RawStreamingChoice::Message(
-                    "The strong model synthesized the committed search result.".to_owned(),
+                Ok(StreamEvent::text(
+                    BlockId::wire("text-1"),
+                    "The strong model synthesized the committed search result.",
                 )),
-                Ok(RawStreamingChoice::FinalResponse(StreamFinal::new(
-                    "strong",
-                    usage(5),
-                ))),
+                Ok(StreamEvent::Final(StreamFinal::new("strong", usage(5)))),
             ])),
         ))
     }

@@ -14,7 +14,7 @@ use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::{groq, openai};
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1016,12 +1016,15 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
             let mut final_usage = None;
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamedAssistantContent::Text(text) => {
-                        if !text.text.is_empty() {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => {
+                        if !text.is_empty() {
                             text_chunks += 1;
                         }
                     }
-                    StreamedAssistantContent::Final(response) => {
+                    StreamEvent::Final(response) => {
                         final_usage = Some(response.usage);
                     }
                     _ => {}

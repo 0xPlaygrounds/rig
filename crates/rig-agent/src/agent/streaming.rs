@@ -4,7 +4,7 @@ use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
     agent::runner::AgentRunner,
-    streaming::{StreamedAssistantContent, StreamedUserContent},
+    streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ use crate::{
     agent::Agent,
     completion::{CompletionError, PromptError},
 };
-use rig_core::message::{Message, Text};
+use rig_core::message::Message;
 
 // The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
 // go no-op — browser wasm. `rig-core` keys those markers on this same
@@ -32,23 +32,38 @@ pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem,
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the terminal items are one per run and are moved, not copied; boxing them would put an allocation on every consumer's match"
+)]
 pub enum MultiTurnStreamItem {
-    /// A streamed assistant content item — the content the **model emitted**:
-    /// text/reasoning deltas, tool-call deltas, and, when the model turn is
-    /// committed, the complete [`StreamedAssistantContent::ToolCall`] for each
-    /// tool call Rig routes to execution. Such a call is reported here whether or
-    /// not the tool body ultimately runs (a hook skip still reports it);
-    /// it is **not** an execution-lifecycle event (see
+    /// A provider stream event — the content the **model emitted**: block
+    /// starts and ends, text/reasoning deltas, tool-call deltas, the
+    /// terminal record, unmodeled passthrough items. Tool-call block ends
+    /// are not forwarded; the model's completed calls are reported as
+    /// [`ToolCall`](Self::ToolCall) when the turn commits.
+    StreamAssistantItem(StreamEvent),
+    /// A tool call the **model emitted**, reported when the model turn is
+    /// committed, for each call Rig routes to execution. Such a call is
+    /// reported whether or not the tool body ultimately runs (a hook skip
+    /// still reports it); it is **not** an execution-lifecycle event (see
     /// [`ToolExecutionCommitted`](Self::ToolExecutionCommitted)).
     ///
-    /// Two kinds of model tool call are **not** re-emitted as a complete
-    /// `ToolCall` item here (their arguments still stream as tool-call deltas):
-    /// a call rejected and handled by invalid-tool-call recovery (surfaced via
-    /// that recovery path), and a structured-output Tool-mode output-tool call,
-    /// which finalizes the run directly — its structured result is surfaced in
+    /// Two kinds of model tool call are **not** reported here (their
+    /// arguments still stream as tool-call deltas): a call rejected and
+    /// handled by invalid-tool-call recovery (surfaced via that recovery
+    /// path), and a structured-output Tool-mode output-tool call, which
+    /// finalizes the run directly — its structured result is surfaced in
     /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
-    /// `ToolCall` item.
-    StreamAssistantItem(StreamedAssistantContent),
+    /// call.
+    ToolCall {
+        /// The call as the model emitted it.
+        tool_call: rig_core::message::ToolCall,
+        /// The block this call streamed under (a buffered turn's call is
+        /// keyed by its durable id): equal on its deltas, its execution
+        /// commit and its result.
+        block_id: BlockId,
+    },
     /// Confirmation that Rig **executed and committed** a tool call. This is not
     /// a real-time start notification: it is surfaced together with its
     /// `ToolResult` only after the whole batch settles successfully. Use tool
@@ -65,9 +80,9 @@ pub enum MultiTurnStreamItem {
         /// model's *original* call is reported via
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
         tool_call: rig_core::message::ToolCall,
-        /// Rig-generated id correlating this execution with the model tool call
-        /// ([`StreamedAssistantContent::ToolCall::block_id`]) and the
-        /// resulting [`StreamedUserContent::ToolResult`].
+        /// The block id correlating this execution with the model tool call
+        /// ([`ToolCall::block_id`](Self::ToolCall)) and the resulting
+        /// [`StreamedUserContent::ToolResult`].
         block_id: BlockId,
     },
     /// A streamed user content item: the **result** of an executed (or
@@ -131,7 +146,7 @@ fn final_response_from_content(
 }
 
 impl MultiTurnStreamItem {
-    pub(crate) fn stream_item(item: StreamedAssistantContent) -> Self {
+    pub(crate) fn stream_item(item: StreamEvent) -> Self {
         Self::StreamAssistantItem(item)
     }
 
@@ -173,7 +188,7 @@ pub(crate) async fn drain_stream_usage(
 ) -> Result<crate::completion::Usage, StreamingError> {
     while let Some(content) = stream.next().await {
         match content {
-            Ok(StreamedAssistantContent::Final(final_resp)) => {
+            Ok(StreamEvent::Final(final_resp)) => {
                 return Ok(final_resp.usage);
             }
             Ok(_) => {}
@@ -438,14 +453,16 @@ pub async fn stream_to_stdout(
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text, .. },
-            ))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            })) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
-                reasoning,
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             })) => {
                 let reasoning = reasoning.display_text();

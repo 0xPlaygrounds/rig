@@ -64,7 +64,7 @@ async fn observe_stream(
     stream: &mut rig::streaming::StreamingCompletionResponse,
 ) -> EncryptedReasoningObservation {
     use futures::StreamExt;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::{Delta, StreamEvent};
 
     let mut observation = EncryptedReasoningObservation {
         errors: Vec::new(),
@@ -75,13 +75,22 @@ async fn observe_stream(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => observation.text.push_str(&text.text),
-            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => observation.text.push_str(&text),
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            }) => {
                 observation
                     .streamed_encrypted
                     .extend(encrypted_blocks_of(&reasoning));
             }
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => {
                 observation.tool_calls.push(tool_call);
             }
             Ok(_) => {}
@@ -169,7 +178,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                 "the recorded turn carries encrypted reasoning_details; the stream must emit them as reasoning blocks"
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.choice);
+            let aggregated = encrypted_blocks_in_choice(&stream.snapshot());
             assert_eq!(
                 aggregated, streamed,
                 "every streamed encrypted reasoning block must reach the aggregated choice"
@@ -222,7 +231,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 first_turn.errors
             );
 
-            let aggregated = encrypted_blocks_in_choice(&stream.choice);
+            let aggregated = encrypted_blocks_in_choice(&stream.snapshot());
             assert!(
                 !aggregated.is_empty(),
                 "first turn should aggregate the encrypted reasoning block"
@@ -239,7 +248,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // replays as history.
             let assistant_message = Message::Assistant {
                 id: stream.message_id.clone(),
-                content: stream.choice.clone(),
+                content: stream.snapshot(),
             };
             let tool_result_message = Message::User {
         content: vec![UserContent::tool_result_for(

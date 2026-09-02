@@ -7,22 +7,21 @@ use crate::providers::internal::adapter::{
     AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
 };
 use crate::providers::internal::sse_transport::{
-    FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream,
+    FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream, stamp_terminal_request_id,
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
-use crate::streaming;
-use crate::streaming::RawStreamingChoice;
+use crate::streaming::{
+    self, BlockId, StreamEvent, StreamFinal, StreamingResult, ToolCallEnd, UnparseableToolInput,
+};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::WasmCompatSend;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use super::{CompletionResponse, GenericResponsesCompletionModel, Output, ResponsesProviderExt};
-
-type StreamingRawChoice = RawStreamingChoice<StreamingCompletionResponse>;
 
 // ================================================================
 // OpenAI Responses Streaming API
@@ -41,10 +40,10 @@ pub enum StreamingCompletionChunk {
 
 /// The final streaming response from the OpenAI Responses API.
 ///
-/// This is the provider-native terminal record carried by
-/// [`GenericResponsesCompletionModel::raw_stream`]. The normalized path maps it
-/// once, through [`crate::streaming::normalize_stream`], into a
-/// [`streaming::StreamFinal`].
+/// This is the provider-native terminal record. The adapter maps it once,
+/// through [`terminal_record`], into the [`StreamFinal`] the stream yields,
+/// and serializes it onto [`StreamFinal::raw`] — the escape hatch for
+/// Responses-API terminal fields rig does not normalize.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
     /// Token usage
@@ -76,8 +75,9 @@ pub struct StreamingCompletionResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// The transport request id from the SSE connection's `x-request-id`
-    /// response header — not part of any stream frame; stamped by the
-    /// transport. `None` when the provider did not report one.
+    /// response header — not part of any stream frame. The transport stamps
+    /// it onto the normalized [`StreamFinal`] after the adapter has mapped
+    /// this record, so here it is `None` unless a caller filled it in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
 }
@@ -107,61 +107,49 @@ impl StreamingCompletionResponse {
 /// baked-in `"openai"` would mislabel them.
 ///
 /// The finish reason is left exactly as the provider reported it;
-/// [`crate::streaming::normalize_stream`] applies the tool-call reconciliation
-/// afterwards, using the calls the stream actually emitted.
-impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
-    fn from((provider, response): (&str, StreamingCompletionResponse)) -> Self {
-        let finish_reason = response.status.as_ref().and_then(|status| {
-            super::map_finish_reason(status, response.incomplete_details.as_ref())
-        });
+/// [`streaming::StreamingCompletionResponse`] applies the tool-call
+/// reconciliation afterwards, using the calls the stream actually emitted.
+///
+/// The native record is serialized onto [`StreamFinal::raw`]; a
+/// serialization failure is the caller's to surface as an in-band error.
+fn terminal_record(
+    provider: &str,
+    response: StreamingCompletionResponse,
+) -> Result<StreamFinal, CompletionError> {
+    let raw = serde_json::to_value(&response)?;
+    let finish_reason = response
+        .status
+        .as_ref()
+        .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
 
-        streaming::StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
+    Ok(
+        StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
             .with_optional_response_id(response.response_id)
             .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_model(response.model)
-    }
-}
-
-/// Normalize a provider-native Responses stream for `provider`.
-///
-/// Maps only the terminal record; every incremental event passes through
-/// untouched.
-#[doc(hidden)]
-pub fn normalize_responses_stream(
-    provider: &str,
-    raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
-) -> streaming::StreamingCompletionResponse {
-    let provider = provider.to_owned();
-    let mapped_provider = provider.clone();
-    let normalized = streaming::normalize_stream(raw, move |response| {
-        Ok(streaming::StreamFinal::from((
-            mapped_provider.as_str(),
-            response,
-        )))
-    });
-
-    streaming::StreamingCompletionResponse::stream(provider, normalized)
+            .with_raw(raw),
+    )
 }
 
 /// The done item's blocks as ONE authoritative end-of-part restatement.
 ///
 /// Every block — summaries, content texts, `encrypted_content` — belongs to
 /// one `rs_*` reasoning item, so it must land in one part: emitting a
-/// whole-block choice per entry made every block after the first a sibling
+/// whole-block end per entry made every block after the first a sibling
 /// part under the same key, and history then replayed duplicate reasoning
 /// input items carrying the identical `rs_*` id. The restatement supersedes
 /// the delta-built part in place (wire field order: summary, content,
-/// encrypted). `None` when the item carries no blocks — an empty done item
+/// encrypted); the caller closes the block with it as a wire-sent
+/// `BlockEnd`. `None` when the item carries no blocks — an empty done item
 /// says nothing at the boundary.
-pub(crate) fn reasoning_end_from_done_item(
-    id: &crate::streaming::BlockId,
+pub(crate) fn reasoning_from_done_item(
     provider_id: Option<&str>,
     summary: Vec<ReasoningSummary>,
     content: Vec<String>,
     encrypted_content: Option<String>,
-) -> Option<RawStreamingChoice<StreamingCompletionResponse>> {
+) -> Option<crate::message::Reasoning> {
     // Same builder as the unary decode, so the restatement and the
     // non-streaming conversion of one item cannot drift.
     let blocks = super::reasoning_content_blocks(summary, content, encrypted_content);
@@ -170,14 +158,9 @@ pub(crate) fn reasoning_end_from_done_item(
         return None;
     }
 
-    Some(RawStreamingChoice::ReasoningEnd {
-        id: id.clone(),
-        reasoning: Some(crate::message::Reasoning {
-            id: provider_id.map(str::to_owned),
-            content: blocks,
-        }),
-        signature: None,
-        wire_sent: true,
+    Some(crate::message::Reasoning {
+        id: provider_id.map(str::to_owned),
+        content: blocks,
     })
 }
 
@@ -266,7 +249,7 @@ fn is_known_responses_event_type(kind: &str) -> bool {
 /// Classify one Responses SSE frame; see
 /// [`crate::providers::internal::wire`] for the dispatch contract.
 ///
-/// Shared by the live SSE loop, the buffered [`raw_choices_from_sse_body`]
+/// Shared by the live SSE loop, the buffered [`stream_events_from_sse_body`]
 /// path, and the websocket session so all apply the same known/unknown
 /// boundary. Provider `error` events (and the websocket-only `response.done`)
 /// are checked separately before this, because their `type` is outside the
@@ -376,6 +359,10 @@ pub(crate) fn parse_sse_completion_body(
 
 #[doc(hidden)]
 pub struct RawChoiceAccumulator {
+    /// Stable descriptor name stamped on the terminal record: ChatGPT and
+    /// Copilot stream this exact wire shape, so it is an input rather than
+    /// a baked-in `"openai"`.
+    provider: String,
     final_usage: ResponsesUsage,
     reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
@@ -384,12 +371,12 @@ pub struct RawChoiceAccumulator {
     message_id: Option<String>,
     response_id: Option<String>,
     model: Option<String>,
-    /// Buffered tool-input end events for calls delivered whole by
+    /// Buffered tool-call ends for calls delivered whole by
     /// `output_item.done`, flushed at the terminal (or before a terminal
-    /// error). Assembly and internal-id correlation live in the shared
-    /// accumulator, keyed by the function-call item id the added/delta/done
-    /// events share.
-    tool_calls: Vec<StreamingRawChoice>,
+    /// error) as `BlockEnd`s keyed by the slot's assembly id. Assembly and
+    /// internal-id correlation live in the shared accumulator, keyed by the
+    /// function-call item id the added/delta/done events share.
+    tool_calls: Vec<(BlockId, ToolCallEnd)>,
     /// Whether a genuine terminal event (`response.completed` or
     /// `response.incomplete`) arrived. Without one the stream was truncated,
     /// and `finish` withholds the terminal record.
@@ -424,17 +411,18 @@ pub struct RawChoiceAccumulator {
     pending_call_ids: std::collections::HashMap<u64, String>,
     /// The message item whose text block is currently open. A text or
     /// refusal delta carrying a different `item_id` opens a new text block
-    /// (`TextStart` keyed by that item id), so two `message` output items
-    /// aggregate as two distinct text parts instead of concatenating.
+    /// (a text `BlockStart` keyed by that item id), so two `message` output
+    /// items aggregate as two distinct text parts instead of concatenating.
     /// Deltas without an `item_id` (ChatGPT's envelope-less replays) extend
-    /// the open block, or open a boundary-minted one downstream.
+    /// the open block, or open a boundary-minted one in the output helper.
     current_text_item: Option<String>,
 }
 
 impl RawChoiceAccumulator {
     #[doc(hidden)]
-    pub fn new(initial_usage: ResponsesUsage) -> Self {
+    pub fn new(provider: impl Into<String>, initial_usage: ResponsesUsage) -> Self {
         Self {
+            provider: provider.into(),
             final_usage: initial_usage,
             reasoning_metadata: None,
             reasoning_context: None,
@@ -457,15 +445,12 @@ impl RawChoiceAccumulator {
 
     /// Open the text block for the message item a text/refusal delta belongs
     /// to, when the wire identifies it and it differs from the open one.
-    fn start_text_item(&mut self, item_id: Option<&str>, immediate: &mut Vec<StreamingRawChoice>) {
+    fn start_text_item(&mut self, item_id: Option<&str>, out: &mut AdapterOutput) {
         if let Some(item_id) = item_id
             && self.current_text_item.as_deref() != Some(item_id)
         {
             self.current_text_item = Some(item_id.to_string());
-            immediate.push(streaming::RawStreamingChoice::TextStart {
-                id: crate::streaming::BlockId::wire(item_id.to_string()),
-                additional_params: None,
-            });
+            out.text_start(BlockId::wire(item_id.to_string()), None);
         }
     }
 
@@ -474,9 +459,10 @@ impl RawChoiceAccumulator {
     /// a minted `output-{index}` identity. Every later frame on the slot
     /// reuses the stored key regardless of the id it carries — the same
     /// discipline as `tool_slots` — so mixed id/id-less frames cannot
-    /// split one slot's assembly. A late-arriving wire id upgrades the
-    /// part's durable `provider_id` (carried as data on each event), never
-    /// the accumulation key.
+    /// split one slot's assembly. The durable `provider_id` is fixed on
+    /// the block's start; the done item's wire-sent restatement (which
+    /// always carries the real `rs_*` id) supersedes it, never the
+    /// accumulation key.
     fn reasoning_slot_key(
         &mut self,
         output_index: u64,
@@ -498,14 +484,14 @@ impl RawChoiceAccumulator {
         key
     }
 
+    /// Map one item/delta event onto grammar events, pushed to `out`.
     #[doc(hidden)]
     pub fn decode_item_chunk(
         &mut self,
         chunk: ItemChunk,
         options: ResponsesStreamOptions,
-    ) -> Vec<StreamingRawChoice> {
-        let mut immediate = Vec::new();
-
+        out: &mut AdapterOutput,
+    ) {
         let ItemChunk {
             item_id: outer_item_id,
             output_index,
@@ -519,7 +505,8 @@ impl RawChoiceAccumulator {
             }) => {
                 // A function-call item interleaving a message item closes the
                 // open text block; forget it so a later delta for that message
-                // re-emits `TextStart` and reactivates its block downstream.
+                // re-emits its text `BlockStart` and reactivates its block
+                // downstream.
                 self.current_text_item = None;
                 // Slot identity is established here once (wire `fc_*` id,
                 // else a minted `output-{index}`) and reused for every later
@@ -536,10 +523,7 @@ impl RawChoiceAccumulator {
                     self.pending_call_ids
                         .insert(output_index, func.call_id.clone());
                 }
-                immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id: key,
-                    content: streaming::ToolCallDeltaContent::Name(func.name),
-                });
+                out.tool_name(&key, func.name);
             }
             ItemChunkKind::OutputItemDone(message) => {
                 // Any completed item ends the block it carried; a text delta
@@ -548,7 +532,7 @@ impl RawChoiceAccumulator {
                 self.push_output_item_done(
                     message.item,
                     output_index,
-                    &mut immediate,
+                    out,
                     options.emits_completed_tool_calls_immediately(),
                 );
             }
@@ -557,8 +541,8 @@ impl RawChoiceAccumulator {
             // (re)open the item's text block before their fragment.
             ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
             | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
-                self.start_text_item(outer_item_id.as_deref(), &mut immediate);
-                immediate.push(streaming::RawStreamingChoice::Message(delta));
+                self.start_text_item(outer_item_id.as_deref(), out);
+                out.text(delta);
             }
             // Summary and raw-reasoning deltas differ only in which wire
             // event carries them; both are fragments of the output item's
@@ -566,19 +550,20 @@ impl RawChoiceAccumulator {
             ItemChunkKind::ReasoningSummaryTextDelta(SummaryTextChunk { delta, .. })
             | ItemChunkKind::ReasoningTextDelta(DeltaTextChunkWithItemId { delta, .. }) => {
                 // Reasoning interleaving text closes the open text block
-                // downstream (`PartsAccumulator::reasoning_delta`); forget the
-                // open message item so a later delta for the *same* item
-                // re-emits `TextStart {id}` and reactivates its block instead
-                // of silently opening a boundary-minted sibling (#2258 P2).
+                // downstream (a non-text block event is a boundary for
+                // anonymous text); forget the open message item so a later
+                // delta for the *same* item re-emits its text `BlockStart`
+                // and reactivates its block instead of silently opening a
+                // boundary-minted sibling (#2258 P2).
                 self.current_text_item = None;
                 let id = self.reasoning_slot_key(output_index, outer_item_id.as_deref());
-                immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id,
-                    provider_id: outer_item_id
+                out.reasoning_delta(
+                    &id,
+                    outer_item_id
                         .clone()
                         .and_then(crate::streaming::non_empty_id),
-                    reasoning: delta,
-                });
+                    delta,
+                );
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
                 // Tool output interleaving text is a block boundary too.
@@ -593,15 +578,10 @@ impl RawChoiceAccumulator {
                     .open(output_index, outer_item_id.as_deref(), None);
                 slot.saw_arguments_delta = true;
                 let key = slot.key().clone();
-                immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id: key,
-                    content: streaming::ToolCallDeltaContent::Delta(delta.delta),
-                });
+                out.tool_arguments(&key, delta.delta);
             }
             _ => {}
         }
-
-        immediate
     }
 
     #[doc(hidden)]
@@ -626,10 +606,9 @@ impl RawChoiceAccumulator {
                 // from its streamed fragments (parse-or-drop), instead of
                 // discarding a provider-completed call as truncation.
                 for (index, slot) in self.tool_slots.drain_ordered_indexed() {
-                    let mut end = slot.end_event(streaming::UnparseableToolInput::Drop);
+                    let mut end = slot.end(UnparseableToolInput::Drop);
                     end.call_id = self.pending_call_ids.remove(&index);
-                    self.tool_calls
-                        .push(streaming::RawStreamingChoice::ToolInputEnd(end));
+                    self.tool_calls.push((slot.key().clone(), end));
                 }
                 // The terminal event is the only place the stream learns how the
                 // turn ended, which model answered, and which assistant message
@@ -669,7 +648,7 @@ impl RawChoiceAccumulator {
         &mut self,
         item: Output,
         output_index: u64,
-        immediate: &mut Vec<StreamingRawChoice>,
+        out: &mut AdapterOutput,
         emit_completed_tool_calls_immediately: bool,
     ) {
         match item {
@@ -700,12 +679,9 @@ impl RawChoiceAccumulator {
                     // the same value for, consuming that assembly under the
                     // wrong call.
                     None if func.id.is_empty() => self.tool_slots.minted_ids().mint(),
-                    None => crate::streaming::BlockId::wire(func.id.clone()),
+                    None => BlockId::wire(func.id.clone()),
                 };
-                let mut end = streaming::ToolInputEnd::new(
-                    item_id.clone(),
-                    streaming::UnparseableToolInput::Drop,
-                );
+                let mut end = ToolCallEnd::new(UnparseableToolInput::Drop);
                 end.name = Some(func.name);
                 // The finalized call reports the authoritative wire id even
                 // when assembly keyed on a minted slot identity (the
@@ -732,22 +708,16 @@ impl RawChoiceAccumulator {
                         let saw_fragments =
                             slot.as_ref().is_some_and(|slot| slot.saw_arguments_delta);
                         if !saw_fragments {
-                            immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                                id: item_id,
-                                content: streaming::ToolCallDeltaContent::Delta(
-                                    func.arguments.as_str().to_owned(),
-                                ),
-                            });
+                            out.tool_arguments(&item_id, func.arguments.as_str());
                         }
                     }
                 }
                 end.call_id = Some(func.call_id);
-                let end = streaming::RawStreamingChoice::ToolInputEnd(end);
 
                 if emit_completed_tool_calls_immediately {
-                    immediate.push(end);
+                    out.tool_end(item_id, end);
                 } else {
-                    self.tool_calls.push(end);
+                    self.tool_calls.push((item_id, end));
                 }
             }
             Output::Reasoning {
@@ -769,63 +739,68 @@ impl RawChoiceAccumulator {
                 let key = self
                     .reasoning_slots
                     .remove(&output_index)
-                    .unwrap_or(crate::streaming::BlockId::wire(id));
-                immediate.extend(reasoning_end_from_done_item(
-                    &key,
+                    .unwrap_or(BlockId::wire(id));
+                if let Some(reasoning) = reasoning_from_done_item(
                     provider_id.as_deref(),
                     summary,
                     content,
                     encrypted_content,
-                ));
+                ) {
+                    out.reasoning_end(key, Some(reasoning), None, true);
+                }
             }
             Output::Message(message) => {
-                immediate.push(streaming::RawStreamingChoice::MessageId(message.id));
+                out.message_id(message.id);
             }
             // An unmodeled output item (e.g. a hosted-tool result such as
             // `web_search_call`) arriving on `response.output_item.done`. Surface
             // the raw item to stream consumers, mirroring how the non-streaming
             // decode preserves it on `CompletionResponse.output`.
             Output::Unknown(value) => {
-                immediate.push(streaming::RawStreamingChoice::Unknown(value.into()));
+                out.unknown(value.into());
             }
         }
     }
 
-    /// Drain the buffered fully-delivered tool calls without finishing the
+    /// Flush the buffered fully-delivered tool calls without finishing the
     /// stream. The errored-terminal path flushes these before the error and
     /// must not produce a terminal record.
     #[doc(hidden)]
-    pub fn take_tool_calls(&mut self) -> Vec<StreamingRawChoice> {
-        std::mem::take(&mut self.tool_calls)
+    pub fn flush_tool_calls(&mut self, out: &mut AdapterOutput) {
+        for (id, end) in std::mem::take(&mut self.tool_calls) {
+            out.tool_end(id, end);
+        }
     }
 
+    /// Flush the buffered tool calls, then the terminal record when a
+    /// genuine terminal event arrived.
     #[doc(hidden)]
-    pub fn finish(mut self) -> Vec<StreamingRawChoice> {
-        let mut choices = Vec::new();
-        choices.append(&mut self.tool_calls);
+    pub fn finish(mut self, out: &mut AdapterOutput) {
+        self.flush_tool_calls(out);
         // Only a genuine terminal event (`response.completed` or
         // `response.incomplete`) counts as the provider ending the turn; a
         // stream that ended without one was truncated,
         // and a synthesized terminal record would present the partial turn as
         // a successful, default-usage completion.
         if !self.saw_terminal {
-            return choices;
+            return;
         }
-        choices.push(RawStreamingChoice::FinalResponse(
-            StreamingCompletionResponse {
-                usage: self.final_usage,
-                // Stamped by the transport layer.
-                provider_request_id: None,
-                reasoning_metadata: self.reasoning_metadata,
-                reasoning_context: self.reasoning_context,
-                status: self.status,
-                incomplete_details: self.incomplete_details,
-                message_id: self.message_id,
-                response_id: self.response_id,
-                model: self.model,
-            },
-        ));
-        choices
+        let native = StreamingCompletionResponse {
+            usage: self.final_usage,
+            // The transport stamps the normalized record.
+            provider_request_id: None,
+            reasoning_metadata: self.reasoning_metadata,
+            reasoning_context: self.reasoning_context,
+            status: self.status,
+            incomplete_details: self.incomplete_details,
+            message_id: self.message_id,
+            response_id: self.response_id,
+            model: self.model,
+        };
+        match terminal_record(&self.provider, native) {
+            Ok(record) => out.final_record(record),
+            Err(error) => out.error(error),
+        }
     }
 }
 
@@ -892,10 +867,11 @@ fn repair_envelope_less_frame(data: &str) -> Option<String> {
     serde_json::to_string(&value).ok()
 }
 
-pub(crate) fn raw_choices_from_sse_body(
+pub(crate) fn stream_events_from_sse_body(
+    provider: &str,
     body: &str,
     initial_usage: ResponsesUsage,
-) -> Result<Vec<StreamingRawChoice>, CompletionError> {
+) -> Result<Vec<StreamEvent>, CompletionError> {
     // Framing layer for the buffered (unary) Responses SSE body: line
     // splitting, sentinel skipping, and the provider `error` envelope
     // pre-check (which fails the operation, mirroring the live transport).
@@ -916,7 +892,7 @@ pub(crate) fn raw_choices_from_sse_body(
     // the whole operation instead of returning a silently partial completion.
     // Buffered classification adds the envelope-repair salvage; see
     // [`ResponsesAdapter::buffered`].
-    run_wire_buffered(frames, ResponsesAdapter::buffered(initial_usage))
+    run_wire_buffered(frames, ResponsesAdapter::buffered(provider, initial_usage))
 }
 
 pub(crate) async fn completion_response_from_sse_body(
@@ -924,34 +900,41 @@ pub(crate) async fn completion_response_from_sse_body(
     body: &str,
     raw_response: CompletionResponse,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    let raw_choices =
-        raw_choices_from_sse_body(body, raw_response.usage.unwrap_or_else(ResponsesUsage::new))?;
-    completion_response_from_raw_choices(provider, raw_choices, &raw_response)
+    let events = stream_events_from_sse_body(
+        provider,
+        body,
+        raw_response.usage.unwrap_or_else(ResponsesUsage::new),
+    )?;
+    completion_response_from_stream_events(provider, events, &raw_response)
         .await?
         .ok_or_else(|| CompletionError::ResponseError("Response contained no parts".to_owned()))
 }
 
-/// Replay accumulated raw choices through [`normalize_responses_stream`] and
-/// merge the result with the parsed terminal response body.
+/// Replay accumulated stream events through
+/// [`streaming::StreamingCompletionResponse`] and merge the result with the
+/// parsed terminal response body.
 ///
 /// The replayed stream is authoritative where it reported something; the
 /// terminal body fills any gap it left (usage, message ID, finish reason,
 /// model). Returns `Ok(None)` when the replay produced no content, leaving the
 /// caller to decide how to fall back.
 #[doc(hidden)]
-pub async fn completion_response_from_raw_choices(
+pub async fn completion_response_from_stream_events(
     provider: &str,
-    raw_choices: Vec<StreamingRawChoice>,
+    events: Vec<StreamEvent>,
     raw_response: &CompletionResponse,
 ) -> Result<Option<completion::CompletionResponse>, CompletionError> {
-    let stream = futures::stream::iter(raw_choices.into_iter().map(Ok::<_, CompletionError>));
-    let mut stream = normalize_responses_stream(provider, Box::pin(stream));
+    let stream: StreamingResult = Box::pin(futures::stream::iter(
+        events.into_iter().map(Ok::<_, CompletionError>),
+    ));
+    let mut stream = streaming::StreamingCompletionResponse::stream(provider, stream);
 
     while let Some(item) = stream.next().await {
         item?;
     }
 
-    if choice_is_empty(&stream.choice) {
+    let mut choice = stream.snapshot();
+    if choice_is_empty(&choice) {
         return Ok(None);
     }
 
@@ -960,7 +943,6 @@ pub async fn completion_response_from_raw_choices(
     // message text only in the terminal body while streaming other kinds as
     // deltas. A replay with no message text takes the body's message content;
     // everything replayed is kept.
-    let mut choice = std::mem::take(&mut stream.choice);
     // Presence of ANY streamed text — even whitespace — means the deltas were
     // the content channel; merging the body then would duplicate it.
     let replay_has_message_text = choice.iter().any(|content| {
@@ -1042,26 +1024,32 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
         .unwrap_or_default()
 }
 
-/// Open a Responses SSE stream whose terminal record stays provider-native.
-///
-/// Pass the result through [`normalize_responses_stream`] to obtain the
-/// normalized stream that [`completion::CompletionModel::stream`] returns.
-pub(crate) fn raw_stream_from_event_source<HttpClient, RequestBody>(
+/// Open a Responses SSE stream for `provider`, as the grammar events
+/// [`completion::CompletionModel::stream`] wraps in a
+/// [`streaming::StreamingCompletionResponse`].
+pub(crate) fn responses_stream_from_event_source<HttpClient, RequestBody>(
+    provider: &str,
     event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
-) -> streaming::RawStreamingResult<StreamingCompletionResponse>
+) -> StreamingResult
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
 {
-    raw_stream_from_event_source_with_options(event_source, span, ResponsesStreamOptions::strict())
+    responses_stream_from_event_source_with_options(
+        provider,
+        event_source,
+        span,
+        ResponsesStreamOptions::strict(),
+    )
 }
 
-pub(crate) fn raw_stream_from_event_source_with_options<HttpClient, RequestBody>(
+pub(crate) fn responses_stream_from_event_source_with_options<HttpClient, RequestBody>(
+    provider: &str,
     event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
     options: ResponsesStreamOptions,
-) -> streaming::RawStreamingResult<StreamingCompletionResponse>
+) -> StreamingResult
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
@@ -1088,7 +1076,7 @@ where
             }
             FrameDisposition::Frame(data)
         },
-        ResponsesAdapter::live(options),
+        ResponsesAdapter::live(provider, options),
         span,
     )
 }
@@ -1121,18 +1109,18 @@ pub(crate) struct ResponsesAdapter {
 }
 
 impl ResponsesAdapter {
-    fn live(options: ResponsesStreamOptions) -> Self {
+    fn live(provider: &str, options: ResponsesStreamOptions) -> Self {
         Self {
-            accumulator: RawChoiceAccumulator::new(ResponsesUsage::new()),
+            accumulator: RawChoiceAccumulator::new(provider, ResponsesUsage::new()),
             options,
             repair_envelopes: false,
             finished: false,
         }
     }
 
-    fn buffered(initial_usage: ResponsesUsage) -> Self {
+    fn buffered(provider: &str, initial_usage: ResponsesUsage) -> Self {
         Self {
-            accumulator: RawChoiceAccumulator::new(initial_usage),
+            accumulator: RawChoiceAccumulator::new(provider, initial_usage),
             options: ResponsesStreamOptions::strict(),
             repair_envelopes: true,
             finished: false,
@@ -1143,7 +1131,6 @@ impl ResponsesAdapter {
 impl WireAdapter for ResponsesAdapter {
     type Frame = WireFrame;
     type Event = ResponsesFrameEvent;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<ResponsesFrameEvent> {
         let data = frame.as_str().into_owned();
@@ -1182,19 +1169,14 @@ impl WireAdapter for ResponsesAdapter {
         event.map(|chunk| ResponsesFrameEvent { raw: data, chunk })
     }
 
-    fn interpret(&mut self, event: ResponsesFrameEvent, out: &mut AdapterOutput<Self::Response>) {
+    fn interpret(&mut self, event: ResponsesFrameEvent, out: &mut AdapterOutput) {
         if self.finished {
             return;
         }
 
         match event.chunk {
             StreamingCompletionChunk::Delta(chunk) => {
-                out.extend(
-                    self.accumulator
-                        .decode_item_chunk(chunk, self.options)
-                        .into_iter()
-                        .map(Ok),
-                );
+                self.accumulator.decode_item_chunk(chunk, self.options, out);
             }
             StreamingCompletionChunk::Response(chunk) => {
                 let ResponseChunk { kind, response, .. } = *chunk;
@@ -1210,25 +1192,26 @@ impl WireAdapter for ResponsesAdapter {
                     // `response.failed`: fully-delivered tool calls flush
                     // before the terminal error, which ends the stream with
                     // no terminal record, preserving the failure signal.
-                    out.extend(self.accumulator.take_tool_calls().into_iter().map(Ok));
-                    out.push(Err(error));
+                    self.accumulator.flush_tool_calls(out);
+                    out.error(error);
                     self.finished = true;
                 }
             }
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        let provider = self.accumulator.provider.clone();
         let accumulator = std::mem::replace(
             &mut self.accumulator,
-            RawChoiceAccumulator::new(ResponsesUsage::new()),
+            RawChoiceAccumulator::new(provider, ResponsesUsage::new()),
         );
         let final_usage = accumulator.final_usage;
 
         // Flush buffered tool calls, then the terminal record when a genuine
         // terminal event arrived; EOF without one is truncation and the
         // accumulator withholds the record (deferral, never synthesis).
-        out.extend(accumulator.finish().into_iter().map(Ok));
+        accumulator.finish(out);
 
         let span = tracing::Span::current();
         span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
@@ -1240,10 +1223,10 @@ impl WireAdapter for ResponsesAdapter {
         span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
     }
 
-    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput<Self::Response>) {
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
         // Tool calls the provider fully delivered are content: they flush
         // before the terminal error reaches the consumer.
-        out.extend(self.accumulator.take_tool_calls().into_iter().map(Ok));
+        self.accumulator.flush_tool_calls(out);
     }
 
     fn is_finished(&self) -> bool {
@@ -1472,18 +1455,15 @@ where
     Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
     H: Clone + WasmCompatSend + 'static,
 {
-    /// Open a stream whose terminal record stays provider-native.
+    /// Open a Responses stream.
     ///
-    /// This is the escape hatch for Responses-API terminal fields rig does not
-    /// normalize. It shares the request builder, transport, telemetry, and
-    /// error handling with
-    /// [`CompletionModel::stream`](completion::CompletionModel::stream), which
-    /// calls it and normalizes the terminal record — one network request either
-    /// way.
-    pub async fn raw_stream(
+    /// The terminal record's provider-native form — the escape hatch for
+    /// Responses-API terminal fields rig does not normalize — rides on
+    /// [`StreamFinal::raw`] as the serialized [`StreamingCompletionResponse`].
+    pub(crate) async fn stream(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let (request_model, request) = self.create_provider_request(completion_request, true)?;
@@ -1524,24 +1504,16 @@ where
         } else {
             ResponsesStreamOptions::strict()
         };
-        let stream = raw_stream_from_event_source_with_options(event_source, span, options);
-        Ok(
-            crate::providers::internal::sse_transport::stamp_terminal_request_id(
-                stream,
-                request_id_slot,
-                Ext::REQUEST_ID_HEADER,
-                |response, id| response.provider_request_id = Some(id),
-            ),
-        )
-    }
-
-    pub(crate) async fn stream(
-        &self,
-        completion_request: crate::completion::CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let raw = self.raw_stream(completion_request).await?;
-
-        Ok(normalize_responses_stream(Ext::PROVIDER_NAME, raw))
+        let stream = responses_stream_from_event_source_with_options(
+            Ext::PROVIDER_NAME,
+            event_source,
+            span,
+            options,
+        );
+        Ok(streaming::StreamingCompletionResponse::stream(
+            Ext::PROVIDER_NAME,
+            stamp_terminal_request_id(stream, request_id_slot, Ext::REQUEST_ID_HEADER),
+        ))
     }
 }
 

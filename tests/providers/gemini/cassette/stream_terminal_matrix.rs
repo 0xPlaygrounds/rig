@@ -3,8 +3,8 @@
 //! # The bug
 //!
 //! `GeminiRestAdapter::interpret` treated *any* chunk carrying a
-//! `finishReason` as the provider completing the turn and pushed
-//! `RawStreamingChoice::FinalResponse` there; the shared driver stops reading
+//! `finishReason` as the provider completing the turn and pushed the
+//! terminal `StreamEvent::Final` there; the shared driver stops reading
 //! as soon as it sees a terminal record. Gemini's `streamGenerateContent`
 //! does not honour that assumption: when a built-in tool runs a round it
 //! emits an **intermediate** `finishReason` and keeps streaming. A recorded
@@ -39,7 +39,7 @@
 //! | 4 | `two_terminal_stream_terminal_carries_the_last_usage` | recorded | terminal metadata comes from the last chunk |
 //! | 5 | `two_terminal_stream_with_visible_thoughts` | recorded | reasoning spanning the boundary |
 //! | 6 | `gemini_3_flash_does_not_emit_the_intermediate_finish` | recorded | second model family: control, shape absent |
-//! | 7 | `two_terminal_stream_through_raw_stream` | recorded | the provider-native `raw_stream` entry |
+//! | 7 | `two_terminal_stream_through_raw_stream` | recorded | the provider-native terminal on `Final.raw` |
 //! | 8 | `two_terminal_stream_unicode_answer_after_the_first_finish` | recorded | multi-byte text after the boundary |
 //! | 9 | `single_terminal_text_stream_is_unchanged` | recorded | regression guard: ordinary stream |
 //! | 10 | `single_terminal_tool_call_stream_is_unchanged` | recorded | regression guard: tool-call stream |
@@ -82,7 +82,7 @@ use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -170,16 +170,19 @@ async fn drain(mut stream: rig::streaming::StreamingCompletionResponse) -> Drain
     let mut last_item_was_terminal = false;
     while let Some(item) = stream.next().await {
         let item = item.expect("no stream item should be an error");
-        last_item_was_terminal = matches!(item, StreamedAssistantContent::Final(_));
+        last_item_was_terminal = matches!(item, StreamEvent::Final(_));
         match item {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(_) => terminals += 1,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(_) => terminals += 1,
             _ => {}
         }
     }
     Drained {
         text,
-        choice: stream.choice.clone(),
+        choice: stream.snapshot(),
         terminals,
         terminal: stream.response.clone(),
         last_item_was_terminal,
@@ -286,10 +289,13 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Text(text),
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    },
                 ) = item.expect("no stream item should be an error")
                 {
-                    answer.push_str(&text.text);
+                    answer.push_str(&text);
                 }
             }
 
@@ -461,8 +467,6 @@ async fn two_terminal_stream_through_raw_stream() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_through_raw_stream",
         |client| async move {
-            use rig::streaming::RawStreamingChoice;
-
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(TWO_ROUND_PROMPT)
@@ -471,18 +475,35 @@ async fn two_terminal_stream_through_raw_stream() {
                 .additional_params(code_execution_params())
                 .build();
 
-            // `raw_stream` keeps Gemini's own terminal type, so this pins the fix
-            // on the provider-native entry point as well as the normalized one.
-            let mut stream = model
-                .raw_stream(request)
+            // The terminal record carries Gemini's own terminal type on
+            // `raw`, so this pins the fix on the provider-native record as
+            // well as the normalized one.
+            let mut stream = CompletionModel::stream(&model, request)
                 .await
-                .expect("raw stream should open");
+                .expect("stream should open");
             let mut text = String::new();
             let mut natives = 0;
             while let Some(item) = stream.next().await {
-                match item.expect("no raw item should be an error") {
-                    RawStreamingChoice::Message(chunk) => text.push_str(&chunk),
-                    RawStreamingChoice::FinalResponse(_) => natives += 1,
+                match item.expect("no stream item should be an error") {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: chunk },
+                        ..
+                    } => text.push_str(&chunk),
+                    StreamEvent::Final(record) => {
+                        let native: gemini::streaming::StreamingCompletionResponse =
+                            serde_json::from_value(record.raw.clone())
+                                .expect("Final.raw should decode as Gemini's native terminal");
+                        assert_eq!(
+                            native
+                                .finish_reason
+                                .as_ref()
+                                .map(|reason| reason.as_wire_str()),
+                            Some("STOP"),
+                            "the native terminal reports the reason the turn actually ended on"
+                        );
+                        assert_eq!(record.finish_reason, Some(FinishReason::Stop));
+                        natives += 1;
+                    }
                     _ => {}
                 }
             }
@@ -712,9 +733,10 @@ async fn thinking_stream_terminal_is_unchanged() {
 mod unit {
     use futures::StreamExt;
     use rig::completion::{CompletionModel, FinishReason};
+    use rig::message::AssistantContent;
     use rig::prelude::*;
     use rig::providers::gemini;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::{Delta, StreamEvent};
     use rig_core::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
 
     /// Frames written from the bytes recorded by cells 1–12.
@@ -781,13 +803,22 @@ mod unit {
         while let Some(item) = stream.next().await {
             match item {
                 Ok(item) => {
-                    run.last_was_terminal = matches!(item, StreamedAssistantContent::Final(_));
+                    run.last_was_terminal = matches!(item, StreamEvent::Final(_));
                     match item {
-                        StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-                        StreamedAssistantContent::Reasoning { .. } => run.reasoning += 1,
-                        StreamedAssistantContent::ToolCall { .. } => run.tool_calls += 1,
-                        StreamedAssistantContent::Unknown(_) => run.unknowns += 1,
-                        StreamedAssistantContent::Final(final_record) => {
+                        StreamEvent::BlockDelta {
+                            delta: Delta::Text { text },
+                            ..
+                        } => run.text.push_str(&text),
+                        StreamEvent::BlockEnd {
+                            block: Some(AssistantContent::Reasoning(_)),
+                            ..
+                        } => run.reasoning += 1,
+                        StreamEvent::BlockEnd {
+                            block: Some(AssistantContent::ToolCall(_)),
+                            ..
+                        } => run.tool_calls += 1,
+                        StreamEvent::Unknown(_) => run.unknowns += 1,
+                        StreamEvent::Final(final_record) => {
                             run.terminals.push(final_record);
                         }
                         _ => {}

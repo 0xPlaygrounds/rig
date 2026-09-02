@@ -217,7 +217,7 @@ const _: fn() = || {
     fn assert_send_static<T: Send + 'static>() {}
     assert_send_sync_static::<tool::PortableDynamicTool>();
     assert_send_sync_static::<tool::ManagedToolToken>();
-    assert_send_sync_static::<streaming::StreamedAssistantContent>();
+    assert_send_sync_static::<streaming::StreamEvent>();
     // The erased model every driver (futures agent, systems runtime, registry)
     // holds, and the serializable identity it is resolved from.
     assert_send_sync_static::<completion::ModelHandle>();

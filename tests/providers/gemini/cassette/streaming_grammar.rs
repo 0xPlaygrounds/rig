@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for Gemini (REST `generateContent`
 //! streaming plus the Interactions API), asserted through the *normalized*
-//! path: the aggregated [`StreamingCompletionResponse::choice`], the terminal
+//! path: the aggregated [`StreamingCompletionResponse::snapshot`], the terminal
 //! [`StreamFinal`] record, usage, IDs, and finish reason — real recorded wire
 //! traffic, not synthetic chunks.
 //!
@@ -22,7 +22,7 @@ use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
 use rig::providers::gemini::interactions_api;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -57,20 +57,35 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         let item = item.expect("stream item should be ok");
         raw_items.push(Ok(item.clone()));
         match item {
-            StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => run.text.push_str(&text),
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            } => {
                 run.reasoning_blocks.push(reasoning);
             }
-            StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
-                run.reasoning_delta.push_str(&reasoning);
+            StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text },
+                ..
+            } => {
+                run.reasoning_delta.push_str(&text);
             }
-            StreamedAssistantContent::ToolCall { tool_call, .. } => run.tool_calls.push(tool_call),
-            StreamedAssistantContent::Final(response) => run.finals.push(response),
-            _ => {}
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => run.tool_calls.push(tool_call),
+            StreamEvent::Final(response) => run.finals.push(response),
+            StreamEvent::BlockStart { .. }
+            | StreamEvent::BlockDelta { .. }
+            | StreamEvent::BlockEnd { .. }
+            | StreamEvent::Unknown(_) => {}
         }
     }
 
-    run.choice = stream.choice.clone();
+    run.choice = stream.snapshot();
     // The shared lifecycle validator runs over every recorded turn this
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);

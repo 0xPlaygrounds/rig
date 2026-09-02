@@ -371,18 +371,25 @@ impl CompletionModel for MockCompletionModel {
             ));
         };
 
+        // Scripted events go through the same `AdapterOutput` helper every
+        // real adapter uses, so the mock speaks exactly the wire grammar —
+        // and the same `Stop` -> `ToolCalls` reconciliation callers see in
+        // production runs in `StreamingCompletionResponse` for both.
         let stream = async_stream::stream! {
+            let mut out = crate::providers::internal::adapter::AdapterOutput::new();
             for event in events {
-                yield event.into_raw_choice();
+                if let Err(error) = event.emit(&mut out) {
+                    out.error(error);
+                }
+                for item in out.drain() {
+                    yield item;
+                }
             }
         };
-        // Scripted terminals go through `normalize_stream` like every real
-        // provider's, so the mock observes the same `Stop` -> `ToolCalls`
-        // reconciliation callers see in production — and the same raw
-        // capture: the mock's terminal type is `StreamFinal` itself, so `raw`
-        // is the scripted terminal serialized.
-        let stream = crate::streaming::normalize_stream(Box::pin(stream), Ok);
-        Ok(StreamingCompletionResponse::stream(MOCK_PROVIDER, stream))
+        Ok(StreamingCompletionResponse::stream(
+            MOCK_PROVIDER,
+            Box::pin(stream),
+        ))
     }
 }
 

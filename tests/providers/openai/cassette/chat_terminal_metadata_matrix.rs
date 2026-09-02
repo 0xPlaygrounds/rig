@@ -41,7 +41,7 @@ use futures::StreamExt as _;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_terminal_metadata_cassette_result;
@@ -139,14 +139,22 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
             serde_json::to_value(response)?
         }
         Transport::Streaming => {
-            let mut stream = model.raw_stream(request).await?;
+            let mut stream = model.stream(request).await?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let RawStreamingChoice::FinalResponse(response) = item? {
-                    terminal = Some(response);
+                if let StreamEvent::Final(record) = item? {
+                    terminal = Some(record);
                 }
             }
-            let terminal = terminal.context("raw stream should carry a terminal response")?;
+            let terminal = terminal.context("stream should carry a terminal record")?;
+            // The provider-native chat-completions terminal rides serialized
+            // on `StreamFinal::raw`; decode it to prove the shape, then read
+            // the serialized form the way the old raw surface did.
+            let terminal = serde_json::from_value::<
+                openai::completion::streaming::StreamingCompletionResponse<
+                    openai::completion::Usage,
+                >,
+            >(terminal.raw)?;
             serde_json::to_value(terminal)?
         }
     };

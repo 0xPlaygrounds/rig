@@ -1,7 +1,7 @@
 use super::*;
 use futures::StreamExt;
-use rig_core::message::Reasoning;
-use rig_core::streaming::StreamedAssistantContent;
+use rig_core::message::{AssistantContent, Reasoning};
+use rig_core::streaming::{Delta, StreamEvent};
 
 // ---- Event-seam helpers: no AWS transport, `stream_from_events` only ----
 
@@ -82,10 +82,13 @@ async fn drain(events: Vec<aws_bedrock::ConverseStreamOutput>) -> Drained {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            }) => {
                 drained.reasoning.push(reasoning);
             }
-            Ok(StreamedAssistantContent::Final(_)) => drained.reached_terminal = true,
+            Ok(StreamEvent::Final(_)) => drained.reached_terminal = true,
             Ok(_) => {}
             Err(error) => drained.errors.push(error.to_string()),
         }
@@ -507,38 +510,34 @@ fn message_stop_event(reason: aws_bedrock::StopReason) -> aws_bedrock::ConverseS
 /// returning every item the stream would yield, plus the final state.
 fn run_events(
     events: Vec<aws_bedrock::ConverseStreamOutput>,
-) -> (
-    Vec<Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>>,
-    StreamState,
-) {
+) -> (Vec<Result<StreamEvent, CompletionError>>, StreamState) {
     let mut state = StreamState::default();
-    let mut items = Vec::new();
+    let mut out = AdapterOutput::new();
     for event in events {
-        items.extend(process_event(&mut state, event));
+        process_event(&mut state, event, &mut out);
     }
-    (items, state)
+    (out.into_items(), state)
 }
 
-/// Drive the raw items through the same normalized pipeline the public
-/// stream uses (terminal mapping plus the shared accumulator), returning
-/// the completed tool calls and the in-band errors a consumer would see.
-/// Tool-call finalization happens in the accumulator, so assertions about
-/// completed calls and malformed-input errors belong at this level.
+/// Drive the adapter's items through the same pipeline the public stream
+/// uses (the shared accumulator), returning the completed tool calls and
+/// the in-band errors a consumer would see. Tool-call finalization happens
+/// in the accumulator, so assertions about completed calls and
+/// malformed-input errors belong at this level.
 async fn assembled(
-    items: Vec<Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>>,
+    items: Vec<Result<StreamEvent, CompletionError>>,
 ) -> (Vec<rig_core::message::ToolCall>, Vec<CompletionError>) {
     use futures::StreamExt;
-    let raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse> =
-        Box::pin(futures::stream::iter(items));
     let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw));
+        StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
     let mut calls = Vec::new();
     let mut errors = Vec::new();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(rig_core::streaming::StreamedAssistantContent::ToolCall { tool_call, .. }) => {
-                calls.push(tool_call)
-            }
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => calls.push(tool_call),
             Err(err) => errors.push(err),
             Ok(_) => {}
         }
@@ -638,7 +637,10 @@ async fn text_after_closed_tool_block_is_delivered() {
     let texts: Vec<&str> = items
         .iter()
         .filter_map(|item| match item {
-            Ok(RawStreamingChoice::Message(text)) => Some(text.as_str()),
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => Some(text.as_str()),
             _ => None,
         })
         .collect();
@@ -754,13 +756,9 @@ fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseSt
 
 /// Drive `items` through the normalized pipeline exactly as the
 /// `CompletionModel` seam does, returning the terminal.
-async fn normalized_terminal(
-    items: Vec<Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>>,
-) -> rig_core::streaming::StreamFinal {
-    let raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse> =
-        Box::pin(futures::stream::iter(items));
+async fn normalized_terminal(items: Vec<Result<StreamEvent, CompletionError>>) -> StreamFinal {
     let mut stream =
-        StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw));
+        StreamingCompletionResponse::stream(PROVIDER_NAME, Box::pin(futures::stream::iter(items)));
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
@@ -771,8 +769,8 @@ async fn normalized_terminal(
 
 /// The events-first seam captures like the request-driven one: its
 /// terminal `raw` is the same `BedrockStreamingResponse` the model's
-/// `stream()` would attach, because both funnel through
-/// `normalize_bedrock_stream`.
+/// `stream()` would attach, because both funnel through the adapter's
+/// `terminal_record`.
 #[tokio::test]
 async fn stream_from_events_terminal_carries_raw() {
     let mut stream = stream_from_events(futures::stream::iter(
@@ -829,8 +827,10 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     // Feeding the capture back through the same pipeline tells the same
     // story as the terminal the stream produced.
-    let renormalized =
-        normalized_terminal(vec![Ok(RawStreamingChoice::FinalResponse(typed))]).await;
+    let renormalized = normalized_terminal(vec![Ok(StreamEvent::Final(
+        terminal_record(typed).expect("terminal record"),
+    ))])
+    .await;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);
     assert_eq!(terminal.model, renormalized.model);

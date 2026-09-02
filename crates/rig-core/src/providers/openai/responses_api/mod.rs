@@ -1161,7 +1161,7 @@ impl<'de> Deserialize<'de> for ResponseStatus {
 /// [`completion::FinishReason::ToolCalls`] for a turn that emitted function
 /// calls is applied once, centrally, by
 /// [`completion::CompletionResponse::with_optional_finish_reason`] (and, for
-/// streams, by [`crate::streaming::normalize_stream`]).
+/// streams, by [`crate::streaming::StreamingCompletionResponse`]).
 ///
 /// Anything unrecognized — a new `incomplete_details.reason`, or a terminal
 /// status such as `failed`/`cancelled` that has no normalized counterpart — is

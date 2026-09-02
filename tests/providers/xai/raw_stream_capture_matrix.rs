@@ -1,8 +1,8 @@
 //! Raw provider response capture on xAI's streaming path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
-//! `raw_stream` yielded as its terminal record — for xAI the Responses terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the provider-native terminal record
+//! behind the stream's `StreamEvent::Final` — for xAI the Responses terminal
 //! [`StreamingCompletionResponse`], built from the `response.completed` event —
 //! serialized. Capture is always on: there is no flag to request it, nothing
 //! about it reaches the wire, and a `Value::Null` only ever means a terminal
@@ -147,7 +147,10 @@ async fn stream_raw_round_trips_terminal_type() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.message_id, terminal.message_id);
-            assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+            assert_eq!(
+                typed.provider_request_id, None,
+                "the transport id is stamped on the normalized terminal, not the native record"
+            );
             *sink.lock().expect("observation lock") = Some(terminal);
             Ok::<(), anyhow::Error>(())
         },

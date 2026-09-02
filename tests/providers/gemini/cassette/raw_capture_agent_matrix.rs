@@ -55,7 +55,7 @@ use rig::agent::{
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::Value;
 
@@ -168,7 +168,7 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
             MultiTurnStreamItem::CompletionCall(call) => run.completion_calls.push(call),
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
                 run.finals.push(final_);
             }
             MultiTurnStreamItem::FinalResponse(response) => {

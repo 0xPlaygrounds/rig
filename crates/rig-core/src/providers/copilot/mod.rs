@@ -38,7 +38,6 @@ use crate::providers::openai::responses_api::{self, CompletionRequest as Respons
 use crate::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use futures::StreamExt;
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -612,33 +611,6 @@ impl NormalizeCompletionResponse for CopilotCompletionResponse {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "api", rename_all = "snake_case")]
-pub enum CopilotStreamingResponse {
-    Chat(openai::completion::streaming::StreamingCompletionResponse),
-    Responses(responses_api::streaming::StreamingCompletionResponse),
-}
-
-impl From<&CopilotStreamingResponse> for completion::Usage {
-    fn from(response: &CopilotStreamingResponse) -> Self {
-        match response {
-            CopilotStreamingResponse::Chat(response) => (&response.usage).into(),
-            CopilotStreamingResponse::Responses(response) => (&response.usage).into(),
-        }
-    }
-}
-
-impl From<(&str, CopilotStreamingResponse)> for crate::streaming::StreamFinal {
-    fn from((provider, response): (&str, CopilotStreamingResponse)) -> Self {
-        // Both Copilot routes reuse an upstream terminal record, so each maps
-        // through that route's own conversion rather than re-deriving it here.
-        match response {
-            CopilotStreamingResponse::Chat(response) => (provider, response).into(),
-            CopilotStreamingResponse::Responses(response) => (provider, response).into(),
-        }
-    }
-}
-
 /// Stable descriptor name reported on normalized Copilot responses.
 pub const PROVIDER_NAME: &str = "copilot";
 
@@ -893,11 +865,10 @@ where
         })
     }
 
-    async fn raw_stream_chat(
+    async fn stream_chat(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<crate::streaming::RawStreamingResult<CopilotStreamingResponse>, CompletionError>
-    {
+    ) -> Result<crate::streaming::StreamingResult, CompletionError> {
         let facts = RequestFacts::capture(&completion_request);
         let request = self.chat_request(completion_request)?;
         let mut request_json = serde_json::to_value(&request)?;
@@ -927,11 +898,10 @@ where
         .await
     }
 
-    async fn raw_stream_responses(
+    async fn stream_responses(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<crate::streaming::RawStreamingResult<CopilotStreamingResponse>, CompletionError>
-    {
+    ) -> Result<crate::streaming::StreamingResult, CompletionError> {
         let facts = RequestFacts::capture(&completion_request);
         let mut request = self.responses_request(completion_request)?;
         request.stream = Some(true);
@@ -952,23 +922,21 @@ where
                 .capture_request_id("x-request-id");
 
         // Copilot's `/responses` route relays OpenAI's Responses SSE wire
-        // verbatim, so the shared classify + `RawChoiceAccumulator` machinery
-        // is the event interpreter — only the auth/transport above and the
-        // route-carrying terminal wrapper below are Copilot-specific.
-        let raw = responses_api::streaming::raw_stream_from_event_source(event_source, span);
-        let raw = crate::providers::internal::sse_transport::stamp_terminal_request_id(
-            raw,
-            Some(request_id_slot),
-            Some("x-request-id"),
-            |response, id| response.provider_request_id = Some(id),
+        // verbatim, so the shared Responses adapter is the event interpreter
+        // — only the auth/transport above is Copilot-specific; the terminal
+        // record is attributed to Copilot.
+        let stream = responses_api::streaming::responses_stream_from_event_source(
+            PROVIDER_NAME,
+            event_source,
+            span,
         );
-        let stream = raw.map(|item| {
-            item.and_then(|choice| {
-                choice.try_map_final(|response| Ok(CopilotStreamingResponse::Responses(response)))
-            })
-        });
-
-        Ok(Box::pin(stream))
+        Ok(
+            crate::providers::internal::sse_transport::stamp_terminal_request_id(
+                stream,
+                Some(request_id_slot),
+                Some("x-request-id"),
+            ),
+        )
     }
 
     /// Execute a completion on whichever route this model is configured for and
@@ -1024,34 +992,16 @@ where
         }
     }
 
-    /// Open a stream on whichever route this model is configured for, keeping
-    /// the terminal record provider-native.
-    pub async fn raw_stream(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<crate::streaming::RawStreamingResult<CopilotStreamingResponse>, CompletionError>
-    {
-        match self.route() {
-            CompletionRoute::ChatCompletions => self.raw_stream_chat(completion_request).await,
-            CompletionRoute::Responses => self.raw_stream_responses(completion_request).await,
-        }
-    }
-
-    /// Open a stream normalized to rig's terminal record. Delegates to
-    /// [`CompletionModel::raw_stream`] — one request either way.
+    /// Open a stream on whichever route this model is configured for.
     async fn stream_normalized(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let raw = self.raw_stream(completion_request).await?;
-
-        Ok(StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            crate::streaming::normalize_stream(
-                raw,
-                |response| Ok((PROVIDER_NAME, response).into()),
-            ),
-        ))
+        let stream = match self.route() {
+            CompletionRoute::ChatCompletions => self.stream_chat(completion_request).await?,
+            CompletionRoute::Responses => self.stream_responses(completion_request).await?,
+        };
+        Ok(StreamingCompletionResponse::stream(PROVIDER_NAME, stream))
     }
 }
 
@@ -1440,25 +1390,21 @@ where
 async fn send_copilot_chat_raw_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
-) -> Result<crate::streaming::RawStreamingResult<CopilotStreamingResponse>, CompletionError>
+) -> Result<crate::streaming::StreamingResult, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
     // Copilot's `/chat/completions` route relays OpenAI's chat-completions
     // SSE wire verbatim, so OpenAI's shared streaming profile (tolerant
     // deserializers, reasoning handling, finish-reason mapping) is the event
-    // interpreter — only the auth/transport in the caller and the
-    // route-carrying terminal wrapper below are Copilot-specific.
-    let raw =
-        openai::completion::streaming::send_compatible_raw_streaming_request(http_client, req)
-            .await?;
-    let stream = raw.map(|item| {
-        item.and_then(|choice| {
-            choice.try_map_final(|response| Ok(CopilotStreamingResponse::Chat(response)))
-        })
-    });
-
-    Ok(Box::pin(stream))
+    // interpreter — only the auth/transport in the caller is
+    // Copilot-specific; the terminal record is attributed to Copilot.
+    openai::completion::streaming::send_compatible_raw_streaming_request(
+        http_client,
+        req,
+        PROVIDER_NAME.to_owned(),
+    )
+    .await
 }
 
 fn default_token_dir() -> Option<PathBuf> {

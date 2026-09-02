@@ -2,9 +2,10 @@
 
 use futures::StreamExt;
 use rig::completion::CompletionModel;
+use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::ollama;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use tokio::time::{Duration, sleep};
 
 #[tokio::test]
@@ -24,12 +25,17 @@ async fn streaming_pause_and_resume() {
     let mut paused_once = false;
     while let Some(chunk) = stream.next().await {
         match chunk.expect("stream chunk should succeed") {
-            StreamedAssistantContent::Text(text) => {
-                chunk_count += usize::from(!text.text.is_empty());
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => {
+                chunk_count += usize::from(!text.is_empty());
             }
-            StreamedAssistantContent::ToolCall { .. }
-            | StreamedAssistantContent::Reasoning { .. } => chunk_count += 1,
-            StreamedAssistantContent::Final(_) => break,
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(_) | AssistantContent::Reasoning(_)),
+                ..
+            } => chunk_count += 1,
+            StreamEvent::Final(_) => break,
             _ => {}
         }
 

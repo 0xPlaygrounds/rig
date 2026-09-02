@@ -5,7 +5,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::xai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 
 use super::support::with_xai_cassette;
 
@@ -57,8 +57,7 @@ async fn streaming_terminal_carries_identity() {
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }

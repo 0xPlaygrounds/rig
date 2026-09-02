@@ -3,9 +3,9 @@
 use std::path::PathBuf;
 
 use futures::StreamExt;
-use rig_candle::{CandleModel, ModelData};
+use rig_candle::{CandleCompletionResponse, CandleModel, ModelData};
 use rig_core::completion::CompletionModel;
-use rig_core::streaming::RawStreamingChoice;
+use rig_core::streaming::{Delta, StreamEvent};
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires RIG_CANDLE_MODEL_DIR with local Llama 3 safetensors or SmolLM2 GGUF artifacts"]
@@ -54,18 +54,24 @@ async fn loads_and_generates_with_a_real_local_model()
         ))
         .into());
     }
-    let mut stream = model.raw_stream(request.clone()).await?;
+    // The stream's terminal carries the same local record on `raw`.
+    let mut stream = model.stream(request.clone()).await?;
     let mut streamed_text = String::new();
-    let mut final_response = None;
     while let Some(item) = stream.next().await {
-        match item? {
-            RawStreamingChoice::Message(fragment) => streamed_text.push_str(&fragment),
-            RawStreamingChoice::FinalResponse(raw) => final_response = Some(raw),
-            _ => {}
+        if let StreamEvent::BlockDelta {
+            delta: Delta::Text { text },
+            ..
+        } = item?
+        {
+            streamed_text.push_str(&text);
         }
     }
-    let final_response = final_response
-        .ok_or_else(|| std::io::Error::other("real model stream omitted final metadata"))?;
+    let final_response: CandleCompletionResponse = serde_json::from_value(
+        stream
+            .response
+            .ok_or_else(|| std::io::Error::other("real model stream omitted final metadata"))?
+            .raw,
+    )?;
     if streamed_text != response.text || final_response.text != streamed_text {
         return Err(std::io::Error::other("buffered and streamed output differed").into());
     }
@@ -96,8 +102,12 @@ async fn loads_and_generates_with_a_real_local_model()
     let mut normalized_stream = model.stream(request).await?;
     let mut normalized_streamed = String::new();
     while let Some(item) = normalized_stream.next().await {
-        if let rig_core::streaming::StreamedAssistantContent::Text(text) = item? {
-            normalized_streamed.push_str(&text.text);
+        if let StreamEvent::BlockDelta {
+            delta: Delta::Text { text },
+            ..
+        } = item?
+        {
+            normalized_streamed.push_str(&text);
         }
     }
     if normalized_streamed.is_empty() {
