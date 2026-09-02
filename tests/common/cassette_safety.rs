@@ -1,4 +1,21 @@
 //! Safety checks for committed cassette fixtures.
+//!
+//! There is no registry of providers or wrappers. Suites are discovered from
+//! the tree, and the conventions the discovery relies on are the invariant:
+//!
+//! * a provider is a directory `tests/providers/<provider>/` that has a test
+//!   binary `tests/<provider>.rs`, and its cassettes live under
+//!   `tests/cassettes/<provider>/`;
+//! * a cassette wrapper is any function whose name starts with `with_` and
+//!   contains `cassette`; its first argument is the scenario (a string
+//!   literal or `CassetteSpec::new("...")`);
+//! * a wrapper is called only from inside its own provider's directory, so
+//!   the directory a call sits in is the provider its scenario belongs to.
+//!
+//! A wrapper that names another provider in its identifier but is called
+//! from a different provider's directory is rejected, because the scenario
+//! would otherwise be registered under the wrong provider and surface as a
+//! confusing missing/orphaned pair.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -9,245 +26,48 @@ use syn::visit::{self, Visit};
 use syn::{Expr, ExprCall, ExprLit, ItemFn, Lit};
 
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cassettes");
+const PROVIDER_SOURCE_ROOT: &str = "tests/providers";
 
 struct ProviderCassetteSuite {
-    provider: &'static str,
-    source_dir: &'static str,
-    wrapper_names: &'static [&'static str],
+    provider: String,
+    source_dir: PathBuf,
 }
 
-const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
-    ProviderCassetteSuite {
-        provider: "openai",
-        source_dir: "tests/providers/openai/cassette",
-        wrapper_names: &[
-            "with_openai_cassette",
-            "with_openai_lifecycle_cassette",
-            "with_openai_prompt_caching_cassette",
-            "with_openai_completions_prompt_caching_cassette",
-            "with_openai_turn_metadata_cassette",
-            "with_openai_cassette_bogus_key",
-            "with_openai_completions_cassette",
-            "with_openai_cassette_result",
-            "with_openai_completions_cassette_result",
-            "with_openai_vllm_cassette",
-            "with_local_reasoning_content_cassette",
-            "with_openai_refusal_cassette",
-            "with_openai_max_tokens_cassette",
-            "with_openai_image_params_cassette",
-            "with_openai_truncation_cassette",
-            "with_openai_chat_stream_logprobs_cassette_result",
-            "with_openai_tool_truncation_cassette_result",
-            "with_openai_tool_lifecycle_cassette_result",
-            "with_openai_terminal_metadata_cassette_result",
-            "with_openai_history_roundtrip_cassette_result",
-            "with_openai_transcription_cassette",
-            "with_openai_audio_cassette",
-            "with_openai_websocket_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "chatgpt",
-        source_dir: "tests/providers/chatgpt/cassette",
-        wrapper_names: &[
-            "with_chatgpt_cassette",
-            "with_chatgpt_cassette_default_instructions",
-            "with_chatgpt_noninteractive_oauth_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "copilot",
-        source_dir: "tests/providers/copilot",
-        wrapper_names: &[
-            "with_copilot_cassette",
-            "with_copilot_cassette_result",
-            "with_copilot_noninteractive_oauth_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "anthropic",
-        source_dir: "tests/providers/anthropic/cassette",
-        wrapper_names: &[
-            "with_anthropic_cassette",
-            "with_anthropic_lifecycle_cassette",
-            "with_anthropic_turn_metadata_cassette",
-            "with_anthropic_cassette_result",
-            "with_anthropic_cassette_bogus_key",
-            "with_anthropic_files_cassette",
-            "with_anthropic_gateway_cassette",
-            "with_anthropic_stop_sequence_cassette",
-            "with_anthropic_empty_stop_cassette",
-            "with_anthropic_reasoning_usage_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "bedrock",
-        source_dir: "tests/providers/bedrock/cassette",
-        wrapper_names: &["with_bedrock_cassette"],
-    },
-    ProviderCassetteSuite {
-        provider: "doubleword",
-        source_dir: "tests/providers/doubleword/cassette",
-        wrapper_names: &[
-            "with_doubleword_prompt_caching_cassette",
-            "with_doubleword_cassette",
-            "with_doubleword_bogus_key_cassette",
-            "with_doubleword_cassette_result",
-            "with_doubleword_embedding_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "cohere",
-        source_dir: "tests/providers/cohere/cassette",
-        wrapper_names: &[
-            "with_cohere_cassette",
-            "with_cohere_prompt_caching_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "venice",
-        source_dir: "tests/providers/venice/cassette",
-        wrapper_names: &[
-            "with_venice_prompt_caching_cassette",
-            "with_venice_cassette",
-            "with_venice_cassette_result",
-            "with_venice_direct_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "gemini",
-        source_dir: "tests/providers/gemini/cassette",
-        wrapper_names: &[
-            "with_gemini_prompt_caching_cassette",
-            "with_gemini_cassette",
-            "with_gemini_lifecycle_cassette",
-            "with_gemini_turn_metadata_cassette",
-            "with_gemini_cassette_bogus_key",
-            "with_gemini_code_execution_cassette",
-            "with_gemini_interactions_cassette",
-            "with_gemini_stream_terminal_cassette",
-            "with_gemini_thought_text_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "ollama",
-        source_dir: "tests/providers/ollama/cassette",
-        wrapper_names: &["with_ollama_cassette"],
-    },
-    ProviderCassetteSuite {
-        provider: "llamacpp",
-        source_dir: "tests/providers/llamacpp/cassette",
-        wrapper_names: &[
-            "with_llamacpp_cassette",
-            "with_llamacpp_cassette_result",
-            "with_llamacpp_bare_openai_cassette",
-            "with_llamacpp_embeddings_cassette",
-            "with_llamacpp_vision_cassette",
-            "with_llamacpp_small_context_cassette",
-            "with_llamacpp_no_jinja_cassette",
-            "with_llamacpp_rerank_cassette",
-            "with_llamacpp_pooling_none_cassette",
-            "with_llamacpp_causal_embeddings_cassette",
-            "with_llamacpp_competent_cassette",
-            "with_llamacpp_llama_family_cassette",
-            "with_llamacpp_mistral_family_cassette",
-            "with_llamacpp_gemma_family_cassette",
-            "with_llamacpp_prompt_caching_cassette",
-            "with_llamacpp_large_vision_cassette",
-            "with_llamacpp_raw_http_cassette",
-            "with_llamacpp_api_key_cassette",
-            "with_llamacpp_missing_api_key_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "xai",
-        source_dir: "tests/providers/xai",
-        wrapper_names: &[
-            "with_xai_prompt_caching_cassette",
-            "with_xai_cassette",
-            "with_xai_cassette_bogus_key",
-            "with_xai_cassette_result",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "openrouter",
-        source_dir: "tests/providers/openrouter/cassette",
-        wrapper_names: &[
-            "with_openrouter_prompt_caching_cassette",
-            "with_openrouter_cassette",
-            "with_openrouter_cassette_result",
-            "with_openrouter_cassette_bogus_key_result",
-            "with_openrouter_openai_cassette",
-            "with_openrouter_refusal_cassette",
-            "with_openrouter_usage_cassette",
-            "with_openrouter_stream_logprobs_cassette_result",
-            "with_openrouter_tool_truncation_cassette_result",
-            "with_openrouter_tool_lifecycle_cassette_result",
-            "with_openrouter_terminal_metadata_cassette_result",
-            "with_openrouter_history_roundtrip_cassette_result",
-            "with_openrouter_reasoning_tool_order_cassette_result",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "deepseek",
-        source_dir: "tests/providers/deepseek",
-        wrapper_names: &[
-            "with_deepseek_prompt_caching_cassette",
-            "with_deepseek_cassette",
-            "with_deepseek_cassette_result",
-            "with_deepseek_cassette_bogus_key_result",
-            "with_deepseek_truncation_cassette_result",
-            "with_deepseek_block_order_cassette_result",
-            "with_deepseek_wire_shape_cassette_result",
-            "with_deepseek_followup_hunt_cassette_result",
-            "with_deepseek_stream_logprobs_cassette_result",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "groq",
-        source_dir: "tests/providers/groq",
-        wrapper_names: &[
-            "with_groq_prompt_caching_cassette",
-            "with_groq_cassette_result",
-            "with_groq_cassette_bogus_key_result",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "mistral",
-        source_dir: "tests/providers/mistral",
-        wrapper_names: &[
-            "with_mistral_embedding_cassette",
-            "with_mistral_prompt_caching_cassette",
-            "with_mistral_cassette_result",
-            "with_mistral_multimodal_cassette",
-            "with_mistral_cassette_bogus_key_result",
-            "with_mistral_capability_cassette",
-            "with_mistral_terminal_metadata_cassette_result",
-            "with_mistral_tool_truncation_cassette_result",
-            "with_mistral_tool_lifecycle_cassette_result",
-            "with_mistral_history_roundtrip_cassette_result",
-            "with_mistral_request_shape_cassette_result",
-            "with_mistral_logprobs_rejection_cassette_result",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "perplexity",
-        source_dir: "tests/providers/perplexity/cassette",
-        wrapper_names: &[
-            "with_perplexity_cassette",
-            "with_perplexity_prompt_caching_cassette",
-        ],
-    },
-    ProviderCassetteSuite {
-        provider: "mistralrs",
-        source_dir: "tests/providers/mistralrs/cassette",
-        wrapper_names: &[
-            "with_mistralrs_cassette",
-            "with_mistralrs_completions_cassette",
-            "with_mistralrs_raw_cassette",
-        ],
-    },
-];
+/// Every provider directory under `tests/providers/` that has a `tests/<provider>.rs`
+/// binary. Directories without a binary are reported by the caller if they
+/// contain cassette wrapper calls (see `collect_expected_cassette_paths`).
+fn discovered_suites() -> Vec<ProviderCassetteSuite> {
+    provider_source_dirs()
+        .into_iter()
+        .filter(|(provider, _)| repo_path(&format!("tests/{provider}.rs")).is_file())
+        .map(|(provider, source_dir)| ProviderCassetteSuite {
+            provider,
+            source_dir,
+        })
+        .collect()
+}
+
+/// `(name, path)` for every directory directly under `tests/providers/`, sorted.
+fn provider_source_dirs() -> Vec<(String, PathBuf)> {
+    let root = repo_path(PROVIDER_SOURCE_ROOT);
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(&root).expect("tests/providers should be readable") {
+        let entry = entry.expect("tests/providers entry should be readable");
+        let path = entry.path();
+        if path.is_dir() {
+            dirs.push((entry.file_name().to_string_lossy().into_owned(), path));
+        }
+    }
+    dirs.sort();
+    dirs
+}
+
+/// The naming convention a cassette wrapper follows. Discovery is by call
+/// site, not by definition, because some providers define their wrappers
+/// through macros.
+fn is_cassette_wrapper_name(name: &str) -> bool {
+    name.starts_with("with_") && name.contains("cassette")
+}
 
 #[test]
 fn cassettes_do_not_contain_obvious_secrets() {
@@ -268,23 +88,22 @@ fn cassettes_do_not_contain_obvious_secrets() {
     // binary, before anything is skipped:
     //
     //   * every top-level entry under `tests/cassettes` must be a directory
-    //     named after a suite registered in `PROVIDER_CASSETTE_SUITES` — a
-    //     stray file or an unregistered provider directory fails everywhere
-    //     rather than silently escaping the scan;
-    //   * every registered suite's `tests/<provider>.rs` must include this
-    //     module — so each registered directory is provably scanned by
-    //     exactly the binary that owns it, and adding a suite without wiring
-    //     the scan into its binary fails everywhere too;
-    //   * every registered provider name must be a valid crate identifier —
+    //     named after a discovered suite (a `tests/providers/<provider>/`
+    //     directory with a `tests/<provider>.rs` binary) — a stray file or a
+    //     cassette directory no binary owns fails everywhere rather than
+    //     silently escaping the scan;
+    //   * every discovered suite's `tests/<provider>.rs` must include this
+    //     module — so each cassette directory is provably scanned by exactly
+    //     the binary that owns it, and adding a provider without wiring the
+    //     scan into its binary fails everywhere too;
+    //   * every provider name must be a valid crate identifier —
     //     `env!("CARGO_CRATE_NAME")` mangles hyphens to underscores, so a
     //     hyphenated provider would resolve `own_dir` to a path that never
     //     exists and skip its own scan without a single failure.
     let mut failures = Vec::new();
 
-    let registered: BTreeSet<&str> = PROVIDER_CASSETTE_SUITES
-        .iter()
-        .map(|suite| suite.provider)
-        .collect();
+    let suites = discovered_suites();
+    let discovered: BTreeSet<&str> = suites.iter().map(|suite| suite.provider.as_str()).collect();
     for entry in fs::read_dir(root).expect("cassette root should be readable") {
         let entry = entry.expect("cassette root entry should be readable");
         let name = entry.file_name();
@@ -294,15 +113,15 @@ fn cassettes_do_not_contain_obvious_secrets() {
                 "tests/cassettes/{name} is not a provider directory; loose files under the \
                  cassette root are scanned by no binary"
             ));
-        } else if !registered.contains(name.as_str()) {
+        } else if !discovered.contains(name.as_str()) {
             failures.push(format!(
-                "tests/cassettes/{name} has no PROVIDER_CASSETTE_SUITES entry, so no test \
-                 binary scans it for secrets — register it in \
-                 tests/common/cassette_safety.rs"
+                "tests/cassettes/{name} has no tests/providers/{name}/ directory with a \
+                 tests/{name}.rs binary, so no test binary scans it for secrets — add both, \
+                 or delete the cassette directory"
             ));
         }
     }
-    for suite in PROVIDER_CASSETTE_SUITES {
+    for suite in &suites {
         if !suite
             .provider
             .chars()
@@ -314,6 +133,12 @@ fn cassettes_do_not_contain_obvious_secrets() {
                  be scanned by no binary — rename the provider or its directory",
                 suite.provider
             ));
+        }
+        // A provider with no cassette directory has nothing to scan; the
+        // moment `tests/cassettes/<provider>` appears, its binary must compile
+        // this module or every binary fails.
+        if !root.join(&suite.provider).is_dir() {
+            continue;
         }
         let binary_source = repo_path(&format!("tests/{}.rs", suite.provider));
         if !binary_compiles_cassette_scan(&binary_source) {
@@ -420,24 +245,38 @@ fn collect_expected_cassette_paths() -> (BTreeSet<PathBuf>, Vec<String>) {
     let mut expected = BTreeSet::new();
     let mut failures = Vec::new();
 
-    for suite in PROVIDER_CASSETTE_SUITES {
-        let source_dir = repo_path(suite.source_dir);
-        if !source_dir.exists() {
-            failures.push(format!(
-                "cassette source directory does not exist: {}",
-                display_repo_path(&source_dir)
-            ));
-            continue;
-        }
+    let suites = discovered_suites();
+    let providers: BTreeSet<&str> = suites.iter().map(|suite| suite.provider.as_str()).collect();
 
-        for source_file in collect_rust_files(&source_dir) {
-            match cassette_scenarios_in_file(&source_file, suite.wrapper_names) {
+    for suite in &suites {
+        for source_file in collect_rust_files(&suite.source_dir) {
+            match cassette_scenarios_in_file(&source_file, &suite.provider, &providers) {
                 Ok(scenarios) => {
                     for scenario in scenarios {
-                        expected.insert(crate::cassettes::cassette_path(suite.provider, &scenario));
+                        expected
+                            .insert(crate::cassettes::cassette_path(&suite.provider, &scenario));
                     }
                 }
                 Err(error) => failures.push(error),
+            }
+        }
+    }
+
+    // A provider directory with no binary is scanned by nothing: any cassette
+    // wrapper call in it would register scenarios nowhere.
+    for (provider, source_dir) in provider_source_dirs() {
+        if providers.contains(provider.as_str()) {
+            continue;
+        }
+        for source_file in collect_rust_files(&source_dir) {
+            if let Ok(scenarios) = cassette_scenarios_in_file(&source_file, &provider, &providers)
+                && !scenarios.is_empty()
+            {
+                failures.push(format!(
+                    "{} calls cassette wrappers but tests/providers/{provider}/ has no \
+                     tests/{provider}.rs binary, so its scenarios are checked by nothing",
+                    display_repo_path(&source_file)
+                ));
             }
         }
     }
@@ -507,7 +346,8 @@ fn binary_compiles_cassette_scan(source: &Path) -> bool {
 
 fn cassette_scenarios_in_file(
     path: &Path,
-    wrapper_names: &[&'static str],
+    provider: &str,
+    providers: &BTreeSet<&str>,
 ) -> Result<Vec<String>, String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("{} should be readable: {error}", display_repo_path(path)))?;
@@ -515,7 +355,8 @@ fn cassette_scenarios_in_file(
         .map_err(|error| format!("{} should parse as Rust: {error}", display_repo_path(path)))?;
     let mut visitor = CassetteScenarioVisitor {
         path,
-        wrapper_names,
+        provider,
+        providers,
         scenarios: Vec::new(),
         failures: Vec::new(),
     };
@@ -530,7 +371,8 @@ fn cassette_scenarios_in_file(
 
 struct CassetteScenarioVisitor<'a> {
     path: &'a Path,
-    wrapper_names: &'a [&'static str],
+    provider: &'a str,
+    providers: &'a BTreeSet<&'a str>,
     scenarios: Vec<String>,
     failures: Vec<String>,
 }
@@ -543,14 +385,30 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
         if node.attrs.iter().any(|attr| attr.path().is_ident("ignore")) {
             return;
         }
+        // A wrapper's own body forwards its scenario to a base wrapper; that is
+        // a definition, not a call site, and its argument is a variable.
+        if is_cassette_wrapper_name(&node.sig.ident.to_string()) {
+            return;
+        }
 
         visit::visit_item_fn(self, node);
     }
 
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
         if let Some(wrapper_name) = cassette_wrapper_name(node)
-            && self.wrapper_names.contains(&wrapper_name.as_str())
+            && is_cassette_wrapper_name(&wrapper_name)
         {
+            if let Some(other) =
+                foreign_provider_in_wrapper(&wrapper_name, self.provider, self.providers)
+            {
+                self.failures.push(format!(
+                    "{} calls {wrapper_name}, which names provider {other:?}, from provider \
+                     {:?}'s directory; a wrapper is called only from its own provider's \
+                     tests/providers/<provider>/ directory",
+                    display_repo_path(self.path),
+                    self.provider
+                ));
+            }
             match node.args.first() {
                 Some(expr) => match cassette_scenario_value(expr) {
                     Some(scenario) => self.scenarios.push(scenario),
@@ -568,6 +426,27 @@ impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
 
         visit::visit_expr_call(self, node);
     }
+}
+
+/// The provider a wrapper name points at, when it is not the directory's own.
+/// Segments of the identifier are compared against the discovered provider
+/// names: `with_openrouter_openai_cassette` in openrouter's directory names its
+/// own provider and passes; `with_openai_cassette` in openrouter's directory
+/// does not. Names that mention no provider (`with_local_reasoning_content_cassette`)
+/// pass anywhere.
+fn foreign_provider_in_wrapper<'p>(
+    wrapper_name: &str,
+    provider: &str,
+    providers: &BTreeSet<&'p str>,
+) -> Option<&'p str> {
+    let segments: Vec<&str> = wrapper_name.split('_').collect();
+    if segments.contains(&provider) {
+        return None;
+    }
+    providers
+        .iter()
+        .copied()
+        .find(|candidate| segments.contains(candidate))
 }
 
 fn cassette_scenario_value(expr: &Expr) -> Option<String> {

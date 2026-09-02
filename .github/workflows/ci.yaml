@@ -272,6 +272,14 @@ jobs:
       - name: Check test modules are sibling files
         run: cargo xtask check-test-layout
 
+      # Lists that grow with every provider, companion crate or dependency
+      # (marked `sorted: start` / `sorted: end` in Cargo.toml, rig-core's
+      # providers module list and the README integration table) stay in
+      # order, so two PRs that each add one entry touch different lines
+      # instead of the same hunk.
+      - name: Check marked lists are sorted
+        run: cargo xtask check-sorted-blocks
+
   clippy:
     name: stable / clippy
     runs-on: ubuntu-latest

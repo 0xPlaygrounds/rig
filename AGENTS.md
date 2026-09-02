@@ -195,6 +195,8 @@ surfaces (`AgentRunner::stream` and `AgentRunner::run` share `drive_agent`).
   or `tests.rs` beside `mod.rs`/`lib.rs`. `cargo xtask check-test-layout`
   enforces this in CI.
 - Avoid unrelated refactors.
+- Lists between `sorted: start` / `sorted: end` markers (Cargo.toml dependency and feature blocks, rig-core's providers module list, the README integration table) stay in case-insensitive byte order; `cargo xtask check-sorted-blocks` enforces it. Insert new entries in place, never at the end.
+- Cassette wrappers are discovered by convention (a function named `with_*cassette*` whose first argument is the scenario, called only from its own `tests/providers/<provider>/` directory); there is no registry to update.
 
 ## Cassette Regression Tests
 
