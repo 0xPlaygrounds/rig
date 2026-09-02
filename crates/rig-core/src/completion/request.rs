@@ -624,7 +624,7 @@ impl AddAssign for Usage {
 /// enabling flags with the `with_*` methods: that form keeps external
 /// implementations compiling when new capabilities are added, where a struct
 /// literal does not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     /// Whether this provider's native structured output (`output_schema` ->
     /// `format`/`response_format`) composes with tool calls in the same
