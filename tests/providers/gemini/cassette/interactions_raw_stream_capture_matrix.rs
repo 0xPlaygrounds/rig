@@ -48,7 +48,7 @@ const PROVIDER: &str = "gemini";
 const MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
-type Model = InteractionsCompletionModel<rig::http_client::ReqwestClient>;
+type Model = InteractionsCompletionModel;
 
 fn request(model: &Model) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()

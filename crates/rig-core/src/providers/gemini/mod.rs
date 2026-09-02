@@ -32,7 +32,9 @@ pub use completion::CompletionModel;
 pub use embedding::{EMBEDDING_001, EMBEDDING_004, EmbeddingModel};
 #[cfg(feature = "image")]
 pub use image_generation::{GEMINI_2_5_FLASH_IMAGE, ImageGenerationModel};
+pub use interactions_api::InteractionsCompletionModel;
 pub use model_listing::*;
+pub use transcription::TranscriptionModel;
 
 pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};

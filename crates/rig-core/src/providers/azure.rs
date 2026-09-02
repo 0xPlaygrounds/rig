@@ -467,7 +467,8 @@ mod image_generation {
     use serde_json::json;
 
     /// Azure OpenAI image generation model; `model` identifies the deployment.
-    pub type ImageGenerationModel<T> = GenericImageGenerationModel<AzureExt, T>;
+    pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
+        GenericImageGenerationModel<AzureExt, T>;
 
     impl JsonImageGenerationProvider for AzureExt {
         const IMAGE_GENERATION_PATH: &'static str = "";
@@ -516,7 +517,8 @@ mod audio_generation {
     };
 
     /// Azure OpenAI audio generation model; `model` identifies the deployment.
-    pub type AudioGenerationModel<T> = GenericAudioGenerationModel<AzureExt, T>;
+    pub type AudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
+        GenericAudioGenerationModel<AzureExt, T>;
 
     impl RawAudioGenerationProvider for AzureExt {
         const AUDIO_GENERATION_PATH: &'static str = "";

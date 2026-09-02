@@ -2,7 +2,7 @@
 //! behind the erased default transport.
 //!
 //! rig-core's provider types default to
-//! [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient), the erased
+//! [`BoxedHttpClient`], the erased
 //! transport, so `openai::Client` names a concrete type in every
 //! configuration; but rig-core deliberately depends on no transport, so it
 //! cannot build one. These two traits are that value: implemented exactly once,
@@ -106,8 +106,8 @@ where
 /// provider module in scope, and all name the same type.
 ///
 /// ```no_run
-/// use rig::prelude::*;
-/// use rig::providers::openai;
+/// use rig_core::providers::openai;
+/// use rig_reqwest::prelude::*;
 ///
 /// fn takes(_: openai::Client) {}
 ///

@@ -168,7 +168,8 @@ mod image_generation {
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
     /// Hyperbolic image generation model.
-    pub type ImageGenerationModel<T> = GenericImageGenerationModel<HyperbolicExt, T>;
+    pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
+        GenericImageGenerationModel<HyperbolicExt, T>;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Image {
@@ -244,7 +245,7 @@ mod audio_generation {
     use serde_json::json;
 
     #[derive(Clone)]
-    pub struct AudioGenerationModel<T> {
+    pub struct AudioGenerationModel<T = crate::http_client::BoxedHttpClient> {
         client: Client<T>,
         pub language: String,
     }

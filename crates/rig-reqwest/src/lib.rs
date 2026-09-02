@@ -13,7 +13,7 @@
 //!
 //! `rig-core` is transport-agnostic: every provider client is generic over an
 //! `H: HttpClientExt`, defaulting to the erased
-//! [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient), and rig-core
+//! [`BoxedHttpClient`], and rig-core
 //! itself depends on neither reqwest nor tokio. This crate supplies:
 //!
 //! - [`ReqwestClient`], a newtype over [`reqwest::Client`] implementing
