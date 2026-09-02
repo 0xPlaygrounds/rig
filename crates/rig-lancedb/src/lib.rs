@@ -25,7 +25,7 @@ use lancedb::{
     query::{QueryBase, VectorQuery},
 };
 use rig_core::{
-    embeddings::{EmbeddingModelHandle, embedding::EmbeddingModel},
+    embeddings::embedding::EmbeddingModel,
     vector_store::{
         VectorStoreError, VectorStoreIndex,
         request::{FilterError, SearchFilter, VectorSearchRequest},
@@ -51,12 +51,12 @@ mod utils;
 /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
 /// ```
 ///
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`]; the handle is fixed for the index's lifetime, since an
-/// index populated under one model is only meaningful under that same model.
-pub struct LanceDbVectorIndex {
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
+pub struct LanceDbVectorIndex<M> {
     /// Defines which model is used to generate embeddings for the vector store.
-    model: EmbeddingModelHandle,
+    model: M,
     /// LanceDB table containing embeddings.
     table: lancedb::Table,
     /// Column name in `table` that contains the id of a record.
@@ -65,19 +65,19 @@ pub struct LanceDbVectorIndex {
     search_params: SearchParams,
 }
 
-impl LanceDbVectorIndex {
+impl<M: EmbeddingModel> LanceDbVectorIndex<M> {
     /// Create an instance of `LanceDbVectorIndex` with an existing table and model.
     /// Define the id field name of the table.
     /// Define search parameters that will be used to perform vector searches on the table.
     pub async fn new(
         table: lancedb::Table,
-        model: impl EmbeddingModel + 'static,
+        model: M,
         id_field: &str,
         search_params: SearchParams,
     ) -> Result<Self, lancedb::Error> {
         Ok(Self {
             table,
-            model: EmbeddingModelHandle::new(model),
+            model,
             id_field: id_field.to_string(),
             search_params,
         })
@@ -369,7 +369,7 @@ impl SearchParams {
     }
 }
 
-impl VectorStoreIndex for LanceDbVectorIndex {
+impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     type Filter = LanceDBFilter;
 
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.

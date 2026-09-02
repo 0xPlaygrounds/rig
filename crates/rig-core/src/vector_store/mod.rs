@@ -19,8 +19,8 @@ use crate::{
     Embed,
     embeddings::{Embedding, EmbeddingError},
     tool::PortableTool,
-    vector_store::request::{DynamicSearchFilter, Filter, FilterError, SearchFilter},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    vector_store::request::{FilterError, SearchFilter},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 pub mod builder;
@@ -149,56 +149,6 @@ pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + WasmCompatSend;
 }
 
-/// Type-erased `top_n` result: `(score, id, document)` tuples as JSON values.
-pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
-
-/// Type-erased [`VectorStoreIndex`] for dynamic dispatch.
-pub trait VectorStoreIndexDyn: WasmCompatSend + WasmCompatSync {
-    /// Returns the top N documents for a JSON-serializable request.
-    fn top_n(
-        &self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'_, TopNResults>;
-
-    /// Returns only the top N document IDs for a JSON-serializable request.
-    fn top_n_ids(
-        &self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'_, Result<Vec<(f64, String)>, VectorStoreError>>;
-}
-
-impl<I, F> VectorStoreIndexDyn for I
-where
-    I: VectorStoreIndex<Filter = F>,
-    F: DynamicSearchFilter,
-{
-    fn top_n(
-        &self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'_, TopNResults> {
-        Box::pin(async move {
-            let req = req.try_map_filter(F::from_dynamic_filter)?;
-            Ok(self
-                .top_n::<serde_json::Value>(req)
-                .await?
-                .into_iter()
-                .map(|(score, id, doc)| (score, id, F::normalize_dynamic_document(doc)))
-                .collect::<Vec<_>>())
-        })
-    }
-
-    fn top_n_ids(
-        &self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'_, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let req = req.try_map_filter(F::from_dynamic_filter)?;
-            self.top_n_ids(req).await
-        })
-    }
-}
-
-/// The output of vector store queries invoked via [`PortableTool`]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VectorStoreOutput {
     /// Similarity score returned by the vector store.

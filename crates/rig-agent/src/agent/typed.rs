@@ -250,7 +250,7 @@ macro_rules! forward_runner_setters {
         ///
         /// This does not suppress registered model-selection hooks, which may
         /// replace this candidate before each model call (including retries).
-        pub fn using_model(mut self, model: $crate::agent::ModelHandle) -> Self {
+        pub fn using_model(mut self, model: impl Into<$crate::agent::ModelRef>) -> Self {
             self.runner = self.runner.using_model(model);
             self
         }

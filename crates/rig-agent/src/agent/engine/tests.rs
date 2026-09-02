@@ -1265,8 +1265,9 @@ async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() 
     assert_eq!(hook.model_turns.load(SeqCst), 0);
     assert!(matches!(
         error,
-        Some(StreamingError::Completion(CompletionError::ProviderError(message)))
-            if message == "post-final failure"
+        Some(StreamingError::Completion(CompletionError::Report(ref report)))
+            if report.kind == rig_core::error::ErrorKind::Provider
+                && report.message.ends_with("post-final failure")
     ));
 }
 
@@ -9535,8 +9536,8 @@ async fn concurrent_runs_of_same_agent_have_independent_retry_budgets() {
 #[tokio::test]
 async fn retry_scratchpad_state_is_isolated_by_run_and_hook_instance() {
     let shared_hook = BoundedResponseRetry::new("rejected", 1, TestRetryMode::Repeat);
-    let first_ctx = HookContext::new(false, None);
-    let second_ctx = HookContext::new(false, None);
+    let first_ctx = HookContext::new(false, None, None);
+    let second_ctx = HookContext::new(false, None, None);
     let content = vec![AssistantContent::text("rejected")];
     let first_event = ModelTurnFinished {
         turn: 1,
@@ -9563,7 +9564,7 @@ async fn retry_scratchpad_state_is_isolated_by_run_and_hook_instance() {
         ModelTurnAction::Stop(_)
     ));
 
-    let same_run_ctx = HookContext::new(false, None);
+    let same_run_ctx = HookContext::new(false, None, None);
     let first_hook = BoundedResponseRetry::new("first", 1, TestRetryMode::Repeat);
     let second_hook = BoundedResponseRetry::new("second", 1, TestRetryMode::Repeat);
     let first_content = vec![AssistantContent::text("first")];
@@ -9630,7 +9631,7 @@ async fn model_turn_action_short_circuits_flat_and_nested_hook_stacks() {
         max_tokens: None,
         raw: &serde_json::Value::Null,
     };
-    let ctx = HookContext::new(false, None);
+    let ctx = HookContext::new(false, None, None);
 
     let first_calls = Arc::new(AtomicU32::new(0));
     let retry_calls = Arc::new(AtomicU32::new(0));

@@ -102,6 +102,7 @@
 //! # }
 //! ```
 mod builder;
+mod bus;
 mod completion;
 mod engine;
 pub mod hook;
@@ -119,7 +120,7 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub use crate::run::response::{CompletionCall, PromptResponse};
 pub use crate::run::spec::RunSpec;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
-pub use completion::Agent;
+pub use completion::{Agent, AgentParts};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
@@ -129,11 +130,13 @@ pub use hook::{
     SettledOutcome, StepEventKind, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
     ToolResultAction, ToolResultEvent,
 };
+pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
+pub use rig_core::bus::ModelHandle;
+pub use rig_core::completion::ModelRef;
 /// The provider-neutral identity carrier, re-exported from rig-core so agent
 /// callers name one type across core responses, stream terminals, completion
 /// calls, and hook events.
 pub use rig_core::completion::ResponseIdentity;
-pub use rig_core::completion::{ModelHandle, ModelRef};
 pub use rig_core::message::Text;
 pub use run::TurnTools;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};

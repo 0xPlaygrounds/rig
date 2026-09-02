@@ -264,7 +264,14 @@ impl AgentRunner {
     pub async fn stream(self) -> StreamingResult {
         let (agent_span, created_agent_span) = self.open_agent_span();
 
-        let (history_override, memory_handle) = match self.resolve_history_and_memory().await {
+        let bus = self.config.bus.clone();
+        let resolved = {
+            let resolve = self.resolve_history_and_memory();
+            futures::pin_mut!(resolve);
+            let mut driven = bus.drive(futures::stream::once(resolve));
+            driven.next().await.unwrap_or(Ok((None, None)))
+        };
+        let (history_override, memory_handle) = match resolved {
             Ok(resolved) => resolved,
             Err(err) => {
                 let stream = async_stream::stream! {
@@ -303,6 +310,9 @@ impl AgentRunner {
                 Err(err) => Some(Err(err)),
             })
         });
+        // The consumer of this stream drives the agent's bus: every poll that
+        // leaves the run pending polls the driver.
+        let driver = bus.drive(Box::pin(driver));
 
         Box::pin(driver.instrument(agent_span))
     }

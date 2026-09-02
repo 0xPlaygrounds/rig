@@ -96,6 +96,10 @@ pub struct ErrorReport {
     pub refusal: bool,
     /// `Display` of each `source()` link, outermost first.
     pub source_chain: Vec<String>,
+    /// The provider's request id, when the failure had a response that
+    /// carried one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
 }
 
 impl ErrorReport {
@@ -109,6 +113,7 @@ impl ErrorReport {
             http_status: None,
             refusal: false,
             source_chain: Vec::new(),
+            request_id: None,
         }
     }
 
@@ -133,6 +138,12 @@ impl ErrorReport {
     /// Mark the report as an intentional refusal.
     pub fn refused(mut self) -> Self {
         self.refusal = true;
+        self
+    }
+
+    /// Attach the provider's request id.
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.request_id = Some(request_id.into());
         self
     }
 
@@ -188,6 +199,7 @@ impl CompletionError {
             Self::ProviderResponse(response) => {
                 retryable_status(response.status.map(|s| s.as_u16()))
             }
+            Self::Report(report) => report.retryable,
             Self::JsonError(_)
             | Self::UrlError(_)
             | Self::RequestError(_)
@@ -218,6 +230,17 @@ impl From<&CompletionError> for ErrorReport {
                 let status = response.status.map(|s| s.as_u16());
                 (ErrorKind::ProviderResponse, status)
             }
+            CompletionError::Report(report) => return report.clone(),
+        };
+        let request_id = match error {
+            CompletionError::ProviderResponse(response) => response.provider_request_id.clone(),
+            CompletionError::HttpError(_)
+            | CompletionError::JsonError(_)
+            | CompletionError::UrlError(_)
+            | CompletionError::RequestError(_)
+            | CompletionError::ResponseError(_)
+            | CompletionError::ProviderError(_)
+            | CompletionError::Report(_) => None,
         };
         ErrorReport {
             kind,
@@ -227,6 +250,7 @@ impl From<&CompletionError> for ErrorReport {
             http_status,
             refusal: false,
             source_chain: source_chain(error),
+            request_id,
         }
     }
 }
@@ -270,6 +294,7 @@ impl From<&ToolExecutionError> for ErrorReport {
             http_status: error.http_status(),
             refusal: error.is_refusal(),
             source_chain: source_chain(error),
+            request_id: None,
         }
     }
 }
@@ -302,6 +327,7 @@ impl From<&MemoryError> for ErrorReport {
             http_status: None,
             refusal: false,
             source_chain: source_chain(error),
+            request_id: None,
         }
     }
 }
@@ -360,6 +386,7 @@ impl From<&EmbeddingError> for ErrorReport {
             http_status,
             refusal: false,
             source_chain: source_chain(error),
+            request_id: None,
         }
     }
 }
@@ -401,6 +428,7 @@ impl From<&VectorStoreError> for ErrorReport {
             http_status,
             refusal: false,
             source_chain: source_chain(error),
+            request_id: None,
         }
     }
 }

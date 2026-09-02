@@ -850,3 +850,52 @@ const _: fn() = || {
     fn assert_clone_send_sync<T: Clone + Send + Sync + 'static>() {}
     assert_clone_send_sync::<Dispatcher>();
 };
+
+/// One bounded-channel hop plus one oneshot per unary dispatch, measured
+/// with a mock handler over 10k dispatches on a single-threaded executor:
+/// the median must stay under 50 µs. A miss is a finding about the channel
+/// shape, not a reason to loosen the number (the PR description records the
+/// measured value).
+#[test]
+fn unary_dispatch_median_is_under_fifty_microseconds() {
+    let (dispatcher, mut driver) = Bus::channel();
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo);
+    let key = HandlerKey::from("echo");
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+
+    // Warm up the allocator and the channel.
+    for _ in 0..100 {
+        let mut pending = dispatcher.dispatch(&key, custom(json!(0)));
+        loop {
+            if pending.poll_unpin(&mut cx).is_ready() {
+                break;
+            }
+            let _ = driver.poll_unpin(&mut cx);
+        }
+    }
+
+    let mut samples = Vec::with_capacity(10_000);
+    for n in 0..10_000u64 {
+        let started = std::time::Instant::now();
+        let mut pending = dispatcher.dispatch(&key, custom(json!(n)));
+        loop {
+            if pending.poll_unpin(&mut cx).is_ready() {
+                break;
+            }
+            let _ = driver.poll_unpin(&mut cx);
+        }
+        samples.push(started.elapsed());
+    }
+    samples.sort();
+    let median = samples[samples.len() / 2];
+    eprintln!(
+        "unary dispatch median: {median:?} (p90 {:?})",
+        samples[samples.len() * 9 / 10]
+    );
+    assert!(
+        median < Duration::from_micros(50),
+        "unary dispatch median {median:?} exceeds 50 µs"
+    );
+}

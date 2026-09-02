@@ -551,6 +551,15 @@ impl ToolResult {
     }
 
     /// Returns the stable telemetry name for this result disposition.
+    /// The result as the tool author's `Result`: a success or a skip is
+    /// `Ok(output)`, an error or a refusal is `Err(error)`.
+    pub fn into_result(self) -> Result<ToolOutput, ToolExecutionError> {
+        match self.disposition {
+            ToolDisposition::Success(output) | ToolDisposition::Skipped(output) => Ok(output),
+            ToolDisposition::Error(error) | ToolDisposition::Refused(error) => Err(error),
+        }
+    }
+
     pub fn status_name(&self) -> &'static str {
         match &self.disposition {
             ToolDisposition::Success(_) => "success",

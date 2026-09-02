@@ -2200,7 +2200,7 @@ fn register_sqlite_vec_extension() {
 async fn live_test_index(
     name: &str,
     rows: Vec<(TestDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<TestDocument, TestEmbeddingModel>> {
     live_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
 }
 
@@ -2208,7 +2208,7 @@ async fn live_test_index_with_metric(
     name: &str,
     rows: Vec<(TestDocument, Vec<Embedding>)>,
     distance_metric: SqliteDistanceMetric,
-) -> anyhow::Result<SqliteVectorIndex<TestDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<TestDocument, TestEmbeddingModel>> {
     register_sqlite_vec_extension();
 
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
@@ -2224,7 +2224,7 @@ async fn live_test_index_with_metric(
 async fn live_typed_test_index(
     name: &str,
     rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument, TestEmbeddingModel>> {
     live_typed_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
 }
 
@@ -2232,7 +2232,7 @@ async fn live_typed_test_index_with_metric(
     name: &str,
     rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
     distance_metric: SqliteDistanceMetric,
-) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<TypedTestDocument, TestEmbeddingModel>> {
     register_sqlite_vec_extension();
 
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
@@ -2248,7 +2248,7 @@ async fn live_typed_test_index_with_metric(
 async fn live_common_type_test_index(
     name: &str,
     rows: Vec<(CommonTypeDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<CommonTypeDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<CommonTypeDocument, TestEmbeddingModel>> {
     register_sqlite_vec_extension();
 
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
@@ -2264,7 +2264,7 @@ async fn live_common_type_test_index(
 async fn live_json_metadata_test_index(
     name: &str,
     rows: Vec<(JsonMetadataDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<JsonMetadataDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<JsonMetadataDocument, TestEmbeddingModel>> {
     register_sqlite_vec_extension();
 
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;
@@ -2280,7 +2280,7 @@ async fn live_json_metadata_test_index(
 async fn live_structured_json_metadata_test_index(
     name: &str,
     rows: Vec<(StructuredJsonMetadataDocument, Vec<Embedding>)>,
-) -> anyhow::Result<SqliteVectorIndex<StructuredJsonMetadataDocument>> {
+) -> anyhow::Result<SqliteVectorIndex<StructuredJsonMetadataDocument, TestEmbeddingModel>> {
     register_sqlite_vec_extension();
 
     let conn = Connection::open(format!("file:{name}?mode=memory")).await?;

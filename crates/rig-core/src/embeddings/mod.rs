@@ -8,12 +8,10 @@
 pub mod builder;
 pub mod embed;
 pub mod embedding;
-pub mod handle;
 pub mod tool;
 
 pub mod distance;
 pub use builder::EmbeddingsBuilder;
 pub use embed::{Embed, EmbedError, TextEmbedder, to_texts};
 pub use embedding::*;
-pub use handle::{EmbeddingModelHandle, ImageEmbeddingModelHandle};
 pub use tool::ToolSchema;

@@ -13,6 +13,7 @@ use futures::{
     channel::mpsc,
     stream::{FusedStream, FuturesUnordered},
 };
+use tracing::Instrument;
 
 use crate::{
     effect::{EffectId, EffectKind, EffectLog, EffectRecord, HandlerKey, Outcome},
@@ -22,7 +23,7 @@ use crate::{
 };
 
 use super::{
-    Handler, OutcomeSink,
+    ErasedHandler, Handler, OutcomeSink,
     dispatcher::{Command, Shared, handler_unavailable},
 };
 
@@ -113,10 +114,6 @@ type InFlight = WasmBoxedFuture<'static, HandlerKey>;
 pub struct BusDriver {
     rx: mpsc::Receiver<Command>,
     shared: Arc<Shared>,
-    /// Handlers registered before spawn. They never leave the driver, so a
-    /// `!Send` browser-wasm handler (a provider client) lives here; the
-    /// driver publishes their descriptors to the shared snapshot.
-    local: BTreeMap<HandlerKey, Arc<dyn Handler>>,
     config: BusConfig,
     in_flight: FuturesUnordered<InFlight>,
     queued: BTreeMap<HandlerKey, VecDeque<Command>>,
@@ -144,7 +141,6 @@ impl BusDriver {
         Self {
             rx,
             shared,
-            local: BTreeMap::new(),
             config,
             in_flight: FuturesUnordered::new(),
             queued: BTreeMap::new(),
@@ -158,30 +154,18 @@ impl BusDriver {
     /// spawned. The same table [`Dispatcher::register`](super::Dispatcher::register)
     /// writes at runtime.
     pub fn register(&mut self, key: impl Into<HandlerKey>, handler: impl Handler + 'static) {
-        self.register_erased(key, Arc::new(handler));
+        self.shared
+            .register(key.into(), ErasedHandler::new(handler));
     }
 
     /// Register an already-erased handler.
-    pub fn register_erased(&mut self, key: impl Into<HandlerKey>, handler: Arc<dyn Handler>) {
-        let key = key.into();
-        self.shared.publish_local(key.clone(), handler.descriptor());
-        self.local.insert(key, handler);
+    pub fn register_erased(&mut self, key: impl Into<HandlerKey>, handler: ErasedHandler) {
+        self.shared.register(key.into(), handler);
     }
 
     /// Remove the handler serving `key`. Returns whether one was registered.
     pub fn deregister(&mut self, key: &HandlerKey) -> bool {
-        self.local.remove(key);
         self.shared.deregister(key)
-    }
-
-    fn handler(&self, key: &HandlerKey) -> Option<Arc<dyn Handler>> {
-        if self.shared.is_tombstoned(key) {
-            return None;
-        }
-        if let Some(runtime) = self.shared.runtime_handler(key) {
-            return Some(runtime);
-        }
-        self.local.get(key).cloned()
     }
 
     /// Record every served dispatch into `recorder`.
@@ -205,8 +189,10 @@ impl BusDriver {
             key,
             kind,
             reply,
+            span,
+            cancel,
         } = command;
-        let Some(handler) = self.handler(&key) else {
+        let Some(handler) = self.shared.handler(&key) else {
             reply.fail(handler_unavailable(&key));
             return;
         };
@@ -219,10 +205,18 @@ impl BusDriver {
             None => sink,
         };
         let task_key = key;
-        self.in_flight.push(Box::pin(async move {
-            handler.handle(kind, sink).await;
-            task_key
-        }));
+        self.in_flight.push(Box::pin(
+            async move {
+                // Cancellation is drop: the consumer dropping its `Pending` or
+                // `EffectStream` resolves `cancel`, which drops the handler
+                // future — and with it the provider call or stream inside.
+                let serving = handler.handle(kind, sink);
+                futures::pin_mut!(serving);
+                let _ = futures::future::select(serving, cancel).await;
+                task_key
+            }
+            .instrument(span),
+        ));
     }
 
     fn accept(&mut self, command: Command) {

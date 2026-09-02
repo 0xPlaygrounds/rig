@@ -25,7 +25,10 @@ use crate::support::assert_mentions_expected_number;
 async fn build_tool_index(
     client: &gemini::Client,
     toolset: &ToolSet,
-) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<rig::embeddings::ToolSchema> {
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
+    rig::embeddings::ToolSchema,
+    gemini::embedding::EmbeddingModel,
+> {
     let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.

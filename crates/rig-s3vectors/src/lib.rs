@@ -17,7 +17,7 @@ use aws_sdk_s3vectors::{
 };
 use aws_smithy_types::Document;
 use rig_core::{
-    embeddings::{EmbeddingModel, EmbeddingModelHandle},
+    embeddings::EmbeddingModel,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -126,25 +126,25 @@ impl S3SearchFilter {
     }
 }
 
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an
-/// index populated under one model is only meaningful under that model).
-pub struct S3VectorsVectorStore {
-    embedding_model: EmbeddingModelHandle,
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
+pub struct S3VectorsVectorStore<M> {
+    embedding_model: M,
     client: Client,
     bucket_name: String,
     index_name: String,
 }
 
-impl S3VectorsVectorStore {
+impl<M: EmbeddingModel> S3VectorsVectorStore<M> {
     pub fn new(
-        embedding_model: impl EmbeddingModel + 'static,
+        embedding_model: M,
         client: aws_sdk_s3vectors::Client,
         bucket_name: &str,
         index_name: &str,
     ) -> Self {
         Self {
-            embedding_model: EmbeddingModelHandle::new(embedding_model),
+            embedding_model,
             client,
             bucket_name: bucket_name.to_string(),
             index_name: index_name.to_string(),
@@ -225,7 +225,7 @@ impl S3VectorsVectorStore {
     }
 }
 
-impl InsertDocuments for S3VectorsVectorStore {
+impl<M: EmbeddingModel> InsertDocuments for S3VectorsVectorStore<M> {
     async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + Send>(
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
@@ -326,7 +326,7 @@ fn document_to_json_value(value: &Document) -> Value {
     }
 }
 
-impl VectorStoreIndex for S3VectorsVectorStore {
+impl<M: EmbeddingModel> VectorStoreIndex for S3VectorsVectorStore<M> {
     type Filter = S3SearchFilter;
 
     async fn top_n<T: for<'a> serde::Deserialize<'a> + Send>(

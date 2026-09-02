@@ -10,7 +10,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
-    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle, distance::VectorDistance},
+    embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
     vector_store::request::Filter,
 };
 
@@ -363,7 +363,7 @@ impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
 type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
 
 impl<D: Serialize> InMemoryVectorStore<D> {
-    pub fn index(self, model: impl EmbeddingModel + 'static) -> InMemoryVectorIndex<D> {
+    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<D, M> {
         InMemoryVectorIndex::new(model, self)
     }
 
@@ -384,25 +384,22 @@ impl<D: Serialize> InMemoryVectorStore<D> {
 /// queries into vectors.
 ///
 /// The model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`], so the index's type names no provider. The index
+/// the model by type, so the index is generic over its provider. The index
 /// is a long-lived consumer of a model, not a place to swap one: the handle
 /// it holds is fixed for the index's lifetime, because an index populated
 /// under one model is only meaningful under that model.
-pub struct InMemoryVectorIndex<D: Serialize> {
-    model: EmbeddingModelHandle,
+pub struct InMemoryVectorIndex<D: Serialize, M> {
+    model: M,
     pub store: InMemoryVectorStore<D>,
 }
 
-impl<D: Serialize> InMemoryVectorIndex<D> {
-    pub fn new(model: impl EmbeddingModel + 'static, store: InMemoryVectorStore<D>) -> Self {
-        Self {
-            model: EmbeddingModelHandle::new(model),
-            store,
-        }
+impl<D: Serialize, M> InMemoryVectorIndex<D, M> {
+    pub fn new(model: M, store: InMemoryVectorStore<D>) -> Self {
+        Self { model, store }
     }
 
     /// The erased embedding model this index queries with.
-    pub fn model(&self) -> &EmbeddingModelHandle {
+    pub fn model(&self) -> &M {
         &self.model
     }
 
@@ -419,8 +416,8 @@ impl<D: Serialize> InMemoryVectorIndex<D> {
     }
 }
 
-impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq> VectorStoreIndex
-    for InMemoryVectorIndex<D>
+impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq, M: EmbeddingModel> VectorStoreIndex
+    for InMemoryVectorIndex<D, M>
 {
     type Filter = Filter<serde_json::Value>;
 

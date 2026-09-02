@@ -113,9 +113,15 @@ pub enum CompletionError {
     /// Raw error response preserved from the completion model provider
     #[error("ProviderResponseError: {0}")]
     ProviderResponse(provider_response::ProviderResponseError),
+
+    /// An error that crossed the effect bus: the handler's failure as an
+    /// [`ErrorReport`](crate::error::ErrorReport), or the bus's own
+    /// `BusClosed`/`HandlerUnavailable`.
+    #[error("{0}")]
+    Report(crate::error::ErrorReport),
 }
 
-crate::provider_response::impl_provider_response_helpers!(CompletionError);
+crate::provider_response::impl_provider_response_helpers!(CompletionError, Report);
 
 impl CompletionError {
     /// Maps an SSE transport error into a completion error without flattening HTTP failures.
@@ -1039,7 +1045,7 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [CompletionModel::completion_request] method.
-pub struct CompletionRequestBuilder<M: CompletionModel> {
+pub struct CompletionRequestBuilder<M = Unbound> {
     model: M,
     prompt: Message,
     request_model: Option<String>,
@@ -1056,7 +1062,20 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     record_telemetry_content: bool,
 }
 
-impl<M: CompletionModel> CompletionRequestBuilder<M> {
+/// The model slot of a request under assembly that has no model attached:
+/// the request is built with [`CompletionRequestBuilder::build`] and
+/// dispatched elsewhere (an agent dispatches it through its bus).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unbound;
+
+impl CompletionRequestBuilder<Unbound> {
+    /// A builder with no model attached; `build` produces the request.
+    pub fn unbound(prompt: impl Into<Message>) -> Self {
+        Self::new(Unbound, prompt)
+    }
+}
+
+impl<M> CompletionRequestBuilder<M> {
     pub fn new(model: M, prompt: impl Into<Message>) -> Self {
         Self {
             model,
@@ -1302,7 +1321,9 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         };
         (model, request)
     }
+}
 
+impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();

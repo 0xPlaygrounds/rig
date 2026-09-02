@@ -12,8 +12,8 @@
 use std::collections::BTreeSet;
 
 use rig_core::completion::{
-    CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
-    ProviderCapabilities, ToolDefinition,
+    CompletionError, CompletionRequestBuilder, Document, Message, ProviderCapabilities,
+    ToolDefinition,
 };
 use rig_core::message::ToolChoice;
 
@@ -89,10 +89,7 @@ impl PreparedRequest {
     /// Apply every prepared field to a provider request builder, in the
     /// protocol's canonical order. The builder keeps its prompt and anything
     /// the driver set on it.
-    pub fn apply<M: CompletionModel>(
-        self,
-        builder: CompletionRequestBuilder<M>,
-    ) -> CompletionRequestBuilder<M> {
+    pub fn apply<M>(self, builder: CompletionRequestBuilder<M>) -> CompletionRequestBuilder<M> {
         let builder = builder
             .messages(self.chat_history)
             .temperature_opt(self.temperature)

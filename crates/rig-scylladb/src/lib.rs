@@ -9,7 +9,7 @@
 
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle},
+    embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{
@@ -36,12 +36,12 @@ use uuid::Uuid;
 /// ScyllaDB is a high-performance NoSQL database that's compatible with Apache Cassandra
 /// and provides excellent performance for vector storage and similarity search operations.
 ///
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime, since an
-/// index populated under one model is only meaningful under that same model.
-pub struct ScyllaDbVectorStore {
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
+pub struct ScyllaDbVectorStore<M> {
     /// Model used to generate embeddings for the vector store
-    model: EmbeddingModelHandle,
+    model: M,
     /// Session instance for ScyllaDB communication
     pub session: Arc<Session>,
     /// Keyspace and table name for vector storage
@@ -187,7 +187,7 @@ impl DynamicSearchFilter for ScyllaSearchFilter {
     }
 }
 
-impl ScyllaDbVectorStore {
+impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
     /// Creates a new instance of `ScyllaDbVectorStore`.
     ///
     /// # Arguments
@@ -197,7 +197,7 @@ impl ScyllaDbVectorStore {
     /// * `table` - Table name for storing vectors
     /// * `dimensions` - Number of dimensions for the vectors
     pub async fn new(
-        model: impl EmbeddingModel + 'static,
+        model: M,
         session: Session,
         keyspace: &str,
         table: &str,
@@ -256,7 +256,7 @@ impl ScyllaDbVectorStore {
             .map_err(VectorStoreError::datastore)?;
 
         Ok(Self {
-            model: EmbeddingModelHandle::new(model),
+            model,
             session,
             keyspace: keyspace.to_string(),
             table: table.to_string(),
@@ -429,7 +429,7 @@ impl ScyllaDbVectorStore {
     }
 }
 
-impl InsertDocuments for ScyllaDbVectorStore {
+impl<M: EmbeddingModel> InsertDocuments for ScyllaDbVectorStore<M> {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -465,7 +465,7 @@ impl InsertDocuments for ScyllaDbVectorStore {
     }
 }
 
-impl VectorStoreIndex for ScyllaDbVectorStore {
+impl<M: EmbeddingModel> VectorStoreIndex for ScyllaDbVectorStore<M> {
     type Filter = ScyllaSearchFilter;
 
     /// Search for the top `n` nearest neighbors to the given query.
