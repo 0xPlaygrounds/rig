@@ -1272,7 +1272,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// Selects the model for the pending model-call boundary.
     ///
     /// Selection is synchronous, local, and non-blocking: it operates only on
-    /// already-constructed [`ModelHandle`] values and may read or write the
+    /// already-constructed [`ModelRef`] values and may read or write the
     /// run [`Scratchpad`], but must not perform blocking I/O. It runs once per
     /// `CallModel` step whose completion-call hooks proceed — including
     /// retries and post-tool calls — never after a completion-call stop, and

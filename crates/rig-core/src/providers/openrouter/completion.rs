@@ -1644,10 +1644,9 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouter {
 ///
 /// The provider-native escape hatches come with it:
 /// [`raw_completion`](openai::completion::GenericCompletionModel::raw_completion)
-/// returns OpenRouter's own [`CompletionResponse`] and
-/// [`raw_stream`](openai::completion::GenericCompletionModel::raw_stream) a
-/// stream whose terminal record stays provider-native — both over the same
-/// single request path as the normalized methods.
+/// returns OpenRouter's own [`CompletionResponse`] over the same single
+/// request path as the normalized method, and a stream's terminal record is
+/// serialized onto [`StreamFinal::raw`](crate::streaming::StreamFinal::raw).
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     openai::completion::GenericCompletionModel<OpenRouter, H>;
 

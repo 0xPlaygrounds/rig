@@ -41,7 +41,7 @@ pub enum StreamingCompletionChunk {
 /// The final streaming response from the OpenAI Responses API.
 ///
 /// This is the provider-native terminal record. The adapter maps it once,
-/// through [`terminal_record`], into the [`StreamFinal`] the stream yields,
+/// through `terminal_record`, into the [`StreamFinal`] the stream yields,
 /// and serializes it onto [`StreamFinal::raw`] — the escape hatch for
 /// Responses-API terminal fields rig does not normalize.
 #[derive(Debug, Serialize, Deserialize, Clone)]

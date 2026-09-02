@@ -349,16 +349,14 @@ jobs:
       # archived in 2023 and pins Node 20, which this workflow's own log
       # already reports as force-upgraded to Node 24. It added nothing over
       # invoking cargo directly.
-      # The two nested-Cargo binaries run in `test-guards` under the stronger
-      # configuration they protect: identity_leak with all features and
-      # macro_hygiene through its dedicated downstream-consumer step. Running
-      # them again here made a cold test execution spend over three minutes
-      # recompiling scratch projects after the other ~3,600 tests had nearly
-      # finished.
+      # The nested-Cargo macro_hygiene binary runs in `test-guards` through
+      # its dedicated downstream-consumer step. Running it again here made a
+      # cold test execution spend minutes recompiling a scratch project after
+      # the other ~3,600 tests had nearly finished.
       - name: Test with latest nextest release
         run: >-
           cargo nextest run --locked --features bedrock --retries 2
-          -E 'not (binary(identity_leak) | binary(macro_hygiene))'
+          -E 'not binary(macro_hygiene)'
 
       - name: Show sccache statistics
         if: always() && env.RUSTC_WRAPPER == 'sccache'
@@ -398,14 +396,11 @@ jobs:
       # enforced by the dedicated step below, exactly as it was when the
       # workspace sweep ran them with `--retries 2` alongside it.
       #
-      # All test targets except macro_hygiene, NOT `--lib`: rig-core's
-      # `identity_leak` trybuild suite is an *integration* test whose
-      # compile-fail proof (no `Serialize` path for `PartId`/`StreamPartId`)
-      # is only load-bearing under `--all-features`, because trybuild
-      # propagates the outer binary's enabled features into its scratch
-      # builds. `--lib` here would demote that proof — and rig-agent's non-lib
-      # targets such as `runtime_model_swapping` — to nightly-only coverage,
-      # exactly the silent narrowing this step exists to prevent.
+      # All test targets except macro_hygiene, NOT `--lib`: `--lib` here
+      # would demote the non-lib targets — rig-agent's
+      # `runtime_model_swapping`, rig-core's `driver_adoption` — to
+      # nightly-only coverage, exactly the silent narrowing this step exists
+      # to prevent.
       # macro_hygiene also shells out to Cargo, but its dedicated step below
       # is the authoritative plain-`cargo test` execution.
       - name: Test rig-core and rig-agent with all features
