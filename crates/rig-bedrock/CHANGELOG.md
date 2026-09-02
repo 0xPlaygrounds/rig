@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.42.0...rig-bedrock-v0.43.0) - 2026-09-02
+
+### Added
+
+- *(telemetry)* gen_ai spans for every non-completion modality, plus a recorded embedding matrix for all seven keyed providers ([#2390](https://github.com/0xPlaygrounds/rig/pull/2390)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type-erasure sweep part 2 — normalize embedding/rerank responses, erase rerank and image-embedding models, move ModelLister construction to a hook ([#2389](https://github.com/0xPlaygrounds/rig/pull/2389)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2389
+- [**breaking**] finish the type-erasure sweep — normalize transcription/image/audio responses, move construction off every model trait, erase the embedding model in vector stores ([#2385](https://github.com/0xPlaygrounds/rig/pull/2385)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2385
+
+### Other
+
+- [**breaking**] collapse the client machinery to Provider + Has* ([#2441](https://github.com/0xPlaygrounds/rig/pull/2441)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2441
+- [**breaking**] one run type in rig-agent ([#2438](https://github.com/0xPlaygrounds/rig/pull/2438)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2438
+- move every inline test module to a sibling file ([#2433](https://github.com/0xPlaygrounds/rig/pull/2433)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2433
+- [**breaking**] remove every backwards-compatibility shim ([#2429](https://github.com/0xPlaygrounds/rig/pull/2429)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2429
+- idiomatic Rust sweep, round 3 ([#2411](https://github.com/0xPlaygrounds/rig/pull/2411)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2411
+- idiomatic Rust sweep, round 2 ([#2410](https://github.com/0xPlaygrounds/rig/pull/2410)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2410
+- idiomatic Rust sweep across the workspace ([#2409](https://github.com/0xPlaygrounds/rig/pull/2409)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2409
+- [**breaking**] ownership audit round 2 — borrow-shaped telemetry getters, slice-shaped embed seams, Copy usage types, dead Default/Debug transport bounds ([#2392](https://github.com/0xPlaygrounds/rig/pull/2392)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2392
+- [**breaking**] ownership audit — borrow-shaped signatures, dead clones, clone_from in accumulators, minimal bounds ([#2391](https://github.com/0xPlaygrounds/rig/pull/2391)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2391
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.41.0...rig-bedrock-v0.42.0) - 2026-08-16
 
 ### Added
