@@ -163,6 +163,7 @@ impl fmt::Debug for BusDriver {
 
 impl BusDriver {
     pub(super) fn new(shared: Arc<Shared>, mailbox: Arc<Mailbox>, config: BusConfig) -> Self {
+        shared.driver_born();
         Self {
             shared,
             mailbox,
@@ -493,9 +494,12 @@ impl Future for BusDriver {
 impl Drop for BusDriver {
     fn drop(&mut self) {
         // The guard: after this every reply the channel loses is `BusClosed`,
-        // and handlers posted but never installed go with the driver.
+        // and handlers posted but never installed go with the driver. The
+        // descriptor table goes too — it described handlers this driver
+        // held — and the bus is free for `Bus::reopen`.
         self.shared.mark_closed();
         self.mailbox.clear();
+        self.shared.driver_died();
     }
 }
 

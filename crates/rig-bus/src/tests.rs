@@ -2123,3 +2123,95 @@ fn dropping_the_pending_closes_a_detached_sink() {
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(driver.in_flight(), 0);
 }
+
+#[test]
+fn a_reopened_bus_serves_handles_bound_before_the_drop() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    // The host's bound view: a key it keeps (a typed `Handle` is the same
+    // thing over a key; `ModelHandle` is proven on the fixture side).
+    let handle = HandlerKey::from("echo");
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    // Served once, then the driver goes.
+    let mut before = dispatcher.dispatch(&handle, custom(json!(1)));
+    assert!(before.poll_outcome().is_none());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(before.poll_outcome().is_some());
+    let mut minted_before_drop = dispatcher.dispatch(&handle, custom(json!(2)));
+    drop(driver);
+    assert!(dispatcher.is_closed());
+    assert!(
+        dispatcher.descriptor(&HandlerKey::from("echo")).is_none(),
+        "the handlers died with the driver; the table says so"
+    );
+    let report = dispatcher
+        .dispatch(&handle, custom(json!(3)))
+        .poll_outcome()
+        .expect("closed")
+        .expect_err("closed");
+    assert_eq!(report.kind, ErrorKind::BusClosed);
+
+    let (registrar, mut driver) = Bus::reopen(&dispatcher).expect("no driver alive");
+    assert!(!dispatcher.is_closed());
+    // What was minted against the dead driver stays dead.
+    let report = minted_before_drop
+        .poll_outcome()
+        .expect("decided")
+        .expect_err("closed");
+    assert_eq!(report.kind, ErrorKind::BusClosed);
+    // Re-register (through the new registrar) and the same handle works.
+    let (echo, served_again) = Echo::new();
+    registrar.register("echo", echo).expect("fresh table");
+    let mut after = dispatcher.dispatch(&handle, custom(json!(4)));
+    assert!(after.poll_outcome().is_none());
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    let outcome = after.poll_outcome().expect("served").expect("ok");
+    assert!(matches!(outcome, Outcome::Custom(ref v) if *v == json!(4)));
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert_eq!(served_again.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        dispatcher.descriptor(&handle).expect("re-registered").key,
+        handle
+    );
+}
+
+#[test]
+fn reopen_while_a_driver_is_alive_is_refused() {
+    let (dispatcher, _registrar, driver) = Bus::channel();
+    let report = Bus::reopen(&dispatcher).expect_err("a driver is alive");
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(report.retryable, "retry once the driver has been dropped");
+    drop(driver);
+    let (_registrar, driver) = Bus::reopen(&dispatcher).expect("now free");
+    assert!(Bus::reopen(&dispatcher).is_err(), "the new driver holds it");
+    drop(driver);
+    assert!(Bus::reopen(&dispatcher).is_ok());
+}
+
+#[test]
+fn pendings_and_streams_created_while_closed_stay_closed_after_reopen() {
+    let (dispatcher, _registrar, driver) = Bus::channel();
+    drop(driver);
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("echo"), completion_kind(true));
+    let (_registrar, mut driver) = Bus::reopen(&dispatcher).expect("free");
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let report = pending
+        .poll_outcome()
+        .expect("decided")
+        .expect_err("closed");
+    assert_eq!(report.kind, ErrorKind::BusClosed);
+    let item = stream.poll_item().expect("decided").expect("one item");
+    assert_eq!(item.expect_err("closed").kind, ErrorKind::BusClosed);
+    assert!(stream.poll_item().expect("decided").is_none());
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(served.load(Ordering::SeqCst), 0, "nothing was resurrected");
+    assert_eq!(dispatcher.buffered(), 0);
+}

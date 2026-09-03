@@ -205,15 +205,41 @@ impl Bus {
 
     /// A bus with an explicit config.
     pub fn channel_with(config: BusConfig) -> (Dispatcher, Registrar, BusDriver) {
-        let shared = Arc::new(dispatcher::Shared::new(
-            config.command_capacity,
-            config.serial_per_handler,
-        ));
+        let shared = Arc::new(dispatcher::Shared::new(config));
         let mailbox = Arc::new(registrar::Mailbox::new());
         let dispatcher = Dispatcher::open(shared.clone(), config.stream_capacity.max(1));
         let driver = BusDriver::new(shared, mailbox, config);
         let registrar = driver.registrar();
         (dispatcher, registrar, driver)
+    }
+
+    /// A new driver for a bus whose driver is gone: the plugin's driver task
+    /// was cancelled, the entity holding it despawned on a state change,
+    /// the pool torn down. Every `Dispatcher` and `Handle` over the bus
+    /// works again once the new driver is driven; nothing in flight is
+    /// resurrected — a `Pending`/`EffectStream` minted against the old
+    /// driver still answers `BusClosed` — and the handlers died with the
+    /// old driver, so the returned driver's table is empty and the caller
+    /// re-registers (on the driver in hand, or through the new
+    /// `Registrar`; registrars minted before the restart post to nothing).
+    /// Refused with a `Request` report while a driver is alive — including
+    /// one whose task was cancelled but not yet dropped by its executor, so
+    /// a host that just despawned the task retries on a later tick.
+    pub fn reopen(
+        dispatcher: &Dispatcher,
+    ) -> Result<(Registrar, BusDriver), rig_core::error::ErrorReport> {
+        let shared = Arc::clone(&dispatcher.shared);
+        if !shared.reopen() {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::Request,
+                "the bus cannot be reopened: a driver is alive",
+            )
+            .with_retryable(true));
+        }
+        let mailbox = Arc::new(registrar::Mailbox::new());
+        let driver = BusDriver::new(shared, mailbox, dispatcher.shared.config());
+        let registrar = driver.registrar();
+        Ok((registrar, driver))
     }
 
     /// A bus whose driver is handed to `spawn` after `register` has filled
