@@ -4,7 +4,7 @@
 //! # The feature
 //!
 //! Capture is always on. `stream()` opens `raw_stream` and hands it to
-//! `normalize_stream`, which serializes the provider-native terminal —
+//! the adapter's `final_record`, which serializes the provider-native terminal —
 //! `anthropic::streaming::StreamingCompletionResponse`, the `R` of
 //! `raw_stream` — onto the terminal `StreamFinal::raw` before mapping it. So
 //! `raw` is the **terminal record only**: what `raw_stream` would have yielded
@@ -24,7 +24,7 @@
 //! |---|------|-----------|----------|--------|
 //! | 1 | `terminal_raw_round_trips_into_provider_type` | plain text request | terminal `raw` populated; deserializes into the Anthropic terminal type and re-serializes equal; terminal-only shape (no frames) | recorded |
 //! | 2 | `raw_exposes_stop_sequence` | streamed twin of the `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`, `raw["stop_reason"] == "stop_sequence"` (verbatim spelling) | recorded |
-//! | 3 | `normalized_terminal_matches_raw_renormalized` | plain text request | `StreamFinal::from(("anthropic", StreamingCompletionResponse::deserialize(raw)))` reproduces `identity()`, `finish_reason`, `model`, `usage` | recorded |
+//! | 3 | `normalized_terminal_matches_raw_renormalized` | plain text request | the adapter's terminal mapping over `StreamingCompletionResponse::deserialize(raw)` reproduces `identity()`, `finish_reason`, `model`, `usage` | recorded |
 //! | 4 | `terminal_raw_round_trips_for_thinking_stream` | streamed twin of the `thinking.enabled` request | terminal `raw` round-trips; `raw["usage"]["output_tokens_details"]["thinking_tokens"]` is the terminal `message_delta`'s, verbatim; normalized terminal folds it into `reasoning_tokens` and never spells `thinking`; the stream yielded the `thinking` block as `Reasoning` | recorded |
 //! | 5 | `terminal_raw_round_trips_for_tool_use_stream` | streamed twin of the forced tool call | terminal `raw` round-trips; `raw["stop_reason"] == "tool_use"` verbatim; normalized terminal `finish_reason == ToolCalls`; the stream yielded the `tool_use` block as a `ToolCall` whose provider id is the frame's | recorded |
 //!
@@ -502,7 +502,7 @@ async fn raw_exposes_stop_sequence() {
 
 /// The normalized terminal and `raw` describe the same stream: reading `raw`
 /// back into the provider terminal type and mapping it through the public
-/// `StreamFinal::from((&str, StreamingCompletionResponse))` — the same
+/// the adapter's terminal mapping (`terminal_record`) — the same
 /// mapping `stream()` applies — reproduces every normalized field delivered
 /// beside it: identity, finish reason, model, usage. And each of those is
 /// what the fixture recorded.

@@ -1150,7 +1150,7 @@ mod raw_capture {
         assert_eq!(raw["additional_params"]["service_tier"], "default");
         assert_eq!(raw["additional_params"]["system_fingerprint"], "fp_stream");
 
-        let renormalized: streaming::StreamFinal = ("openai", typed).into();
+        let renormalized = typed.into_stream_final("openai");
         assert_eq!(record.identity(), renormalized.identity());
         assert_eq!(record.finish_reason, renormalized.finish_reason);
         assert_eq!(record.model, renormalized.model);

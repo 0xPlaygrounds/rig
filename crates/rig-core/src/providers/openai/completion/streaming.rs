@@ -277,22 +277,24 @@ impl<U> StreamingCompletionResponse<U> {
     }
 }
 
-/// Normalize an OpenAI-compatible streaming terminal record.
-///
-/// As on the unary path, the provider descriptor name is an *input* rather than
-/// a constant: this terminal record is shared by every OpenAI-compatible
-/// provider, so baking in `"openai"` here would mislabel Groq, Together,
-/// DeepSeek and the rest.
-impl<U> From<(&str, StreamingCompletionResponse<U>)> for StreamFinal
+impl<U> StreamingCompletionResponse<U>
 where
     U: Into<crate::completion::Usage>,
 {
-    fn from((provider, response): (&str, StreamingCompletionResponse<U>)) -> Self {
-        StreamFinal::new(provider, response.usage.into())
-            .with_optional_finish_reason(response.finish_reason)
-            .with_optional_response_id(response.response_id)
-            .with_optional_provider_request_id(response.provider_request_id)
-            .with_optional_model(response.model)
+    /// Normalize this OpenAI-compatible streaming terminal record — the
+    /// adapter's own terminal mapping, like every other provider's, rather
+    /// than a conversion on the record type.
+    ///
+    /// As on the unary path, the provider descriptor name is an *input*
+    /// rather than a constant: this terminal record is shared by every
+    /// OpenAI-compatible provider, so baking in `"openai"` here would
+    /// mislabel Groq, Together, DeepSeek and the rest.
+    pub fn into_stream_final(self, provider: &str) -> StreamFinal {
+        StreamFinal::new(provider, self.usage.into())
+            .with_optional_finish_reason(self.finish_reason)
+            .with_optional_response_id(self.response_id)
+            .with_optional_provider_request_id(self.provider_request_id)
+            .with_optional_model(self.model)
     }
 }
 
@@ -487,7 +489,7 @@ where
         // The provider's own terminal record rides along serialized — the
         // same capture every unary `completion` performs before `normalize`.
         let raw = serde_json::to_value(&native)?;
-        Ok(StreamFinal::from((provider, native)).with_raw(raw))
+        Ok(native.into_stream_final(provider).with_raw(raw))
     }
 
     fn detail_reasoning(

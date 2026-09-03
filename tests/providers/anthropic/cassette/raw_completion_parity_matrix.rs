@@ -13,7 +13,7 @@
 //! the provider type to read a field rig does not normalize silently loses the
 //! metadata the normalized route would have given them. Streaming has the same
 //! shape: `raw_stream`'s terminal mapped through the public
-//! `StreamFinal::from((&str, StreamingCompletionResponse))` must agree with
+//! the adapter's terminal mapping (`terminal_record`) must agree with
 //! `stream()`'s terminal record.
 //!
 //! Each cell makes two live requests (one per route) in one scenario, so the

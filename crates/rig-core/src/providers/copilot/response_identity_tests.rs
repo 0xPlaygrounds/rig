@@ -12,7 +12,7 @@ fn chat_streaming_terminal_carries_request_id_into_stream_final() {
         openai::completion::Usage,
     >::new(openai::completion::Usage::default());
     chat_terminal.provider_request_id = Some("req-chat".to_string());
-    let chat_final: crate::streaming::StreamFinal = (PROVIDER_NAME, chat_terminal).into();
+    let chat_final = chat_terminal.into_stream_final(PROVIDER_NAME);
     assert_eq!(chat_final.provider_request_id.as_deref(), Some("req-chat"));
     assert_eq!(chat_final.provider, PROVIDER_NAME);
 }

@@ -8,9 +8,9 @@ struct BuilderHook;
 impl AgentHook for BuilderHook {}
 
 /// A model without any `Clone` impl must pass through the builder's
-/// erasure seam (`AgentBuilder::new` → `ModelHandle::new`). The bound is
-/// the test: a regression is a compile error. (The handle-level twin of
-/// this probe lives in `rig_core::completion::handle`.)
+/// erasure seam (`AgentBuilder::new` → the bus's `CompletionAdapter`
+/// registered under the agent's model key). The bound is the test: a
+/// regression is a compile error.
 #[test]
 fn builder_accepts_non_clone_model() {
     struct NonCloneModel;

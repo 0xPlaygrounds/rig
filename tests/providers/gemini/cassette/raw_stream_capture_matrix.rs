@@ -3,7 +3,7 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: `normalize_stream` serializes the value the
+//! Raw capture is always on: the adapter's `final_record` serializes the value the
 //! inherent `raw_stream` yielded as its `FinalResponse` — Gemini's own
 //! [`StreamingCompletionResponse`] terminal record (`map_stream_final`'s
 //! input) — onto the terminal [`rig::streaming::StreamFinal::raw`]. There is
@@ -34,7 +34,7 @@
 //! `usageMetadata`, read with the same `data:` framing the streaming tests use.
 //!
 //! Cell 3 is the tool-turn twin: Gemini spells a call-only turn's finish
-//! `"STOP"` on the wire and rig's `normalize_stream` reconciles the terminal
+//! `"STOP"` on the wire and the adapter's terminal mapping reconciles the terminal
 //! to `ToolCalls` from the tool call it saw, so this is the one place the
 //! terminal `raw` and the normalized terminal legitimately disagree — `raw`
 //! must keep the wire spelling and the terminal must report the upgrade.
@@ -171,7 +171,7 @@ fn last_usage_frame(scenario: &str) -> Value {
 
 /// The premise of the forced-tool cell: the recorded stream carries a
 /// `functionCall` part naming `add`, and its finish is still spelled `"STOP"`
-/// — the wire shape `normalize_stream` reconciles to `ToolCalls`. Returns the
+/// — the wire shape the adapter's terminal mapping reconciles to `ToolCalls`. Returns the
 /// last frame carrying `usageMetadata`, as [`last_usage_frame`] does.
 fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
     let frames = crate::cassettes::recorded_sse_json_frames(PROVIDER, scenario);

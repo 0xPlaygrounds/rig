@@ -6,7 +6,7 @@
 //! The streamed twin of `raw_capture_matrix`: every terminal
 //! `StreamedAssistantContent::Final` carries `raw` — the route's
 //! provider-native terminal record, the `R` of that route's `raw_stream`,
-//! serialized at the shared `normalize_stream` seam. There is no switch
+//! serialized at the adapter's `final_record` seam. There is no switch
 //! behind it; a terminal `raw` is `Value::Null` only on a record built by
 //! hand, never on one a stream yielded. It round-trips into that terminal type and
 //! re-serializes equal, it exposes a terminal-only field the normalized
@@ -257,7 +257,7 @@ fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
 
 /// `raw` and the normalized terminal tell one story: mapping the typed
 /// terminal through the route's own `From<(&str, R)> for StreamFinal` — the
-/// mapper `normalize_stream` ran — reproduces every normalized field. A text
+/// mapper `final_record` ran — reproduces every normalized field. A text
 /// turn emits no tool call, so the reconciliation `normalize_stream` layers
 /// on top leaves `finish_reason` untouched and the comparison is exact.
 fn assert_responses_raw_matches_terminal(
@@ -372,7 +372,7 @@ async fn chat_stream_raw_round_trips_typed() {
         "{SCENARIO}: the native record never carries the transport id"
     );
     // One story: the typed terminal re-normalizes to what the stream yielded.
-    let renormalized = StreamFinal::from((PROVIDER, typed));
+    let renormalized = typed.into_stream_final(PROVIDER);
     assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
 }
 
@@ -694,8 +694,8 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     );
     // One story: the typed terminal re-normalizes to what the stream yielded.
     // The wire already said `tool_calls`, so the `Stop -> ToolCalls`
-    // reconciliation `normalize_stream` layers on has nothing to change and
+    // reconciliation `StreamingCompletionResponse` layers on has nothing to change and
     // the comparison stays exact.
-    let renormalized = StreamFinal::from((PROVIDER, typed));
+    let renormalized = typed.into_stream_final(PROVIDER);
     assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
 }
