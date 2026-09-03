@@ -13,7 +13,7 @@ use crate::{
     error::{ErrorKind, ErrorReport},
 };
 
-use super::{ErasedHandler, Handler, Key, dispatcher::Shared};
+use super::{ErasedHandler, Key, Serve, dispatcher::Shared};
 
 /// The report for a handler registered under a key of another family.
 pub(super) fn family_proof_failed(
@@ -151,7 +151,7 @@ impl Registrar {
     pub fn register(
         &self,
         key: impl Into<HandlerKey>,
-        handler: impl Handler + 'static,
+        handler: impl Serve + 'static,
     ) -> Result<(), ErrorReport> {
         self.register_erased(key, ErasedHandler::new(handler))
     }
@@ -175,7 +175,7 @@ impl Registrar {
     pub fn register_typed<F: Family>(
         &self,
         key: impl Into<HandlerKey>,
-        handler: impl Handler + 'static,
+        handler: impl Serve + 'static,
     ) -> Result<Key<F>, ErrorReport> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);
@@ -229,7 +229,9 @@ const _: fn() = || {
 const _: fn(&Registrar) = |registrar| {
     struct Local(std::rc::Rc<std::cell::Cell<usize>>);
 
-    impl Handler for Local {
+    impl Serve for Local {
+        type Family = crate::effect::family::Dynamic;
+
         fn descriptor(&self) -> HandlerDescriptor {
             HandlerDescriptor {
                 key: HandlerKey::from("local"),
@@ -239,16 +241,10 @@ const _: fn(&Registrar) = |registrar| {
             }
         }
 
-        fn handle(
-            &self,
-            _kind: crate::effect::EffectKind,
-            sink: super::OutcomeSink,
-        ) -> super::HandlerFuture<'_> {
+        async fn serve(&self, _kind: crate::effect::EffectKind, sink: super::OutcomeSink) {
             self.0.set(self.0.get() + 1);
-            Box::pin(async move {
-                sink.resolve(Ok(crate::effect::Outcome::Custom(serde_json::Value::Null)))
-                    .await;
-            })
+            sink.resolve(Ok(crate::effect::Outcome::Custom(serde_json::Value::Null)))
+                .await;
         }
     }
 

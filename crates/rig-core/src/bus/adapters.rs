@@ -6,8 +6,6 @@
 //! provider or tool author writes the impl-side trait exactly as before and
 //! registers the adapter.
 
-use std::sync::Arc;
-
 use futures::StreamExt;
 
 use crate::{
@@ -25,7 +23,8 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-use super::{Handler, HandlerFuture, OutcomeSink};
+use super::{OutcomeSink, Serve};
+use crate::effect::family;
 
 fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
     ErrorReport::new(
@@ -60,10 +59,12 @@ impl<M> CompletionAdapter<M> {
     }
 }
 
-impl<M> Handler for CompletionAdapter<M>
+impl<M> Serve for CompletionAdapter<M>
 where
     M: CompletionModel + 'static,
 {
+    type Family = family::Completion;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: super::model_key(self.label.as_str()),
@@ -74,50 +75,48 @@ where
         }
     }
 
-    fn handle(&self, kind: EffectKind, mut sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::Completion {
-                    request,
-                    stream: false,
-                } => {
-                    let outcome = self
-                        .model
-                        .completion(request)
-                        .await
-                        .map(Outcome::Completion)
-                        .map_err(ErrorReport::from);
-                    sink.resolve(outcome).await;
-                }
-                EffectKind::Completion {
-                    request,
-                    stream: true,
-                } => {
-                    let mut stream = match self.model.stream(request).await {
-                        Ok(stream) => stream,
-                        Err(error) => {
-                            sink.resolve(Err(ErrorReport::from(error))).await;
-                            return;
-                        }
-                    };
-                    while let Some(item) = stream.next().await {
-                        if sink.send(item).await.is_err() {
-                            // The consumer is gone: dropping the provider
-                            // stream fires its abort.
-                            return;
-                        }
+    async fn serve(&self, kind: EffectKind, mut sink: OutcomeSink) {
+        match kind {
+            EffectKind::Completion {
+                request,
+                stream: false,
+            } => {
+                let outcome = self
+                    .model
+                    .completion(request)
+                    .await
+                    .map(Outcome::Completion)
+                    .map_err(ErrorReport::from);
+                sink.resolve(outcome).await;
+            }
+            EffectKind::Completion {
+                request,
+                stream: true,
+            } => {
+                let mut stream = match self.model.stream(request).await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        sink.resolve(Err(ErrorReport::from(error))).await;
+                        return;
+                    }
+                };
+                while let Some(item) = stream.next().await {
+                    if sink.send(item).await.is_err() {
+                        // The consumer is gone: dropping the provider
+                        // stream fires its abort.
+                        return;
                     }
                 }
-                other @ (EffectKind::ToolCall { .. }
-                | EffectKind::Embed { .. }
-                | EffectKind::Memory { .. }
-                | EffectKind::Retrieve { .. }
-                | EffectKind::Custom { .. }) => {
-                    sink.resolve(Err(wrong_family(EffectFamily::Completion, &other)))
-                        .await;
-                }
             }
-        })
+            other @ (EffectKind::ToolCall { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Completion, &other)))
+                    .await;
+            }
+        }
     }
 }
 
@@ -158,10 +157,12 @@ impl<T: Tool> ToolAdapter<T> {
     }
 }
 
-impl<T> Handler for ToolAdapter<T>
+impl<T> Serve for ToolAdapter<T>
 where
     T: Tool + 'static,
 {
+    type Family = family::Tool;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: super::tool_key(T::NAME),
@@ -174,25 +175,23 @@ where
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::ToolCall { args, context, .. } => {
-                    let mut context = context;
-                    let result = ErasedTool::execute(&self.tool, args, &mut context).await;
-                    sink.resolve(Ok(Outcome::ToolResult { result, context }))
-                        .await;
-                }
-                other @ (EffectKind::Completion { .. }
-                | EffectKind::Embed { .. }
-                | EffectKind::Memory { .. }
-                | EffectKind::Retrieve { .. }
-                | EffectKind::Custom { .. }) => {
-                    sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
-                        .await;
-                }
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::ToolCall { args, context, .. } => {
+                let mut context = context;
+                let result = ErasedTool::execute(&self.tool, args, &mut context).await;
+                sink.resolve(Ok(Outcome::ToolResult { result, context }))
+                    .await;
             }
-        })
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
+                    .await;
+            }
+        }
     }
 }
 
@@ -254,10 +253,12 @@ impl<F: ToolCallback> ToolFn<F> {
     }
 }
 
-impl<F> Handler for ToolFn<F>
+impl<F> Serve for ToolFn<F>
 where
     F: ToolCallback + 'static,
 {
+    type Family = family::Tool;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: super::tool_key(&self.name),
@@ -270,30 +271,25 @@ where
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::ToolCall { args, context, .. } => {
-                    let mut context = context;
-                    let result = crate::tool::contextual::execute_callback(
-                        &self.callback,
-                        args,
-                        &mut context,
-                    )
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::ToolCall { args, context, .. } => {
+                let mut context = context;
+                let result =
+                    crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
+                        .await;
+                sink.resolve(Ok(Outcome::ToolResult { result, context }))
                     .await;
-                    sink.resolve(Ok(Outcome::ToolResult { result, context }))
-                        .await;
-                }
-                other @ (EffectKind::Completion { .. }
-                | EffectKind::Embed { .. }
-                | EffectKind::Memory { .. }
-                | EffectKind::Retrieve { .. }
-                | EffectKind::Custom { .. }) => {
-                    sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
-                        .await;
-                }
             }
-        })
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
+                    .await;
+            }
+        }
     }
 }
 
@@ -318,10 +314,12 @@ impl<E> EmbedAdapter<E> {
     }
 }
 
-impl<E> Handler for EmbedAdapter<E>
+impl<E> Serve for EmbedAdapter<E>
 where
     E: EmbeddingModel + 'static,
 {
+    type Family = family::Embed;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from(format!("embed:{}", self.label)),
@@ -334,39 +332,37 @@ where
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::Embed {
-                    inputs: EmbedInputs::Texts(texts),
-                } => {
-                    let outcome = self
-                        .model
-                        .embed_texts_response(texts)
-                        .await
-                        .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
-                        .map_err(ErrorReport::from);
-                    sink.resolve(outcome).await;
-                }
-                EffectKind::Embed {
-                    inputs: EmbedInputs::Images(_),
-                } => {
-                    sink.resolve(Err(ErrorReport::new(
-                        ErrorKind::HandlerUnavailable,
-                        "a text embedding handler cannot embed images",
-                    )))
-                    .await;
-                }
-                other @ (EffectKind::Completion { .. }
-                | EffectKind::ToolCall { .. }
-                | EffectKind::Memory { .. }
-                | EffectKind::Retrieve { .. }
-                | EffectKind::Custom { .. }) => {
-                    sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
-                        .await;
-                }
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::Embed {
+                inputs: EmbedInputs::Texts(texts),
+            } => {
+                let outcome = self
+                    .model
+                    .embed_texts_response(texts)
+                    .await
+                    .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
+                    .map_err(ErrorReport::from);
+                sink.resolve(outcome).await;
             }
-        })
+            EffectKind::Embed {
+                inputs: EmbedInputs::Images(_),
+            } => {
+                sink.resolve(Err(ErrorReport::new(
+                    ErrorKind::HandlerUnavailable,
+                    "a text embedding handler cannot embed images",
+                )))
+                .await;
+            }
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::ToolCall { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
+                    .await;
+            }
+        }
     }
 }
 
@@ -391,10 +387,12 @@ impl<E> ImageEmbedAdapter<E> {
     }
 }
 
-impl<E> Handler for ImageEmbedAdapter<E>
+impl<E> Serve for ImageEmbedAdapter<E>
 where
     E: ImageEmbeddingModel + 'static,
 {
+    type Family = family::Embed;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from(format!("embed:{}", self.label)),
@@ -407,39 +405,37 @@ where
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::Embed {
-                    inputs: EmbedInputs::Images(images),
-                } => {
-                    let outcome = self
-                        .model
-                        .embed_images_response(images)
-                        .await
-                        .map(|response| Outcome::Embeddings(EmbedOutputs::Images(response)))
-                        .map_err(ErrorReport::from);
-                    sink.resolve(outcome).await;
-                }
-                EffectKind::Embed {
-                    inputs: EmbedInputs::Texts(_),
-                } => {
-                    sink.resolve(Err(ErrorReport::new(
-                        ErrorKind::HandlerUnavailable,
-                        "an image embedding handler cannot embed text",
-                    )))
-                    .await;
-                }
-                other @ (EffectKind::Completion { .. }
-                | EffectKind::ToolCall { .. }
-                | EffectKind::Memory { .. }
-                | EffectKind::Retrieve { .. }
-                | EffectKind::Custom { .. }) => {
-                    sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
-                        .await;
-                }
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::Embed {
+                inputs: EmbedInputs::Images(images),
+            } => {
+                let outcome = self
+                    .model
+                    .embed_images_response(images)
+                    .await
+                    .map(|response| Outcome::Embeddings(EmbedOutputs::Images(response)))
+                    .map_err(ErrorReport::from);
+                sink.resolve(outcome).await;
             }
-        })
+            EffectKind::Embed {
+                inputs: EmbedInputs::Texts(_),
+            } => {
+                sink.resolve(Err(ErrorReport::new(
+                    ErrorKind::HandlerUnavailable,
+                    "an image embedding handler cannot embed text",
+                )))
+                .await;
+            }
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::ToolCall { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
+                    .await;
+            }
+        }
     }
 }
 
@@ -460,10 +456,12 @@ impl<M> MemoryAdapter<M> {
     }
 }
 
-impl<M> Handler for MemoryAdapter<M>
+impl<M> Serve for MemoryAdapter<M>
 where
     M: ConversationMemory + 'static,
 {
+    type Family = family::Memory;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("memory"),
@@ -471,42 +469,40 @@ where
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::Memory { op } => {
-                    let outcome = match op {
-                        MemoryOp::Load { conversation } => self
-                            .memory
-                            .load(&conversation)
-                            .await
-                            .map(|messages| Outcome::Memory(MemoryOutcome::Loaded { messages })),
-                        MemoryOp::Append {
-                            conversation,
-                            messages,
-                        } => self
-                            .memory
-                            .append(&conversation, messages)
-                            .await
-                            .map(|()| Outcome::Memory(MemoryOutcome::Appended)),
-                        MemoryOp::Clear { conversation } => self
-                            .memory
-                            .clear(&conversation)
-                            .await
-                            .map(|()| Outcome::Memory(MemoryOutcome::Cleared)),
-                    };
-                    sink.resolve(outcome.map_err(ErrorReport::from)).await;
-                }
-                other @ (EffectKind::Completion { .. }
-                | EffectKind::ToolCall { .. }
-                | EffectKind::Embed { .. }
-                | EffectKind::Retrieve { .. }
-                | EffectKind::Custom { .. }) => {
-                    sink.resolve(Err(wrong_family(EffectFamily::Memory, &other)))
-                        .await;
-                }
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::Memory { op } => {
+                let outcome = match op {
+                    MemoryOp::Load { conversation } => self
+                        .memory
+                        .load(&conversation)
+                        .await
+                        .map(|messages| Outcome::Memory(MemoryOutcome::Loaded { messages })),
+                    MemoryOp::Append {
+                        conversation,
+                        messages,
+                    } => self
+                        .memory
+                        .append(&conversation, messages)
+                        .await
+                        .map(|()| Outcome::Memory(MemoryOutcome::Appended)),
+                    MemoryOp::Clear { conversation } => self
+                        .memory
+                        .clear(&conversation)
+                        .await
+                        .map(|()| Outcome::Memory(MemoryOutcome::Cleared)),
+                };
+                sink.resolve(outcome.map_err(ErrorReport::from)).await;
             }
-        })
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::ToolCall { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Memory, &other)))
+                    .await;
+            }
+        }
     }
 }
 
@@ -529,11 +525,13 @@ impl<I> RetrieveAdapter<I> {
     }
 }
 
-impl<I, F> Handler for RetrieveAdapter<I>
+impl<I, F> Serve for RetrieveAdapter<I>
 where
     I: VectorStoreIndex<Filter = F> + 'static,
     F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
 {
+    type Family = family::Retrieve;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("retrieve"),
@@ -541,68 +539,52 @@ where
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::Retrieve { query } => {
-                    let outcome = match query {
-                        RetrieveQuery::TopN { req } => {
-                            match req.try_map_filter(F::from_dynamic_filter) {
-                                Ok(req) => self
-                                    .index
-                                    .top_n::<serde_json::Value>(req)
-                                    .await
-                                    .map(|results| {
-                                        Outcome::Documents(RetrievedDocuments::Scored(
-                                            results
-                                                .into_iter()
-                                                .map(|(score, id, doc)| {
-                                                    (score, id, F::normalize_dynamic_document(doc))
-                                                })
-                                                .collect(),
-                                        ))
-                                    })
-                                    .map_err(ErrorReport::from),
-                                Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
-                            }
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::Retrieve { query } => {
+                let outcome = match query {
+                    RetrieveQuery::TopN { req } => {
+                        match req.try_map_filter(F::from_dynamic_filter) {
+                            Ok(req) => self
+                                .index
+                                .top_n::<serde_json::Value>(req)
+                                .await
+                                .map(|results| {
+                                    Outcome::Documents(RetrievedDocuments::Scored(
+                                        results
+                                            .into_iter()
+                                            .map(|(score, id, doc)| {
+                                                (score, id, F::normalize_dynamic_document(doc))
+                                            })
+                                            .collect(),
+                                    ))
+                                })
+                                .map_err(ErrorReport::from),
+                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
                         }
-                        RetrieveQuery::TopNIds { req } => {
-                            match req.try_map_filter(F::from_dynamic_filter) {
-                                Ok(req) => self
-                                    .index
-                                    .top_n_ids(req)
-                                    .await
-                                    .map(|results| {
-                                        Outcome::Documents(RetrievedDocuments::Ids(results))
-                                    })
-                                    .map_err(ErrorReport::from),
-                                Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
-                            }
+                    }
+                    RetrieveQuery::TopNIds { req } => {
+                        match req.try_map_filter(F::from_dynamic_filter) {
+                            Ok(req) => self
+                                .index
+                                .top_n_ids(req)
+                                .await
+                                .map(|results| Outcome::Documents(RetrievedDocuments::Ids(results)))
+                                .map_err(ErrorReport::from),
+                            Err(error) => Err(ErrorReport::from(VectorStoreError::from(error))),
                         }
-                    };
-                    sink.resolve(outcome).await;
-                }
-                other @ (EffectKind::Completion { .. }
-                | EffectKind::ToolCall { .. }
-                | EffectKind::Embed { .. }
-                | EffectKind::Memory { .. }
-                | EffectKind::Custom { .. }) => {
-                    sink.resolve(Err(wrong_family(EffectFamily::Retrieve, &other)))
-                        .await;
-                }
+                    }
+                };
+                sink.resolve(outcome).await;
             }
-        })
-    }
-}
-
-/// A shared handler is a handler: `Arc<H>` forwards, so one handler can be
-/// registered under several keys.
-impl<H: Handler + ?Sized> Handler for Arc<H> {
-    fn descriptor(&self) -> HandlerDescriptor {
-        (**self).descriptor()
-    }
-
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        (**self).handle(kind, sink)
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::ToolCall { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Retrieve, &other)))
+                    .await;
+            }
+        }
     }
 }

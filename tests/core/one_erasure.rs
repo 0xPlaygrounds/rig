@@ -228,6 +228,15 @@ fn named_exemptions_are_live() {
         ERASURE_FILE.0,
         ERASURE_FILE.1
     );
+    // The boxed trait is the bus's own: authors implement `Serve`.
+    assert!(
+        erasure_file.text.contains("pub(crate) trait Handler"),
+        "the boxed `Handler` trait is crate-private"
+    );
+    assert!(
+        !erasure_file.text.contains("\npub trait Handler"),
+        "the boxed `Handler` trait must not be public"
+    );
 }
 
 #[test]

@@ -1,0 +1,15 @@
+error[E0277]: `std::string::String` declares no `ToolContext` key
+ --> tests/ui/tool_context/fail_bare_value_declares_no_key.rs:8:28
+  |
+8 |     let _ = context.insert(String::from("session"));
+  |                     ------ ^^^^^^^^^^^^^^^^^^^^^^^ not a `ContextValue`
+  |                     |
+  |                     required by a bound introduced by this call
+  |
+  = help: the trait `ContextValue` is not implemented for `std::string::String`
+  = note: derive it (`#[derive(rig::ContextValue)]`, optionally `#[context(key = "…")]`) or write `impl ContextValue for std::string::String { const KEY: &'static str = "…"; }`; a bare `String`, integer or `serde_json::Value` cannot be stored — wrap it in a newtype
+note: required by a bound in `ToolContext::insert`
+ --> $WORKSPACE/crates/rig-core/src/tool/context.rs
+  |
+  |     pub fn insert<T: ContextValue>(&mut self, value: T) -> Result<Option<T>, ToolContextError> {
+  |                      ^^^^^^^^^^^^ required by this bound in `ToolContext::insert`

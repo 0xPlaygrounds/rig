@@ -23,6 +23,23 @@ compile_error!(
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// `Send` on native targets, a no-op marker on browser wasm.
+///
+/// ```compile_fail
+/// use std::rc::Rc;
+/// use rig_core::{bus::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+///
+/// struct Local(Rc<u8>);
+/// impl Serve for Local {
+///     type Family = family::Dynamic;
+///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
+///     async fn serve(&self, _kind: EffectKind, _sink: OutcomeSink) {}
+/// }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not `Send`, and every bus handler must be `Send + Sync` natively",
+    label = "not `Send`",
+    note = "a handler runs inside the driver's task: hold the model, tool or memory behind an `Arc` (never an `Rc`), or register a `!Send` value only on browser wasm, where this marker is a no-op"
+)]
 pub trait WasmCompatSend: Send {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 /// `Send` on native targets, a no-op marker on browser wasm.
@@ -65,6 +82,23 @@ where
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// `Sync` on native targets, a no-op marker on browser wasm.
+///
+/// ```compile_fail
+/// use std::cell::Cell;
+/// use rig_core::{bus::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+///
+/// struct Local(Cell<u8>);
+/// impl Serve for Local {
+///     type Family = family::Dynamic;
+///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
+///     async fn serve(&self, _kind: EffectKind, _sink: OutcomeSink) {}
+/// }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not `Sync`, and every bus handler must be `Send + Sync` natively",
+    label = "not `Sync`",
+    note = "a handler is shared between the driver and its in-flight tasks: use `Mutex`/atomics instead of `Cell`/`RefCell`, or register a `!Sync` value only on browser wasm, where this marker is a no-op"
+)]
 pub trait WasmCompatSync: Sync {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 /// `Sync` on native targets, a no-op marker on browser wasm.

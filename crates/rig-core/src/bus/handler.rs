@@ -1,6 +1,9 @@
 //! The impl side of the bus: what a handler is and how it answers.
 
-use std::task::{Context, Poll};
+use std::{
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use futures::{SinkExt, channel::mpsc, channel::oneshot};
 
@@ -12,34 +15,95 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-/// The future a handler returns: boxed, because the driver's table holds
-/// handlers as `Arc<dyn Handler>` (an in-flight task holds its handler
-/// while the table is replaced) and the trait must be object-safe. `Send`
-/// on native (the `WasmBoxedFuture` fork), which is what makes
-/// `BusDriver: Send`.
-pub type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
+/// The future the bus stores for a handler: boxed, because the driver's
+/// table holds handlers as `Arc<dyn Handler>` (an in-flight task holds its
+/// handler while the table is replaced) and the stored trait must be
+/// dyn-compatible. `Send` on native (the `WasmBoxedFuture` fork), which is
+/// what makes `BusDriver: Send`. Authors never see it: they implement
+/// [`Serve`] with an `async fn`, and the one `Box::pin` is in the blanket
+/// impl below.
+pub(crate) type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
 
-/// Something registered on the bus that serves effects.
+/// Something registered on the bus that serves effects — the trait
+/// handler authors implement, with an `async fn`.
 ///
-/// Provider and tool authors do not implement this directly: the adapters in
-/// [`crate::bus::adapters`] wrap the impl-side traits (`CompletionModel`,
+/// Provider and tool authors do not implement this directly: the adapters
+/// in [`crate::bus::adapters`] wrap the impl-side traits (`CompletionModel`,
 /// `Tool`, `EmbeddingModel`, `ConversationMemory`, `VectorStoreIndex`). A
-/// host implements it for out-of-tree kinds ([`EffectKind::Custom`]) or for
-/// a replayer.
+/// host implements it for out-of-tree kinds ([`EffectKind::Custom`], typed
+/// through [`crate::effect::CustomEffect`]) or for a replayer.
 ///
 /// A handler answers through the [`OutcomeSink`] it is given: a unary effect
 /// resolves it once, a streaming effect feeds it [`StreamEvent`]s ending in
 /// [`StreamEvent::Final`]. There is one sink type so a handler body cannot
 /// answer on the wrong channel — the sink adapts the shape it receives to
 /// the shape the dispatch asked for.
-pub trait Handler: WasmCompatSend + WasmCompatSync {
+///
+/// ```ignore
+/// impl Serve for AskUser {
+///     type Family = family::Custom<AskUserEffect>;
+///     fn descriptor(&self) -> HandlerDescriptor {
+///         self.descriptor.clone()
+///     }
+///     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+///         let answer = self.ask(kind).await;
+///         sink.resolve(Ok(Outcome::Custom(answer))).await;
+///     }
+/// }
+/// ```
+///
+/// The returned future must be `Send` natively (it runs inside the driver's
+/// task; the bound is the crate's `WasmCompatSend` marker, a no-op on
+/// browser wasm). `Self::Family` is what a typed key can be proven against
+/// ([`crate::bus::Registrar::register_typed`]); a handler with no one
+/// family names [`crate::effect::family::Dynamic`].
+pub trait Serve: WasmCompatSend + WasmCompatSync {
+    /// The family this handler serves, or `Dynamic`.
+    type Family: crate::effect::Served;
+
     /// What this handler is: the family-keyed description a typed view
     /// checks at bind time and a scene serializes.
     fn descriptor(&self) -> HandlerDescriptor;
 
     /// Serve one effect. The future completes when the answer has been
     /// delivered (or the consumer went away — see [`OutcomeSink::send`]).
+    fn serve(
+        &self,
+        kind: EffectKind,
+        sink: OutcomeSink,
+    ) -> impl Future<Output = ()> + WasmCompatSend + use<'_, Self>;
+}
+
+/// The dyn-compatible form the bus stores: the one erasure. Every [`Serve`]
+/// is a `Handler` through the blanket impl, which is where the boxing
+/// happens — once, here.
+pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
+    fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_>;
+}
+
+impl<T: Serve> Handler for T {
+    fn descriptor(&self) -> HandlerDescriptor {
+        Serve::descriptor(self)
+    }
+
+    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+        Box::pin(self.serve(kind, sink))
+    }
+}
+
+/// A shared handler is a handler: `Arc<H>` forwards, so one handler can be
+/// registered under several keys.
+impl<H: Serve + ?Sized> Serve for Arc<H> {
+    type Family = H::Family;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        (**self).descriptor()
+    }
+
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        (**self).serve(kind, sink).await;
+    }
 }
 
 /// A handler behind the bus's one erasure: what a registry stages until a
@@ -56,19 +120,29 @@ pub trait Handler: WasmCompatSend + WasmCompatSync {
 pub struct ErasedHandler(ErasedInner);
 
 #[cfg(not(target_family = "wasm"))]
-type ErasedInner = std::sync::Arc<dyn Handler + Send + Sync>;
+type ErasedInner = Arc<dyn Handler + Send + Sync>;
 #[cfg(target_family = "wasm")]
-type ErasedInner = std::sync::Arc<dyn Handler>;
+type ErasedInner = Arc<dyn Handler>;
 
 impl ErasedHandler {
     /// Erase `handler`.
-    pub fn new(handler: impl Handler + 'static) -> Self {
-        Self(std::sync::Arc::new(handler))
+    pub fn new(handler: impl Serve + 'static) -> Self {
+        Self(Arc::new(handler))
+    }
+
+    /// What the erased handler is.
+    pub fn descriptor(&self) -> HandlerDescriptor {
+        self.0.descriptor()
+    }
+
+    /// Serve one effect: the driver's call, straight to the boxed handler.
+    pub(crate) fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+        self.0.handle(kind, sink)
     }
 
     /// Whether two erased handlers are the same allocation.
     pub fn ptr_eq(&self, other: &Self) -> bool {
-        std::sync::Arc::ptr_eq(&self.0, &other.0)
+        Arc::ptr_eq(&self.0, &other.0)
     }
 }
 
@@ -80,20 +154,27 @@ impl std::fmt::Debug for ErasedHandler {
     }
 }
 
-impl Handler for ErasedHandler {
+/// An erased handler serves whatever it wraps: re-erasing one (nothing in
+/// the tree does) forwards through one more box.
+impl Serve for ErasedHandler {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         self.0.descriptor()
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        self.0.handle(kind, sink)
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        self.0.handle(kind, sink).await;
     }
 }
 
 /// Serve one effect on `handler` right here, without a bus: the inline
 /// path a standalone tool set or catalog uses. The bus is still the only
-/// erasure — this is a direct call on a [`Handler`].
-pub async fn serve_inline(handler: &dyn Handler, kind: EffectKind) -> Result<Outcome, ErrorReport> {
+/// erasure — this is a direct call on the erased handler.
+pub async fn serve_inline(
+    handler: &ErasedHandler,
+    kind: EffectKind,
+) -> Result<Outcome, ErrorReport> {
     let id = EffectId::from_raw(0);
     let (reply, receiver) = oneshot::channel();
     handler.handle(kind, OutcomeSink::unary(id, reply)).await;

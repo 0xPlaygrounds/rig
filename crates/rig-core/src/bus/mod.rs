@@ -131,7 +131,7 @@
 //! # Writing a handler
 //!
 //! Provider and tool authors keep implementing the impl-side traits exactly
-//! as before; the [`adapters`] wrap them. Implement [`Handler`] directly for
+//! as before; the [`adapters`] wrap them. Implement [`Serve`] (an `async fn`) for
 //! an out-of-tree kind ([`EffectKind::Custom`](crate::effect::EffectKind::Custom))
 //! or for a replayer ([`EffectLogReplayer`]).
 //!
@@ -159,8 +159,7 @@ pub use handle::{
     ToolHandle, Typed, wrap_stream,
 };
 pub use handler::{
-    ErasedHandler, Handler, HandlerFuture, OutcomeSink, SinkClosed, events_from_response,
-    serve_inline,
+    ErasedHandler, OutcomeSink, Serve, SinkClosed, events_from_response, serve_inline,
 };
 pub use key::Key;
 pub use registrar::Registrar;
