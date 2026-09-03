@@ -109,11 +109,6 @@ impl<F: Family> Handle<F> {
         self.dispatcher.is_closed()
     }
 
-    /// The dispatcher this handle is a view over.
-    pub fn dispatcher(&self) -> &Dispatcher {
-        &self.dispatcher
-    }
-
     fn dispatch(&self, kind: EffectKind) -> Pending {
         self.dispatcher.dispatch(&self.descriptor.key, kind)
     }
@@ -249,6 +244,9 @@ impl ModelHandle {
     /// A streaming completion, wrapped back into a
     /// [`StreamingCompletionResponse`] over the B2 accumulator. Errors that
     /// cross the bus surface as the stream's error half, [`ErrorReport`].
+    /// The stream is opened under the model's label and takes the provider's
+    /// name from the terminal record, so `finish().provider` is what the
+    /// unary path reports.
     pub fn stream(&self, request: CompletionRequest) -> StreamingCompletionResponse {
         let provider = self.model_ref().to_string();
         let stream: EffectStream = self.dispatcher.dispatch_stream(

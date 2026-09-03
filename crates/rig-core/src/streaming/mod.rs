@@ -382,6 +382,12 @@ pub struct StreamingCompletionResponse {
     /// stream that errors or is cancelled before its terminal record still
     /// names its provider.
     provider: String,
+    /// Whether the terminal record names the provider: a stream that came
+    /// over the bus ([`Self::from_events`]) is opened under the handler's
+    /// label, and the provider behind it is only known once its terminal
+    /// record arrives; a stream a provider opened ([`Self::stream`]) names
+    /// its provider up front.
+    provider_from_terminal: bool,
     /// Whether the inner stream already ended: re-polling a drained stream
     /// — which `Stream` permits and combinators do — stays drained.
     finished: bool,
@@ -403,11 +409,18 @@ impl StreamingCompletionResponse {
         // here on every item is `Result<StreamEvent, ErrorReport>`.
         let mapped: StreamEvents =
             Box::pin(inner.map(|item| item.map_err(|error| ErrorReport::from(&error))));
-        Self::from_events(provider, mapped)
+        Self {
+            provider_from_terminal: false,
+            ..Self::from_events(provider, mapped)
+        }
     }
 
     /// A response over events that already speak the wire's error half —
     /// what the bus hands back ([`crate::bus::wrap_stream`]). No mapping.
+    /// `provider` is the name the stream carries until its terminal record
+    /// names the provider that produced it; from then on
+    /// [`Self::provider`] and [`Self::finish`] report that one, so a
+    /// streamed completion names its provider the way a unary one does.
     pub fn from_events(provider: impl Into<String>, inner: StreamEvents) -> Self {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let abortable_stream = Abortable::new(inner, abort_registration);
@@ -418,6 +431,7 @@ impl StreamingCompletionResponse {
             pause_control,
             accumulator: BlockAccumulator::new(),
             provider: provider.into(),
+            provider_from_terminal: true,
             finished: false,
             response: None,
             message_id: None,
@@ -601,6 +615,9 @@ impl Stream for StreamingCompletionResponse {
                         // terminal record only fills a gap.
                         if stream.message_id.is_none() {
                             stream.message_id.clone_from(&response.message_id);
+                        }
+                        if stream.provider_from_terminal && !response.provider.is_empty() {
+                            stream.provider.clone_from(&response.provider);
                         }
                         stream.response = Some(response.clone());
                         Poll::Ready(Some(Ok(StreamEvent::Final(response))))

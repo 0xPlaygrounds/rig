@@ -12,6 +12,17 @@ use super::{
     contextual::{RegisteredTool, ToolDispatch, dispatch_tool},
 };
 
+/// An opaque token a catalog keeps alive for as long as it exists: a
+/// registry that retires replaced generations lazily hands one per pinned
+/// registration and sweeps a generation once no catalog holds its token —
+/// the token's own drop is the registry's cue.
+#[cfg(not(target_family = "wasm"))]
+pub type ToolLease = std::sync::Arc<dyn std::any::Any + Send + Sync>;
+/// An opaque token a catalog keeps alive for as long as it exists (browser
+/// wasm: no `Send + Sync`, no threads).
+#[cfg(target_family = "wasm")]
+pub type ToolLease = std::sync::Arc<dyn std::any::Any>;
+
 /// The tools one request advertises, with the exact registrations that
 /// serve them. A catalog is a snapshot: replacing a tool in the registry
 /// after the snapshot does not change what the snapshot dispatches to.
@@ -19,11 +30,9 @@ use super::{
 pub struct ToolCatalog {
     definitions: Vec<ToolDefinition>,
     tools: IndexMap<String, RegisteredTool>,
-    /// Opaque tokens the catalog keeps alive for as long as it exists: a
-    /// registry that retires replaced generations lazily hands one per
-    /// pinned registration, and sweeps a generation once no catalog holds
-    /// its token.
-    leases: Vec<std::sync::Arc<()>>,
+    /// The tokens the catalog keeps alive for as long as it exists (see
+    /// [`ToolLease`]).
+    leases: Vec<ToolLease>,
 }
 
 impl ToolCatalog {
@@ -41,7 +50,7 @@ impl ToolCatalog {
     }
 
     /// Attach the registry's generation leases (see the field).
-    pub fn with_leases(mut self, leases: Vec<std::sync::Arc<()>>) -> Self {
+    pub fn with_leases(mut self, leases: Vec<ToolLease>) -> Self {
         self.leases = leases;
         self
     }

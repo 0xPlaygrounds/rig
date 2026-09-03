@@ -14,11 +14,12 @@
 //!
 //! Use one or the other, not both.
 
+use std::sync::{Arc, OnceLock};
+
 use rig_core::{
     bus::{
-        Bus, BusConfig, Dispatcher,
+        Bus, BusConfig, Dispatcher, ErasedHandler,
         adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter},
-        model_key,
     },
     completion::{CompletionModel, Document, ModelRef},
     effect::HandlerKey,
@@ -47,7 +48,8 @@ use super::{Agent, OutputMode, bus::AgentBus, completion::AgentConfig};
 /// build) and patches them into the request as extra context.
 struct DynamicContext {
     samples: usize,
-    key: HandlerKey,
+    /// The index's key, minted at build once the agent's owner is known.
+    key: Arc<OnceLock<HandlerKey>>,
 }
 
 impl AgentHook for DynamicContext {
@@ -66,12 +68,12 @@ impl AgentHook for DynamicContext {
         let Some(query) = query else {
             return CompletionCallAction::continue_run();
         };
-        let Some(dispatcher) = ctx.dispatcher() else {
+        let Some(key) = self.key.get() else {
             return CompletionCallAction::stop(
-                "dynamic context needs the agent's bus, which this run has none of",
+                "dynamic context is keyed at build; this hook was not built",
             );
         };
-        let index = match dispatcher.handle::<rig_core::effect::family::Retrieve>(&self.key) {
+        let index = match ctx.index(key) {
             Ok(index) => index,
             Err(report) => {
                 return CompletionCallAction::stop(format!(
@@ -112,13 +114,41 @@ pub struct WithToolServerHandle {
 /// Typestate: tools added through the builder.
 pub struct WithBuilderTools(ToolServer);
 
+/// Where the built agent's bus comes from.
+enum BusSource {
+    /// The agent's own bus, created at build with this sizing.
+    Owned(BusConfig),
+    /// A host's bus; the host drives it.
+    Host(Dispatcher),
+}
+
+/// The default model: a model the builder registers under a label, or the
+/// key of one already registered on a host's bus.
+enum DefaultModel {
+    Labelled(ModelRef, ErasedHandler),
+    Key(HandlerKey),
+}
+
 /// Builds an [`Agent`].
+///
+/// Every handler the builder registers (the default model, model routes,
+/// memory, dynamic-context indexes) is minted a key under the agent's
+/// owner label at build — `<owner>/model:<label>`, `<owner>/memory`,
+/// `<owner>/retrieve:context#<n>` — so two agents on one host bus never
+/// overwrite each other's handlers. The owner is [`AgentBuilder::owner`]'s
+/// label, else `agent#<n>` from a per-process counter; an agent over a
+/// host's bus names its owner up front ([`AgentBuilder::over_bus`]).
 pub struct AgentBuilder<ToolState = NoToolConfig> {
     config: AgentConfig,
     tool_state: ToolState,
-    /// Handlers the builder registers on the driver before it is spawned:
-    /// the bus is created at `new`, so registration is immediate.
-    bus_config: BusConfig,
+    bus: BusSource,
+    owner: Option<String>,
+    model: DefaultModel,
+    /// Handlers to register at build, by key suffix.
+    pending: Vec<(String, ErasedHandler)>,
+    /// The dynamic-context hooks' key slots, by key suffix.
+    dynamic_contexts: Vec<(String, Arc<OnceLock<HandlerKey>>)>,
+    memory: bool,
     record_effects: bool,
     retrieval_indexes: usize,
 }
@@ -177,13 +207,13 @@ impl<ToolState> AgentBuilder<ToolState> {
     {
         let n = self.retrieval_indexes;
         self.retrieval_indexes += 1;
-        let key = HandlerKey::from(format!("retrieve:context#{n}"));
-        crate::agent::bus::register_generated(
-            self.config
-                .bus
-                .dispatcher()
-                .register(key.clone(), RetrieveAdapter::new(index)),
-        );
+        let suffix = format!("retrieve:context#{n}");
+        let key = Arc::new(OnceLock::new());
+        self.pending.push((
+            suffix.clone(),
+            ErasedHandler::new(RetrieveAdapter::new(index)),
+        ));
+        self.dynamic_contexts.push((suffix, key.clone()));
         self.add_hook(DynamicContext { samples, key })
     }
 
@@ -259,14 +289,11 @@ impl<ToolState> AgentBuilder<ToolState> {
     where
         B: ConversationMemory + 'static,
     {
-        let key = HandlerKey::from("memory");
-        crate::agent::bus::register_generated(
-            self.config
-                .bus
-                .dispatcher()
-                .register(key.clone(), MemoryAdapter::new(memory)),
-        );
-        self.config.memory_key = Some(key);
+        self.pending.push((
+            "memory".to_owned(),
+            ErasedHandler::new(MemoryAdapter::new(memory)),
+        ));
+        self.memory = true;
         self
     }
 
@@ -278,20 +305,44 @@ impl<ToolState> AgentBuilder<ToolState> {
 
     /// Register another model the run can select by label
     /// (`ModelSelectionAction::select(label)`, `using_model(label)`).
-    pub fn model_route<M>(self, label: impl Into<ModelRef>, model: M) -> Self
+    pub fn model_route<M>(mut self, label: impl Into<ModelRef>, model: M) -> Self
     where
         M: CompletionModel + 'static,
     {
-        self.config.bus.register_model(&label.into(), model);
+        let label = label.into();
+        self.pending.push((
+            rig_core::bus::model_key(label.as_str()).to_string(),
+            ErasedHandler::new(CompletionAdapter::new(label, model)),
+        ));
         self
     }
 
-    /// The bus sizing and serving policy this agent's bus was created with
-    /// (`AgentBuilder::with_bus_config`). The default serves concurrently;
-    /// the agent's tool concurrency is governed by the runner, which the
-    /// cassette corpus was recorded with at its default of one.
+    /// Name the agent's keys: `<owner>/model:<label>`, `<owner>/memory`,
+    /// `<owner>/retrieve:context#<n>`. The default is `agent#<n>` from a
+    /// per-process counter.
+    pub fn owner(mut self, label: impl Into<String>) -> Self {
+        self.owner = Some(label.into());
+        self
+    }
+
+    /// The bus sizing and serving policy this agent's bus is created with.
+    /// The default serves concurrently; the agent's tool concurrency is
+    /// governed by the runner, which the cassette corpus was recorded with
+    /// at its default of one. An agent over a host's bus reports the
+    /// default: the host sized its bus.
     pub fn bus_config(&self) -> BusConfig {
-        self.bus_config
+        match &self.bus {
+            BusSource::Owned(config) => *config,
+            BusSource::Host(_) => BusConfig::default(),
+        }
+    }
+
+    /// Size the agent's own bus. No effect on an agent over a host's bus.
+    pub fn configure_bus(mut self, bus_config: BusConfig) -> Self {
+        if let BusSource::Owned(config) = &mut self.bus {
+            *config = bus_config;
+        }
+        self
     }
 
     /// Record every dispatch into the agent's effect log
@@ -314,21 +365,65 @@ impl<ToolState> AgentBuilder<ToolState> {
         AgentBuilder {
             config: self.config,
             tool_state,
-            bus_config: self.bus_config,
+            bus: self.bus,
+            owner: self.owner,
+            model: self.model,
+            pending: self.pending,
+            dynamic_contexts: self.dynamic_contexts,
+            memory: self.memory,
             record_effects: self.record_effects,
             retrieval_indexes: self.retrieval_indexes,
         }
     }
 
-    fn build_agent(mut self, handle: impl FnOnce(ToolState) -> ToolServerHandle) -> Agent {
-        let tool_server_handle = handle(self.tool_state);
-        tool_server_handle.attach(self.config.bus.dispatcher());
-        if self.record_effects {
-            self.config.bus.enable_recording();
+    fn build_agent(self, handle: impl FnOnce(ToolState) -> ToolServerHandle) -> Agent {
+        let Self {
+            mut config,
+            tool_state,
+            bus,
+            owner,
+            model,
+            mut pending,
+            dynamic_contexts,
+            memory,
+            record_effects,
+            retrieval_indexes: _,
+        } = self;
+        let owner = owner.unwrap_or_else(crate::agent::bus::default_owner);
+        config.bus = match bus {
+            BusSource::Owned(bus_config) => {
+                let (dispatcher, driver) = Bus::channel_with(bus_config);
+                AgentBus::owned(dispatcher, driver, owner)
+            }
+            BusSource::Host(dispatcher) => AgentBus::over(dispatcher, owner),
+        };
+        config.model_key = match model {
+            DefaultModel::Labelled(label, handler) => {
+                let suffix = rig_core::bus::model_key(label.as_str()).to_string();
+                pending.insert(0, (suffix, handler));
+                config.bus.model_key(label.as_str())
+            }
+            DefaultModel::Key(key) => key,
+        };
+        for (suffix, handler) in pending {
+            let key = config.bus.key(&suffix);
+            crate::agent::bus::register_generated(config.bus.register_erased(key, handler));
         }
+        for (suffix, slot) in dynamic_contexts {
+            // The slot is this builder's own, filled exactly once.
+            let _ = slot.set(config.bus.key(&suffix));
+        }
+        if memory {
+            config.memory_key = Some(config.bus.key("memory"));
+        }
+        if record_effects {
+            crate::agent::bus::register_generated(config.bus.enable_recording());
+        }
+        let tool_server_handle = handle(tool_state);
+        tool_server_handle.attach(config.bus.dispatcher());
         Agent {
             tool_server_handle,
-            config: self.config,
+            config,
         }
     }
 }
@@ -358,28 +453,43 @@ impl AgentBuilder<NoToolConfig> {
         M: CompletionModel + 'static,
     {
         let label = label.into();
-        let (dispatcher, mut driver) = Bus::channel_with(bus_config);
-        let key = model_key(label.as_str());
-        crate::agent::bus::register_generated(
-            driver.register(key.clone(), CompletionAdapter::new(label, model)),
-        );
-        let bus = AgentBus::owned(dispatcher, driver);
-        Self {
-            config: AgentConfig::new(bus, key),
-            tool_state: NoToolConfig,
-            bus_config,
-            record_effects: false,
-            retrieval_indexes: 0,
-        }
+        let handler = ErasedHandler::new(CompletionAdapter::new(label.clone(), model));
+        Self::start(
+            BusSource::Owned(bus_config),
+            None,
+            DefaultModel::Labelled(label, handler),
+        )
     }
 
-    /// An agent over a host's bus: the model under `model` must be
-    /// registered on `dispatcher`, and the host drives the bus.
-    pub fn over_bus(dispatcher: Dispatcher, model: HandlerKey) -> Self {
+    /// An agent over a host's bus, named `owner` on it: the model under
+    /// `model` must be registered on `dispatcher` (the key is used as
+    /// given), and the host drives the bus. Everything else the builder
+    /// registers is keyed under `owner`.
+    pub fn over_bus(dispatcher: Dispatcher, owner: impl Into<String>, model: HandlerKey) -> Self {
+        Self::start(
+            BusSource::Host(dispatcher),
+            Some(owner.into()),
+            DefaultModel::Key(model),
+        )
+    }
+
+    fn start(bus: BusSource, owner: Option<String>, model: DefaultModel) -> Self {
+        // The config's bus and model key are placeholders until build mints
+        // the real ones under the owner.
+        let (placeholder, _driver) = Bus::channel_with(BusConfig::default());
+        let key = match &model {
+            DefaultModel::Labelled(label, _) => HandlerKey::from(label.as_str()),
+            DefaultModel::Key(key) => key.clone(),
+        };
         Self {
-            config: AgentConfig::new(AgentBus::over(dispatcher), model),
+            config: AgentConfig::new(AgentBus::over(placeholder, String::new()), key),
             tool_state: NoToolConfig,
-            bus_config: BusConfig::default(),
+            bus,
+            owner,
+            model,
+            pending: Vec::new(),
+            dynamic_contexts: Vec::new(),
+            memory: false,
             record_effects: false,
             retrieval_indexes: 0,
         }
@@ -458,14 +568,24 @@ impl AgentBuilder<WithBuilderTools> {
         let Self {
             config,
             tool_state,
-            bus_config,
+            bus,
+            owner,
+            model,
+            pending,
+            dynamic_contexts,
+            memory,
             record_effects,
             retrieval_indexes,
         } = self;
         Self {
             config,
             tool_state: WithBuilderTools(register(tool_state.0)),
-            bus_config,
+            bus,
+            owner,
+            model,
+            pending,
+            dynamic_contexts,
+            memory,
             record_effects,
             retrieval_indexes,
         }

@@ -395,8 +395,10 @@ mod tests {
         assert_eq!(error.kind(), ToolErrorKind::Network);
         assert_eq!(error.code(), Some("ENETUNREACH"));
         assert_eq!(result.output().as_text(), error.model_feedback());
+        let site = context.result::<FailureSite>();
+        assert!(site.is_ok(), "decodes: {site:?}");
         assert_eq!(
-            context.result::<FailureSite>().expect("decodes"),
+            site.ok().flatten(),
             Some(FailureSite {
                 operation: Operation::ConnectNetwork,
                 resource: "backup.example.net".to_string(),

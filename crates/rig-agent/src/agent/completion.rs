@@ -249,6 +249,10 @@ pub(crate) struct AgentConfig {
     pub(crate) memory_key: Option<HandlerKey>,
     /// Optional conversation id used when none is set per-request.
     pub(crate) conversation_id: Option<ConversationId>,
+    /// The anonymous model this value selected ([`Agent::set_model`],
+    /// [`AgentRunner::using_model_value`]); its registration lives as long
+    /// as the values sharing it.
+    pub(crate) anonymous_model: Option<std::sync::Arc<super::bus::AnonymousModel>>,
 }
 
 impl AgentConfig {
@@ -272,6 +276,7 @@ impl AgentConfig {
             output_mode: OutputMode::default(),
             memory_key: None,
             conversation_id: None,
+            anonymous_model: None,
         }
     }
 
@@ -296,9 +301,8 @@ impl AgentConfig {
             | Some(rig_core::effect::FamilyDescriptor::Retrieve {})
             | Some(rig_core::effect::FamilyDescriptor::Custom { .. })
             | None => ModelRef::new(
-                self.model_key
-                    .as_str()
-                    .strip_prefix("model:")
+                self.bus
+                    .model_label(&self.model_key)
                     .unwrap_or(self.model_key.as_str()),
             ),
         }
@@ -311,7 +315,7 @@ impl AgentConfig {
     ) -> Result<ModelHandle, rig_core::error::ErrorReport> {
         self.bus
             .dispatcher()
-            .handle(&rig_core::bus::model_key(label.as_str()))
+            .handle(&self.bus.model_key(label.as_str()))
     }
 
     /// Bind the memory handle, when memory is configured.
@@ -453,16 +457,29 @@ impl Agent {
     /// Make the model registered under `label` this agent value's default.
     /// Value semantics: clones of the agent keep their own default.
     pub fn set_model_ref(&mut self, label: impl Into<ModelRef>) {
-        self.config.model_key = rig_core::bus::model_key(label.into().as_str());
+        self.config.model_key = self.config.bus.model_key(label.into().as_str());
+        self.config.anonymous_model = None;
     }
 
     /// Register `model` under a generated label and make it this agent
-    /// value's default.
+    /// value's default. The registration is scoped to the values that
+    /// select it (this agent, its clones, the runners it produces): it
+    /// leaves the bus when the last of them drops or selects another model.
     pub fn set_model<M>(&mut self, model: M)
     where
         M: CompletionModel + 'static,
     {
-        self.config.model_key = self.config.bus.register_anonymous_model(model);
+        let anonymous = self.config.bus.register_anonymous_model(model);
+        self.config.model_key = anonymous.key().clone();
+        self.config.anonymous_model = Some(anonymous);
+    }
+
+    /// The owner segment of the keys this agent minted
+    /// (`<owner>/model:<label>`, `<owner>/memory`, ...): the label given to
+    /// [`AgentBuilder::owner`](crate::agent::AgentBuilder::owner), else
+    /// `agent#<n>`.
+    pub fn owner(&self) -> &str {
+        self.config.bus.owner()
     }
 
     /// [`Agent::set_model_ref`] by value.
@@ -505,8 +522,8 @@ impl Agent {
             mut config,
             tool_server_handle,
         } = self;
-        let dispatcher = config.bus.dispatcher().clone();
-        let bus = std::mem::replace(&mut config.bus, AgentBus::over(dispatcher.clone()));
+        let detached = config.bus.detached();
+        let bus = std::mem::replace(&mut config.bus, detached);
         match bus.try_into_parts() {
             Ok((dispatcher, driver)) => Ok(AgentParts {
                 dispatcher,

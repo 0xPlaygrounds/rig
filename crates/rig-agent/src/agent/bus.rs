@@ -23,15 +23,47 @@ use std::{
 
 use futures::{Stream, lock::Mutex};
 use rig_core::{
-    bus::{BusDriver, Dispatcher, EffectLogRecorder, adapters::CompletionAdapter, model_key},
+    bus::{BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, adapters::CompletionAdapter},
     completion::{CompletionModel, ModelRef},
     effect::{EffectLog, HandlerKey},
+    error::ErrorReport,
 };
+
+/// The per-process counter behind an agent's default owner label.
+static NEXT_AGENT: AtomicU64 = AtomicU64::new(0);
+
+/// The owner label an agent gets when its builder names none:
+/// `agent#<n>`, distinct per process.
+pub(crate) fn default_owner() -> String {
+    format!("agent#{}", NEXT_AGENT.fetch_add(1, Ordering::Relaxed))
+}
+
+/// The registration of a model under a generated label, scoped to the
+/// values that selected it: the last clone dropping deregisters the key.
+pub(crate) struct AnonymousModel {
+    key: HandlerKey,
+    dispatcher: Dispatcher,
+}
+
+impl AnonymousModel {
+    pub(crate) fn key(&self) -> &HandlerKey {
+        &self.key
+    }
+}
+
+impl Drop for AnonymousModel {
+    fn drop(&mut self) {
+        self.dispatcher.deregister(&self.key);
+    }
+}
 
 /// The bus an agent dispatches through.
 #[derive(Clone)]
 pub(crate) struct AgentBus {
     dispatcher: Dispatcher,
+    /// The owner segment of every key this agent mints
+    /// (`<owner>/model:<label>`, `<owner>/memory`, ...).
+    owner: Arc<str>,
     /// The agent's own driver, when it owns one. Behind an async mutex so
     /// concurrent runs on clones of one agent take turns driving: the run
     /// holding the guard serves every run's dispatches.
@@ -45,6 +77,7 @@ pub(crate) struct AgentBus {
 impl std::fmt::Debug for AgentBus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AgentBus")
+            .field("owner", &self.owner)
             .field("owns_driver", &self.driver.is_some())
             .field("recording", &self.recorder.is_some())
             .finish_non_exhaustive()
@@ -52,9 +85,10 @@ impl std::fmt::Debug for AgentBus {
 }
 
 impl AgentBus {
-    pub(crate) fn owned(dispatcher: Dispatcher, driver: BusDriver) -> Self {
+    pub(crate) fn owned(dispatcher: Dispatcher, driver: BusDriver, owner: String) -> Self {
         Self {
             dispatcher,
+            owner: Arc::from(owner),
             driver: Some(Arc::new(Mutex::new(driver))),
             wakers: Arc::new(WakerSet::default()),
             recorder: None,
@@ -62,20 +96,33 @@ impl AgentBus {
         }
     }
 
-    /// Install a recorder on the owned driver (before any run drives it).
-    pub(crate) fn enable_recording(&mut self) {
+    /// Install a recorder on the owned driver. Called at build, when the
+    /// builder is the driver's only holder; a bus this agent does not own
+    /// (or one another agent value already shares) cannot record, and says
+    /// so.
+    pub(crate) fn enable_recording(&mut self) -> Result<(), ErrorReport> {
+        let Some(driver) = self.driver.as_mut() else {
+            return Err(ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                "an agent over a host's bus does not record; tap the host's driver",
+            ));
+        };
+        let Some(driver) = Arc::get_mut(driver) else {
+            return Err(ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                "recording is enabled at build, before a clone shares the driver",
+            ));
+        };
         let recorder = EffectLogRecorder::new();
-        if let Some(driver) = &self.driver
-            && let Some(mut guard) = driver.try_lock()
-        {
-            guard.record_to(recorder.clone());
-            self.recorder = Some(recorder);
-        }
+        driver.get_mut().record_to(recorder.clone());
+        self.recorder = Some(recorder);
+        Ok(())
     }
 
-    pub(crate) fn over(dispatcher: Dispatcher) -> Self {
+    pub(crate) fn over(dispatcher: Dispatcher, owner: String) -> Self {
         Self {
             dispatcher,
+            owner: Arc::from(owner),
             driver: None,
             wakers: Arc::new(WakerSet::default()),
             recorder: None,
@@ -83,8 +130,60 @@ impl AgentBus {
         }
     }
 
+    /// This bus without its driver: what an agent keeps when
+    /// [`Agent::into_parts`](super::Agent::into_parts) moves the driver
+    /// out. The recorder stays, so the moved driver keeps recording into
+    /// the agent's log.
+    pub(crate) fn detached(&self) -> Self {
+        Self {
+            dispatcher: self.dispatcher.clone(),
+            owner: self.owner.clone(),
+            driver: None,
+            wakers: Arc::new(WakerSet::default()),
+            recorder: self.recorder.clone(),
+            anonymous_models: self.anonymous_models.clone(),
+        }
+    }
+
     pub(crate) fn dispatcher(&self) -> &Dispatcher {
         &self.dispatcher
+    }
+
+    /// The owner segment of the keys this agent mints.
+    pub(crate) fn owner(&self) -> &str {
+        &self.owner
+    }
+
+    /// The key this agent mints for `suffix` (`model:<label>`, `memory`,
+    /// `retrieve:context#<n>`).
+    pub(crate) fn key(&self, suffix: &str) -> HandlerKey {
+        HandlerKey::from(format!("{}/{suffix}", self.owner))
+    }
+
+    /// The key this agent mints for the model labelled `label`.
+    pub(crate) fn model_key(&self, label: &str) -> HandlerKey {
+        self.key(rig_core::bus::model_key(label).as_str())
+    }
+
+    /// The label under `key` when it is a model key this agent minted.
+    pub(crate) fn model_label<'k>(&self, key: &'k HandlerKey) -> Option<&'k str> {
+        key.as_str()
+            .strip_prefix(&*self.owner)
+            .and_then(|rest| rest.strip_prefix("/model:"))
+    }
+
+    /// Register `handler` under `key` before the first run: straight onto
+    /// the driver while this value is its only holder (the builder's
+    /// case), through the dispatcher otherwise.
+    pub(crate) fn register_erased(
+        &mut self,
+        key: HandlerKey,
+        handler: ErasedHandler,
+    ) -> Result<(), ErrorReport> {
+        match self.driver.as_mut().and_then(Arc::get_mut) {
+            Some(driver) => driver.get_mut().register_erased(key, handler),
+            None => self.dispatcher.register_erased(key, handler),
+        }
     }
 
     pub(crate) fn owns_driver(&self) -> bool {
@@ -107,7 +206,7 @@ impl AgentBus {
     where
         M: CompletionModel + 'static,
     {
-        let key = model_key(label.as_str());
+        let key = self.model_key(label.as_str());
         register_generated(
             self.dispatcher
                 .register(key.clone(), CompletionAdapter::new(label.clone(), model)),
@@ -115,13 +214,19 @@ impl AgentBus {
         key
     }
 
-    /// Register `model` under a fresh generated label.
-    pub(crate) fn register_anonymous_model<M>(&self, model: M) -> HandlerKey
+    /// Register `model` under a fresh generated label, scoped to the
+    /// returned guard: the key leaves the bus when the last clone of the
+    /// guard drops.
+    pub(crate) fn register_anonymous_model<M>(&self, model: M) -> Arc<AnonymousModel>
     where
         M: CompletionModel + 'static,
     {
         let n = self.anonymous_models.fetch_add(1, Ordering::SeqCst);
-        self.register_model(&ModelRef::new(format!("anonymous-{n}")), model)
+        let key = self.register_model(&ModelRef::new(format!("anonymous#{n}")), model);
+        Arc::new(AnonymousModel {
+            key,
+            dispatcher: self.dispatcher.clone(),
+        })
     }
 
     /// Move the driver out. Fails when another clone of the agent still

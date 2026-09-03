@@ -21,7 +21,7 @@ pub mod managed;
 mod output;
 pub mod portable;
 mod result;
-pub use catalog::ToolCatalog;
+pub use catalog::{ToolCatalog, ToolLease};
 pub use context::{ContextValue, ToolContext, ToolContextError};
 pub use contextual::{
     DynamicTool, ErasedTool, RegisteredTool, Tool, ToolDispatch, ToolEmbedding, ToolSet,

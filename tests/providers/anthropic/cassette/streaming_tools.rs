@@ -108,6 +108,59 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
 }
 
 #[tokio::test]
+async fn serial_serving_reproduces_the_recorded_request_order() {
+    // The corpus was recorded with the bus's default (concurrent serving)
+    // and the runner's tool concurrency of one. Serial serving is a
+    // per-key property: the two tools are two keys, so both calls still run
+    // and the follow-up request carries the results in call order — the
+    // cassette matches the request bytes, so a different order would not
+    // replay.
+    with_anthropic_cassette(
+        "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
+        |client| async move {
+            let order = OutOfOrderSignalOrder::default();
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .configure_bus(rig_core::bus::BusConfig {
+                    serial_per_handler: true,
+                    ..rig_core::bus::BusConfig::default()
+                })
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tool(OutOfOrderAlphaSignal(order.clone()))
+                .tool(OutOfOrderBetaSignal(order))
+                .build();
+
+            let mut stream = agent
+                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .max_turns(8)
+                .tool_concurrency(2)
+                .stream()
+                .await;
+            let observation = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                collect_concurrent_tool_observation(&mut stream),
+            )
+            .await
+            .expect("serial serving is per key; two tools never wait on each other");
+
+            assert!(observation.errors.is_empty(), "{:?}", observation.errors);
+            assert!(observation.got_final_response);
+            assert_eq!(
+                observation.history_tool_results,
+                ["lookup_harbor_label", "lookup_orchard_label"],
+                "the follow-up request carries the results in the recorded order"
+            );
+        },
+    )
+    .await;
+
+    assert_cassette_groups_multiple_tool_results(
+        "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
+        &["lookup_harbor_label", "lookup_orchard_label"],
+    );
+}
+
+#[tokio::test]
 async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles() {
     // The cassette file name predates the atomic-batch semantics; the recorded
     // provider interaction is unchanged, only the assertions below.
