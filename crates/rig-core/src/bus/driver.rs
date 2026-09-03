@@ -451,10 +451,18 @@ impl Future for BusDriver {
             // a queued one. Draining registers this poll's waker for the
             // next enqueue and releases any dispatch parked on the bound.
             if !this.commands_closed {
-                // Registrations first: a handler registered before a
-                // dispatch is installed before that dispatch is served.
+                // Take the commands first, then the registrations, then
+                // serve: a registration made before a dispatch (program
+                // order on the registering thread) is in the mailbox by the
+                // time the dispatch is in the queue, so taking the queue
+                // first and the mailbox second sees every registration the
+                // taken commands rely on. The other order let a
+                // registration posted between the two drains be missed for
+                // the dispatch that followed it, which was then served as
+                // `HandlerUnavailable`.
+                let commands = this.shared.drain(cx);
                 this.apply_registrations(cx);
-                for command in this.shared.drain(cx) {
+                for command in commands {
                     this.accept(*command);
                 }
                 this.drain_orphaned_queues();

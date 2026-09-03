@@ -65,6 +65,10 @@ pub(super) enum Enqueue {
     Sent,
     Parked(Box<Command>),
     Refused(Box<Command>),
+    /// The driver is gone. Decided under the queue lock, so a command can
+    /// never slip into the buffer after the close emptied it; the command is
+    /// dropped (its reply half with it — the caller answers `BusClosed`).
+    Closed,
 }
 
 /// The bounded command buffer and the wakers on either side of it.
@@ -98,12 +102,16 @@ impl Shared {
     }
 
     pub(super) fn mark_closed(&self) {
-        self.closed.store(true, Ordering::SeqCst);
         // Commands the driver never took fail now — their reply halves live
         // in this buffer, not in the driver, so nothing else would close
-        // them — and parked senders wake to observe the close.
+        // them — and parked senders wake to observe the close. The flag is
+        // set *under the queue lock*: `enqueue` reads it under the same
+        // lock, so a dispatch whose first poll saw the bus open cannot land
+        // its command in the buffer after this emptied it — which would
+        // have been a dispatch nobody ever answers.
         let (commands, senders) = {
             let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+            self.closed.store(true, Ordering::SeqCst);
             (
                 std::mem::take(&mut queue.commands),
                 std::mem::take(&mut queue.senders),
@@ -126,6 +134,10 @@ impl Shared {
             return Enqueue::Refused(command);
         }
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.closed.load(Ordering::SeqCst) {
+            drop(command);
+            return Enqueue::Closed;
+        }
         if queue.commands.len() >= queue.capacity {
             let waker = cx.waker();
             if !queue.senders.iter().any(|parked| parked.will_wake(waker)) {
@@ -598,6 +610,7 @@ impl Future for Pending {
                         Enqueue::Refused(refused) => {
                             return Poll::Ready(Err(reentrant(&refused.key)));
                         }
+                        Enqueue::Closed => return Poll::Ready(Err(bus_closed())),
                     }
                 }
                 PendingState::Waiting => {
@@ -690,6 +703,10 @@ impl Stream for EffectStream {
                         Enqueue::Refused(refused) => {
                             this.state = StreamState::Done;
                             return Poll::Ready(Some(Err(reentrant(&refused.key))));
+                        }
+                        Enqueue::Closed => {
+                            this.state = StreamState::Done;
+                            return Poll::Ready(Some(Err(bus_closed())));
                         }
                     }
                     let Some(receiver) = receiver.take() else {

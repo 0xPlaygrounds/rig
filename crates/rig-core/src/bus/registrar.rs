@@ -47,6 +47,10 @@ struct MailboxInner {
     /// The driver's waker, refreshed on every driver poll; woken when a
     /// registration is posted.
     driver: Option<Waker>,
+    /// Set by the driver's drop, under this lock: a registration posted
+    /// after it is dropped on the spot rather than kept for a driver that
+    /// will never take it.
+    closed: bool,
 }
 
 /// Registrations posted by [`Registrar`]s and taken by the driver on its
@@ -63,6 +67,7 @@ impl Mailbox {
             inner: Mutex::new(MailboxInner {
                 pending: VecDeque::new(),
                 driver: None,
+                closed: false,
             }),
         }
     }
@@ -70,6 +75,11 @@ impl Mailbox {
     fn post(&self, registration: Registration) {
         let driver = {
             let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+            if inner.closed {
+                drop(inner);
+                drop(registration);
+                return;
+            }
             inner.pending.push_back(registration);
             inner.driver.take()
         };
@@ -89,15 +99,14 @@ impl Mailbox {
         std::mem::take(&mut inner.pending)
     }
 
-    /// Drop everything posted and not yet taken (the driver is gone).
+    /// Drop everything posted and not yet taken, and everything posted
+    /// later (the driver is gone).
     pub(super) fn clear(&self) {
-        let pending = std::mem::take(
-            &mut self
-                .inner
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .pending,
-        );
+        let pending = {
+            let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+            inner.closed = true;
+            std::mem::take(&mut inner.pending)
+        };
         drop(pending);
     }
 }
