@@ -145,3 +145,60 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     drop(dispatcher);
     within(replay_task).await.expect("replay driver ends");
 }
+
+/// A tool whose recorded arguments differ from what the program dispatches
+/// fails the run at *that* record — the tool replayer's own refusal, not a
+/// later model divergence caused by a changed history — and the report is
+/// `Divergence`, never a tool failure the model would have seen.
+#[tokio::test]
+async fn a_tool_divergence_fails_the_run_at_the_tool_record() {
+    let recorded = AgentBuilder::new(two_tool_calls_then_done())
+        .tool(Slow::default())
+        .record_effects()
+        .build();
+    within(recorded.prompt("go").max_turns(3).run())
+        .await
+        .expect("recorded run");
+    let mut log = recorded.take_effect_log().expect("recording was enabled");
+    let tool_key = log[1].key.clone();
+    // Corrupt the record the program's first tool call must match.
+    if let rig_core::effect::EffectKind::ToolCall { args, .. } = &mut log.records[1].kind {
+        *args = json!({"delay_ms": 0, "tag": "not what the program asks"}).to_string();
+    }
+
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
+    let replay_task = tokio::spawn(driver);
+    let tool_replayer =
+        EffectLogReplayer::for_key(&log, &tool_key).expect("the log has the tool's records");
+    let replayed = AgentBuilder::over_bus(
+        dispatcher.clone(),
+        registrar.clone(),
+        "replay",
+        log[0].key.clone(),
+    )
+    .tool_server_handle({
+        let server = rig_agent::tool::server::ToolServer::new().run();
+        server.add_registered_tool(
+            rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
+                .expect("a tool-family replayer"),
+        );
+        server
+    })
+    .build();
+    let error = within(replayed.prompt("go").max_turns(3).run())
+        .await
+        .expect_err("the corrupted tool record is a divergence");
+    let rig_agent::completion::PromptError::Report(report) = &error else {
+        panic!("expected the divergence report, got {error}");
+    };
+    assert_eq!(report.kind, rig_core::error::ErrorKind::Divergence);
+    assert!(
+        report.message.contains(tool_key.as_str()) && report.message.contains("arguments differ"),
+        "the refusal names the tool record: {}",
+        report.message
+    );
+    drop(replayed);
+    drop(dispatcher);
+    within(replay_task).await.expect("replay driver ends");
+}

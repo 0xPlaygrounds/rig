@@ -170,7 +170,10 @@ fn divergence(recorded: &EffectKind, got: &EffectKind) -> Option<String> {
                 "arguments differ for `{name}`: recorded `{recorded_args}`, arrived `{args}`"
             ));
         }
-        return None;
+        // Name and args are the readable fast path; the dispatch context is
+        // part of the effect too (a tool answers differently under a
+        // different context), so it is compared as data like every other
+        // family's payload.
     }
     let (Ok(recorded), Ok(got)) = (serde_json::to_value(recorded), serde_json::to_value(got))
     else {
@@ -294,7 +297,7 @@ impl Serve for EffectLogReplayer {
         {
             let outcome = match next {
                 None => Err(ErrorReport::new(
-                    ErrorKind::Internal,
+                    ErrorKind::Divergence,
                     format!(
                         "replay divergence: `{}` received a `{}` dispatch after its log ran out",
                         self.key,
@@ -303,7 +306,7 @@ impl Serve for EffectLogReplayer {
                 )),
                 Some(record) => match divergence(&record.kind, &kind) {
                     Some(what) => Err(ErrorReport::new(
-                        ErrorKind::Internal,
+                        ErrorKind::Divergence,
                         format!(
                             "replay divergence: `{}` recorded {} ({}) but received {}: {what}",
                             self.key,
