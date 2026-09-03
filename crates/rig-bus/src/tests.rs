@@ -2335,3 +2335,47 @@ fn a_pending_whose_dispatcher_died_before_its_first_poll_is_bus_closed_while_a_s
         "the in-flight one is untouched"
     );
 }
+
+#[test]
+fn a_bind_on_a_closed_bus_is_bus_closed_not_unavailable() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "gpt",
+                MockCompletionModel::from_turns([MockTurn::text("hi")]),
+            ),
+        )
+        .expect("register");
+    assert!(
+        dispatcher
+            .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
+            .is_ok()
+    );
+    drop(driver);
+    let report = dispatcher
+        .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
+        .expect_err("closed");
+    assert_eq!(report.kind, ErrorKind::BusClosed, "{report:?}");
+    // Reopened and re-registered, the bind works again.
+    let (_registrar, mut driver) = Bus::reopen(&dispatcher).expect("free");
+    let report = dispatcher
+        .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
+        .expect_err("nothing serves it yet");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    driver
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "gpt",
+                MockCompletionModel::from_turns([MockTurn::text("hi")]),
+            ),
+        )
+        .expect("register");
+    assert!(
+        dispatcher
+            .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
+            .is_ok()
+    );
+}

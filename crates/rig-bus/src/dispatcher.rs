@@ -671,7 +671,7 @@ impl Dispatcher {
     }
 }
 
-fn bus_closed() -> ErrorReport {
+pub(super) fn bus_closed() -> ErrorReport {
     ErrorReport::new(ErrorKind::BusClosed, "the bus driver is gone").with_retryable(false)
 }
 
