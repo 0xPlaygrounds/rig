@@ -247,25 +247,40 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
 /// The descriptor of a required key the log never dispatched. Only a tool
 /// can be described without a record: its definition is in the requests
 /// that advertised it. Any other family has nothing to describe it by.
+/// The descriptor a replayer advertises for a required key the log never
+/// dispatched to: a tool from the definition the recorded requests hold,
+/// a model or a memory or retrieval index by its family alone, since the
+/// replayer answers any dispatch to it with a divergence.
 fn describe_required(
     key: &HandlerKey,
     family: EffectFamily,
     log: &EffectLog,
 ) -> Option<FamilyDescriptor> {
-    if family != EffectFamily::Tool {
-        return None;
+    match family {
+        EffectFamily::Tool => {
+            let name = key
+                .as_str()
+                .rsplit_once("tool:")
+                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))?;
+            let advertised = advertised_tool(name, log)?;
+            Some(FamilyDescriptor::Tool {
+                name: advertised.name,
+                description: advertised.description,
+                parameters: advertised.parameters,
+                embedding: None,
+            })
+        }
+        EffectFamily::Completion => Some(FamilyDescriptor::Completion {
+            model: ModelRef::new(format!("replay:{key}")),
+            capabilities: ProviderCapabilities::default(),
+        }),
+        EffectFamily::Memory => Some(FamilyDescriptor::Memory {}),
+        EffectFamily::Retrieve => Some(FamilyDescriptor::Retrieve {}),
+        // An embedding or rerank descriptor names a modality or a document
+        // cap the row does not carry; a custom kind its label. None of
+        // them is in an agent's required row.
+        EffectFamily::Embed | EffectFamily::Rerank | EffectFamily::Custom => None,
     }
-    let name = key
-        .as_str()
-        .rsplit_once("tool:")
-        .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))?;
-    let advertised = advertised_tool(name, log)?;
-    Some(FamilyDescriptor::Tool {
-        name: advertised.name,
-        description: advertised.description,
-        parameters: advertised.parameters,
-        embedding: None,
-    })
 }
 
 /// The definition of the tool `name` as some completion request in `log`
