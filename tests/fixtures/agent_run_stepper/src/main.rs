@@ -129,7 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     driver.register(
         "model",
         CompletionAdapter::new(ModelRef::new("fixture"), ScriptedModel::default()),
-    );
+    )?;
     let model: ModelHandle = dispatcher.handle(&HandlerKey::from("model"))?;
     assert_eq!(model.model_ref().as_str(), "fixture");
 
