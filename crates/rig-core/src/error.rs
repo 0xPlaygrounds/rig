@@ -19,6 +19,7 @@ use crate::{
     completion::CompletionError,
     embeddings::EmbeddingError,
     memory::MemoryError,
+    rerank::RerankError,
     tool::{ToolErrorKind, ToolExecutionError},
     vector_store::VectorStoreError,
 };
@@ -477,6 +478,60 @@ impl From<&EmbeddingError> for ErrorReport {
 
 impl From<EmbeddingError> for ErrorReport {
     fn from(error: EmbeddingError) -> Self {
+        Self::from(&error)
+    }
+}
+
+impl From<&RerankError> for ErrorReport {
+    fn from(error: &RerankError) -> Self {
+        let (kind, http_status) = match error {
+            RerankError::HttpError(inner) => {
+                let status = inner.non_success_status().map(|s| s.as_u16());
+                (ErrorKind::Http { status }, status)
+            }
+            RerankError::JsonError(_) => (ErrorKind::Json, None),
+            RerankError::UrlError(_) => (ErrorKind::Url, None),
+            RerankError::ResponseError(_) => (ErrorKind::Response, None),
+            RerankError::ProviderError(_) => (ErrorKind::Provider, None),
+            RerankError::ProviderResponse(response) => {
+                let status = response.status.map(|s| s.as_u16());
+                (ErrorKind::ProviderResponse, status)
+            }
+        };
+        let retryable = match kind {
+            ErrorKind::Http { status } => retryable_status(status),
+            ErrorKind::ProviderResponse => retryable_status(http_status),
+            ErrorKind::Json
+            | ErrorKind::Url
+            | ErrorKind::Request
+            | ErrorKind::Response
+            | ErrorKind::Provider
+            | ErrorKind::Tool(_)
+            | ErrorKind::MemoryBackend
+            | ErrorKind::MemoryPolicy
+            | ErrorKind::Internal
+            | ErrorKind::Cancelled
+            | ErrorKind::Timeout
+            | ErrorKind::BusClosed
+            | ErrorKind::HandlerUnavailable
+            | ErrorKind::Other => false,
+        };
+        ErrorReport {
+            kind,
+            retryable,
+            message: error.to_string(),
+            code: None,
+            http_status,
+            refusal: false,
+            source_chain: source_chain(error),
+            request_id: None,
+            provider_response: None,
+        }
+    }
+}
+
+impl From<RerankError> for ErrorReport {
+    fn from(error: RerankError) -> Self {
         Self::from(&error)
     }
 }

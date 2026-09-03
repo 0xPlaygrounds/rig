@@ -5,6 +5,7 @@ use crate::{
     completion::{AssistantContent, Usage},
     embeddings::Embedding,
     error::ErrorKind,
+    rerank::RerankResponse,
     tool::{ToolExecutionError, ToolOutput},
     vector_store::request::VectorSearchRequest,
 };
@@ -450,6 +451,16 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     assert!(matches!(
         family::Retrieve::unwrap(Outcome::Documents(RetrievedDocuments::Ids(vec![]))),
         Ok(RetrievedDocuments::Ids(ids)) if ids.is_empty()
+    ));
+
+    let rerank = family::Rerank::wrap(RerankRequest {
+        query: "q".into(),
+        documents: vec!["a".into()],
+    });
+    assert_eq!(rerank.family(), EffectFamily::Rerank);
+    assert!(matches!(
+        family::Rerank::unwrap(Outcome::Reranked(RerankResponse::new(vec![], "mock"))),
+        Ok(response) if response.provider == "mock"
     ));
 
     let embed = family::Embed::wrap(EmbedInputs::Texts(vec!["a".into()]));

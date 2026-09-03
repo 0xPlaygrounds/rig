@@ -4,11 +4,9 @@
 //! The [`RerankModel`] trait defines the interface, and [`RerankResponse`]
 //! carries both the scored results and token usage.
 
-use std::{fmt, sync::Arc};
-
 use crate::{
     completion::{ResponseIdentity, Usage},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +23,9 @@ pub trait RerankModel: WasmCompatSend + WasmCompatSync {
     /// The maximum number of documents that can be reranked in a single
     /// request.
     ///
-    /// A method rather than an associated constant so the value survives type
-    /// erasure: [`RerankModelHandle`] captures it by value at construction.
+    /// A method rather than an associated constant so the value survives the
+    /// bus: [`RerankAdapter`](crate::bus::adapters::RerankAdapter) publishes
+    /// it on the handler's descriptor.
     fn max_documents(&self) -> usize;
 
     /// Rerank a list of documents against a query.
@@ -64,8 +63,9 @@ pub struct RerankResult {
 /// The normalized reranking response: the scored results plus the metadata
 /// every provider can report, attributed to the provider that produced it.
 ///
-/// Concrete and provider-neutral, so it survives type erasure through a
-/// [`RerankModelHandle`] unchanged. The provider's own payload stays reachable
+/// Concrete and provider-neutral, so it crosses the bus as
+/// [`Outcome::Reranked`](crate::effect::Outcome::Reranked) unchanged — it is
+/// the answer of the rerank family. The provider's own payload stays reachable
 /// through a model's inherent `raw_rerank` method, which performs the same
 /// request and returns the provider's native type, and through [`Self::raw`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,112 +142,3 @@ pub trait NormalizeRerankResponse {
     /// Normalize this payload, attributing it to `provider`.
     fn normalize(self, provider: &str) -> Result<RerankResponse, RerankError>;
 }
-
-/// Private object-safe mirror of [`RerankModel`]: the public trait stays
-/// generic (RPITIT future); this dyn-safe twin exists only so
-/// [`RerankModelHandle`] can store one vtable. `max_documents` is deliberately
-/// absent: it is construction-time data captured alongside the erased model.
-trait ErasedRerankModel: WasmCompatSend + WasmCompatSync {
-    fn rerank(
-        &self,
-        query: String,
-        documents: Vec<String>,
-    ) -> WasmBoxedFuture<'_, Result<RerankResponse, RerankError>>;
-}
-
-impl<M> ErasedRerankModel for M
-where
-    M: RerankModel + 'static,
-{
-    fn rerank(
-        &self,
-        query: String,
-        documents: Vec<String>,
-    ) -> WasmBoxedFuture<'_, Result<RerankResponse, RerankError>> {
-        Box::pin(async move { RerankModel::rerank(self, &query, documents).await })
-    }
-}
-
-/// The handle's single allocation: snapshot data first, the unsized erased
-/// model last, so `Arc<RerankDriver<M>>` unsize-coerces to
-/// `Arc<RerankDriver<dyn ErasedRerankModel>>` without a second box.
-struct RerankDriver<M: ?Sized> {
-    max_documents: usize,
-    label: Option<String>,
-    model: M,
-}
-
-/// A cloneable, opaque handle to live reranking-model behavior — the
-/// [`RerankModel`] twin of `EmbeddingModelHandle`, same shape and same
-/// guarantees: one `Arc`, `max_documents` captured by value at erasure, the
-/// model never cloned, and no way to replace it. It exists for type
-/// ergonomics and dyn-storability, not for swapping.
-#[derive(Clone)]
-pub struct RerankModelHandle {
-    inner: Arc<RerankDriver<dyn ErasedRerankModel>>,
-}
-
-impl RerankModelHandle {
-    /// Erase a typed rerank model into a runtime handle.
-    pub fn new<M>(model: M) -> Self
-    where
-        M: RerankModel + 'static,
-    {
-        Self::from_parts(None, model)
-    }
-
-    /// Erase a typed rerank model and attach a diagnostic label.
-    pub fn named<M>(label: impl Into<String>, model: M) -> Self
-    where
-        M: RerankModel + 'static,
-    {
-        Self::from_parts(Some(label.into()), model)
-    }
-
-    fn from_parts<M>(label: Option<String>, model: M) -> Self
-    where
-        M: RerankModel + 'static,
-    {
-        let max_documents = model.max_documents();
-        Self {
-            inner: Arc::new(RerankDriver {
-                max_documents,
-                label,
-                model,
-            }),
-        }
-    }
-
-    /// Returns the optional diagnostic label attached to this handle.
-    pub fn label(&self) -> Option<&str> {
-        self.inner.label.as_deref()
-    }
-}
-
-impl RerankModel for RerankModelHandle {
-    fn max_documents(&self) -> usize {
-        self.inner.max_documents
-    }
-
-    fn rerank(
-        &self,
-        query: &str,
-        documents: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<RerankResponse, RerankError>> + WasmCompatSend
-    {
-        self.inner.model.rerank(query.to_owned(), documents)
-    }
-}
-
-impl fmt::Debug for RerankModelHandle {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("RerankModelHandle")
-            .field("label", &self.label())
-            .field("max_documents", &self.inner.max_documents)
-            .finish_non_exhaustive()
-    }
-}
-
-#[cfg(test)]
-mod handle_tests;
