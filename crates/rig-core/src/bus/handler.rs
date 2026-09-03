@@ -82,6 +82,9 @@ pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_>;
 }
 
+// A type that is not a `Serve` should be told to implement `Serve`, never
+// the crate-private `Handler` this blanket impl provides.
+#[diagnostic::do_not_recommend]
 impl<T: Serve> Handler for T {
     fn descriptor(&self) -> HandlerDescriptor {
         Serve::descriptor(self)

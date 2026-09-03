@@ -740,18 +740,33 @@ impl Stream for EffectStream {
     }
 }
 
-// The client half crosses threads on every target and polls anywhere.
-const _: fn() = || {
-    fn assert_dispatcher<T: Clone + Send + Sync + 'static>() {}
-    fn assert_unpin<T: Unpin + 'static>() {}
+// The client half crosses threads on every target and polls anywhere; the
+// values a dispatch returns are small, plain futures — budgeted here so a
+// field that grows one past its budget fails to compile with the budget in
+// the message (raise a budget deliberately, with the reason in the commit).
+const _: () = {
+    const fn assert_dispatcher<T: Clone + Send + Sync + 'static>() {}
+    const fn assert_unpin<T: Unpin + 'static>() {}
     assert_dispatcher::<Dispatcher>();
     assert_unpin::<Pending>();
     assert_unpin::<EffectStream>();
+    assert!(
+        size_of::<Dispatcher>() <= 32,
+        "Dispatcher budget: 32 bytes (measured 16 natively)"
+    );
+    assert!(
+        size_of::<Pending>() <= 64,
+        "Pending budget: 64 bytes (measured 48 natively)"
+    );
+    assert!(
+        size_of::<EffectStream>() <= 160,
+        "EffectStream budget: 160 bytes (measured 144 natively)"
+    );
 };
 
 #[cfg(not(target_family = "wasm"))]
-const _: fn() = || {
-    fn assert_send<T: Send + 'static>() {}
+const _: () = {
+    const fn assert_send<T: Send + 'static>() {}
     assert_send::<Pending>();
     assert_send::<EffectStream>();
 };

@@ -528,16 +528,20 @@ pub fn wrap_stream(
 // Every alias is `Clone + Send + Sync + 'static` on every target, by
 // construction; a compiled assertion keeps it so under wasm32-unknown-unknown
 // as well as natively.
-const _: fn() = || {
-    fn assert_view<T: Clone + Send + Sync + 'static>() {}
+const _: () = {
+    const fn assert_view<T: Clone + Send + Sync + 'static>() {}
     assert_view::<ModelHandle>();
     assert_view::<ToolHandle>();
     assert_view::<MemoryHandle>();
     assert_view::<IndexHandle>();
     assert_view::<EmbedHandle>();
-    fn assert_unpin<T: Unpin>() {}
+    const fn assert_unpin<T: Unpin>() {}
     assert_unpin::<Completion>();
     assert_unpin::<ToolCall>();
+    assert!(
+        size_of::<Typed<family::Completion>>() <= 64,
+        "Typed<Completion> budget: 64 bytes (measured 56 natively)"
+    );
 };
 
 #[cfg(test)]

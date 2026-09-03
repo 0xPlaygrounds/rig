@@ -413,6 +413,7 @@ impl HookContext {
     /// driver and cannot outlive it; a dispatch a hook makes this way is
     /// served and recorded but does not re-enter the hook stack. Fails when
     /// the context was built outside a run.
+    #[track_caller]
     pub fn bind<F: rig_core::effect::Family>(
         &self,
         key: &rig_core::bus::Key<F>,

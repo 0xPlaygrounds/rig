@@ -1,0 +1,31 @@
+error[E0277]: the trait bound `NotAHandler: Serve` is not satisfied
+  --> tests/ui/serve/fail_not_a_serve.rs:10:39
+   |
+10 |     let _ = registrar.register("key", NotAHandler);
+   |                       --------        ^^^^^^^^^^^ unsatisfied trait bound
+   |                       |
+   |                       required by a bound introduced by this call
+   |
+help: the trait `Serve` is not implemented for `NotAHandler`
+  --> tests/ui/serve/fail_not_a_serve.rs:6:1
+   |
+ 6 | struct NotAHandler;
+   | ^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `Serve`:
+             Arc<H>
+             CompletionAdapter<M>
+             EffectLogReplayer
+             EmbedAdapter<E>
+             ErasedHandler
+             ImageEmbedAdapter<E>
+             MemoryAdapter<M>
+             RetrieveAdapter<I>
+           and $N others
+note: required by a bound in `Registrar::register`
+  --> $WORKSPACE/crates/rig-core/src/bus/registrar.rs
+   |
+   |     pub fn register(
+   |            -------- required by a bound in this associated function
+...
+   |         handler: impl Serve + 'static,
+   |                       ^^^^^ required by this bound in `Registrar::register`

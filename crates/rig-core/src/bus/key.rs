@@ -31,6 +31,7 @@ impl<F: Family> Key<F> {
     /// rather than proven: for a host that registered the handler itself
     /// and knows what it serves. A wrong assertion fails at bind time
     /// (`HandlerUnavailable`) or at the first dispatch, not silently.
+    #[track_caller]
     pub const fn new_unchecked(raw: HandlerKey) -> Self {
         Self {
             raw,
@@ -105,7 +106,11 @@ impl<F: Family> fmt::Display for Key<F> {
 }
 
 // The phantom is `fn() -> F`, so the key crosses threads for every `F`.
-const _: fn() = || {
-    fn assert_send_sync<T: Send + Sync + 'static>() {}
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync + 'static>() {}
     assert_send_sync::<Key<crate::effect::family::Completion>>();
+    assert!(
+        size_of::<Key<crate::effect::family::Completion>>() <= 32,
+        "Key<F> budget: 32 bytes (measured 16 natively): a key is its string, nothing more"
+    );
 };

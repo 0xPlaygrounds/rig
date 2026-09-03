@@ -127,6 +127,10 @@
 //!   closes the handler's [`OutcomeSink`], and the adapters stop.
 //! - Pause is client-side back-pressure: stop polling an [`EffectStream`]
 //!   and its bounded channel stalls the handler.
+//! - A [`Pending`] and an [`EffectStream`] are small, plain futures; their
+//!   sizes (and the dispatcher's, the registrar's, a key's) are budgeted at
+//!   compile time, so a field that grows one past its budget fails to
+//!   compile rather than quietly costing every dispatch.
 //!
 //! # Writing a handler
 //!

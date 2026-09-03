@@ -217,9 +217,13 @@ impl Registrar {
 // The registrar is as `Send + Sync` as the handlers it carries: natively,
 // always.
 #[cfg(not(target_family = "wasm"))]
-const _: fn() = || {
-    fn assert_send_sync<T: Clone + Send + Sync + 'static>() {}
+const _: () = {
+    const fn assert_send_sync<T: Clone + Send + Sync + 'static>() {}
     assert_send_sync::<Registrar>();
+    assert!(
+        size_of::<Registrar>() <= 32,
+        "Registrar budget: 32 bytes (measured 16 natively)"
+    );
 };
 
 // On browser wasm the registrar carries `!Send` handlers: the type-level

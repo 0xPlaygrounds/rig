@@ -735,8 +735,8 @@ fn snapshot_registered_tools(
 }
 
 #[cfg(not(target_family = "wasm"))]
-const _: fn() = || {
-    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+const _: () = {
+    const fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     assert_send_sync_static::<ToolSet>();
     assert_send_sync_static::<ToolRegistrySnapshot>();
     assert_send_sync_static::<ToolServerHandle>();
