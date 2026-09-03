@@ -1,0 +1,225 @@
+{
+  "header": {
+    "format": 2,
+    "run_spec": 3769489103430885208,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Think briefly, then answer: what is 12 * 12? Reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "enabled",
+              "budget_tokens": 1024
+            }
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "144",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "144"
+            }
+          ],
+          "usage": {
+            "input_tokens": 68,
+            "output_tokens": 13,
+            "total_tokens": 81,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 7
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "usage": {
+              "output_tokens": 13,
+              "input_tokens": 68,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0,
+              "output_tokens_details": {
+                "thinking_tokens": 7
+              }
+            },
+            "stop_reason": "end_turn",
+            "message_id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:block:0",
+          "kind": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "144"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ""
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:block:0",
+          "end": {
+            "close": "reasoning",
+            "signature": "signature_REDACTED_1",
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "144",
+                  "signature": "signature_REDACTED_1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:block:1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:block:1",
+          "delta": {
+            "delta": "text",
+            "text": "144"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 68,
+            "output_tokens": 13,
+            "total_tokens": 81,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 7
+          },
+          "finish_reason": "stop",
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "usage": {
+              "output_tokens": 13,
+              "input_tokens": 68,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0,
+              "output_tokens_details": {
+                "thinking_tokens": 7
+              }
+            },
+            "stop_reason": "end_turn",
+            "message_id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6"
+          }
+        }
+      ]
+    }
+  ]
+}

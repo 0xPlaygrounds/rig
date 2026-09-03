@@ -49,6 +49,7 @@ use futures::StreamExt;
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
     agent::{MultiTurnStreamItem, StreamingError},
+    completion::PromptError,
     run::{
         AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
         ModelTurnOutcome, PendingToolCall, RunSpec, StreamedTurnAssembler, prepare_request,
@@ -74,6 +75,17 @@ use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 pub enum Hook {
     /// `on_invalid_tool_call` → retry once with feedback naming `add`.
     RetryUnknownTool,
+}
+
+/// How the producer's run ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ending {
+    /// A final answer, the last completion's text.
+    Answer,
+    /// `PromptError::MaxTurnsError`: the model-call budget ran out with the
+    /// model still calling tools (a per-run `tool_choice` that forces a
+    /// call does this). Every record is a success; the run is not.
+    MaxTurns,
 }
 
 /// The producer's tool choice, as data.
@@ -134,6 +146,7 @@ pub struct Program {
     /// On replay the replayer answers that record as the cancel it was, so
     /// the consumer sees the cancel as its first item, never a delta.
     pub cancel_after_first_delta: bool,
+    pub ending: Ending,
 }
 
 impl Program {
@@ -158,6 +171,7 @@ impl Program {
         hooks: &[],
         invalid_retries: 0,
         cancel_after_first_delta: false,
+        ending: Ending::Answer,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -427,6 +441,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
         }
         let mut stream = runner.stream().await;
         let mut output = None;
+        let mut max_turns_reached = false;
         while let Some(item) = within(stream.next()).await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -437,6 +452,12 @@ pub async fn bus_engine_reproduces(program: &Program) {
                         && report.kind == rig_core::error::ErrorKind::Cancelled =>
                 {
                     break;
+                }
+                Err(StreamingError::Prompt(error))
+                    if program.ending == Ending::MaxTurns
+                        && matches!(*error, PromptError::MaxTurnsError { .. }) =>
+                {
+                    max_turns_reached = true;
                 }
                 Err(error) => {
                     panic!("the replayer answered every request it recognised: {error:?}")
@@ -450,6 +471,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
             for _ in 0..64 {
                 tokio::task::yield_now().await;
             }
+            None
+        } else if program.ending == Ending::MaxTurns {
+            assert!(max_turns_reached, "the run ends in MaxTurnsError");
             None
         } else {
             Some(output.expect("the stream yields a final response"))
@@ -466,12 +490,16 @@ pub async fn bus_engine_reproduces(program: &Program) {
             runner = runner.tool_concurrency(concurrency);
         }
         runner = runner.max_invalid_tool_call_retries(program.invalid_retries);
-        Some(
-            within(runner.run())
-                .await
-                .expect("the replayer answered every request it recognised")
-                .output,
-        )
+        match (within(runner.run()).await, program.ending) {
+            (Ok(response), Ending::Answer) => Some(response.output),
+            (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => None,
+            (Ok(response), Ending::MaxTurns) => {
+                panic!("the run ends in MaxTurnsError, not an answer: {response:?}")
+            }
+            (Err(error), _) => {
+                panic!("the replayer answered every request it recognised: {error:?}")
+            }
+        }
     };
     if let Some(output) = output {
         assert_eq!(output, golden_answer(&replay.log));
@@ -590,7 +618,12 @@ pub async fn hand_driver_reproduces(program: &Program) {
     let definitions = server.static_tool_defs();
     let mut run = AgentRun::from_spec(&spec, program.prompt, history);
     let response = loop {
-        match run.next_step().expect("a step") {
+        let step = match (run.next_step(), program.ending) {
+            (Ok(step), _) => step,
+            (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => break None,
+            (Err(error), _) => panic!("a step: {error:?}"),
+        };
+        match step {
             AgentRunStep::CallModel {
                 prompt,
                 history,
