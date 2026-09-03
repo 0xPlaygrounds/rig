@@ -434,6 +434,14 @@ jobs:
           cargo nextest run --locked -p rig-core -p rig-reqwest -p rig-tungstenite -p rig-agent -p rig-rmcp --all-features
           --retries 2 -E 'not binary(macro_hygiene)'
 
+      # The bus's behavioural verification suite (`crates/rig-verify`,
+      # unpublished): properties over the public API — record and replay,
+      # durable execution, the two interpreters agreeing. Named here so it
+      # runs under `--all-features` and without retries; it is also in the
+      # workspace's default members for the default-feature sweep.
+      - name: Test the bus's verification suite
+        run: cargo nextest run --locked -p rig-verify --all-features
+
       # `cargo nextest run` (in the `test` job) selects the workspace's
       # *default members* — historically just the `rig` facade, which is why a
       # `crates/*` unit test executed in CI only when its package was named
