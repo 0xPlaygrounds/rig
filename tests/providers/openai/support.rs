@@ -77,6 +77,18 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
+/// The effect corpus's retrieval matrix (Matrix A):
+/// `tests/cassettes/openai/corpus_retrieval/`.
+pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
 pub(super) async fn with_openai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(openai::Client) -> Fut,

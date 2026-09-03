@@ -192,6 +192,15 @@ pub struct Program {
     pub expected_output: Option<&'static str>,
     /// A second model registered as a route under this label.
     pub route: Option<&'static str>,
+    /// `dynamic_context(samples, index)`: a `TopN` retrieval before every
+    /// model call, its documents in the request.
+    pub dynamic_context: Option<usize>,
+    /// `retrieved_tools(sample, index, toolset)`: a `TopNIds` retrieval
+    /// before every model call, the named tools advertised.
+    pub retrieved_tools: Option<usize>,
+    /// The names of the retrievable tools (advertised only when retrieved;
+    /// every other tool in the required row is always advertised).
+    pub retrievable: &'static [&'static str],
 }
 
 impl Program {
@@ -219,6 +228,9 @@ impl Program {
         ending: Ending::Answer,
         expected_output: None,
         route: None,
+        dynamic_context: None,
+        retrieved_tools: None,
+        retrievable: &[],
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -571,15 +583,41 @@ impl Replay {
     }
 
     pub fn tool_server(&self) -> rig_agent::tool::server::ToolServerHandle {
-        let server = ToolServer::new().run();
+        self.tool_server_for(&Program::DEFAULT)
+    }
+
+    /// The program's tool registry over the log: every required tool from
+    /// its replayer, the retrievable ones behind the recorded index's
+    /// replayer under the program's owner.
+    pub fn tool_server_for(&self, program: &Program) -> rig_agent::tool::server::ToolServerHandle {
+        let mut server = ToolServer::new().owner(self.log_owner());
+        let mut retrievable = rig_agent::tool::ToolSet::default();
         for key in self.tool_keys() {
+            let name = key
+                .as_str()
+                .rsplit_once("tool:")
+                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))
+                .expect("a tool key names its tool");
             let replayer =
                 EffectLogReplayer::for_key(&self.log, &key).expect("a required tool is described");
-            server.add_registered_tool(
-                RegisteredTool::from_handler(replayer).expect("a tool-family replayer"),
-            );
+            let tool = RegisteredTool::from_handler(replayer).expect("a tool-family replayer");
+            if program.retrievable.contains(&name) {
+                retrievable.add_registered(tool);
+            } else {
+                server = server.registered_tool(tool);
+            }
         }
-        server
+        if let Some(sample) = program.retrieved_tools {
+            let key = HandlerKey::from(format!("{}/retrieve:tools#0", self.log_owner()));
+            let replayer =
+                EffectLogReplayer::for_key(&self.log, &key).expect("the tool index's records");
+            server = server.retrieved_tools_handler(sample, replayer, retrievable);
+        }
+        server.run()
+    }
+
+    pub fn context_key(&self) -> HandlerKey {
+        HandlerKey::from(format!("{}/retrieve:context#0", self.log_owner()))
     }
 
     pub async fn close(self) -> EffectLog {
@@ -594,7 +632,7 @@ impl Replay {
 
 pub async fn bus_engine_reproduces(program: &Program) {
     let replay = Replay::open(program);
-    let server = replay.tool_server();
+    let server = replay.tool_server_for(program);
     let mut builder = AgentBuilder::over_bus(
         replay.dispatcher.clone(),
         replay.registrar.clone(),
@@ -643,6 +681,11 @@ pub async fn bus_engine_reproduces(program: &Program) {
         let route = EffectLogReplayer::for_key(&replay.log, &replay.route_key(label))
             .expect("the route is in the required row");
         builder = builder.model_route_handler(label, route);
+    }
+    if let Some(samples) = program.dynamic_context {
+        let index = EffectLogReplayer::for_key(&replay.log, &replay.context_key())
+            .expect("the context index's records");
+        builder = builder.dynamic_context_handler(samples, index);
     }
     let agent = builder.build();
     agent
@@ -855,8 +898,20 @@ pub fn run_spec(program: &Program) -> RunSpec {
 
 pub async fn hand_driver_reproduces(program: &Program) {
     let replay = Replay::open(program);
-    let server = replay.tool_server();
+    let server = replay.tool_server_for(program);
     server.attach(&replay.registrar);
+    // The context index, registered by the driver as the builder would.
+    let context: Option<rig_bus::Handle<rig_core::effect::family::Retrieve>> =
+        program.dynamic_context.map(|_| {
+            let key = replay.context_key();
+            let replayer =
+                EffectLogReplayer::for_key(&replay.log, &key).expect("the context index's records");
+            replay
+                .registrar
+                .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(replayer))
+                .expect("a fresh key");
+            replay.dispatcher.handle(&key).expect("the context index")
+        });
     let tools = tool_handles(&replay);
     let model: ModelHandle = replay
         .dispatcher
@@ -901,7 +956,6 @@ pub async fn hand_driver_reproduces(program: &Program) {
         ),
         (None, None) => None,
     };
-    let definitions = server.static_tool_defs();
     if program.hooks.contains(&Hook::LookupBeforeRun) {
         // The hook's own dispatch, before the first completion.
         let (_, add) = tools
@@ -938,13 +992,49 @@ pub async fn hand_driver_reproduces(program: &Program) {
                     _ => &model,
                 };
                 asked_before = true;
+                // The retrievals the engine performs at the boundary, in its
+                // order: the context (a completion-call hook), then the tool
+                // index; the query is the run's prompt (the current prompt's
+                // text, else the last text in history — the same prompt).
+                let mut turn_patch = patch.clone();
+                if let (Some(context), Some(samples)) = (&context, program.dynamic_context) {
+                    let req = rig_core::vector_store::request::VectorSearchRequest::builder()
+                        .query(program.prompt)
+                        .samples(samples as u64)
+                        .build();
+                    let results = within(context.top_n::<serde_json::Value>(req))
+                        .await
+                        .expect("the replayer answered the context query");
+                    let docs = results.into_iter().map(|(_, id, value)| Document {
+                        id,
+                        text: serde_json::to_string_pretty(&value)
+                            .unwrap_or_else(|_| value.to_string()),
+                        additional_props: Default::default(),
+                    });
+                    turn_patch = Some(turn_patch.unwrap_or_default().extra_context(docs));
+                }
+                let mut dynamic_tool_ids = Vec::new();
+                for (key, kind) in server.retrieval_effects(Some(program.prompt.to_owned())) {
+                    match within(replay.dispatcher.dispatch(&key, kind))
+                        .await
+                        .expect("the replayer answered the tool query")
+                    {
+                        rig_core::effect::Outcome::Documents(
+                            rig_core::effect::RetrievedDocuments::Ids(ids),
+                        ) => dynamic_tool_ids.extend(ids.into_iter().map(|(_, id)| id)),
+                        other => panic!("retrieved ids, not {other:?}"),
+                    }
+                }
+                let definitions = server
+                    .snapshot_with_dynamic(&dynamic_tool_ids)
+                    .take_definitions();
                 let prepared = prepare_request(
                     &spec,
                     &model.capabilities(),
                     &history,
-                    definitions.clone(),
+                    definitions,
                     run.output_tool_name(),
-                    patch.as_ref(),
+                    turn_patch.as_ref(),
                 )
                 .expect("prepared");
                 run.set_output_tool_name(prepared.output_tool_name.clone());
@@ -1075,7 +1165,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
         }
     };
     let Some(response) = response else {
-        drop((model, route, tools, memory));
+        drop((model, route, tools, memory, context));
         let log = replay.log.clone();
         let replayed = replay.close().await;
         assert_same_records(&replayed, &log, "hand driver");
@@ -1092,7 +1182,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)
     );
-    drop((model, route, tools, memory));
+    drop((model, route, tools, memory, context));
     let log = replay.log.clone();
     let replayed = replay.close().await;
     assert_same_records(&replayed, &log, "hand driver");

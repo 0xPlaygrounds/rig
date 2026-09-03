@@ -1,0 +1,161 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 10072942899351225430,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/retrieve:context#0",
+        "family": {
+          "family": "retrieve"
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/retrieve:context#0": "retrieve"
+    },
+    "hooks": [
+      "DynamicContext"
+    ],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/retrieve:context#0": "retrieve"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/retrieve:context#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n",
+          "req": {
+            "query": "What is a glarb-glarb? Answer in one sentence.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "scored",
+          "results": []
+        }
+      }
+    },
+    {
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is a glarb-glarb? Answer in one sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "A \"glarb-glarb\" is not a recognized term or concept."
+            }
+          ],
+          "usage": {
+            "input_tokens": 26,
+            "output_tokens": 18,
+            "total_tokens": 107,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 63
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "responseId": "id_REDACTED_1",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "A \"glarb-glarb\" is not a recognized term or concept."
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 26,
+              "candidatesTokenCount": 18,
+              "totalTokenCount": 107,
+              "thoughtsTokenCount": 63,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 26
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -399,3 +399,146 @@ impl rig::tool::Tool for WriteNote {
         Ok(format!("saved {} ({} chars)", args.title, args.body.len()))
     }
 }
+
+// ---------------------------------------------------------------------------
+// The retrieval matrix (Matrix A): an index of facts for `dynamic_context`
+// and a toolset of retrievable tools for `retrieved_tools`, each embedded
+// by the provider under test.
+
+#[allow(dead_code)]
+pub(crate) const FACTS: [&str; 3] = [
+    "A flurbo is a green alien that lives on cold planets.",
+    "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+    "A linglingdong is a term used by inhabitants of the far side of the moon to describe humans.",
+];
+#[allow(dead_code)]
+pub(crate) const FACT_PROMPT: &str = "What is a glarb-glarb? Answer in one sentence.";
+#[allow(dead_code)]
+pub(crate) const RETRIEVED_TOOLS_PREAMBLE: &str =
+    "You are a calculator. You must use the provided tools for every arithmetic operation.";
+#[allow(dead_code)]
+pub(crate) const SUBTRACT_PROMPT: &str =
+    "Subtract 8 from 50 with the subtract tool, then reply with just the number.";
+#[allow(dead_code)]
+pub(crate) const ADD_THEN_SUBTRACT_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.";
+
+/// The facts, embedded by `model`, as an in-memory index (ids `doc0`..).
+#[allow(dead_code)]
+pub(crate) async fn facts_index<M: rig::embeddings::EmbeddingModel + Clone>(
+    model: M,
+    facts: &[&str],
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<String, M> {
+    let store = if facts.is_empty() {
+        rig::vector_store::in_memory_store::InMemoryVectorStore::<String>::default()
+    } else {
+        let embeddings = rig::embeddings::EmbeddingsBuilder::new(model.clone())
+            .documents(facts.iter().map(|fact| (*fact).to_owned()))
+            .expect("documents should be added")
+            .build()
+            .await
+            .expect("fact embeddings should succeed");
+        rig::vector_store::in_memory_store::InMemoryVectorStore::from_documents(embeddings)
+    };
+    store.index(model)
+}
+
+/// The toolset's embeddable schemas, embedded by `model`, as an index keyed
+/// by tool name.
+#[allow(dead_code)]
+pub(crate) async fn tool_index<M: rig::embeddings::EmbeddingModel + Clone>(
+    model: M,
+    toolset: &rig::tool::ToolSet,
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<rig::embeddings::ToolSchema, M> {
+    let embeddings = rig::embeddings::EmbeddingsBuilder::new(model.clone())
+        .documents(toolset.schemas().expect("tool schemas should build"))
+        .expect("documents should be added")
+        .build()
+        .await
+        .expect("tool schema embeddings should succeed");
+    rig::vector_store::in_memory_store::InMemoryVectorStore::from_documents_with_id_f(
+        embeddings,
+        |tool| tool.name.clone(),
+    )
+    .index(model)
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("init error")]
+#[allow(dead_code)]
+pub(crate) struct NoInit;
+
+macro_rules! retrievable_operation {
+    ($name:ident, $tool_name:literal, $description:literal, $embedding_doc:literal, $op:expr) => {
+        #[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+        #[allow(dead_code)]
+        pub(crate) struct $name;
+
+        impl rig::tool::Tool for $name {
+            const NAME: &'static str = $tool_name;
+            type Error = rig::tool::ToolExecutionError;
+            type Args = crate::goldens::FailingAddArgs;
+            type Output = i64;
+
+            fn description(&self) -> String {
+                $description.to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+            }
+
+            async fn call(
+                &self,
+                _context: &mut rig::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                let op: fn(i64, i64) -> i64 = $op;
+                Ok(op(args.x, args.y))
+            }
+        }
+
+        impl rig::tool::ToolEmbedding for $name {
+            type InitError = NoInit;
+            type Context = ();
+            type State = ();
+
+            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
+                Ok(Self)
+            }
+
+            fn embedding_docs(&self) -> Vec<String> {
+                vec![$embedding_doc.into()]
+            }
+
+            fn context(&self) -> Self::Context {}
+        }
+    };
+}
+
+retrievable_operation!(
+    EmbedAdd,
+    "add",
+    "Add x and y together",
+    "Add two numbers together to get their sum",
+    |x, y| x + y
+);
+retrievable_operation!(
+    EmbedSubtract,
+    "subtract",
+    "Subtract y from x",
+    "Subtract one number from another to get their difference",
+    |x, y| x - y
+);
+
+/// The retrievable toolset: `add` and `subtract`, in that order.
+#[allow(dead_code)]
+pub(crate) fn retrievable_toolset() -> rig::tool::ToolSet {
+    let mut toolset = rig::tool::ToolSet::default();
+    toolset
+        .add_retrieved_tool(EmbedAdd)
+        .expect("the tool context serializes");
+    toolset
+        .add_retrieved_tool(EmbedSubtract)
+        .expect("the tool context serializes");
+    toolset
+}
