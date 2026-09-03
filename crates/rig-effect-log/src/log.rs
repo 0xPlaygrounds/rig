@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// The log format this crate writes and reads. A log with another format
 /// does not load: there is no tolerant decoder.
-pub const EFFECT_LOG_FORMAT: u32 = 2;
+pub const EFFECT_LOG_FORMAT: u32 = 3;
 
 /// What a log says about the run it records, so a replay can refuse a log
 /// the program has outgrown before the first dispatch diverges.
