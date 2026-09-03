@@ -97,7 +97,13 @@ impl AdapterOutput {
                 StreamEvent::BlockEnd { .. } => {
                     self.opened.remove(id);
                 }
-                _ => {}
+                // A delta neither opens nor closes; `Final`/`Unknown` carry
+                // no block id and never reach this arm. Exhaustive on
+                // purpose: a future block-carrying variant must land here,
+                // not bypass the `opened` bookkeeping.
+                StreamEvent::BlockDelta { .. }
+                | StreamEvent::Final(_)
+                | StreamEvent::Unknown(_) => {}
             }
             // Any non-text block event is a boundary for anonymous text.
             let is_text = matches!(

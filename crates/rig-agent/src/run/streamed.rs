@@ -814,9 +814,10 @@ impl StreamedTurnAssembler {
                 let usage = final_response.usage;
                 let emit_final = self.saw_text;
                 self.saw_text = false;
-                // `normalize_stream` has already reconciled this against the
-                // tool calls actually seen (see `StreamFinal::finish_reason`),
-                // so it is consumed as-is and never re-reconciled here.
+                // `StreamingCompletionResponse` has already reconciled this
+                // against the tool calls the accumulator actually saw (see
+                // `FinishReason::reconcile_with_output`), so it is consumed
+                // as-is and never re-reconciled here.
                 let finish_reason = final_response.finish_reason.clone();
                 self.finish_reason.clone_from(&finish_reason);
                 Ok(vec![StreamedTurnEvent::Completed {

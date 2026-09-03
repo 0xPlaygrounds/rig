@@ -11,7 +11,7 @@
 //! usage from the stream's final `data:` frame plus the envelope fields the
 //! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
 //! `additional_params`. Every terminal record the seam yields carries `raw` —
-//! that record serialized by `normalize_stream` — the terminal record only, and
+//! that record serialized by the adapter's `final_record` — the terminal record only, and
 //! nothing about it is sent to the server. `raw == Value::Null` means only that
 //! a `StreamFinal` was built by hand without a provider terminal behind it,
 //! which no cell here can produce.

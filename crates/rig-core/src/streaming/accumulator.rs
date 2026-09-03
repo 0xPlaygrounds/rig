@@ -782,7 +782,9 @@ impl BlockAccumulator {
             AssistantContent::Text(text) => {
                 !(text.text.is_empty() && text.additional_params.is_none())
             }
-            _ => true,
+            AssistantContent::ToolCall(_)
+            | AssistantContent::Reasoning(_)
+            | AssistantContent::Image(_) => true,
         }
     }
 }

@@ -15,7 +15,7 @@
 //!
 //! Only the *bridging state* lives here. Argument assembly, internal-id
 //! minting for finalized calls, and finalize policy stay in the shared
-//! accumulator (`PartsAccumulator`); frame triage stays in the driver.
+//! accumulator (`BlockAccumulator`); frame triage stays in the driver.
 
 use std::collections::HashMap;
 use std::hash::Hash;

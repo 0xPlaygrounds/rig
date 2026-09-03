@@ -161,7 +161,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             );
 
             // The typed terminal agrees with the normalized one: raw is the
-            // record normalize_stream mapped.
+            // record the adapter's `final_record` mapped.
             let usage = typed.usage.expect("terminal carries usage");
             assert_eq!(usage.total_tokens as u64, terminal.usage.total_tokens);
             assert_eq!(usage.input_tokens as u64, terminal.usage.input_tokens);

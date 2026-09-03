@@ -192,7 +192,6 @@ where
         add_hook[H: AgentHook + 'static](hook: H);
     }
 
-    /// Set the maximum number of retries for the extractor.
     /// Retrieve `samples` documents from `index` for every extraction.
     pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
     where
@@ -203,6 +202,7 @@ where
         self
     }
 
+    /// Set the maximum number of retries for the extractor.
     pub fn retries(mut self, retries: u64) -> Self {
         self.retries = Some(retries);
         self
