@@ -59,8 +59,19 @@ pub(super) struct Shared {
     /// it, so it is refused instead of hung.
     serving: Mutex<Option<(HandlerKey, std::thread::ThreadId)>>,
     /// Set by the driver's drop guard: every reply that comes back
-    /// `Canceled` after this is `BusClosed`, not a handler defect.
+    /// `Canceled` after this is `BusClosed`, not a handler defect. Cleared
+    /// by [`Shared::reopen`].
     closed: AtomicBool,
+    /// Whether a driver currently owns this bus. A driver's construction
+    /// sets it, its drop clears it; `reopen` needs it clear.
+    driver_alive: AtomicBool,
+    /// Bumped by every `reopen`. A `Pending`/`EffectStream` remembers the
+    /// generation it was dispatched under: one minted against a driver that
+    /// has since died answers `BusClosed` even after a new driver took over
+    /// — no in-flight work is resurrected across a restart.
+    generation: AtomicU64,
+    /// The config the bus was opened with; a reopened driver keeps it.
+    config: super::BusConfig,
 }
 
 /// What became of an offered command.
@@ -91,21 +102,67 @@ struct CommandQueue {
 }
 
 impl Shared {
-    pub(super) fn new(command_capacity: usize, serial_per_handler: bool) -> Self {
+    pub(super) fn new(config: super::BusConfig) -> Self {
         Self {
-            serial_per_handler,
+            serial_per_handler: config.serial_per_handler,
             serving: Mutex::new(None),
             next_id: AtomicU64::new(1),
             descriptors: RwLock::new(BTreeMap::new()),
             queue: Mutex::new(CommandQueue {
                 commands: VecDeque::new(),
-                capacity: command_capacity.max(1),
+                capacity: config.command_capacity.max(1),
                 driver: None,
                 senders: Vec::new(),
             }),
             dispatchers: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
+            driver_alive: AtomicBool::new(false),
+            generation: AtomicU64::new(0),
+            config,
         }
+    }
+
+    pub(super) fn config(&self) -> super::BusConfig {
+        self.config
+    }
+
+    /// A driver took (or is taking) the bus.
+    pub(super) fn driver_born(&self) {
+        self.driver_alive.store(true, Ordering::SeqCst);
+    }
+
+    /// The driver is gone: its handlers with it, so the descriptor table
+    /// describes nothing any more and is cleared. Called after
+    /// [`mark_closed`](Self::mark_closed).
+    pub(super) fn driver_died(&self) {
+        self.descriptors
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+        self.driver_alive.store(false, Ordering::SeqCst);
+    }
+
+    /// Take the bus for a new driver, if no driver is alive: clears the
+    /// close and moves to the next generation. `false` when a driver holds
+    /// the bus.
+    pub(super) fn reopen(&self) -> bool {
+        if self
+            .driver_alive
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return false;
+        }
+        // Under the queue lock, as the close was: a dispatch's first poll
+        // reads `closed` there.
+        let _queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.closed.store(false, Ordering::SeqCst);
+        true
+    }
+
+    pub(super) fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
     }
 
     pub(super) fn mark_closed(&self) {
@@ -463,6 +520,7 @@ impl Dispatcher {
             receiver,
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
+            generation: self.shared.generation(),
             _cancel_guard: cancel_guard,
         }
     }
@@ -496,6 +554,7 @@ impl Dispatcher {
                 ))),
                 shared: self.shared.clone(),
                 parked: Arc::new(AtomicWaker::new()),
+                generation: self.shared.generation(),
             };
         }
         let (events, receiver) = mpsc::channel(self.stream_capacity);
@@ -515,6 +574,7 @@ impl Dispatcher {
             },
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
+            generation: self.shared.generation(),
             _cancel_guard: Some(cancel_guard),
         }
     }
@@ -531,7 +591,8 @@ impl Dispatcher {
     }
 
     /// Whether the driver has been dropped. A dispatch on a closed bus
-    /// resolves `BusClosed` on first poll.
+    /// resolves `BusClosed` on first poll — until [`Bus::reopen`](super::Bus::reopen)
+    /// gives the bus a new driver.
     pub fn is_closed(&self) -> bool {
         self.shared.is_closed()
     }
@@ -575,8 +636,8 @@ pub(super) fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
     .with_retryable(false)
 }
 
-fn reply_dropped(shared: &Shared) -> ErrorReport {
-    if shared.is_closed() {
+fn reply_dropped(shared: &Shared, generation: u64) -> ErrorReport {
+    if shared.is_closed() || shared.generation() != generation {
         bus_closed()
     } else {
         ErrorReport::new(
@@ -606,6 +667,9 @@ pub struct Pending {
     /// This value's one slot in the bus's parked-sender list while it waits
     /// on a full buffer; holds the latest waker it was polled with.
     parked: Arc<AtomicWaker>,
+    /// The bus generation this dispatch was minted under (see
+    /// [`Shared::reopen`]).
+    generation: u64,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: oneshot::Sender<()>,
 }
@@ -645,7 +709,7 @@ impl Future for Pending {
         loop {
             match &mut this.state {
                 PendingState::Sending { command } => {
-                    if this.shared.is_closed() {
+                    if this.shared.is_closed() || this.shared.generation() != this.generation {
                         return Poll::Ready(Err(bus_closed()));
                     }
                     let Some(taken) = command.take() else {
@@ -671,7 +735,7 @@ impl Future for Pending {
                         Poll::Pending => Poll::Pending,
                         Poll::Ready(Ok(outcome)) => Poll::Ready(outcome),
                         Poll::Ready(Err(oneshot::Canceled)) => {
-                            Poll::Ready(Err(reply_dropped(&this.shared)))
+                            Poll::Ready(Err(reply_dropped(&this.shared, this.generation)))
                         }
                     };
                 }
@@ -706,6 +770,8 @@ pub struct EffectStream {
     shared: Arc<Shared>,
     /// This value's one slot in the parked-sender list (see [`Pending`]).
     parked: Arc<AtomicWaker>,
+    /// The bus generation this dispatch was minted under.
+    generation: u64,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: Option<oneshot::Sender<()>>,
 }
@@ -751,7 +817,7 @@ impl Stream for EffectStream {
                 }
                 StreamState::Done => return Poll::Ready(None),
                 StreamState::Sending { command, receiver } => {
-                    if this.shared.is_closed() {
+                    if this.shared.is_closed() || this.shared.generation() != this.generation {
                         this.state = StreamState::Done;
                         return Poll::Ready(Some(Err(bus_closed())));
                     }
@@ -812,7 +878,9 @@ impl Stream for EffectStream {
                             this.state = StreamState::Done;
                             if terminated {
                                 Poll::Ready(None)
-                            } else if this.shared.is_closed() {
+                            } else if this.shared.is_closed()
+                                || this.shared.generation() != this.generation
+                            {
                                 Poll::Ready(Some(Err(bus_closed())))
                             } else {
                                 Poll::Ready(Some(Err(stream_truncated())))
@@ -847,10 +915,10 @@ const _: () = {
     );
     assert!(
         size_of::<Pending>() <= 64,
-        "Pending budget: 64 bytes (measured 56 natively: one parked-sender slot)"
+        "Pending budget: 64 bytes (measured 64 natively: one parked-sender slot, one generation)"
     );
     assert!(
         size_of::<EffectStream>() <= 160,
-        "EffectStream budget: 160 bytes (measured 152 natively: one parked-sender slot)"
+        "EffectStream budget: 160 bytes (measured 160 natively: one parked-sender slot, one generation)"
     );
 };

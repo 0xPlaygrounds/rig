@@ -29,6 +29,11 @@
 //!    tick. Under serial serving the key stays busy until the answer, so
 //!    a second dispatch to it waits — the log's order is the serve order.
 //!
+//! 9. The driver restarts: the entity holding the driver task is despawned
+//!    (a state transition), `Bus::reopen` gives the bus a new driver on a
+//!    later tick, the model is re-registered, and a `ModelHandle` component
+//!    bound before the restart completes again — nothing re-inserted.
+//!
 //! Every proof runs under a wall-clock guard; a hang is a failure, never a
 //! wait.
 
@@ -710,6 +715,68 @@ fn main() {
         );
         assert!(runs.in_flight.is_empty());
         println!("proof 8: a system answered a detached sink; the serial key waited for it");
+    }
+
+    // ---- proof 9: the driver restarts ----
+    {
+        let counters = Arc::new(Counters::default());
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        driver
+            .register(
+                "model",
+                MockModel {
+                    counters: counters.clone(),
+                },
+            )
+            .expect("register");
+        let mut world = World::new();
+        world.insert_resource(BusRes(dispatcher.clone()));
+        world.insert_resource(Ticks::default());
+        let driver_entity = world.spawn(DriverTask(pool.spawn(driver))).id();
+        let handle: ModelHandle = dispatcher
+            .handle(&HandlerKey::from("model"))
+            .expect("bound by family");
+        let model_entity = world.spawn(Model(handle)).id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems((dispatch_system, poll_system).chain());
+        guarded("proof 9", || {
+            tick(&mut world, &mut schedule);
+            world.get::<Answered>(model_entity).map(|_| ())
+        });
+        assert_eq!(counters.unary_served.load(Ordering::SeqCst), 1);
+
+        // The state transition: the driver task goes with its entity. The
+        // executor drops the cancelled task on its own time, so the reopen
+        // is retried across ticks until the old driver is really gone.
+        world.despawn(driver_entity);
+        let (registrar, new_driver) = guarded("proof 9", || Bus::reopen(&dispatcher).ok());
+        assert!(
+            dispatcher.descriptor(&HandlerKey::from("model")).is_none(),
+            "proof 9: the handlers died with the driver"
+        );
+        let restarted = Arc::new(Counters::default());
+        registrar
+            .register(
+                "model",
+                MockModel {
+                    counters: restarted.clone(),
+                },
+            )
+            .expect("a fresh table");
+        world.spawn(DriverTask(pool.spawn(new_driver)));
+        // The same `Model(handle)` component, never re-inserted, completes
+        // again: a handle is a key over the bus, not over a driver.
+        world.entity_mut(model_entity).remove::<Answered>();
+        let outcome = guarded("proof 9", || {
+            tick(&mut world, &mut schedule);
+            world
+                .get::<Answered>(model_entity)
+                .map(|answered| answered.0.clone())
+        });
+        assert!(outcome.is_ok(), "proof 9: {outcome:?}");
+        assert_eq!(restarted.unary_served.load(Ordering::SeqCst), 1);
+        assert_eq!(counters.unary_served.load(Ordering::SeqCst), 1);
+        println!("proof 9: the driver restarted under a handle bound before the restart");
     }
 
     // ---- proof 4 (buffered): a dispatch dropped before the driver ran ----

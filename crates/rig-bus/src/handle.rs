@@ -587,9 +587,11 @@ const _: () = {
     const fn assert_unpin<T: Unpin>() {}
     assert_unpin::<Completion>();
     assert_unpin::<ToolCall>();
+    // Raised 64 → 80 with `Bus::reopen`: a `Pending` carries its bus
+    // generation (8 bytes) and its parked-sender slot (8 bytes).
     assert!(
-        size_of::<Typed<family::Completion>>() <= 64,
-        "Typed<Completion> budget: 64 bytes (measured 56 natively)"
+        size_of::<Typed<family::Completion>>() <= 80,
+        "Typed<Completion> budget: 80 bytes (measured 72 natively)"
     );
 };
 
