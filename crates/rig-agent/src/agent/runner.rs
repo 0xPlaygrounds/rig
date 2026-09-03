@@ -71,6 +71,9 @@ pub struct AgentRunner {
     pub(crate) unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
+    /// A persisted run to continue instead of a fresh one from `prompt`
+    /// ([`resume`](Self::resume)).
+    pub(crate) resume: Option<Box<AgentRun>>,
 }
 
 /// The `(history_override, memory_handle)` pair resolved for one run by
@@ -97,7 +100,22 @@ impl AgentRunner {
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             concurrency: 1,
             error_usage: None,
+            resume: None,
         }
+    }
+
+    /// Continue a persisted run instead of starting one from the prompt:
+    /// the state a driver serialized between steps (see [`AgentRun`]) is
+    /// picked up where it stopped — its pending tool calls execute, its
+    /// next model turn is asked for — under this agent's hooks, tools,
+    /// bus and settings. The runner's prompt and history are ignored (the
+    /// run carries its own), as is conversation memory (its history is
+    /// already in the run; nothing is loaded, and the run's messages are
+    /// not appended a second time). The run must have been suspended by
+    /// the same rig version.
+    pub fn resume(mut self, run: AgentRun) -> Self {
+        self.resume = Some(Box::new(run));
+        self
     }
 
     /// Append a hook to the stack (on top of any the agent already carries).
@@ -484,7 +502,7 @@ impl AgentRunner {
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+    pub async fn run(mut self) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) = self.open_agent_span();
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
@@ -498,7 +516,16 @@ impl AgentRunner {
                 None => (None, None),
             }
         };
-        let run = self.build_run(history_override);
+        let resumed = self.resume.take();
+        let memory_handle = if resumed.is_some() {
+            None
+        } else {
+            memory_handle
+        };
+        let run = match resumed {
+            Some(run) => *run,
+            None => self.build_run(history_override),
+        };
 
         // Fold the shared engine to its final response. The blocking surface
         // uses a unary model transport and ignores the intermediate items the
