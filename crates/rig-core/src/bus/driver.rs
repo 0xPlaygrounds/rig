@@ -316,13 +316,13 @@ impl BusDriver {
         Ok(())
     }
 
-    /// [`register`](Self::register), returning a [`Key`](super::Key) that carries the
+    /// [`register`](Self::register), returning a [`Key`](crate::effect::Key) that carries the
     /// family the handler proved by its descriptor.
     pub fn register_typed<F: crate::effect::Family>(
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<super::Key<F>, ErrorReport> {
+    ) -> Result<crate::effect::Key<F>, ErrorReport> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);
         let descriptor = handler.descriptor();
@@ -334,7 +334,7 @@ impl BusDriver {
             ));
         }
         self.register_erased(key.clone(), handler)?;
-        Ok(super::Key::new_unchecked(key))
+        Ok(crate::effect::Key::new_unchecked(key))
     }
 
     /// Remove the handler serving `key`. Returns whether one was registered.

@@ -15,7 +15,8 @@ use crate::{
     error::{ErrorKind, ErrorReport},
 };
 
-use super::{ErasedHandler, Key, Serve, dispatcher::Shared};
+use super::{ErasedHandler, Serve, dispatcher::Shared};
+use crate::effect::Key;
 
 /// The report for a handler registered under a key of another family.
 pub(super) fn family_proof_failed(

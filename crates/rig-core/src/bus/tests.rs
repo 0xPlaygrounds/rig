@@ -11,11 +11,11 @@ use futures::{FutureExt, StreamExt, channel::oneshot, future::poll_fn, task::noo
 use serde_json::json;
 
 use super::{
-    Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, Key, ModelHandle,
+    Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, ModelHandle,
     OutcomeSink, Registrar, Serve,
     adapters::{CompletionAdapter, MemoryAdapter, RerankAdapter, ToolAdapter, ToolFn},
 };
-use crate::effect::CustomEffect;
+use crate::effect::{CustomEffect, Key};
 use crate::{
     completion::{CompletionRequest, Message},
     effect::{

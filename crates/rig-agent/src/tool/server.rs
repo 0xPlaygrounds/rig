@@ -25,7 +25,8 @@ use std::sync::{
 
 use indexmap::IndexMap;
 use rig_core::{
-    bus::{Key, Registrar, adapters::RetrieveAdapter},
+    bus::{Registrar, adapters::RetrieveAdapter},
+    effect::Key,
     effect::{HandlerKey, family},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},

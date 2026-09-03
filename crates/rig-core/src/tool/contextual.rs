@@ -125,8 +125,9 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bus::{ErasedHandler, Key, adapters::ToolCallback, adapters::ToolFn},
+    bus::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     completion::{self, ToolDefinition},
+    effect::Key,
     effect::{EffectKind, FamilyDescriptor, Outcome, ToolEmbeddingDescriptor, family},
     embeddings::{embed::EmbedError, tool::ToolSchema},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -555,7 +556,7 @@ impl RegisteredTool {
     /// Whether this registration is served under the default `tool:<name>`
     /// key (a registry that pins generations re-keys only those).
     pub fn has_default_key(&self) -> bool {
-        *self.key.raw() == crate::bus::tool_key(&self.definition.name)
+        *self.key.raw() == crate::effect::tool_key(&self.definition.name)
     }
 
     fn from_parts(
@@ -564,7 +565,7 @@ impl RegisteredTool {
         handler: ErasedHandler,
         liveness: Option<super::portable::LivenessFn>,
     ) -> Self {
-        let key = Key::new_unchecked(crate::bus::tool_key(&definition.name));
+        let key = Key::new_unchecked(crate::effect::tool_key(&definition.name));
         Self {
             definition,
             embedding,

@@ -5,7 +5,10 @@ use std::collections::BTreeSet;
 
 use indexmap::IndexMap;
 
-use crate::{bus::Key, completion::ToolDefinition, effect::family};
+use crate::{
+    completion::ToolDefinition,
+    effect::{Key, family},
+};
 
 use super::{
     ToolContext, ToolResult,

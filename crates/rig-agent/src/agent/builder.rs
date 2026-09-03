@@ -18,11 +18,11 @@ use std::sync::{Arc, OnceLock};
 
 use rig_core::{
     bus::{
-        Bus, BusConfig, Dispatcher, ErasedHandler, Key, Registrar,
+        Bus, BusConfig, Dispatcher, ErasedHandler, Registrar,
         adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter},
     },
     completion::{CompletionModel, Document, ModelRef},
-    effect::{HandlerKey, family},
+    effect::{HandlerKey, Key, family},
     memory::ConversationMemory,
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -313,7 +313,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     {
         let label = label.into();
         self.pending.push((
-            rig_core::bus::model_key(label.as_str()).to_string(),
+            rig_core::effect::model_key(label.as_str()).to_string(),
             ErasedHandler::new(CompletionAdapter::new(label, model)),
         ));
         self
@@ -409,7 +409,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         };
         config.model_key = match model {
             DefaultModel::Labelled(label, handler) => {
-                let suffix = rig_core::bus::model_key(label.as_str()).to_string();
+                let suffix = rig_core::effect::model_key(label.as_str()).to_string();
                 pending.insert(0, (suffix, handler));
                 config.bus.model_key(label.as_str())
             }

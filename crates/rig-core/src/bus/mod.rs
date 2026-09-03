@@ -38,7 +38,7 @@
 //! takes the family's request and resolves to its answer — the shapes
 //! come from [`Family`](crate::effect::Family), and the conveniences
 //! (`complete`, `call`, `load`, `top_n`, `embed_texts`, …) are those
-//! dispatches narrowed. A [`Key<F>`] is a handler key that carries its
+//! dispatches narrowed. A [`Key<F>`](crate::effect::Key) is a handler key that carries its
 //! family: what rig mints for what it registers, bound with
 //! [`Dispatcher::bind`] on an existence check alone; an explicit or
 //! replayed key is a plain [`HandlerKey`] and binds through
@@ -152,7 +152,6 @@ mod dispatcher;
 mod driver;
 mod handle;
 mod handler;
-mod key;
 mod registrar;
 mod replay;
 mod sync;
@@ -167,14 +166,11 @@ pub use handle::{
 pub use handler::{
     ErasedHandler, OutcomeSink, Serve, SinkClosed, events_from_response, serve_inline,
 };
-pub use key::Key;
 pub use registrar::Registrar;
 pub use replay::EffectLogReplayer;
 pub use writer::StreamWriter;
 
 use std::sync::Arc;
-
-use crate::effect::HandlerKey;
 
 /// Constructors for a bus.
 #[derive(Debug, Clone, Copy)]
@@ -214,16 +210,6 @@ impl Bus {
         spawn(driver);
         (dispatcher, registrar)
     }
-}
-
-/// A key for a model handler: `model:<label>`.
-pub fn model_key(label: &str) -> HandlerKey {
-    HandlerKey::from(format!("model:{label}"))
-}
-
-/// A key for a tool handler: `tool:<name>`.
-pub fn tool_key(name: &str) -> HandlerKey {
-    HandlerKey::from(format!("tool:{name}"))
 }
 
 #[cfg(all(test, rig_loom))]

@@ -293,6 +293,20 @@ pub trait CustomEffect: Serialize + serde::de::DeserializeOwned + WasmCompatSend
     type Answer: Serialize + serde::de::DeserializeOwned + WasmCompatSend + 'static;
 }
 
+mod key;
+
+pub use key::Key;
+
+/// A key for a model handler: `model:<label>`.
+pub fn model_key(label: &str) -> HandlerKey {
+    HandlerKey::from(format!("model:{label}"))
+}
+
+/// A key for a tool handler: `tool:<name>`.
+pub fn tool_key(name: &str) -> HandlerKey {
+    HandlerKey::from(format!("tool:{name}"))
+}
+
 /// The family markers.
 pub mod family {
     use std::marker::PhantomData;

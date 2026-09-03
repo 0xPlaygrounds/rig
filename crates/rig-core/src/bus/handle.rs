@@ -54,7 +54,8 @@ use crate::{
     vector_store::request::{Filter, VectorSearchRequest},
 };
 
-use super::{Dispatcher, EffectStream, Key, Pending};
+use super::{Dispatcher, EffectStream, Pending};
+use crate::effect::Key;
 
 /// A typed view over the bus for the family `F`.
 #[derive(Clone)]

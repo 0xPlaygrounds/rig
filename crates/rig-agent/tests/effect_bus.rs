@@ -1303,7 +1303,7 @@ async fn registering_an_explicit_key_that_is_live_keeps_it_served() {
     server.attach(&registrar);
     let registration = || {
         rig_core::tool::RegisteredTool::from_tool(Slow::default()).with_key(
-            rig_core::bus::Key::new_unchecked(HandlerKey::from("host/tool:slow")),
+            rig_core::effect::Key::new_unchecked(HandlerKey::from("host/tool:slow")),
         )
     };
     server.add_registered_tool(registration());
@@ -1623,7 +1623,7 @@ fn a_host_key_that_serves_another_family_is_reported_at_the_hosts_line() {
 /// Binds a run-scoped view inside the hook body and dispatches through it
 /// (the `dynamic_context` shape): the view lives for the hook call only.
 struct AsksTheModel {
-    key: rig_core::bus::Key<rig_core::effect::family::Completion>,
+    key: rig_core::effect::Key<rig_core::effect::family::Completion>,
     seen: Arc<Mutex<Vec<String>>>,
 }
 
@@ -1671,7 +1671,7 @@ async fn a_hook_binds_a_run_scoped_view_and_dispatches_through_it() {
     let agent = AgentBuilder::new(MockCompletionModel::text("main answer"))
         .model_route("side", MockCompletionModel::text("side answer"))
         .build();
-    let key = rig_core::bus::Key::new_unchecked(HandlerKey::from(format!(
+    let key = rig_core::effect::Key::new_unchecked(HandlerKey::from(format!(
         "{}/model:side",
         agent.owner()
     )));

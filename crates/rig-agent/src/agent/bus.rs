@@ -29,11 +29,11 @@ use super::sync::Mutex;
 mod loom_models;
 use rig_core::{
     bus::{
-        BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Key, Registrar,
+        BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Registrar,
         adapters::CompletionAdapter,
     },
     completion::{CompletionModel, ModelRef},
-    effect::{EffectLog, HandlerKey, family},
+    effect::{EffectLog, HandlerKey, Key, family},
     error::ErrorReport,
 };
 
@@ -196,7 +196,7 @@ impl AgentBus {
 
     /// The key this agent mints for the model labelled `label`.
     pub(crate) fn model_key(&self, label: &str) -> Key<family::Completion> {
-        self.key(rig_core::bus::model_key(label).as_str())
+        self.key(rig_core::effect::model_key(label).as_str())
     }
 
     /// The label under `key` when it is a model key this agent minted.

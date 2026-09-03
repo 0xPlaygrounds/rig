@@ -12,11 +12,8 @@ use crate::{
 };
 use rig_core::bus::{BusDriver, Dispatcher, ModelHandle};
 use rig_core::completion::ModelRef;
+use rig_core::effect::{EffectLog, HandlerDescriptor, Key, family};
 use rig_core::id::ConversationId;
-use rig_core::{
-    bus::Key,
-    effect::{EffectLog, HandlerDescriptor, family},
-};
 
 use super::bus::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};

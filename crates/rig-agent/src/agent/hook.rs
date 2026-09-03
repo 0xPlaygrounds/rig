@@ -418,7 +418,7 @@ impl HookContext {
     #[track_caller]
     pub fn bind<'ctx, F: rig_core::effect::Family>(
         &'ctx self,
-        key: &rig_core::bus::Key<F>,
+        key: &rig_core::effect::Key<F>,
     ) -> Result<RunHandle<'ctx, F>, ErrorReport> {
         self.bus()?.bind(key).map(RunHandle::scoped)
     }
@@ -1767,7 +1767,7 @@ impl AgentHook for HookStack {
 ///
 /// ```compile_fail
 /// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::{bus::Key, effect::family};
+/// use rig_core::effect::{Key, family};
 ///
 /// fn escape(ctx: &HookContext, key: &Key<family::Completion>) {
 ///     let handle = ctx.bind(key).unwrap();
@@ -1780,7 +1780,7 @@ impl AgentHook for HookStack {
 ///
 /// ```compile_fail
 /// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::{bus::Key, effect::family};
+/// use rig_core::effect::{Key, family};
 ///
 /// struct Stash {
 ///     kept: std::sync::Mutex<Option<RunHandle<'static, family::Completion>>>,
