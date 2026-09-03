@@ -2017,3 +2017,109 @@ fn a_parked_value_dropped_before_the_drain_leaves_no_slot_to_wake() {
         "the dead slot was dropped by the drain"
     );
 }
+
+/// Detaches every sink it is given into a mailbox and returns at once —
+/// the shape of a tool answered by a Bevy system.
+struct Detaching {
+    mailbox: Arc<Mutex<Vec<rig_core::serve::DetachedSink>>>,
+}
+
+impl Serve for Detaching {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("world"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:world".into(),
+            },
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        self.mailbox.lock().expect("mailbox").push(sink.detach());
+    }
+}
+
+#[test]
+fn a_detached_sink_keeps_its_serial_slot_until_answered() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        serial_per_handler: true,
+        ..BusConfig::default()
+    });
+    let mailbox = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "world",
+            Detaching {
+                mailbox: mailbox.clone(),
+            },
+        )
+        .expect("register");
+    let key = HandlerKey::from("world");
+    let mut first = dispatcher.dispatch(&key, custom(json!(1)));
+    let mut second = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(first.poll_outcome().is_none());
+    assert!(second.poll_outcome().is_none());
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    // The handler returned at once, but the dispatch is still in flight:
+    // the key is busy and the second command waits behind it.
+    assert_eq!(mailbox.lock().expect("mailbox").len(), 1);
+    assert_eq!(driver.in_flight(), 1, "keyed on the sink, not the future");
+    assert!(second.poll_outcome().is_none());
+
+    let sink = mailbox.lock().expect("mailbox").remove(0);
+    assert!(!sink.is_closed());
+    let mut resolving = sink.resolve(Ok(Outcome::Custom(json!("answered"))));
+    assert!(resolving.poll_unpin(&mut cx).is_ready());
+    let outcome = first.poll_outcome().expect("answered").expect("ok");
+    assert!(matches!(outcome, Outcome::Custom(ref v) if *v == json!("answered")));
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    // The slot was released by the answer: the second is now with the world.
+    assert_eq!(mailbox.lock().expect("mailbox").len(), 1);
+    assert_eq!(driver.in_flight(), 1);
+    let sink = mailbox.lock().expect("mailbox").remove(0);
+    let mut resolving = sink.resolve(Ok(Outcome::Custom(json!("second"))));
+    assert!(resolving.poll_unpin(&mut cx).is_ready());
+    assert!(second.poll_outcome().is_some());
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(driver.in_flight(), 0);
+}
+
+#[test]
+fn dropping_the_pending_closes_a_detached_sink() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let mailbox = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "world",
+            Detaching {
+                mailbox: mailbox.clone(),
+            },
+        )
+        .expect("register");
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("world"), custom(json!(1)));
+    assert!(pending.poll_outcome().is_none());
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(mailbox.lock().expect("mailbox").len(), 1);
+    assert!(!mailbox.lock().expect("mailbox")[0].is_closed());
+    drop(pending);
+    let _ = driver.poll_unpin(&mut cx);
+    // The resolver sees the cancel; the dispatch stays in flight until the
+    // resolver lets the sink go.
+    assert!(mailbox.lock().expect("mailbox")[0].is_closed());
+    assert_eq!(driver.in_flight(), 1);
+    mailbox.lock().expect("mailbox").clear();
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 0);
+}
