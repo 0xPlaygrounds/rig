@@ -189,3 +189,21 @@ runs:
         unset RUSTUP_TOOLCHAIN
         rustup show active-toolchain || rustup toolchain install --profile minimal
         rustup target add wasm32-unknown-unknown
+
+    # The fixture is its own workspace, so rust-cache (keyed on the root
+    # lock file, pruning what the root graph does not own) neither keeps the
+    # bevy git checkout nor its build artifacts. Cache both explicitly, keyed
+    # on the fixture's lock file and toolchain pin: a bevy clone and build is
+    # the single largest cost of the jobs that run the fixture.
+    - name: Cache the Bevy host fixture's git checkout and build
+      if: inputs.bevy-fixture == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/git/db
+          ~/.cargo/git/checkouts
+          target/bevy-bus-host-fixture
+          tests/fixtures/bevy_bus_host/target
+        key: bevy-bus-host-${{ runner.os }}-${{ hashFiles('tests/fixtures/bevy_bus_host/Cargo.lock', 'tests/fixtures/bevy_bus_host/rust-toolchain.toml', 'tests/fixtures/bevy_bus_host/Cargo.toml') }}
+        restore-keys: |
+          bevy-bus-host-${{ runner.os }}-

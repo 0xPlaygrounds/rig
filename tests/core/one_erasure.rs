@@ -1,22 +1,31 @@
 //! The effect bus is rig-core's only erasure.
 //!
 //! After the bus, the only `dyn` over a behaviour trait stored anywhere in
-//! rig-core is the handler table inside `bus/`. This guard scans rig-core's
-//! non-test sources for `Arc<dyn …>` / `Box<dyn …>` over the five impl-side
-//! traits — `CompletionModel`, `EmbeddingModel`, `Tool`, `ConversationMemory`,
-//! `VectorStoreIndex` — or over any `Erased*` / `*Callback` trait, and for
-//! stored `dyn Handler` outside `bus/`. `dyn Fn`, `dyn Error`, `dyn Future`,
-//! `dyn Iterator`/`dyn Stream` boxes and `InMemoryConversationMemory`'s
-//! `MessageFilter` are not erasures of a behaviour trait and are exempt.
+//! rig-core or rig-agent is the handler table inside `bus/`. This guard
+//! scans both crates' non-test sources for `Arc<dyn …>` / `Box<dyn …>` over
+//! the five impl-side traits — `CompletionModel`, `EmbeddingModel`, `Tool`,
+//! `ConversationMemory`, `VectorStoreIndex` — or over any `Erased*` /
+//! `*Callback` trait, and for `dyn Handler` outside the newtype that holds it
+//! (`bus/handler.rs`). `dyn Fn`, `dyn Error`, `dyn Future`, `dyn Iterator`/
+//! `dyn Stream` boxes and the named non-behaviour erasures below are exempt;
+//! every named exemption must still occur, so a renamed type fails the guard
+//! instead of silently widening it.
 //!
 //! Review greps, pinned here too: no `OnceLock` and no `static` in `bus/` or
 //! `effect/` — spawning is explicit, there is no ambient executor.
 
 use std::path::{Path, PathBuf};
 
-fn rig_core_src() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-core/src")
+fn crate_src(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("crates")
+        .join(name)
+        .join("src")
 }
+
+/// The crates the guard scans: rig-core (the bus lives here) and rig-agent
+/// (the engine over it).
+const SCANNED: [&str; 2] = ["rig-core", "rig-agent"];
 
 /// Every `.rs` file under `root`, skipping test modules (`tests.rs`,
 /// `*_tests.rs`, and `tests/` directories) — tests may build erased values
@@ -45,6 +54,35 @@ fn non_test_sources(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// A scanned source: its crate-relative path and text.
+struct Source {
+    krate: &'static str,
+    relative: String,
+    text: String,
+}
+
+fn sources() -> Vec<Source> {
+    let mut out = Vec::new();
+    for krate in SCANNED {
+        let root = crate_src(krate);
+        for path in non_test_sources(&root) {
+            let relative = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|err| panic!("{krate}/{relative} is readable: {err}"));
+            out.push(Source {
+                krate,
+                relative,
+                text,
+            });
+        }
+    }
+    out
+}
+
 /// The behaviour traits nothing may erase outside the bus.
 const BEHAVIOUR_TRAITS: [&str; 5] = [
     "CompletionModel",
@@ -54,93 +92,147 @@ const BEHAVIOUR_TRAITS: [&str; 5] = [
     "VectorStoreIndex",
 ];
 
-/// `dyn` targets that are not erasures of a behaviour trait.
+/// `dyn` targets from std/futures that are not erasures of a behaviour trait.
 const EXEMPT_DYN: [&str; 8] = [
     "Fn", "FnMut", "FnOnce", "Error", "Future", "Iterator", "Stream", "Any",
 ];
 
-fn is_exempt(target: &str) -> bool {
+/// Named exemptions: erasures the scanned crates hold that are not of a
+/// behaviour trait. Each must still occur somewhere in the scanned sources
+/// (`named_exemptions_are_live`), so a rename fails here rather than
+/// widening the guard.
+const NAMED_EXEMPT: [(&str, &str); 6] = [
+    // `InMemoryConversationMemory`'s message filter: a predicate, not a
+    // behaviour.
+    ("MessageFilter", "a predicate over messages"),
+    // The HTTP client the providers share: a transport, not a family.
+    ("ErasedHttpClient", "the erased HTTP transport"),
+    // The wasm-compatible stream alias.
+    ("WasmCompatSendStream", "the wasm-compatible boxed stream"),
+    // rig-agent's hook stack: hooks are observers, not a family.
+    ("DynAgentHook", "the agent's hook-stack entry"),
+    // Rerank is not one of the five families and has no effect kind (the
+    // transcription rule keeps the vocabulary to the five traits), so its
+    // vtable handle stays — the recorded follow-up is a `Rerank` family.
+    ("ErasedRerankModel", "the rerank vtable handle"),
+    // The one erasure: the handler table's entry type.
+    ("Handler", "the bus's handler newtype"),
+];
+
+/// The file the one erasure lives in: `ErasedHandler`'s newtype.
+const ERASURE_FILE: (&str, &str) = ("rig-core", "bus/handler.rs");
+
+fn head_of(target: &str) -> String {
     let head: String = target
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == ':')
         .collect();
-    let head = head.rsplit("::").next().unwrap_or(&head).to_owned();
-    EXEMPT_DYN.contains(&head.as_str())
-        || head == "MessageFilter"
-        || head == "StdError"
-        || head == "ErasedHttpClient"
-        || head == "HttpClient"
-        || head == "WasmCompatSendStream"
-        || head == "DynAgentHook"
-        || head == "Subscriber"
+    head.rsplit("::").next().unwrap_or(&head).to_owned()
 }
 
-/// Whether a `dyn <target>` is an erasure the guard forbids.
-fn is_forbidden(target: &str, in_bus: bool) -> bool {
-    let head: String = target
-        .chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == ':')
-        .collect();
-    let head = head.rsplit("::").next().unwrap_or(&head).to_owned();
+/// Whether a `dyn <target>` in `source` is an erasure the guard forbids.
+fn is_forbidden(source: &Source, target: &str) -> bool {
+    let head = head_of(target);
     if head == "Handler" {
-        return !in_bus;
+        return (source.krate, source.relative.as_str()) != ERASURE_FILE;
     }
-    if is_exempt(&head) {
+    if EXEMPT_DYN.contains(&head.as_str()) || NAMED_EXEMPT.iter().any(|(name, _)| *name == head) {
         return false;
     }
     if BEHAVIOUR_TRAITS.contains(&head.as_str()) {
         return true;
     }
-    // Rerank is not one of the five families and has no effect kind (the
-    // transcription rule keeps the vocabulary to the five traits), so its
-    // vtable handle stays — the recorded follow-up is a `Rerank` family.
-    if head == "ErasedRerankModel" {
-        return false;
+    head.starts_with("Erased") || head.ends_with("Callback")
+}
+
+/// Every `dyn <target>` in `text` with the line it starts on, whitespace
+/// between `dyn` and its target normalised (a `dyn` at a line break is
+/// `dyn `). Comment lines are skipped.
+fn dyn_targets(text: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut search = 0;
+    while let Some(found) = text[search..].find("dyn") {
+        let index = search + found;
+        search = index + 3;
+        let before_ok =
+            index == 0 || !(bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_');
+        let after = &text[index + 3..];
+        let Some(first) = after.chars().next() else {
+            break;
+        };
+        if !before_ok || !first.is_whitespace() {
+            continue;
+        }
+        let line_start = text[..index].rfind('\n').map_or(0, |at| at + 1);
+        let line = text[line_start..].lines().next().unwrap_or("");
+        if line.trim_start().starts_with("//") {
+            continue;
+        }
+        let target = after.trim_start();
+        let line_number = text[..index].matches('\n').count() + 1;
+        out.push((line_number, target.chars().take(80).collect()));
     }
-    (head.starts_with("Erased") && head != "ErasedHandler") || head.ends_with("Callback")
+    out
 }
 
 #[test]
-fn rig_core_has_one_erasure() {
-    let root = rig_core_src();
+fn rig_core_and_rig_agent_have_one_erasure() {
     let mut offenders = Vec::new();
-    for path in non_test_sources(&root) {
-        let relative = path
-            .strip_prefix(&root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let in_bus = relative.starts_with("bus/");
-        let text = std::fs::read_to_string(&path)
-            .unwrap_or_else(|err| panic!("{relative} is readable: {err}"));
-        for (line_number, line) in text.lines().enumerate() {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("//") {
-                continue;
-            }
-            // Any `dyn <trait>` — directly under `Arc`/`Box`/`Rc`, or nested
-            // inside a driver struct (`Arc<Driver<dyn Erased…>>`) — counts.
-            let needle = "dyn ";
-            let mut rest = line;
-            while let Some(index) = rest.find(needle) {
-                let target = &rest[index + needle.len()..];
-                if is_forbidden(target, in_bus) {
-                    offenders.push(format!("{relative}:{}: {}", line_number + 1, line.trim()));
-                }
-                rest = &rest[index + needle.len()..];
+    for source in sources() {
+        for (line, target) in dyn_targets(&source.text) {
+            if is_forbidden(&source, &target) {
+                offenders.push(format!(
+                    "{}/{}:{line}: dyn {}",
+                    source.krate,
+                    source.relative,
+                    target.lines().next().unwrap_or("")
+                ));
             }
         }
     }
     assert!(
         offenders.is_empty(),
-        "rig-core stores a `dyn` over a behaviour trait outside the bus:\n{}",
+        "a `dyn` over a behaviour trait outside the bus's handler newtype:\n{}",
         offenders.join("\n")
     );
 }
 
 #[test]
+fn named_exemptions_are_live() {
+    let sources = sources();
+    let mut dead = Vec::new();
+    for (name, what) in NAMED_EXEMPT {
+        let seen = sources.iter().any(|source| {
+            dyn_targets(&source.text)
+                .iter()
+                .any(|(_, target)| head_of(target) == name)
+        });
+        if !seen {
+            dead.push(format!("{name} ({what})"));
+        }
+    }
+    assert!(
+        dead.is_empty(),
+        "an exemption names a `dyn` target that no longer occurs; drop it or \
+         rename it with the type:\n{}",
+        dead.join("\n")
+    );
+    let erasure_file = sources
+        .iter()
+        .find(|source| (source.krate, source.relative.as_str()) == ERASURE_FILE)
+        .expect("the erasure file exists");
+    assert!(
+        erasure_file.text.contains("pub struct ErasedHandler("),
+        "{}/{} holds the `ErasedHandler` newtype",
+        ERASURE_FILE.0,
+        ERASURE_FILE.1
+    );
+}
+
+#[test]
 fn bus_and_effect_have_no_global_state() {
-    let root = rig_core_src();
+    let root = crate_src("rig-core");
     let mut offenders = Vec::new();
     for module in ["bus", "effect"] {
         for path in non_test_sources(&root.join(module)) {
@@ -172,33 +264,145 @@ fn bus_and_effect_have_no_global_state() {
     );
 }
 
+/// The consumer-facing traits a typed view must not implement.
+const CONSUMER_TRAITS: [&str; 6] = [
+    "CompletionModel",
+    "EmbeddingModel",
+    "ImageEmbeddingModel",
+    "Tool",
+    "ConversationMemory",
+    "VectorStoreIndex",
+];
+
+/// The typed views.
+const TYPED_VIEWS: [&str; 6] = [
+    "Handle",
+    "ModelHandle",
+    "ToolHandle",
+    "MemoryHandle",
+    "IndexHandle",
+    "EmbedHandle",
+];
+
+/// Strip one level of angle-bracketed generics from a path (`Handle<F>` →
+/// `Handle`, `a::b<T>::C` → `a::b::C`).
+fn without_generics(path: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    for c in path.chars() {
+        match c {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            c if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Every `impl … <Trait> for <Type>` header in `text`, whitespace
+/// normalised, as `(trait head, type head)` — path-qualified names reduced
+/// to their last segment.
+fn impl_headers(text: &str) -> Vec<(String, String)> {
+    let normalised: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut out = Vec::new();
+    let mut search = 0;
+    while let Some(found) = normalised[search..].find("impl") {
+        let index = search + found;
+        search = index + 4;
+        let bytes = normalised.as_bytes();
+        let before_ok =
+            index == 0 || !(bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'_');
+        let rest = &normalised[index + 4..];
+        let Some(next) = rest.chars().next() else {
+            break;
+        };
+        if !before_ok || !(next == ' ' || next == '<') {
+            continue;
+        }
+        // The header runs to the impl body or a `where` clause.
+        let end = rest
+            .find(" {")
+            .or_else(|| rest.find(" where "))
+            .unwrap_or(rest.len());
+        let header = &rest[..end];
+        // Skip the impl's own generic parameters.
+        let header = if header.starts_with('<') {
+            let mut depth = 0usize;
+            let mut cut = header.len();
+            for (i, c) in header.char_indices() {
+                match c {
+                    '<' => depth += 1,
+                    '>' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            cut = i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            header[cut..].trim_start()
+        } else {
+            header.trim_start()
+        };
+        let Some((trait_part, type_part)) = header.split_once(" for ") else {
+            continue;
+        };
+        let trait_head = head_of(&without_generics(trait_part.trim()));
+        let type_head = head_of(&without_generics(type_part.trim()));
+        out.push((trait_head, type_head));
+    }
+    out
+}
+
 /// The typed views implement none of the consumer-facing traits: a handle is
 /// consumed through its inherent methods.
 #[test]
 fn typed_views_implement_no_consumer_facing_trait() {
-    let text = std::fs::read_to_string(rig_core_src().join("bus/handle.rs"))
-        .expect("bus/handle.rs is readable");
-    for trait_name in [
-        "CompletionModel",
-        "EmbeddingModel",
-        "ImageEmbeddingModel",
-        "Tool",
-        "ConversationMemory",
-        "VectorStoreIndex",
-    ] {
-        let needle = format!("impl {trait_name} for");
-        assert!(
-            !text.contains(&needle),
-            "bus/handle.rs implements `{trait_name}` for a typed view"
-        );
-        let needle = "impl<";
-        let generic_impls = text
-            .lines()
-            .filter(|line| line.contains(needle) && line.contains(&format!("{trait_name} for")))
-            .count();
-        assert_eq!(
-            generic_impls, 0,
-            "bus/handle.rs implements `{trait_name}` for a typed view"
-        );
+    let mut offenders = Vec::new();
+    for source in sources() {
+        for (trait_head, type_head) in impl_headers(&source.text) {
+            if CONSUMER_TRAITS.contains(&trait_head.as_str())
+                && TYPED_VIEWS.contains(&type_head.as_str())
+            {
+                offenders.push(format!(
+                    "{}/{}: impl {trait_head} for {type_head}",
+                    source.krate, source.relative
+                ));
+            }
+        }
     }
+    assert!(
+        offenders.is_empty(),
+        "a typed view implements a consumer-facing trait:\n{}",
+        offenders.join("\n")
+    );
+    // The scan sees impls at all: the handle file's own inherent impls.
+    let handle = sources()
+        .into_iter()
+        .find(|source| source.krate == "rig-core" && source.relative == "bus/handle.rs")
+        .expect("bus/handle.rs exists");
+    assert!(
+        impl_headers(&handle.text)
+            .iter()
+            .any(|(_, type_head)| TYPED_VIEWS.contains(&type_head.as_str())),
+        "the impl scan finds bus/handle.rs's typed-view impls"
+    );
+}
+
+#[test]
+fn the_impl_scan_reads_qualified_and_wrapped_headers() {
+    let text = "impl<F: Family>\n    rig_core::completion::CompletionModel<X>\n    for crate::bus::Handle<F> where F: Family {}";
+    assert_eq!(
+        impl_headers(text),
+        vec![("CompletionModel".to_owned(), "Handle".to_owned())]
+    );
+    assert_eq!(
+        dyn_targets("let x: Box<\n    dyn\n    CompletionModel> = y;"),
+        vec![(2, "CompletionModel> = y;".to_owned())]
+    );
+    assert!(dyn_targets("// dyn CompletionModel in a comment").is_empty());
+    assert!(dyn_targets("let dynamic = 1;").is_empty());
 }
