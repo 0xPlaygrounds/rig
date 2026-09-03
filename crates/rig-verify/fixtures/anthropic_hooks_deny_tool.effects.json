@@ -1,0 +1,328 @@
+{
+  "header": {
+    "format": 2,
+    "run_spec": 9072754608376111302,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [
+      "DenyAdd"
+    ],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_1",
+              "provider": {
+                "call_id": "toolu_REDACTED_1"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 633,
+            "output_tokens": 69,
+            "total_tokens": 702,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "toolu_REDACTED_1",
+                "name": "add",
+                "input": {
+                  "x": 17,
+                  "y": 25
+                }
+              }
+            ],
+            "id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_reason": "tool_use",
+            "stop_sequence": null,
+            "usage": {
+              "input_tokens": 633,
+              "cache_read_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "output_tokens": 69
+            },
+            "provider_request_id": "req_REDACTED_1"
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_REDACTED_1",
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "toolu_REDACTED_1",
+                  "provider": {
+                    "call_id": "toolu_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "toolu_REDACTED_1",
+                  "provider": {
+                    "call_id": "toolu_REDACTED_1"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "add is disabled for this run"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 720,
+            "output_tokens": 4,
+            "total_tokens": 724,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_2",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "content": [
+              {
+                "type": "text",
+                "text": "42"
+              }
+            ],
+            "id": "msg_REDACTED_2",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+              "input_tokens": 720,
+              "cache_read_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "output_tokens": 4
+            },
+            "provider_request_id": "req_REDACTED_2"
+          }
+        }
+      }
+    }
+  ]
+}

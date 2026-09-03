@@ -3,6 +3,7 @@ mod support;
 mod cassette {
     mod agent;
     mod boxed_transport;
+    mod corpus_hooks;
     mod corpus_request_shape;
     mod default_max_turns;
     mod document_file_id;

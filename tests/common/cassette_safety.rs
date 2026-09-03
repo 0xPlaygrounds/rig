@@ -79,6 +79,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_anthropic_empty_stop_cassette",
             "with_anthropic_reasoning_usage_cassette",
             "with_anthropic_corpus_request_shape_cassette",
+            "with_anthropic_corpus_hooks_cassette",
         ],
     },
     ProviderCassetteSuite {

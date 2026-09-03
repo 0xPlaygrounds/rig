@@ -48,7 +48,11 @@ use std::time::Duration;
 use futures::StreamExt;
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
-    agent::{MultiTurnStreamItem, StreamingError},
+    agent::{
+        CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent, ModelTurnAction,
+        ModelTurnFinished, MultiTurnStreamItem, OutcomeAction, OutcomeEvent, RequestPatch,
+        RetryRequest, RunStart, RunStartAction, StepEventKind, StreamingError,
+    },
     completion::PromptError,
     run::{
         AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
@@ -62,8 +66,8 @@ use rig_core::{
     effect::{EffectFamily, EffectRecord, HandlerKey},
     id::ConversationId,
     message::ToolChoice,
-    message::{Message, UserContent},
-    tool::ToolContext,
+    message::{AssistantContent, Message, UserContent},
+    tool::{ToolContext, ToolOutput},
     transcript::tool_result_output,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
@@ -73,9 +77,34 @@ use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 /// name (defined here) making the same decision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hook {
-    /// `on_invalid_tool_call` → retry once with feedback naming `add`.
+    /// `on_invalid_tool_call` → retry with feedback naming `add`.
     RetryUnknownTool,
+    /// Observes every family; decides nothing.
+    ObserveEverything,
+    /// `on_dispatch` → `Patch`: `add` runs with `{"x":40,"y":2}`.
+    PatchAddArgs,
+    /// `on_dispatch` → `Deny` (skip) for `add`.
+    DenyAdd,
+    /// `on_outcome` → `Replace`: the model sees `99` for `add`.
+    ReplaceAddResult,
+    /// `on_outcome` → `Replace`: a text answer becomes `REPLACED`.
+    ReplaceAnswer,
+    /// `on_completion_call` → a request patch overriding the preamble.
+    PreambleOverride,
+    /// `on_model_turn_finished` → retry with feedback until `DONE`.
+    DemandDone,
+    /// `on_run_start` dispatches `add(1, 2)` through the run's bus.
+    LookupBeforeRun,
 }
+
+pub const PIRATE_PREAMBLE: &str = "You are a pirate. Answer in one short sentence.";
+pub const DENY_REASON: &str = "add is disabled for this run";
+pub const REPLACED_RESULT: &str = "99";
+pub const REPLACED_ANSWER: &str = "REPLACED";
+pub const DONE_FEEDBACK: &str = "End your answer with the word DONE.";
+pub const LOOKUP_ARGS: &str = r#"{"x":1,"y":2}"#;
+pub const LOOKUP_KEY: &str = "golden/tool:add#0";
+pub const PATCHED_ARGS: &str = r#"{"x":40,"y":2}"#;
 
 /// How the producer's run ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,6 +176,9 @@ pub struct Program {
     /// the consumer sees the cancel as its first item, never a delta.
     pub cancel_after_first_delta: bool,
     pub ending: Ending,
+    /// The run's output when a hook replaced it; else the golden's last
+    /// completion text.
+    pub expected_output: Option<&'static str>,
 }
 
 impl Program {
@@ -172,6 +204,7 @@ impl Program {
         invalid_retries: 0,
         cancel_after_first_delta: false,
         ending: Ending::Answer,
+        expected_output: None,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -220,10 +253,145 @@ fn retry_feedback(tool_name: &str) -> InvalidToolCallAction {
     }
 }
 
+struct ObserveEverything;
+
+impl AgentHook for ObserveEverything {
+    fn observes(&self, _kind: StepEventKind) -> bool {
+        true
+    }
+}
+
+struct PatchAddArgs;
+
+impl AgentHook for PatchAddArgs {
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name() == Some("add") {
+            DispatchAction::rewrite_tool_args(event.kind, serde_json::json!({"x": 40, "y": 2}))
+        } else {
+            DispatchAction::proceed()
+        }
+    }
+}
+
+struct DenyAdd;
+
+impl AgentHook for DenyAdd {
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name() == Some("add") {
+            DispatchAction::skip(DENY_REASON)
+        } else {
+            DispatchAction::proceed()
+        }
+    }
+}
+
+struct ReplaceAddResult;
+
+impl AgentHook for ReplaceAddResult {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some("add") && event.tool_result().is_some() {
+            OutcomeAction::rewrite_tool_result(&event, REPLACED_RESULT)
+        } else {
+            OutcomeAction::proceed()
+        }
+    }
+}
+
+struct ReplaceAnswer;
+
+impl AgentHook for ReplaceAnswer {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
+        if response
+            .choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::ToolCall(_)))
+        {
+            return OutcomeAction::proceed();
+        }
+        let mut replacement = response.clone();
+        replacement.choice = vec![AssistantContent::text(REPLACED_ANSWER)];
+        OutcomeAction::replace(Ok(rig_core::effect::Outcome::Completion(replacement)))
+    }
+}
+
+struct PreambleOverride;
+
+impl AgentHook for PreambleOverride {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        CompletionCallAction::patch(RequestPatch::new().preamble(PIRATE_PREAMBLE))
+    }
+}
+
+struct DemandDone;
+
+impl AgentHook for DemandDone {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        event: ModelTurnFinished<'_>,
+    ) -> ModelTurnAction {
+        if answer_text(event.content).contains("DONE") {
+            ModelTurnAction::continue_run()
+        } else {
+            ModelTurnAction::retry_with_feedback(DONE_FEEDBACK)
+        }
+    }
+}
+
+struct LookupBeforeRun;
+
+impl AgentHook for LookupBeforeRun {
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        let tool = ctx
+            .tool(&HandlerKey::from(LOOKUP_KEY))
+            .expect("the run's bus serves add");
+        let answer = tool
+            .dispatch(rig_core::effect::ToolCallRequest {
+                name: "add".to_owned(),
+                args: LOOKUP_ARGS.to_owned(),
+                context: ToolContext::new(),
+            })
+            .await
+            .expect("add answers");
+        assert_eq!(answer.result.output().render(), "3");
+        RunStartAction::continue_run()
+    }
+}
+
+fn answer_text(content: &[AssistantContent]) -> String {
+    content
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The builder with `hooks` added in order, by name.
+pub fn with_hooks<S>(builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
+    add_hooks(builder, hooks)
+}
+
 fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
             Hook::RetryUnknownTool => builder.add_hook(RetryUnknownTool),
+            Hook::ObserveEverything => builder.add_hook(ObserveEverything),
+            Hook::PatchAddArgs => builder.add_hook(PatchAddArgs),
+            Hook::DenyAdd => builder.add_hook(DenyAdd),
+            Hook::ReplaceAddResult => builder.add_hook(ReplaceAddResult),
+            Hook::ReplaceAnswer => builder.add_hook(ReplaceAnswer),
+            Hook::PreambleOverride => builder.add_hook(PreambleOverride),
+            Hook::DemandDone => builder.add_hook(DemandDone),
+            Hook::LookupBeforeRun => builder.add_hook(LookupBeforeRun),
         };
     }
     builder
@@ -502,7 +670,12 @@ pub async fn bus_engine_reproduces(program: &Program) {
         }
     };
     if let Some(output) = output {
-        assert_eq!(output, golden_answer(&replay.log));
+        assert_eq!(
+            output,
+            program
+                .expected_output
+                .map_or_else(|| golden_answer(&replay.log), str::to_owned)
+        );
     }
     drop(agent);
     let log = replay.log.clone();
@@ -526,28 +699,51 @@ pub fn tool_handles(replay: &Replay) -> Vec<(String, ToolHandle)> {
         .collect()
 }
 
+/// The hand driver's dispatch of a turn's tool calls, making each hook's
+/// decision itself: a patched call runs with the patched arguments, a
+/// denied call never reaches the bus and the model sees the reason as its
+/// result (`ToolResult::skipped`, as the engine shapes it), a replaced
+/// result reaches the model as the replacement while the record holds the
+/// tool's answer.
 pub async fn call_tools(
     calls: Vec<PendingToolCall>,
     tools: &[(String, ToolHandle)],
     concurrency: usize,
+    hooks: &[Hook],
 ) -> Vec<UserContent> {
     let dispatch = |call: PendingToolCall| async move {
         if let Some(preresolved) = call.preresolved_result {
             return preresolved;
         }
         let name = call.tool_call.function.name.clone();
+        let is_add = name == "add";
+        if is_add && hooks.contains(&Hook::DenyAdd) {
+            return tool_result_output(
+                call.tool_call.id.clone(),
+                call.tool_call.provider.clone(),
+                name,
+                ToolOutput::text(DENY_REASON),
+            );
+        }
         let (_, handle) = tools
             .iter()
             .find(|(tool, _)| *tool == name)
             .unwrap_or_else(|| panic!("the program advertises `{name}`"));
-        let args = call.tool_call.function.arguments.to_string();
+        let args = if is_add && hooks.contains(&Hook::PatchAddArgs) {
+            PATCHED_ARGS.to_owned()
+        } else {
+            call.tool_call.function.arguments.to_string()
+        };
         let answer = within(handle.call(name.clone(), args, ToolContext::new()))
             .await
             .expect("the replayer answered the recorded call");
-        let output = answer
+        let mut output = answer
             .result
             .into_result()
             .expect("every tool in the corpus succeeded");
+        if is_add && hooks.contains(&Hook::ReplaceAddResult) {
+            output = ToolOutput::text(REPLACED_RESULT);
+        }
         // The engine's own shaping of a result (`rig_core::transcript`).
         tool_result_output(
             call.tool_call.id.clone(),
@@ -616,6 +812,21 @@ pub async fn hand_driver_reproduces(program: &Program) {
         (None, None) => None,
     };
     let definitions = server.static_tool_defs();
+    if program.hooks.contains(&Hook::LookupBeforeRun) {
+        // The hook's own dispatch, before the first completion.
+        let (_, add) = tools
+            .iter()
+            .find(|(tool, _)| tool == "add")
+            .expect("the program advertises add");
+        let answer = within(add.call("add", LOOKUP_ARGS, ToolContext::new()))
+            .await
+            .expect("the replayer answered the hook's call");
+        assert_eq!(answer.result.output().render(), "3");
+    }
+    let patch = program
+        .hooks
+        .contains(&Hook::PreambleOverride)
+        .then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE));
     let mut run = AgentRun::from_spec(&spec, program.prompt, history);
     let response = loop {
         let step = match (run.next_step(), program.ending) {
@@ -635,7 +846,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
                     &history,
                     definitions.clone(),
                     run.output_tool_name(),
-                    None,
+                    patch.as_ref(),
                 )
                 .expect("prepared");
                 run.set_output_tool_name(prepared.output_tool_name.clone());
@@ -686,6 +897,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         .expect("the replayer recognised the request");
                     ModelTurn::from_response_parts(&response, executable, allowed)
                 };
+                let choice = turn.choice.clone();
                 let mut outcome = run.model_response(turn).expect("a model turn");
                 while let ModelTurnOutcome::NeedsResolution(invalid) = outcome {
                     assert!(
@@ -696,10 +908,31 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         .resolve_invalid_tool_call(retry_feedback(&invalid.tool_name))
                         .expect("the retry is resolved");
                 }
+                // The outcome and model-turn hooks, as the engine settles a
+                // turn: a replacement of the accepted choice, then a retry.
+                let has_tool_calls = choice
+                    .iter()
+                    .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+                if program.hooks.contains(&Hook::ReplaceAnswer) && !has_tool_calls {
+                    run.replace_accepted_turn_choice(vec![AssistantContent::text(REPLACED_ANSWER)])
+                        .expect("a text turn is replaceable");
+                }
+                if program.hooks.contains(&Hook::DemandDone)
+                    && !has_tool_calls
+                    && !answer_text(&choice).contains("DONE")
+                {
+                    run.retry_model_turn(RetryRequest::Feedback(DONE_FEEDBACK.to_owned()))
+                        .expect("a text turn is retryable");
+                }
             }
             AgentRunStep::CallTools { calls } => {
-                let results =
-                    call_tools(calls, &tools, program.tool_concurrency.unwrap_or(1)).await;
+                let results = call_tools(
+                    calls,
+                    &tools,
+                    program.tool_concurrency.unwrap_or(1),
+                    program.hooks,
+                )
+                .await;
                 run.tool_results(results).expect("results for every call");
             }
             AgentRunStep::Done(response) => break Some(response),
@@ -717,7 +950,12 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .await
             .expect("the replayer answered the append");
     }
-    assert_eq!(response.output, golden_answer(&replay.log));
+    assert_eq!(
+        response.output,
+        program
+            .expected_output
+            .map_or_else(|| golden_answer(&replay.log), str::to_owned)
+    );
     drop((model, tools, memory));
     let log = replay.log.clone();
     let replayed = replay.close().await;
