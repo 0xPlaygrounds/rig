@@ -643,7 +643,7 @@ pub struct ModelTurnFinished<'a> {
     /// Usage reported for the turn.
     pub usage: Usage,
     /// This exact attempt's response identity metadata, the same value the
-    /// preceding [`CompletionResponse`] event carried. On a retry, this is
+    /// preceding completion outcome ([`OutcomeEvent`]) carried. On a retry, this is
     /// the retried attempt's own identity, never a previous attempt's.
     pub identity: &'a ResponseIdentity,
     /// Why the provider stopped generating this attempt, normalized.
@@ -763,7 +763,8 @@ pub struct ReasoningDelta<'a> {
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
     /// The stream block this fragment extends — stable across this call's
-    /// fragments and equal to the `block_id` of its completed [`ToolCall`].
+    /// fragments and equal to the `block_id` of its completed tool call
+    /// (the [`DispatchEvent`] for the call).
     /// Provider-issued ids arrive on the completed call.
     pub block_id: &'a BlockId,
     /// Tool name on the first delta.
@@ -821,7 +822,7 @@ impl RunStartAction {
 ///
 /// Fired exactly once per run, after the outcome is decided — no retry,
 /// further turn, or tool execution will run. This is deliberately distinct
-/// from per-turn finishes ([`CompletionResponse`], [`ModelTurnFinished`]):
+/// from per-turn finishes ([`OutcomeEvent`], [`ModelTurnFinished`]):
 /// those can be followed by hook-driven retries or tool turns, while
 /// `RunSettled` cannot. On the streaming surface the success case coincides
 /// with the run's `FinalResponse` stream item; `RunSettled` additionally

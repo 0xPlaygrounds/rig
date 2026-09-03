@@ -811,8 +811,8 @@ impl AgentRun {
     }
 
     /// Replace the accepted model turn's content while it is parked — what a
-    /// completion outcome hook's [`OutcomeAction::Replace`]
-    /// (crate::agent::OutcomeAction::Replace) lands as. The turn has not
+    /// completion outcome hook's
+    /// [`OutcomeAction::Replace`](crate::agent::OutcomeAction::Replace) lands as. The turn has not
     /// entered history yet, so the replacement is what history keeps. Like a
     /// retry, this does not support tool-bearing turns: neither the parked
     /// turn nor the replacement may carry tool calls.
