@@ -127,7 +127,7 @@ impl AgentBus {
     /// builder is the driver's only holder; a bus this agent does not own
     /// (or one another agent value already shares) cannot record, and says
     /// so.
-    pub(crate) fn enable_recording(&mut self) -> Result<(), ErrorReport> {
+    pub(crate) fn enable_recording(&mut self, keep_events: bool) -> Result<(), ErrorReport> {
         let Some(driver) = self.driver.as_mut() else {
             return Err(ErrorReport::new(
                 rig_core::error::ErrorKind::Internal,
@@ -140,7 +140,11 @@ impl AgentBus {
                 "recording is enabled at build, before a clone shares the driver",
             ));
         };
-        let recorder = EffectLogRecorder::new();
+        let recorder = if keep_events {
+            EffectLogRecorder::keeping_stream_events()
+        } else {
+            EffectLogRecorder::new()
+        };
         driver
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

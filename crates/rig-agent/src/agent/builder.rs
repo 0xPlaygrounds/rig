@@ -151,6 +151,7 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
     memory: bool,
     record_effects: bool,
+    record_events: bool,
     retrieval_indexes: usize,
 }
 
@@ -298,6 +299,16 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Serve conversation memory from `handler` — any memory-family
+    /// handler, such as a replayer answering a recorded conversation from
+    /// an effect log — registered under the agent's memory key.
+    pub fn memory_handler(mut self, handler: impl rig_core::serve::Serve + 'static) -> Self {
+        self.pending
+            .push(("memory".to_owned(), ErasedHandler::new(handler)));
+        self.memory = true;
+        self
+    }
+
     /// The conversation id memory loads and saves under.
     pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
@@ -356,6 +367,15 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Record every dispatch *and* keep a streamed completion's events
+    /// verbatim on its record, so a golden pins the event sequence and a
+    /// replay re-emits the original delta boundaries.
+    pub fn record_effects_with_events(mut self) -> Self {
+        self.record_effects = true;
+        self.record_events = true;
+        self
+    }
+
     /// Add a hook.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
@@ -376,6 +396,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             dynamic_contexts: self.dynamic_contexts,
             memory: self.memory,
             record_effects: self.record_effects,
+            record_events: self.record_events,
             retrieval_indexes: self.retrieval_indexes,
         }
     }
@@ -407,6 +428,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             dynamic_contexts,
             memory,
             record_effects,
+            record_events,
             retrieval_indexes: _,
         } = self;
         // The owner: the label given, else the agent's name (so a named
@@ -458,7 +480,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             config.memory_key = Some(config.bus.key("memory"));
         }
         if record_effects {
-            crate::agent::bus::register_generated(config.bus.enable_recording());
+            crate::agent::bus::register_generated(config.bus.enable_recording(record_events));
         }
         let tool_server_handle = handle(tool_state, config.bus.owner());
         tool_server_handle.attach(config.bus.registrar());
@@ -542,6 +564,7 @@ impl AgentBuilder<NoToolConfig> {
             dynamic_contexts: Vec::new(),
             memory: false,
             record_effects: false,
+            record_events: false,
             retrieval_indexes: 0,
         }
     }
@@ -626,6 +649,7 @@ impl AgentBuilder<WithBuilderTools> {
             dynamic_contexts,
             memory,
             record_effects,
+            record_events,
             retrieval_indexes,
         } = self;
         Self {
@@ -638,6 +662,7 @@ impl AgentBuilder<WithBuilderTools> {
             dynamic_contexts,
             memory,
             record_effects,
+            record_events,
             retrieval_indexes,
         }
     }

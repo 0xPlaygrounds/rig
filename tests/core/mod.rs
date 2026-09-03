@@ -9,6 +9,7 @@ mod bevy_bus_host;
 mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;
+mod golden_recovery;
 mod loaders;
 mod name_keyed_serializers;
 mod nightly_paths_registry;
