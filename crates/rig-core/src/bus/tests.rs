@@ -1860,3 +1860,48 @@ fn completion_request_value() -> crate::completion::CompletionRequest {
         other => panic!("a completion kind, got {}", other.name()),
     }
 }
+
+#[test]
+fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
+    // The race this pins: a dispatch's first poll saw the bus open, the
+    // driver dropped (emptying the buffer), and the dispatch's send then
+    // lands. Deciding the close under the queue lock means the send is
+    // refused rather than buffered for a driver that will never drain it.
+    let (dispatcher, _registrar, driver) = Bus::channel();
+    let shared = Arc::clone(&dispatcher.shared);
+    drop(driver);
+    let cx = std::task::Context::from_waker(noop_waker_ref());
+    let (reply, _receiver) = oneshot::channel();
+    let (_guard, cancel) = oneshot::channel();
+    let offered = shared.enqueue(
+        Box::new(super::dispatcher::Command {
+            id: crate::effect::EffectId::from_raw(9),
+            key: HandlerKey::from("echo"),
+            kind: custom(json!(1)),
+            reply: super::dispatcher::Reply::Unary(reply),
+            span: tracing::Span::none(),
+            cancel,
+        }),
+        &cx,
+    );
+    assert!(matches!(offered, super::dispatcher::Enqueue::Closed));
+    assert_eq!(shared.buffered(), 0, "nothing is buffered after the close");
+}
+
+#[tokio::test]
+async fn a_registration_posted_just_before_a_dispatch_serves_it_whichever_poll_each_lands_in() {
+    // The driver takes the queue first and the mailbox second, so a
+    // registration made before a dispatch is applied before the dispatch is
+    // served even when the two land around one driver poll.
+    let (dispatcher, registrar, driver) = Bus::channel();
+    let _task = spawn(driver);
+    for round in 0..50 {
+        let key = HandlerKey::from(format!("late-{round}"));
+        let (echo, served) = Echo::new();
+        registrar.register(key.clone(), echo).expect("fresh key");
+        within(dispatcher.dispatch(&key, custom(json!(round))))
+            .await
+            .expect("served by the handler registered just before it");
+        assert_eq!(served.load(Ordering::SeqCst), 1);
+    }
+}
