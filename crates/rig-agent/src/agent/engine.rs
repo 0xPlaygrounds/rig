@@ -455,6 +455,25 @@ where
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
+                    // A resumed run arrives with its calls pending and no
+                    // snapshot from this process: the snapshot is driver
+                    // state, not run state (it pins registrations, which
+                    // are not serializable). Rebuild it from what the run
+                    // recorded it advertised for this turn — the registry's
+                    // current registrations under those names — so the
+                    // record is enough to continue (durable execution).
+                    if pending_tool_snapshot.is_none()
+                        && let Some(advertised) = run.advertised_tools()
+                    {
+                        let names: Vec<String> = advertised
+                            .definitions
+                            .iter()
+                            .map(|definition| definition.name.clone())
+                            .collect();
+                        pending_tool_snapshot = Some(Arc::new(
+                            runner.tool_server_handle.snapshot_with_dynamic(&names),
+                        ));
+                    }
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
                         let err = StreamingError::Completion(CompletionError::ResponseError(

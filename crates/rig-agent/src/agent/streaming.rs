@@ -265,7 +265,7 @@ impl AgentRunner {
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(self) -> StreamingResult {
+    pub async fn stream(mut self) -> StreamingResult {
         let (agent_span, created_agent_span) = self.open_agent_span();
 
         let bus = self.config.bus.clone();
@@ -288,7 +288,16 @@ impl AgentRunner {
             }
         };
 
-        let run = self.build_run(history_override);
+        let resumed = self.resume.take();
+        let memory_handle = if resumed.is_some() {
+            None
+        } else {
+            memory_handle
+        };
+        let run = match resumed {
+            Some(run) => *run,
+            None => self.build_run(history_override),
+        };
         let source = StreamingTurnSource::new(
             &self.config.hooks,
             self.agent_name_or_default().to_string(),
