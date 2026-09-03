@@ -15,7 +15,7 @@ use futures::{
 use tracing::Instrument;
 
 use crate::{
-    effect::{EffectId, EffectKind, EffectLog, EffectRecord, HandlerKey, Outcome},
+    effect::{EffectId, EffectKind, EffectLog, EffectRecord, HandlerKey, LogHeader, Outcome},
     error::ErrorReport,
     streaming::{BlockAccumulator, StreamEvent},
     wasm_compat::WasmBoxedFuture,
@@ -64,6 +64,10 @@ impl Default for BusConfig {
 #[derive(Clone, Default)]
 pub struct EffectLogRecorder {
     slots: Arc<Mutex<Vec<RecordSlot>>>,
+    header: Arc<Mutex<LogHeader>>,
+    /// Keep a streamed dispatch's events verbatim (see
+    /// [`Self::keeping_stream_events`]).
+    keep_events: bool,
 }
 
 /// One dispatch the recorder has seen: opened at serve time, filled at
@@ -73,6 +77,7 @@ struct RecordSlot {
     key: HandlerKey,
     kind: EffectKind,
     outcome: Option<Result<Outcome, ErrorReport>>,
+    events: Option<Vec<StreamEvent>>,
 }
 
 impl RecordSlot {
@@ -82,30 +87,74 @@ impl RecordSlot {
             key: self.key.clone(),
             kind: self.kind.clone(),
             outcome: outcome.clone(),
+            events: self.events.clone(),
         })
     }
 }
 
 impl EffectLogRecorder {
-    /// An empty recorder.
+    /// An empty recorder: streams are recorded as their folded completion.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// A copy of every resolved dispatch so far, in dispatch order. A
-    /// dispatch still in flight is not in the log yet; it takes its place
-    /// (ahead of everything served after it) when it resolves.
+    /// A recorder that keeps a streamed dispatch's events verbatim in its
+    /// record (`EffectRecord::events`), so a replay re-emits the original
+    /// delta boundaries. Costs the events' size per streamed dispatch; the
+    /// fold is the default.
+    pub fn keeping_stream_events() -> Self {
+        Self {
+            keep_events: true,
+            ..Self::default()
+        }
+    }
+
+    /// The header the log will carry: set by the driver at
+    /// [`BusDriver::record_to`] (the registered handlers) and by an agent
+    /// (the run spec hash); the signature accumulates as dispatches are
+    /// served.
+    pub fn header(&self) -> LogHeader {
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Stamp the run spec hash into the header.
+    pub fn set_run_spec(&self, hash: u64) {
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .run_spec = Some(hash);
+    }
+
+    pub(super) fn set_handlers(&self, handlers: Vec<crate::effect::HandlerDescriptor>) {
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .handlers = handlers;
+    }
+
+    /// A copy of every resolved dispatch so far, in dispatch order, under
+    /// the header. A dispatch still in flight is not in the log yet; it
+    /// takes its place (ahead of everything served after it) when it
+    /// resolves.
     pub fn log(&self) -> EffectLog {
-        self.slots
+        let records = self
+            .slots
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .iter()
             .filter_map(RecordSlot::record)
-            .collect()
+            .collect();
+        EffectLog {
+            header: self.header(),
+            records,
+        }
     }
 
     /// Take the resolved dispatches, leaving the recorder holding only the
-    /// ones still in flight.
+    /// ones still in flight; the header stays (the signature keeps growing).
     pub fn take(&self) -> EffectLog {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         let mut taken = Vec::new();
@@ -116,7 +165,11 @@ impl EffectLogRecorder {
             }
             None => true,
         });
-        taken
+        drop(slots);
+        EffectLog {
+            header: self.header(),
+            records: taken,
+        }
     }
 
     /// Dispatches recorded and not yet resolved.
@@ -130,6 +183,13 @@ impl EffectLogRecorder {
     }
 
     fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind) {
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .signature
+            .entry(key.clone())
+            .or_insert_with(|| kind.family());
+        let events = (self.keep_events && kind.streams()).then(Vec::new);
         self.slots
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -138,7 +198,17 @@ impl EffectLogRecorder {
                 key,
                 kind,
                 outcome: None,
+                events,
             });
+    }
+
+    fn event(&self, id: EffectId, event: &StreamEvent) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id)
+            && let Some(events) = slot.events.as_mut()
+        {
+            events.push(event.clone());
+        }
     }
 
     fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
@@ -302,8 +372,18 @@ impl BusDriver {
         }
     }
 
-    /// Record every served dispatch into `recorder`.
+    /// Record every served dispatch into `recorder`; the handlers registered
+    /// now are stamped into the log's header.
     pub fn record_to(&mut self, recorder: EffectLogRecorder) {
+        recorder.set_handlers(
+            self.handlers
+                .iter()
+                .map(|(key, handler)| crate::effect::HandlerDescriptor {
+                    key: key.clone(),
+                    family: handler.descriptor().family,
+                })
+                .collect(),
+        );
         self.recorder = Some(recorder);
     }
 
@@ -507,11 +587,19 @@ impl Drop for BusDriver {
     }
 }
 
-// A handler wrapper that fills the dispatch's record when it resolves.
+// A handler wrapper that fills the dispatch's record when it resolves, and
+// keeps its events when the recorder asked for them.
 fn tap(sink: OutcomeSink, recorder: EffectLogRecorder, id: EffectId) -> OutcomeSink {
-    sink.with_tap(Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
-        recorder.resolve(id, outcome.clone());
-    }))
+    let on_event: Option<super::handler::OnEvent> = recorder.keep_events.then(|| {
+        let recorder = recorder.clone();
+        Box::new(move |event: &StreamEvent| recorder.event(id, event)) as super::handler::OnEvent
+    });
+    sink.with_tap(
+        Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
+            recorder.resolve(id, outcome.clone());
+        }),
+        on_event,
+    )
 }
 
 /// Folds a tapped stream into the completion the record stores.

@@ -213,10 +213,14 @@ pub struct OutcomeSink {
 
 /// What a bus tap observes: the outcome, as it resolves.
 pub(super) type OnOutcome = Box<dyn Fn(&Result<Outcome, ErrorReport>) + Send + Sync>;
+/// What a bus tap observes of a stream: each event, as it is sent.
+pub(super) type OnEvent = Box<dyn Fn(&StreamEvent) + Send + Sync>;
 
-/// A bus tap installed by the driver: observes the outcome as it resolves.
+/// A bus tap installed by the driver: observes the outcome as it resolves,
+/// and each streamed event when asked to.
 struct Tap {
     on_outcome: OnOutcome,
+    on_event: Option<OnEvent>,
     stream: super::driver::StreamTap,
     fired: bool,
 }
@@ -316,9 +320,10 @@ impl OutcomeSink {
         }
     }
 
-    pub(super) fn with_tap(mut self, on_outcome: OnOutcome) -> Self {
+    pub(super) fn with_tap(mut self, on_outcome: OnOutcome, on_event: Option<OnEvent>) -> Self {
         self.tap = Some(Tap {
             on_outcome,
+            on_event,
             stream: super::driver::StreamTap::new(),
             fired: false,
         });
@@ -332,9 +337,13 @@ impl OutcomeSink {
     }
 
     fn tap_item(&mut self, item: &Result<StreamEvent, ErrorReport>) {
-        if let Some(tap) = &mut self.tap
-            && let Some(outcome) = tap.stream.observe(item)
-        {
+        let Some(tap) = &mut self.tap else {
+            return;
+        };
+        if let (Some(on_event), Ok(event)) = (&tap.on_event, item) {
+            on_event(event);
+        }
+        if let Some(outcome) = tap.stream.observe(item) {
             tap.fire(&outcome);
         }
     }

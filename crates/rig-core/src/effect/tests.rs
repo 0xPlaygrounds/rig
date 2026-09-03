@@ -352,7 +352,7 @@ fn tool_output_rejects_an_empty_wire_list() {
 
 #[test]
 fn effect_record_and_log_round_trip() {
-    let log: EffectLog = vec![
+    let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
             id: EffectId::from_raw(1),
             key: HandlerKey::from("model"),
@@ -365,6 +365,7 @@ fn effect_record_and_log_round_trip() {
                 Usage::new(),
                 "mock",
             ))),
+            events: None,
         },
         EffectRecord {
             id: EffectId::from_raw(2),
@@ -375,8 +376,9 @@ fn effect_record_and_log_round_trip() {
                 context: ToolContext::new(),
             },
             outcome: Err(ErrorReport::new(ErrorKind::Timeout, "slow")),
+            events: None,
         },
-    ];
+    ]);
     let json = serde_json::to_string(&log).expect("serializes");
     let back: EffectLog = serde_json::from_str(&json).expect("deserializes");
     assert_eq!(

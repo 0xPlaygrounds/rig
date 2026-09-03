@@ -504,12 +504,65 @@ impl Agent {
     /// The effect log recorded so far, when the agent was built with
     /// [`AgentBuilder::record_effects`](super::AgentBuilder::record_effects).
     pub fn effect_log(&self) -> Option<EffectLog> {
-        self.config.bus.effect_log()
+        self.config.bus.effect_log().map(|log| self.stamp(log))
     }
 
     /// Take the recorded effect log, leaving the recorder empty.
     pub fn take_effect_log(&self) -> Option<EffectLog> {
-        self.config.bus.take_effect_log()
+        self.config.bus.take_effect_log().map(|log| self.stamp(log))
+    }
+
+    /// A stable hash of this agent's run spec, what a log it records
+    /// carries in its header and what [`check_replayable`](Self::check_replayable)
+    /// compares.
+    pub fn run_spec_hash(&self) -> u64 {
+        rig_core::effect::stable_hash(&self.config.run_spec()).unwrap_or_default()
+    }
+
+    fn stamp(&self, mut log: EffectLog) -> EffectLog {
+        log.header.run_spec = Some(self.run_spec_hash());
+        log
+    }
+
+    /// Whether `log` can be replayed by this agent: the log's format is this
+    /// rig's, its run spec hash is this agent's, and every key its
+    /// signature names is served on this agent's bus by a handler of the
+    /// recorded family. Refused up front, with both sides in the message,
+    /// rather than at the record where the run would have diverged.
+    pub fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::ErrorReport> {
+        rig_core::bus::EffectLogReplayer::check_header(log)?;
+        if let Some(recorded) = log.header.run_spec {
+            let mine = self.run_spec_hash();
+            if recorded != mine {
+                return Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Internal,
+                    format!(
+                        "replay refused: the log was recorded under run spec {recorded:#018x}, this agent runs under {mine:#018x}"
+                    ),
+                ));
+            }
+        }
+        for (key, family) in &log.header.signature {
+            match self.config.bus.dispatcher().descriptor(key) {
+                Some(descriptor) if descriptor.family.family() == *family => {}
+                Some(descriptor) => {
+                    return Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!(
+                            "replay refused: `{key}` serves {} on this bus, the log needs {family}",
+                            descriptor.family.family()
+                        ),
+                    ));
+                }
+                None => {
+                    return Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!("replay refused: nothing serves `{key}`, which the log needs"),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Whether this agent owns and drives its own bus driver.

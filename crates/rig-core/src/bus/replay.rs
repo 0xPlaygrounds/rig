@@ -73,11 +73,51 @@ impl EffectLogReplayer {
             .collect()
     }
 
-    /// Register a replayer for every key in `log` on `driver`.
+    /// Register a replayer for every key in `log` on `driver`. Refuses a
+    /// log of another format, and a log whose signature names a family its
+    /// records do not answer — before the first dispatch, not at the record
+    /// where it would have diverged.
     pub fn register_all(log: &EffectLog, driver: &mut super::BusDriver) -> Result<(), ErrorReport> {
+        Self::check_header(log)?;
         for replayer in Self::for_log(log) {
             let key = replayer.key.clone();
             driver.register_erased(key, super::ErasedHandler::new(replayer))?;
+        }
+        Ok(())
+    }
+
+    /// The header checks a replay makes before any dispatch: the format is
+    /// this crate's, and every key the signature names is answered by
+    /// records of that family.
+    pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
+        if log.header.format != crate::effect::EFFECT_LOG_FORMAT {
+            return Err(ErrorReport::new(
+                ErrorKind::Internal,
+                format!(
+                    "replay refused: the log is format {}, this rig reads format {}",
+                    log.header.format,
+                    crate::effect::EFFECT_LOG_FORMAT
+                ),
+            ));
+        }
+        for (key, family) in &log.header.signature {
+            let recorded = log
+                .records
+                .iter()
+                .find(|record| &record.key == key)
+                .map(|record| record.kind.family());
+            match recorded {
+                Some(recorded) if recorded == *family => {}
+                Some(recorded) => {
+                    return Err(ErrorReport::new(
+                        ErrorKind::Internal,
+                        format!(
+                            "replay refused: the signature says `{key}` serves {family}, its records are {recorded}"
+                        ),
+                    ));
+                }
+                None => {}
+            }
         }
         Ok(())
     }
@@ -264,7 +304,21 @@ impl Serve for EffectLogReplayer {
                             kind.name()
                         ),
                     )),
-                    None => record.outcome,
+                    None => {
+                        // A stream recorded verbatim replays verbatim: the
+                        // consumer sees the original delta boundaries, not
+                        // the fold re-emitted.
+                        if let (Some(events), true) = (record.events, sink.is_stream()) {
+                            let mut sink = sink;
+                            for event in events {
+                                if sink.send(Ok(event)).await.is_err() {
+                                    return;
+                                }
+                            }
+                            return;
+                        }
+                        record.outcome
+                    }
                 },
             };
             debug_assert_eq!(self.family, self.descriptor.family.family());

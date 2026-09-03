@@ -266,22 +266,20 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
     // replayed from the point the interruption reached, the state restored.
     let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
     let partial_log: EffectLog = serde_json::from_str(&partial).expect("the log restores");
-    // Families only: the tool registry's default owner is a process
-    // counter (`tools#<m>`), so two builds in one process mint different
-    // tool keys. Naming the registry (V4: the agent's name as the owner)
-    // is what makes keys stable across builds and processes.
+    // Keys included: the agent is named (its owner), and its own tool
+    // registry takes that owner, so two builds mint the same keys.
     assert_eq!(
         partial_log
             .iter()
-            .map(|record| record.kind.family())
+            .map(|record| (record.kind.family(), record.key.clone()))
             .collect::<Vec<_>>(),
         reference_log[..partial_log.len()]
             .iter()
-            .map(|record| record.kind.family())
+            .map(|record| (record.kind.family(), record.key.clone()))
             .collect::<Vec<_>>(),
         "the hand driver's record is the reference log's head"
     );
-    let continuation: EffectLog = reference_log[partial_log.len()..].to_vec();
+    let continuation: EffectLog = reference_log.tail(partial_log.len());
     let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::bus::BusConfig {
         serial_per_handler: scenario.serial_per_handler,
         ..rig_core::bus::BusConfig::default()
@@ -445,7 +443,7 @@ async fn a_hooks_decision_is_program_not_record() {
 
     // Interrupt before any tool; resume with the hook: same answer.
     let (suspended, partial_log) = drive_until_tool(scenario, 0).await;
-    let continuation: EffectLog = reference_log[partial_log.len()..].to_vec();
+    let continuation: EffectLog = reference_log.tail(partial_log.len());
     let model_key = reference_log[0].key.clone();
     let tool_key = reference_log
         .iter()
