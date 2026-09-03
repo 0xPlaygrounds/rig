@@ -5,11 +5,13 @@ use std::{
     collections::{BTreeMap, VecDeque},
     fmt,
     pin::Pin,
-    sync::{
-        Arc, Mutex, PoisonError, RwLock,
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-    },
+    sync::{Arc, PoisonError},
     task::{Context, Poll, Waker},
+};
+
+use super::sync::{
+    Mutex, RwLock,
+    atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
 use futures::{

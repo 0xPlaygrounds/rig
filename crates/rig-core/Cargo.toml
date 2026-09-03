@@ -66,6 +66,11 @@ futures-timer = { workspace = true, features = ["wasm-bindgen"] }
 # lopdf's Web Crypto backend only for Rig's supported browser target.
 lopdf = { workspace = true, optional = true, features = ["wasm_js"] }
 
+# The model checker's shims, only under `RUSTFLAGS=--cfg rig_loom` (the
+# pattern tokio uses): nothing is added to the default graph.
+[target.'cfg(rig_loom)'.dependencies]
+loom = "0.7"
+
 [dev-dependencies]
 anyhow = { workspace = true }
 # Self-dependency: feature unification compiles the lib with `test-utils`
