@@ -43,26 +43,39 @@ fn producers() -> BTreeMap<String, Vec<String>> {
                 pending.push(path);
                 continue;
             }
+            // The helper and this guard spell the call without naming a
+            // golden.
             if path.extension().is_some_and(|ext| ext == "rs")
-                && path.file_name().is_some_and(|name| name != "goldens.rs")
+                && path
+                    .file_name()
+                    .is_some_and(|name| name != "goldens.rs" && name != "golden_pairing.rs")
             {
                 let text = std::fs::read_to_string(&path).expect("source");
-                for (number, line) in text.lines().enumerate() {
-                    // Code lines only: a comment may quote the call.
-                    if line.trim_start().starts_with("//") {
+                // A call site is `golden_effects("<name>"`, possibly with
+                // the literal wrapped onto the next line by rustfmt; a
+                // comment may quote the call, so a site on a comment line
+                // does not count.
+                let mut from = 0;
+                while let Some(at) = text[from..].find("golden_effects(") {
+                    let call = from + at;
+                    from = call + "golden_effects(".len();
+                    let line_start = text[..call].rfind('\n').map_or(0, |n| n + 1);
+                    if text[line_start..call].trim_start().starts_with("//") {
                         continue;
                     }
-                    let Some(rest) = line.split("golden_effects(\"").nth(1) else {
+                    let rest = text[from..].trim_start();
+                    let Some(rest) = rest.strip_prefix('"') else {
                         continue;
                     };
                     let Some((name, _)) = rest.split_once('"') else {
                         continue;
                     };
+                    let number = text[..call].matches('\n').count() + 1;
                     let relative = path.strip_prefix(root()).expect("under the root");
                     sites.entry(name.to_owned()).or_default().push(format!(
                         "{}:{}",
                         relative.display(),
-                        number + 1
+                        number
                     ));
                 }
             }

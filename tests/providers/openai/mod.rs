@@ -15,6 +15,8 @@ mod cassette {
     mod chat_tool_lifecycle_matrix;
     mod chat_tool_truncation_matrix;
     mod completions_api;
+    mod corpus_retrieval;
+    mod corpus_serving;
     mod document_ordering;
     mod effect_corpus;
     mod embedding_matrix;

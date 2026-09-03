@@ -742,3 +742,55 @@ async fn a_tool_call_under_a_different_context_is_a_divergence() {
     assert_eq!(report.kind, ErrorKind::Divergence);
     assert!(report.message.contains("context"), "{report:?}");
 }
+
+/// A stream recorded with its events that ended in an error — the
+/// consumer's cancel, the provider's refusal — replays its events and then
+/// the error, which is the record's outcome. (It used to end after the
+/// events, and the consumer saw "the stream ended before its terminal
+/// record" instead of the cancel or the refusal it recorded.)
+#[tokio::test]
+async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
+    // A stream recorded verbatim, then cut: its first event kept, its
+    // outcome the cancel a dropped consumer records.
+    let recorder = EffectLogRecorder::keeping_stream_events();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "mock",
+                MockCompletionModel::from_stream_turns([vec![
+                    MockStreamEvent::text("hel"),
+                    MockStreamEvent::text("lo"),
+                    MockStreamEvent::final_response_with_default_usage(),
+                ]]),
+            ),
+        )
+        .expect("register");
+    driver.record_to(recorder.clone());
+    let _task = spawn(driver);
+    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+    while let Some(item) = within(stream.next()).await {
+        item.expect("clean");
+    }
+    drop(stream);
+    let mut log = recorder.take();
+    let events = log.records[0].events.as_mut().expect("events kept");
+    events.truncate(1);
+    let first = events[0].clone();
+    log.records[0].outcome = Err(ErrorReport::new(ErrorKind::Cancelled, "dropped mid-stream"));
+
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
+    let _task = spawn(driver);
+    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+    let replayed = within(stream.next()).await.expect("the recorded event");
+    assert_eq!(replayed.expect("the event"), first);
+    let then = within(stream.next()).await.expect("then the error");
+    let report = then.expect_err("the record's outcome");
+    assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
+    assert!(
+        within(stream.next()).await.is_none(),
+        "and nothing after it"
+    );
+}

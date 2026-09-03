@@ -153,6 +153,8 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     record_effects: bool,
     record_events: bool,
     retrieval_indexes: usize,
+    /// The labels `model_route` registered, in order.
+    routes: Vec<String>,
 }
 
 impl<ToolState> AgentBuilder<ToolState> {
@@ -215,6 +217,26 @@ impl<ToolState> AgentBuilder<ToolState> {
             suffix.clone(),
             ErasedHandler::new(RetrieveAdapter::new(index)),
         ));
+        self.dynamic_contexts.push((suffix, key.clone()));
+        self.add_hook(DynamicContext { samples, key })
+    }
+
+    /// Retrieve `samples` documents for every prompt from `handler` — any
+    /// retrieval-family handler, such as a replayer answering a recorded
+    /// index from an effect log — registered under the agent's next
+    /// context key, as [`dynamic_context`](Self::dynamic_context) would
+    /// register an index.
+    pub fn dynamic_context_handler(
+        mut self,
+        samples: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+    ) -> Self {
+        let n = self.retrieval_indexes;
+        self.retrieval_indexes += 1;
+        let suffix = format!("retrieve:context#{n}");
+        let key = Arc::new(OnceLock::new());
+        self.pending
+            .push((suffix.clone(), ErasedHandler::new(handler)));
         self.dynamic_contexts.push((suffix, key.clone()));
         self.add_hook(DynamicContext { samples, key })
     }
@@ -322,9 +344,29 @@ impl<ToolState> AgentBuilder<ToolState> {
         M: CompletionModel + 'static,
     {
         let label = label.into();
+        self.routes.push(label.as_str().to_owned());
         self.pending.push((
             rig_core::effect::model_key(label.as_str()).to_string(),
             ErasedHandler::new(CompletionAdapter::new(label, model)),
+        ));
+        self
+    }
+
+    /// Register a route served by `handler` — any completion-family
+    /// handler, such as a replayer answering a recorded route from an
+    /// effect log — under the agent's key for `label`, so the program's
+    /// required row names the route as [`model_route`](Self::model_route)
+    /// would.
+    pub fn model_route_handler(
+        mut self,
+        label: impl Into<ModelRef>,
+        handler: impl rig_core::serve::Serve + 'static,
+    ) -> Self {
+        let label = label.into();
+        self.routes.push(label.as_str().to_owned());
+        self.pending.push((
+            rig_core::effect::model_key(label.as_str()).to_string(),
+            ErasedHandler::new(handler),
         ));
         self
     }
@@ -398,6 +440,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             record_effects: self.record_effects,
             record_events: self.record_events,
             retrieval_indexes: self.retrieval_indexes,
+            routes: self.routes,
         }
     }
 
@@ -430,6 +473,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             record_effects,
             record_events,
             retrieval_indexes: _,
+            routes,
         } = self;
         // The owner: the label given, else the agent's name (so a named
         // agent's keys are the same in every process — what a log meant
@@ -474,8 +518,14 @@ impl<ToolState> AgentBuilder<ToolState> {
         }
         for (suffix, slot) in dynamic_contexts {
             // The slot is this builder's own, filled exactly once.
-            let _ = slot.set(config.bus.key(&suffix));
+            let key = config.bus.key(&suffix);
+            config.context_keys.push(key.clone());
+            let _ = slot.set(key);
         }
+        config.route_keys = routes
+            .iter()
+            .map(|label| config.bus.model_key(label))
+            .collect();
         if memory {
             config.memory_key = Some(config.bus.key("memory"));
         }
@@ -566,6 +616,7 @@ impl AgentBuilder<NoToolConfig> {
             record_effects: false,
             record_events: false,
             retrieval_indexes: 0,
+            routes: Vec::new(),
         }
     }
 
@@ -628,6 +679,19 @@ impl AgentBuilder<NoToolConfig> {
         self.into_tool_builder()
             .retrieved_tools(sample, index, toolset)
     }
+
+    /// Add retrievable tools chosen per request by `handler`, a
+    /// retrieval-family handler such as a replayer answering a recorded
+    /// index; see [`ToolServer::retrieved_tools_handler`].
+    pub fn retrieved_tools_handler(
+        self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder()
+            .retrieved_tools_handler(sample, handler, toolset)
+    }
 }
 
 impl AgentBuilder<WithToolServerHandle> {
@@ -651,6 +715,7 @@ impl AgentBuilder<WithBuilderTools> {
             record_effects,
             record_events,
             retrieval_indexes,
+            routes,
         } = self;
         Self {
             config,
@@ -664,6 +729,7 @@ impl AgentBuilder<WithBuilderTools> {
             record_effects,
             record_events,
             retrieval_indexes,
+            routes,
         }
     }
 
@@ -697,6 +763,18 @@ impl AgentBuilder<WithBuilderTools> {
         F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
     {
         self.map_server(|server| server.retrieved_tools(sample, index, toolset))
+    }
+
+    /// Add retrievable tools chosen per request by `handler`, a
+    /// retrieval-family handler such as a replayer answering a recorded
+    /// index; see [`ToolServer::retrieved_tools_handler`].
+    pub fn retrieved_tools_handler(
+        self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> Self {
+        self.map_server(|server| server.retrieved_tools_handler(sample, handler, toolset))
     }
 
     /// Build the agent with the builder's tools.

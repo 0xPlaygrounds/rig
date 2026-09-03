@@ -1,0 +1,137 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 1956647414268051610,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:write_note#0",
+        "family": {
+          "family": "tool",
+          "name": "write_note",
+          "description": "writes a note with a title and a body",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "body"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:write_note#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a note-taking assistant. Use the write_note tool to save notes."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Save a note titled 'Rust' whose body is a 400-word essay on the history of the Rust programming language, then reply with just the word saved."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "write_note",
+              "description": "writes a note with a title and a body",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "body"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "cancelled",
+          "retryable": false,
+          "message": "the consumer cancelled the dispatch before it was answered",
+          "code": null,
+          "http_status": null,
+          "refusal": false,
+          "source_chain": []
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:toolu_REDACTED_1",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "write_note"
+          }
+        }
+      ]
+    }
+  ]
+}

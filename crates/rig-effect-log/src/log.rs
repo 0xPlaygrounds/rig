@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// The log format this crate writes and reads. A log with another format
 /// does not load: there is no tolerant decoder.
-pub const EFFECT_LOG_FORMAT: u32 = 2;
+pub const EFFECT_LOG_FORMAT: u32 = 3;
 
 /// What a log says about the run it records, so a replay can refuse a log
 /// the program has outgrown before the first dispatch diverges.
@@ -135,11 +135,20 @@ impl<'a> IntoIterator for &'a EffectLog {
     }
 }
 
-/// A stable 64-bit hash of `value`'s JSON form (FNV-1a over the bytes):
-/// the same on every platform and toolchain, unlike `std`'s hasher. What
-/// [`LogHeader::run_spec`] holds.
+/// A stable 64-bit hash of `value`'s JSON form (FNV-1a over the bytes of
+/// its canonical rendering): the same on every platform, toolchain and
+/// build, unlike `std`'s hasher. What [`LogHeader::run_spec`] holds.
+///
+/// Canonical means every object's keys are sorted before the bytes are
+/// hashed. `serde_json` keeps insertion order in a build that enables its
+/// `preserve_order` feature (the root `rig` package with every feature on
+/// does, through a dependency) and sorts otherwise, so a hash over the
+/// raw serialization of a spec holding a `serde_json::Value` — an
+/// `additional_params`, an `output_schema` — differed between the crate
+/// that recorded a golden and the crate that replays it. The program's
+/// identity cannot depend on which crate computes it.
 pub fn stable_hash<T: Serialize>(value: &T) -> Result<u64, serde_json::Error> {
-    let json = serde_json::to_vec(value)?;
+    let json = serde_json::to_vec(&Canonical::from(serde_json::to_value(value)?))?;
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in json {
         hash ^= u64::from(byte);
@@ -148,9 +157,45 @@ pub fn stable_hash<T: Serialize>(value: &T) -> Result<u64, serde_json::Error> {
     Ok(hash)
 }
 
+/// A JSON value whose objects serialize with sorted keys whatever
+/// `serde_json`'s map type is.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum Canonical {
+    Null,
+    Bool(bool),
+    Number(serde_json::Number),
+    String(String),
+    Array(Vec<Canonical>),
+    Object(BTreeMap<String, Canonical>),
+}
+
+impl From<serde_json::Value> for Canonical {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Null => Self::Null,
+            serde_json::Value::Bool(bool) => Self::Bool(bool),
+            serde_json::Value::Number(number) => Self::Number(number),
+            serde_json::Value::String(string) => Self::String(string),
+            serde_json::Value::Array(items) => {
+                Self::Array(items.into_iter().map(Self::from).collect())
+            }
+            serde_json::Value::Object(fields) => Self::Object(
+                fields
+                    .into_iter()
+                    .map(|(key, value)| (key, Self::from(value)))
+                    .collect(),
+            ),
+        }
+    }
+}
+
 // A log serializes and crosses threads on every target.
 const _: fn() = || {
     fn assert_wire<T: Clone + Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}
     assert_wire::<LogHeader>();
     assert_wire::<EffectLog>();
 };
+
+#[cfg(test)]
+mod stable_hash_tests;

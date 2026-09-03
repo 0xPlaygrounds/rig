@@ -84,15 +84,20 @@ impl std::fmt::Display for ProviderResponseError {
 
 impl std::error::Error for ProviderResponseError {}
 
-/// The wire shape of [`ProviderResponseError`]: the status as its number and
-/// every header as a `(name, bytes)` pair, so a response is preserved
-/// losslessly through serde (header values need not be UTF-8).
+/// The wire shape of [`ProviderResponseError`]: the status as its number,
+/// the body and the provider's request id — the error's identity. The
+/// headers are not on the wire: they are the transport's (`date`, the
+/// rate-limit counters), differ on every response to the same request,
+/// and a record that carried them was never the same twice — an effect
+/// log's error record replayed from one cassette diverged from itself a
+/// second later. A deserialized error has `headers: None`, "not captured",
+/// which is what a replayed error is.
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ProviderResponseErrorWire {
     status: Option<u16>,
     body: String,
     provider_request_id: Option<String>,
-    headers: Option<Vec<(String, Vec<u8>)>>,
 }
 
 impl serde::Serialize for ProviderResponseError {
@@ -101,12 +106,6 @@ impl serde::Serialize for ProviderResponseError {
             status: self.status.map(|status| status.as_u16()),
             body: self.body.clone(),
             provider_request_id: self.provider_request_id.clone(),
-            headers: self.headers.as_ref().map(|headers| {
-                headers
-                    .iter()
-                    .map(|(name, value)| (name.as_str().to_string(), value.as_bytes().to_vec()))
-                    .collect()
-            }),
         }
         .serialize(serializer)
     }
@@ -121,24 +120,11 @@ impl<'de> serde::Deserialize<'de> for ProviderResponseError {
             .map(StatusCode::from_u16)
             .transpose()
             .map_err(D::Error::custom)?;
-        let headers = wire
-            .headers
-            .map(|pairs| {
-                let mut map = http::HeaderMap::with_capacity(pairs.len());
-                for (name, value) in pairs {
-                    let name = http::header::HeaderName::from_bytes(name.as_bytes())
-                        .map_err(D::Error::custom)?;
-                    let value = http::HeaderValue::from_bytes(&value).map_err(D::Error::custom)?;
-                    map.append(name, value);
-                }
-                Ok(Box::new(map))
-            })
-            .transpose()?;
         Ok(Self {
             status,
             body: wire.body,
             provider_request_id: wire.provider_request_id,
-            headers,
+            headers: None,
         })
     }
 }

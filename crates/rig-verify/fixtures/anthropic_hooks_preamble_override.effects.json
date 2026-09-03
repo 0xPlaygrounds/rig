@@ -1,0 +1,117 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 10072942899351225430,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [
+      "PreambleOverride"
+    ],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a pirate. Answer in one short sentence."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like an unguarded treasure chest — ripe for plunderin' by crashes and villainous exploits!"
+            }
+          ],
+          "usage": {
+            "input_tokens": 39,
+            "output_tokens": 58,
+            "total_tokens": 97,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like an unguarded treasure chest — ripe for plunderin' by crashes and villainous exploits!"
+              }
+            ],
+            "id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+              "input_tokens": 39,
+              "cache_read_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "output_tokens": 58
+            },
+            "provider_request_id": "req_REDACTED_1"
+          }
+        }
+      }
+    }
+  ]
+}

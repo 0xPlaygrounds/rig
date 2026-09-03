@@ -1,0 +1,794 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 13216707040221315529,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      },
+      {
+        "key": "golden/tool:subtract#1",
+        "family": {
+          "family": "tool",
+          "name": "subtract",
+          "description": "Subtract y from x",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          },
+          "embedding": {
+            "context": null,
+            "embedding_docs": [
+              "Subtract one number from another to get their difference"
+            ]
+          }
+        }
+      },
+      {
+        "key": "golden/retrieve:tools#0",
+        "family": {
+          "family": "retrieve"
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/retrieve:tools#0": "retrieve",
+      "golden/tool:add#0": "tool",
+      "golden/tool:subtract#1": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/retrieve:tools#0": "retrieve",
+      "golden/tool:add#0": "tool",
+      "golden/tool:subtract#1": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/retrieve:tools#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n_ids",
+          "req": {
+            "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "ids",
+          "results": [
+            [
+              0.6633198050673985,
+              "subtract"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator. You must use the provided tools for every arithmetic operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "subtract",
+              "description": "Subtract y from x",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 20,
+                  "y": 5
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 147,
+            "output_tokens": 19,
+            "total_tokens": 248,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 82
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "responseId": "id_REDACTED_1",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_1",
+                      "functionCall": {
+                        "name": "add",
+                        "args": {
+                          "x": 20,
+                          "y": 5
+                        }
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": "Model generated function call(s)."
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 147,
+              "candidatesTokenCount": 19,
+              "totalTokenCount": 248,
+              "thoughtsTokenCount": 82,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 147
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash"
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":20,\"y\":5}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 25
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 4,
+      "key": "golden/retrieve:tools#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n_ids",
+          "req": {
+            "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "ids",
+          "results": [
+            [
+              0.6633198050673985,
+              "subtract"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 5,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator. You must use the provided tools for every arithmetic operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 20,
+                      "y": 5
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 25
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "subtract",
+              "description": "Subtract y from x",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "subtract",
+                "arguments": {
+                  "x": 25,
+                  "y": 4
+                }
+              },
+              "signature": "signature_REDACTED_2",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 180,
+            "output_tokens": 19,
+            "total_tokens": 240,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 41
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "responseId": "id_REDACTED_2",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_2",
+                      "functionCall": {
+                        "name": "subtract",
+                        "args": {
+                          "x": 25,
+                          "y": 4
+                        }
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": "Model generated function call(s)."
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 180,
+              "candidatesTokenCount": 19,
+              "totalTokenCount": 240,
+              "thoughtsTokenCount": 41,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 180
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash"
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "key": "golden/tool:subtract#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "subtract",
+        "args": "{\"x\":25,\"y\":4}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 21
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 7,
+      "key": "golden/retrieve:tools#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n_ids",
+          "req": {
+            "query": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "ids",
+          "results": [
+            [
+              0.6633198050673985,
+              "subtract"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator. You must use the provided tools for every arithmetic operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 20,
+                      "y": 5
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 25
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "subtract",
+                    "arguments": {
+                      "x": 25,
+                      "y": 4
+                    }
+                  },
+                  "signature": "signature_REDACTED_2",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "subtract",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 21
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "subtract",
+              "description": "Subtract y from x",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The final number is 21."
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_3"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 213,
+            "output_tokens": 8,
+            "total_tokens": 250,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 29
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_3",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "responseId": "id_REDACTED_3",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_3",
+                      "text": "The final number is 21."
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 213,
+              "candidatesTokenCount": 8,
+              "totalTokenCount": 250,
+              "thoughtsTokenCount": 29,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 213
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash"
+          }
+        }
+      }
+    }
+  ]
+}
