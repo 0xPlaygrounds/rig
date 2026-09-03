@@ -612,9 +612,7 @@ where
         // model turn) and gets no execute span.
         let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
         for pending in calls {
-            let block_id = pending
-                .block_id
-                .unwrap_or_else(|| BlockId::wire(pending.tool_call.id.as_str()));
+            let block_id = pending.block_id;
             let (span, preresolved_result) = match pending.preresolved_result {
                 Some(result) => (tracing::Span::none(), Some(result)),
                 None => {

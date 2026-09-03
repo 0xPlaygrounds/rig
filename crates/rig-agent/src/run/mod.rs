@@ -198,13 +198,12 @@ pub struct PendingToolCall {
     /// recovery. When set, the driver must return this content as the tool
     /// result without executing the tool or invoking tool hooks.
     pub preresolved_result: Option<UserContent>,
-    /// The stream block this call arrived under, when the call arrived via
-    /// a streamed turn. Persisted with the run state so a resumed process
-    /// keeps emitting the ids consumers already saw in tool-call deltas.
-    /// Drivers key a buffered turn's call by its durable `tool_call.id`
-    /// when absent.
-    #[serde(default)]
-    pub block_id: Option<BlockId>,
+    /// The stream block this call arrived under — equal on the call's
+    /// deltas, its execution commit and its result; a buffered turn's call
+    /// is keyed by its durable `tool_call.id` (`BlockId::wire`). Required in
+    /// persisted run state: a resumed process keeps emitting the id its
+    /// consumers already saw, never a re-minted one.
+    pub block_id: BlockId,
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -939,7 +938,9 @@ impl AgentRun {
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.clone(),
             tool_call_id: Some(tool_call.id.as_str().to_owned()),
-            block_id: None,
+            // A buffered turn's call is keyed by its durable id, live or
+            // resumed — the same key its pending call carries.
+            block_id: Some(BlockId::wire(tool_call.id.as_str())),
             args: Some(json_utils::serialize_json_value(
                 &tool_call.function.arguments,
             )),
@@ -1152,7 +1153,10 @@ impl AgentRun {
                                 let block_id = block_ids
                                     .iter()
                                     .position(|(id, _)| tool_call.id == id.as_str())
-                                    .map(|pair| block_ids.remove(pair).1);
+                                    .map_or_else(
+                                        || BlockId::wire(tool_call.id.as_str()),
+                                        |pair| block_ids.remove(pair).1,
+                                    );
                                 Some(PendingToolCall {
                                     tool_call: tool_call.clone(),
                                     preresolved_result: skipped.get(&index).cloned(),

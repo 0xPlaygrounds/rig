@@ -827,7 +827,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
         panic!("expected CallTools");
     };
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].block_id, Some(iid_for("tc_1")));
+    assert_eq!(calls[0].block_id, iid_for("tc_1"));
     run.tool_results(vec![UserContent::tool_result(
         "tc_1",
         "add",
@@ -1158,8 +1158,8 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
         panic!("expected CallTools");
     };
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].block_id, Some(iid_for("a")));
-    assert_eq!(calls[1].block_id, Some(iid_for("b")));
+    assert_eq!(calls[0].block_id, iid_for("a"));
+    assert_eq!(calls[1].block_id, iid_for("b"));
 }
 
 #[test]

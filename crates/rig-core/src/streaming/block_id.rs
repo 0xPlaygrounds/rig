@@ -101,11 +101,18 @@ pub enum BlockId {
     /// An identifier the provider put on the wire.
     Wire(String),
     /// A key rig minted at a stream boundary because the wire supplied none.
+    ///
+    /// The `index` is **per stream**: each model turn opens its own stream
+    /// and its own mint sequence, so two turns each mint
+    /// `minted:reasoning:0`. A minted id is unique within its turn only;
+    /// anything keyed across turns must pair it with the turn (the agent's
+    /// per-dispatch state is keyed by `EffectId`, which is unique per
+    /// dispatch, for exactly this reason).
     Minted {
         /// The subsystem that minted this key.
         kind: MintKind,
         /// Position within the mint's own sequence (a counter or the wire's
-        /// unsigned index).
+        /// unsigned index) — restarted for every stream.
         index: u64,
     },
 }
