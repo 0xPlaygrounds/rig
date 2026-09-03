@@ -158,6 +158,12 @@ impl Dispatcher {
     /// `F` now rather than at first dispatch: asking for a [`ModelHandle`]
     /// at a tool key is `HandlerUnavailable` here.
     pub fn handle<F: Family>(&self, key: &HandlerKey) -> Result<Handle<F>, ErrorReport> {
+        // Lifecycle before wiring: on a closed bus the table is empty
+        // because the driver is gone, and that is the answer — not
+        // "nothing serves the key".
+        if self.is_closed() {
+            return Err(super::dispatcher::bus_closed());
+        }
         let descriptor = self
             .descriptor(key)
             .ok_or_else(|| super::dispatcher::handler_unavailable(key))?;
