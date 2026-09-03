@@ -24,13 +24,14 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_bus::{Bus, ModelHandle, ToolHandle};
 use rig_core::{
-    bus::{Bus, EffectLogReplayer, ModelHandle, ToolHandle},
     completion::CompletionRequestBuilder,
-    effect::{EffectFamily, EffectLog},
+    effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
 };
+use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -127,9 +128,9 @@ impl Scenario {
 
     fn builder(self) -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
         AgentBuilder::with_bus_config(
-            rig_core::bus::BusConfig {
+            rig_bus::BusConfig {
                 serial_per_handler: self.serial_per_handler,
-                ..rig_core::bus::BusConfig::default()
+                ..rig_bus::BusConfig::default()
             },
             "default",
             self.model(),
@@ -280,12 +281,12 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         "the hand driver's record is the reference log's head"
     );
     let continuation: EffectLog = reference_log.tail(partial_log.len());
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::bus::BusConfig {
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_bus::BusConfig {
         serial_per_handler: scenario.serial_per_handler,
-        ..rig_core::bus::BusConfig::default()
+        ..rig_bus::BusConfig::default()
     });
     EffectLogReplayer::register_all(&continuation, &mut driver).expect("fresh keys");
-    let recorder = rig_core::bus::EffectLogRecorder::new();
+    let recorder = EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let replay_task = tokio::spawn(driver);
     let model_key = reference_log[0].key.clone();
@@ -302,7 +303,7 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
             .tool_server_handle({
                 let server = rig_agent::tool::server::ToolServer::new().run();
                 server.add_registered_tool(
-                    rig_core::tool::RegisteredTool::from_handler(tool_replayer)
+                    rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
                         .expect("a tool-family replayer"),
                 );
                 server
@@ -465,7 +466,7 @@ async fn a_hooks_decision_is_program_not_record() {
                     .tool_server_handle({
                         let server = rig_agent::tool::server::ToolServer::new().run();
                         server.add_registered_tool(
-                            rig_core::tool::RegisteredTool::from_handler(tool_replayer)
+                            rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
                                 .expect("tool"),
                         );
                         server

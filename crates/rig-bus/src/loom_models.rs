@@ -19,12 +19,14 @@ use std::{
 use futures::channel::oneshot;
 use loom::{sync::Arc, thread};
 
+use rig_core::serve::{ErasedHandler, Serve};
+
 use super::{
-    Bus, ErasedHandler, Serve,
+    Bus,
     dispatcher::{Command, Enqueue, Reply, Shared},
     registrar::{Mailbox, Registration},
 };
-use crate::effect::{EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey};
+use rig_core::effect::{EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey};
 
 /// A waker that records that it was woken.
 struct Recording(AtomicBool);
@@ -41,7 +43,7 @@ fn recording() -> (std::sync::Arc<Recording>, Waker) {
     (flag, waker)
 }
 
-type Receiver = oneshot::Receiver<Result<crate::effect::Outcome, crate::error::ErrorReport>>;
+type Receiver = oneshot::Receiver<Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>>;
 
 fn command(id: u64) -> (Box<Command>, Receiver) {
     let (reply, receiver) = oneshot::channel();
@@ -100,7 +102,7 @@ fn loom_close_fails_what_the_driver_never_took() {
         if !saw_closed {
             match receiver.try_recv() {
                 Ok(Some(Err(report))) => {
-                    assert_eq!(report.kind, crate::error::ErrorKind::BusClosed);
+                    assert_eq!(report.kind, rig_core::error::ErrorKind::BusClosed);
                 }
                 other => panic!("the buffered command was not failed: {other:?}"),
             }
@@ -111,7 +113,7 @@ fn loom_close_fails_what_the_driver_never_took() {
 struct Nothing;
 
 impl Serve for Nothing {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -120,7 +122,7 @@ impl Serve for Nothing {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, _sink: super::OutcomeSink) {}
+    async fn serve(&self, _kind: EffectKind, _sink: rig_core::serve::OutcomeSink) {}
 }
 
 /// A registration posted before a dispatch (program order on the

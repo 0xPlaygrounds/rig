@@ -26,8 +26,8 @@ use std::{collections::VecDeque, pin::Pin};
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
 
+use rig_bus::MemoryHandle;
 use rig_core::{
-    bus::MemoryHandle,
     completion::{FinishReason, ModelRef, ResponseIdentity},
     effect::{EffectId, EffectKind, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -1645,7 +1645,7 @@ pub(crate) async fn append_run_messages(
 pub(crate) async fn dispatch_effect(
     hooks: &HookStack,
     ctx: &HookContext,
-    dispatcher: &rig_core::bus::Dispatcher,
+    dispatcher: &rig_bus::Dispatcher,
     key: &rig_core::effect::HandlerKey,
     kind: EffectKind,
 ) -> Result<Outcome, ErrorReport> {
@@ -2159,7 +2159,7 @@ pub(crate) async fn dispatch_completion(
         return Ok(CompletionDispatch::Stream {
             id,
             kind: Box::new(kind),
-            stream: rig_core::bus::wrap_stream(provider, events),
+            stream: rig_bus::wrap_stream(provider, events),
         });
     }
     let outcome = dispatcher

@@ -9,8 +9,8 @@ use std::{
 };
 
 use super::*;
-use crate::message::{ImageMediaType, ToolResultContent};
-use crate::tool::{ContextValue, ToolErrorKind};
+use rig_core::message::{ImageMediaType, ToolResultContent};
+use rig_core::tool::{ContextValue, ToolErrorKind, ToolOutput};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
 struct Counter(u32);

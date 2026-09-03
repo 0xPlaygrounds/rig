@@ -312,7 +312,7 @@ impl std::fmt::Debug for Scratchpad {
 #[derive(Debug)]
 pub struct HookContext {
     /// The bus the run dispatches through, when it has one.
-    dispatcher: Option<rig_core::bus::Dispatcher>,
+    dispatcher: Option<rig_bus::Dispatcher>,
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
@@ -337,7 +337,7 @@ impl HookContext {
     pub(crate) fn new(
         is_streaming: bool,
         agent_name: Option<String>,
-        dispatcher: Option<rig_core::bus::Dispatcher>,
+        dispatcher: Option<rig_bus::Dispatcher>,
     ) -> Self {
         Self {
             dispatcher,
@@ -399,7 +399,7 @@ impl HookContext {
 
     /// The run's bus, for a hook binding a typed view; fails when the
     /// context was built outside a run.
-    fn bus(&self) -> Result<&rig_core::bus::Dispatcher, ErrorReport> {
+    fn bus(&self) -> Result<&rig_bus::Dispatcher, ErrorReport> {
         self.dispatcher.as_ref().ok_or_else(|| {
             ErrorReport::new(
                 ErrorKind::BusClosed,
@@ -418,7 +418,7 @@ impl HookContext {
     #[track_caller]
     pub fn bind<'ctx, F: rig_core::effect::Family>(
         &'ctx self,
-        key: &rig_core::bus::Key<F>,
+        key: &rig_core::effect::Key<F>,
     ) -> Result<RunHandle<'ctx, F>, ErrorReport> {
         self.bus()?.bind(key).map(RunHandle::scoped)
     }
@@ -1758,16 +1758,16 @@ impl AgentHook for HookStack {
 /// A typed view a hook bound through its [`HookContext`], scoped to the
 /// run by its lifetime: it is `!'static`, so a hook cannot store it in a
 /// field or move it into a spawned task — the compiler refuses. It offers
-/// the family-generic API of [`Handle`](rig_core::bus::Handle) by
+/// the family-generic API of [`Handle`](rig_bus::Handle) by
 /// delegation rather than `Deref` (a `Deref` to the `Clone` handle would
 /// hand back an owned `'static` view through `.clone()`, which is the one
 /// thing this type exists to prevent). A host that wants an owned handle
-/// takes it from a [`Dispatcher`](rig_core::bus::Dispatcher) it holds
+/// takes it from a [`Dispatcher`](rig_bus::Dispatcher) it holds
 /// itself.
 ///
 /// ```compile_fail
 /// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::{bus::Key, effect::family};
+/// use rig_core::effect::{Key, family};
 ///
 /// fn escape(ctx: &HookContext, key: &Key<family::Completion>) {
 ///     let handle = ctx.bind(key).unwrap();
@@ -1780,7 +1780,7 @@ impl AgentHook for HookStack {
 ///
 /// ```compile_fail
 /// use rig_agent::agent::{HookContext, RunHandle};
-/// use rig_core::{bus::Key, effect::family};
+/// use rig_core::effect::{Key, family};
 ///
 /// struct Stash {
 ///     kept: std::sync::Mutex<Option<RunHandle<'static, family::Completion>>>,
@@ -1791,12 +1791,12 @@ impl AgentHook for HookStack {
 /// }
 /// ```
 pub struct RunHandle<'ctx, F: rig_core::effect::Family> {
-    inner: rig_core::bus::Handle<F>,
+    inner: rig_bus::Handle<F>,
     _run: std::marker::PhantomData<&'ctx HookContext>,
 }
 
 impl<'ctx, F: rig_core::effect::Family> RunHandle<'ctx, F> {
-    fn scoped(inner: rig_core::bus::Handle<F>) -> Self {
+    fn scoped(inner: rig_bus::Handle<F>) -> Self {
         Self {
             inner,
             _run: std::marker::PhantomData,
@@ -1804,7 +1804,7 @@ impl<'ctx, F: rig_core::effect::Family> RunHandle<'ctx, F> {
     }
 
     /// Dispatch a typed request of this family.
-    pub fn dispatch(&self, request: F::Request) -> rig_core::bus::Typed<F> {
+    pub fn dispatch(&self, request: F::Request) -> rig_bus::Typed<F> {
         self.inner.dispatch(request)
     }
 
@@ -1831,7 +1831,7 @@ impl RunHandle<'_, rig_core::effect::family::Retrieve> {
         req: rig_core::vector_store::request::VectorSearchRequest<
             rig_core::vector_store::request::Filter<serde_json::Value>,
         >,
-    ) -> rig_core::bus::Retrieval<T> {
+    ) -> rig_bus::Retrieval<T> {
         self.inner.top_n(req)
     }
 }
@@ -1841,7 +1841,7 @@ impl RunHandle<'_, rig_core::effect::family::Completion> {
     pub fn complete(
         &self,
         request: rig_core::completion::CompletionRequest,
-    ) -> rig_core::bus::Completion {
+    ) -> rig_bus::Completion {
         self.inner.complete(request)
     }
 

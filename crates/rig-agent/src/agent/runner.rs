@@ -80,7 +80,7 @@ pub struct AgentRunner {
 /// [`AgentRunner::resolve_history_and_memory`].
 pub(crate) type HistoryAndMemory = (
     Option<Vec<Message>>,
-    Option<(rig_core::bus::MemoryHandle, rig_core::id::ConversationId)>,
+    Option<(rig_bus::MemoryHandle, rig_core::id::ConversationId)>,
 );
 
 impl AgentRunner {

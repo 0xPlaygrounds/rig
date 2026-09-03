@@ -13,11 +13,12 @@ use rig_agent::{
     AgentBuilder,
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_bus::Bus;
 use rig_core::{
-    bus::{Bus, EffectLogReplayer},
     effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
 };
+use rig_effect_log::EffectLogReplayer;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -108,7 +109,7 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     // The examples-doc flow: save the session, restore it, replay it with
     // no model and no tool behind the keys.
     let saved = serde_json::to_string(&log).expect("log serializes");
-    let restored: rig_core::effect::EffectLog = serde_json::from_str(&saved).expect("restores");
+    let restored: rig_effect_log::EffectLog = serde_json::from_str(&saved).expect("restores");
     let (dispatcher, registrar, mut driver) = Bus::channel();
     EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
     let replay_task = tokio::spawn(driver);
@@ -127,7 +128,7 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
                 // key: the catalog advertises the tool, the bus answers from the
                 // log, and no `Slow` exists on this side at all.
                 server.add_registered_tool(
-                    rig_core::tool::RegisteredTool::from_handler(tool_replayer)
+                    rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
                         .expect("a tool-family replayer"),
                 );
                 server

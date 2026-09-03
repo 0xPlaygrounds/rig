@@ -9808,9 +9808,11 @@ dependencies = [
  "reqwest-retry",
  "rig-agent",
  "rig-bedrock",
+ "rig-bus",
  "rig-candle",
  "rig-core",
  "rig-derive",
+ "rig-effect-log",
  "rig-fastembed",
  "rig-gemini-grpc",
  "rig-helixdb",
@@ -9863,8 +9865,10 @@ dependencies = [
  "http 1.4.2",
  "indexmap 2.14.0",
  "loom",
+ "rig-bus",
  "rig-core",
  "rig-derive",
+ "rig-effect-log",
  "rig-reqwest",
  "schemars 1.2.1",
  "serde",
@@ -9900,6 +9904,19 @@ dependencies = [
  "tracing-futures",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "rig-bus"
+version = "0.42.0"
+dependencies = [
+ "futures",
+ "loom",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -9939,7 +9956,6 @@ dependencies = [
  "glob",
  "http 1.4.2",
  "indexmap 2.14.0",
- "loom",
  "lopdf",
  "mime",
  "mime_guess",
@@ -9979,6 +9995,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rig-agent",
+ "rig-bus",
  "rig-core",
  "rig-reqwest",
  "schemars 1.2.1",
@@ -9988,6 +10005,18 @@ dependencies = [
  "tokio",
  "tracing-subscriber",
  "trybuild",
+]
+
+[[package]]
+name = "rig-effect-log"
+version = "0.42.0"
+dependencies = [
+ "futures",
+ "rig-bus",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -10311,7 +10340,9 @@ dependencies = [
  "futures",
  "proptest",
  "rig-agent",
+ "rig-bus",
  "rig-core",
+ "rig-effect-log",
  "serde",
  "serde_json",
  "tokio",

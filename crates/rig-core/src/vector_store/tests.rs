@@ -124,8 +124,10 @@ async fn dynamic_native_filter_preserves_backend_documents() {
         .filter(Filter::eq("tag", json!("example")))
         .build();
 
-    let outcome = crate::bus::serve_inline(
-        &crate::bus::ErasedHandler::new(crate::bus::adapters::RetrieveAdapter::new(NativeIndex)),
+    let outcome = crate::serve::serve_inline(
+        &crate::serve::ErasedHandler::new(crate::serve::adapters::RetrieveAdapter::new(
+            NativeIndex,
+        )),
         crate::effect::EffectKind::Retrieve {
             query: crate::effect::RetrieveQuery::TopN { req: request },
         },

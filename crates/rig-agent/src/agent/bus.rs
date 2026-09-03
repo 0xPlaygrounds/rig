@@ -27,15 +27,15 @@ use super::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
+use rig_bus::{BusDriver, Dispatcher, Registrar};
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
-    bus::{
-        BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Key, Registrar,
-        adapters::CompletionAdapter,
-    },
     completion::{CompletionModel, ModelRef},
-    effect::{EffectLog, HandlerKey, family},
+    effect::{HandlerKey, Key, family},
     error::ErrorReport,
 };
+use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 /// The per-process counter behind an agent's default owner label.
 static NEXT_AGENT: AtomicU64 = AtomicU64::new(0);
@@ -196,7 +196,7 @@ impl AgentBus {
 
     /// The key this agent mints for the model labelled `label`.
     pub(crate) fn model_key(&self, label: &str) -> Key<family::Completion> {
-        self.key(rig_core::bus::model_key(label).as_str())
+        self.key(rig_core::effect::model_key(label).as_str())
     }
 
     /// The label under `key` when it is a model key this agent minted.

@@ -4,17 +4,15 @@ use futures::StreamExt;
 use serde_json::json;
 
 use super::*;
-use crate::{
-    bus::{
-        Bus,
-        adapters::{CompletionAdapter, EmbedAdapter, MemoryAdapter, ToolAdapter},
-    },
+use crate::Bus;
+use rig_core::{
     completion::{CompletionRequest, Message},
     effect::{EffectFamily, HandlerKey, family},
     embeddings::{Embedding, EmbeddingModel, EmbeddingResponse},
     error::ErrorKind,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
+    serve::adapters::{CompletionAdapter, EmbedAdapter, MemoryAdapter, ToolAdapter},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolExecutionError},
 };
@@ -66,7 +64,7 @@ impl EmbeddingModel for Tiny {
     async fn embed_texts_response(
         &self,
         texts: impl IntoIterator<Item = String> + Send,
-    ) -> Result<EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    ) -> Result<EmbeddingResponse, rig_core::embeddings::EmbeddingError> {
         Ok(EmbeddingResponse::new(
             texts
                 .into_iter()
@@ -95,11 +93,7 @@ fn request() -> CompletionRequest {
     }
 }
 
-fn bus() -> (
-    Dispatcher,
-    crate::bus::Registrar,
-    tokio::task::JoinHandle<()>,
-) {
+fn bus() -> (Dispatcher, crate::Registrar, tokio::task::JoinHandle<()>) {
     let (dispatcher, registrar, mut driver) = Bus::channel();
     driver
         .register(
@@ -180,8 +174,8 @@ async fn model_handle_completes_and_streams() {
     let mut stream = streamer.stream(request());
     let mut text = String::new();
     while let Some(event) = within(stream.next()).await {
-        if let crate::streaming::StreamEvent::BlockDelta {
-            delta: crate::streaming::Delta::Text { text: piece },
+        if let rig_core::streaming::StreamEvent::BlockDelta {
+            delta: rig_core::streaming::Delta::Text { text: piece },
             ..
         } = event.expect("event")
         {
@@ -229,7 +223,7 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
         .handle(&HandlerKey::from("double"))
         .expect("tool");
     assert_eq!(tool.name(), "double");
-    let crate::effect::ToolAnswer { result, .. } =
+    let rig_core::effect::ToolAnswer { result, .. } =
         within(tool.call("double", r#"{"x": 21}"#, ToolContext::new()))
             .await
             .expect("called");

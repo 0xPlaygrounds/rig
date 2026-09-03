@@ -10,13 +10,13 @@ use std::{
 use futures::{FutureExt, StreamExt, channel::oneshot, future::poll_fn, task::noop_waker_ref};
 use serde_json::json;
 
-use super::{
-    Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, Key, ModelHandle,
-    OutcomeSink, Registrar, Serve,
+use super::{Bus, BusConfig, BusDriver, Dispatcher, ModelHandle, Registrar};
+use rig_core::effect::{CustomEffect, Key};
+use rig_core::serve::{
+    OutcomeSink, Serve,
     adapters::{CompletionAdapter, MemoryAdapter, RerankAdapter, ToolAdapter, ToolFn},
 };
-use crate::effect::CustomEffect;
-use crate::{
+use rig_core::{
     completion::{CompletionRequest, Message},
     effect::{
         EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
@@ -96,7 +96,7 @@ impl Echo {
 }
 
 impl Serve for Echo {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -133,7 +133,7 @@ struct Ordered {
 }
 
 impl Serve for Ordered {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -587,7 +587,7 @@ impl SelfCaller {
 }
 
 impl Serve for SelfCaller {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -760,7 +760,7 @@ async fn streaming_completion_flows_through_the_bus_final_terminated() {
         .iter()
         .filter_map(|event| match event {
             StreamEvent::BlockDelta {
-                delta: crate::streaming::Delta::Text { text },
+                delta: rig_core::streaming::Delta::Text { text },
                 ..
             } => Some(text.as_str()),
             _ => None,
@@ -820,7 +820,7 @@ async fn dropping_the_stream_cancels_the_handler() {
         cancelled: Arc<AtomicUsize>,
     }
     impl Serve for Chatty {
-        type Family = crate::effect::family::Dynamic;
+        type Family = rig_core::effect::family::Dynamic;
 
         fn descriptor(&self) -> HandlerDescriptor {
             HandlerDescriptor {
@@ -918,7 +918,7 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
                         Ok(ToolOutput::text(
                             args["text"].as_str().unwrap_or_default().to_uppercase(),
                         ))
-                    }) as crate::wasm_compat::WasmBoxedFuture<'_, _>
+                    }) as rig_core::wasm_compat::WasmBoxedFuture<'_, _>
                 },
             ),
         )
@@ -996,112 +996,6 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
         .await
         .expect_err("wrong family");
     assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
-}
-
-#[tokio::test]
-async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
-    let recorder = EffectLogRecorder::new();
-    let log = {
-        let (dispatcher, _registrar, mut driver) = Bus::channel();
-        driver
-            .register("add", ToolAdapter::new(Add))
-            .expect("register");
-        driver
-            .register(
-                "model",
-                CompletionAdapter::new(
-                    "mock",
-                    MockCompletionModel::from_stream_turns([vec![
-                        MockStreamEvent::text("streamed"),
-                        MockStreamEvent::final_response_with_total_tokens(2),
-                    ]]),
-                ),
-            )
-            .expect("register");
-        driver.record_to(recorder.clone());
-        let _task = spawn(driver);
-
-        within(dispatcher.dispatch(
-            &HandlerKey::from("add"),
-            EffectKind::ToolCall {
-                name: "add".into(),
-                args: r#"{"a": 1, "b": 1}"#.into(),
-                context: ToolContext::new(),
-            },
-        ))
-        .await
-        .expect("served");
-        let events: Vec<_> = within(
-            dispatcher
-                .dispatch_stream(&HandlerKey::from("model"), completion_kind(true))
-                .collect(),
-        )
-        .await;
-        assert!(events.iter().all(Result::is_ok));
-        within(dispatcher.dispatch(&HandlerKey::from("nope"), custom(json!(0))))
-            .await
-            .expect_err("unknown keys are not served, so not recorded");
-        recorder.take()
-    };
-    assert_eq!(log.len(), 2, "one record per served dispatch");
-    assert_eq!(log[0].key.as_str(), "add");
-    assert_eq!(log[1].key.as_str(), "model");
-    assert!(matches!(
-        &log[1].outcome,
-        Ok(Outcome::Completion(response)) if response.choice == vec![AssistantContent::text("streamed")]
-    ));
-
-    // Serialize, deserialize, replay: the same dispatches get the same answers
-    // with no model or tool behind the keys.
-    let json = serde_json::to_string(&log).expect("log serializes");
-    let restored: crate::effect::EffectLog = serde_json::from_str(&json).expect("log restores");
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
-    assert_eq!(
-        dispatcher
-            .descriptor(&HandlerKey::from("model"))
-            .expect("replayer registered")
-            .family
-            .family(),
-        EffectFamily::Completion
-    );
-    let _task = spawn(driver);
-    // The same dispatch — name and arguments — gets the recorded answer; a
-    // different payload is a divergence, never a guess (pinned separately).
-    let replayed = within(dispatcher.dispatch(
-        &HandlerKey::from("add"),
-        EffectKind::ToolCall {
-            name: "add".into(),
-            args: r#"{"a": 1, "b": 1}"#.into(),
-            context: ToolContext::new(),
-        },
-    ))
-    .await
-    .expect("replayed");
-    let Outcome::ToolResult { result, .. } = replayed else {
-        panic!("expected a tool result");
-    };
-    assert_eq!(result.output().as_json(), Some(&json!(2)));
-    // A recorded completion answers a stream dispatch as events + Final.
-    let events: Vec<_> = within(
-        dispatcher
-            .dispatch_stream(&HandlerKey::from("model"), completion_kind(true))
-            .collect(),
-    )
-    .await;
-    let events: Vec<StreamEvent> = events.into_iter().map(|e| e.expect("ok")).collect();
-    assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, StreamEvent::BlockDelta { .. }))
-    );
-    // Past the log: a divergence, never a hang.
-    let report = within(dispatcher.dispatch(&HandlerKey::from("add"), custom(json!(1))))
-        .await
-        .expect_err("ran out");
-    assert_eq!(report.kind, ErrorKind::Internal);
-    assert!(report.message.contains("replay divergence"));
 }
 
 #[tokio::test]
@@ -1197,7 +1091,7 @@ impl Drop for DropFlag {
 }
 
 impl Serve for Hanging {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1279,90 +1173,6 @@ fn an_effect_stream_polls_cleanly_without_any_runtime() {
     assert!(items.iter().all(Result::is_ok), "{items:?}");
 }
 
-#[tokio::test]
-async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() {
-    let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver
-        .register(
-            "ordered",
-            Ordered {
-                served: Arc::new(Mutex::new(Vec::new())),
-            },
-        )
-        .expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let key = HandlerKey::from("ordered");
-    // The first dispatch is slow, the second fast: they *resolve* in the
-    // order 2, 1 but were dispatched 1, 2.
-    let slow = dispatcher.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60})));
-    let fast = dispatcher.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0})));
-    let (slow, fast) = within(futures::future::join(slow, fast)).await;
-    assert!(matches!(slow, Ok(Outcome::Custom(ref v)) if *v == json!(1)));
-    assert!(matches!(fast, Ok(Outcome::Custom(ref v)) if *v == json!(2)));
-    let log = recorder.take();
-    let indexes: Vec<u64> = log
-        .iter()
-        .map(|record| match &record.kind {
-            EffectKind::Custom { payload, .. } => payload["index"].as_u64().unwrap_or(0),
-            _ => 0,
-        })
-        .collect();
-    assert_eq!(
-        indexes,
-        vec![1, 2],
-        "the log is in dispatch order, not resolution order"
-    );
-    assert!(log[0].id < log[1].id);
-
-    // Replay hands each dispatch its own recorded outcome.
-    let (replay_dispatcher, _registrar, mut replay_driver) = Bus::channel();
-    EffectLogReplayer::register_all(&log, &mut replay_driver).expect("fresh keys");
-    let _replay = spawn(replay_driver);
-    let first =
-        within(replay_dispatcher.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60}))))
-            .await
-            .expect("replayed");
-    let second =
-        within(replay_dispatcher.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0}))))
-            .await
-            .expect("replayed");
-    assert!(
-        matches!(first, Outcome::Custom(ref v) if *v == json!(1)),
-        "{first:?}"
-    );
-    assert!(
-        matches!(second, Outcome::Custom(ref v) if *v == json!(2)),
-        "{second:?}"
-    );
-}
-
-#[tokio::test]
-async fn replaying_a_changed_payload_is_a_divergence_not_a_guess() {
-    let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let key = HandlerKey::from("echo");
-    within(dispatcher.dispatch(&key, custom(json!("recorded"))))
-        .await
-        .expect("served");
-    let log = recorder.take();
-
-    let (replay_dispatcher, _registrar, mut replay_driver) = Bus::channel();
-    EffectLogReplayer::register_all(&log, &mut replay_driver).expect("fresh keys");
-    let _replay = spawn(replay_driver);
-    let report = within(replay_dispatcher.dispatch(&key, custom(json!("different"))))
-        .await
-        .expect_err("a different payload does not replay the recorded answer");
-    assert_eq!(report.kind, ErrorKind::Internal);
-    assert!(report.message.contains("replay divergence"), "{report:?}");
-    assert!(report.message.contains("differs"), "{report:?}");
-}
-
 #[test]
 fn register_refuses_a_family_change_under_a_live_key() {
     let (dispatcher, registrar, mut driver) = Bus::channel();
@@ -1386,114 +1196,6 @@ fn register_refuses_a_family_change_under_a_live_key() {
     assert_eq!(served.load(Ordering::SeqCst), 1);
     let (replacement, _) = Echo::new();
     registrar.register("k", replacement).expect("same family");
-}
-
-/// Sends one text event and drops its sink before the terminal.
-struct CutShort;
-
-impl Serve for CutShort {
-    type Family = crate::effect::family::Dynamic;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: HandlerKey::from("cut"),
-            family: FamilyDescriptor::Completion {
-                model: crate::completion::ModelRef::new("cut"),
-                capabilities: crate::completion::ProviderCapabilities::default(),
-            },
-        }
-    }
-
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        let mut out = sink.writer();
-        let _ = out.text("partial").await;
-        // Dropped here, before any `Final`.
-    }
-}
-
-#[tokio::test]
-async fn a_stream_that_ends_without_final_is_reported_and_recorded() {
-    let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver.register("cut", CutShort).expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("cut"), completion_kind(true));
-    let mut items = Vec::new();
-    while let Some(item) = within(stream.next()).await {
-        items.push(item);
-    }
-    let last = items.last().expect("the truncation is an item");
-    let report = last.as_ref().expect_err("the truncation is an error item");
-    assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-    assert!(report.message.contains("before its terminal"), "{report:?}");
-    // Give the driver a moment to observe the dropped sink, then the log
-    // holds the same failure the consumer saw.
-    within(async {
-        loop {
-            let log = recorder.log();
-            if !log.is_empty() {
-                break log;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await;
-    let log = recorder.take();
-    assert_eq!(log.len(), 1);
-    let recorded = log[0]
-        .outcome
-        .as_ref()
-        .expect_err("recorded as the failure it was");
-    assert_eq!(recorded.kind, ErrorKind::Response);
-}
-
-/// Answers a stream dispatch with a non-completion outcome.
-struct WrongFamilyAnswer;
-
-impl Serve for WrongFamilyAnswer {
-    type Family = crate::effect::family::Dynamic;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: HandlerKey::from("wrong"),
-            family: FamilyDescriptor::Completion {
-                model: crate::completion::ModelRef::new("wrong"),
-                capabilities: crate::completion::ProviderCapabilities::default(),
-            },
-        }
-    }
-
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Ok(Outcome::Custom(json!("not a completion"))))
-            .await;
-    }
-}
-
-#[tokio::test]
-async fn the_tap_records_what_the_consumer_receives() {
-    let recorder = EffectLogRecorder::new();
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver
-        .register("wrong", WrongFamilyAnswer)
-        .expect("register");
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("wrong"), completion_kind(true));
-    let mut items = Vec::new();
-    while let Some(item) = within(stream.next()).await {
-        items.push(item);
-    }
-    assert_eq!(items.len(), 1);
-    let report = items[0].as_ref().expect_err("delivered as an error");
-    assert_eq!(report.kind, ErrorKind::Internal);
-    let log = recorder.take();
-    let recorded = log[0]
-        .outcome
-        .as_ref()
-        .expect_err("recorded as the same error");
-    assert_eq!(recorded.kind, ErrorKind::Internal);
-    assert_eq!(recorded.message, report.message);
 }
 
 // ---- the registrar: descriptors now, handlers on the driver's next poll ----
@@ -1571,7 +1273,7 @@ struct RegistersOnDrop {
 }
 
 impl Serve for RegistersOnDrop {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1629,7 +1331,7 @@ async fn a_displaced_handler_is_dropped_outside_every_lock() {
 struct DropCounter(Arc<AtomicUsize>);
 
 impl Serve for DropCounter {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1690,7 +1392,7 @@ struct Reply {
     text: String,
 }
 
-impl crate::effect::CustomEffect for AskUser {
+impl rig_core::effect::CustomEffect for AskUser {
     const KIND: &'static str = "test:ask_user";
     type Answer = Reply;
 }
@@ -1702,7 +1404,7 @@ struct AskUserHandler {
 }
 
 impl Serve for AskUserHandler {
-    type Family = crate::effect::family::Custom<AskUser>;
+    type Family = rig_core::effect::family::Custom<AskUser>;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1735,7 +1437,7 @@ impl Serve for AskUserHandler {
 #[tokio::test]
 async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_family() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let key: Key<crate::effect::family::Completion> = driver
+    let key: Key<rig_core::effect::family::Completion> = driver
         .register_typed(
             "model",
             CompletionAdapter::new(
@@ -1751,7 +1453,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
         json!("model"),
         "on the wire a typed key is the bare string"
     );
-    let back: Key<crate::effect::family::Completion> =
+    let back: Key<rig_core::effect::family::Completion> =
         serde_json::from_value(json!("model")).expect("deserializes");
     assert_eq!(back, key);
     let _task = spawn(driver);
@@ -1767,7 +1469,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
 
     // A key asserted for the wrong family fails at bind, not silently.
-    let lie: Key<crate::effect::family::Tool> = Key::new_unchecked(HandlerKey::from("model"));
+    let lie: Key<rig_core::effect::family::Tool> = Key::new_unchecked(HandlerKey::from("model"));
     let report = dispatcher
         .bind(&lie)
         .expect_err("a completion is not a tool");
@@ -1778,7 +1480,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
 async fn register_typed_refuses_a_handler_of_another_family() {
     let (_dispatcher, registrar, _driver) = Bus::channel();
     let report = registrar
-        .register_typed::<crate::effect::family::Tool>(
+        .register_typed::<rig_core::effect::family::Tool>(
             "model",
             CompletionAdapter::new("mock", MockCompletionModel::text("x")),
         )
@@ -1799,7 +1501,7 @@ async fn register_typed_refuses_a_handler_of_another_family() {
 async fn a_custom_effect_round_trips_through_a_typed_handle() {
     let (dispatcher, registrar, driver) = Bus::channel();
     let key = registrar
-        .register_typed::<crate::effect::family::Custom<AskUser>>(
+        .register_typed::<rig_core::effect::family::Custom<AskUser>>(
             "ask",
             AskUserHandler { misbehave: false },
         )
@@ -1835,7 +1537,7 @@ async fn a_custom_effect_round_trips_through_a_typed_handle() {
     // A different kind under the key is refused at bind.
     #[derive(serde::Serialize, serde::Deserialize)]
     struct Other;
-    impl crate::effect::CustomEffect for Other {
+    impl rig_core::effect::CustomEffect for Other {
         const KIND: &'static str = "test:other";
         type Answer = ();
     }
@@ -1846,7 +1548,7 @@ async fn a_custom_effect_round_trips_through_a_typed_handle() {
     assert!(report.message.contains("test:other"), "{}", report.message);
 }
 
-fn completion_request_value() -> crate::completion::CompletionRequest {
+fn completion_request_value() -> rig_core::completion::CompletionRequest {
     match completion_kind(false) {
         EffectKind::Completion { request, .. } => request,
         other => panic!("a completion kind, got {}", other.name()),
@@ -1867,7 +1569,7 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
     let (_guard, cancel) = oneshot::channel();
     let offered = shared.enqueue(
         Box::new(super::dispatcher::Command {
-            id: crate::effect::EffectId::from_raw(9),
+            id: rig_core::effect::EffectId::from_raw(9),
             key: HandlerKey::from("echo"),
             kind: custom(json!(1)),
             reply: super::dispatcher::Reply::Unary(reply),
@@ -1900,142 +1602,6 @@ async fn a_registration_posted_just_before_a_dispatch_serves_it_whichever_poll_e
 
 // ---- the log carries its header; streams can be recorded verbatim ----
 
-#[tokio::test]
-async fn a_log_carries_its_header_and_a_replay_checks_it() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    let recorder = EffectLogRecorder::new();
-    driver.record_to(recorder.clone());
-    let _task = spawn(driver);
-    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"n": 1}))))
-        .await
-        .expect("served");
-    let log = recorder.take();
-    assert_eq!(log.header.format, crate::effect::EFFECT_LOG_FORMAT);
-    assert_eq!(log.header.run_spec, None, "a bare-bus record names no spec");
-    assert_eq!(
-        log.header
-            .handlers
-            .iter()
-            .map(|descriptor| descriptor.key.clone())
-            .collect::<Vec<_>>(),
-        [HandlerKey::from("echo")],
-        "the handlers registered when recording began"
-    );
-    assert_eq!(
-        log.header.signature.get(&HandlerKey::from("echo")),
-        Some(&EffectFamily::Custom),
-        "the effect signature, read off the trace"
-    );
-    let json = serde_json::to_value(&log).expect("serializes");
-    assert!(json.get("header").is_some() && json.get("records").is_some());
-    let back: crate::effect::EffectLog = serde_json::from_value(json).expect("restores");
-    assert_eq!(back.header, log.header);
-    assert_eq!(back.len(), 1);
-
-    // A future format is refused with the version in the message.
-    let mut future = back.clone();
-    future.header.format = crate::effect::EFFECT_LOG_FORMAT + 1;
-    let (_dispatcher, _registrar, mut driver) = Bus::channel();
-    let report = EffectLogReplayer::register_all(&future, &mut driver).expect_err("refused");
-    assert!(
-        report
-            .message
-            .contains(&format!("format {}", crate::effect::EFFECT_LOG_FORMAT + 1)),
-        "{}",
-        report.message
-    );
-
-    // A signature that names a family the records do not answer is refused
-    // at registration, not at the first dispatch.
-    let mut lying = back.clone();
-    lying
-        .header
-        .signature
-        .insert(HandlerKey::from("echo"), EffectFamily::Completion);
-    let (_dispatcher, _registrar, mut driver) = Bus::channel();
-    let report = EffectLogReplayer::register_all(&lying, &mut driver).expect_err("refused");
-    assert!(
-        report
-            .message
-            .contains("signature says `echo` serves completion"),
-        "{}",
-        report.message
-    );
-    assert!(
-        driver.registrar().keys().is_empty(),
-        "nothing was registered"
-    );
-}
-
-#[tokio::test]
-async fn a_stream_recorded_verbatim_replays_its_own_events() {
-    let events = || {
-        vec![
-            MockStreamEvent::text("hel"),
-            MockStreamEvent::text("lo"),
-            MockStreamEvent::final_response_with_default_usage(),
-        ]
-    };
-    let record = |recorder: EffectLogRecorder| async move {
-        let (dispatcher, _registrar, mut driver) = Bus::channel();
-        driver
-            .register(
-                "model",
-                CompletionAdapter::new("mock", MockCompletionModel::from_stream_turns([events()])),
-            )
-            .expect("register");
-        driver.record_to(recorder.clone());
-        let _task = spawn(driver);
-        let mut stream =
-            dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
-        let mut seen = 0;
-        while let Some(item) = within(stream.next()).await {
-            item.expect("clean");
-            seen += 1;
-        }
-        (seen, recorder.take())
-    };
-
-    // The default: the fold, no events.
-    let (_, folded) = record(EffectLogRecorder::new()).await;
-    assert!(folded[0].events.is_none());
-    assert!(matches!(folded[0].outcome, Ok(Outcome::Completion(_))));
-
-    // Keeping events: the record holds them verbatim.
-    let (seen, kept) = record(EffectLogRecorder::keeping_stream_events()).await;
-    let recorded = kept[0].events.as_ref().expect("events kept");
-    assert_eq!(recorded.len(), seen, "every event the consumer received");
-    assert!(
-        matches!(kept[0].outcome, Ok(Outcome::Completion(_))),
-        "and still the fold"
-    );
-
-    // A replay of the kept record re-emits the events, delta boundaries and
-    // all; a replay of the folded record re-emits the fold.
-    let replay = |log: crate::effect::EffectLog| async move {
-        let (dispatcher, _registrar, mut driver) = Bus::channel();
-        EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
-        let _task = spawn(driver);
-        let mut stream =
-            dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
-        let mut items = Vec::new();
-        while let Some(item) = within(stream.next()).await {
-            items.push(item.expect("clean"));
-        }
-        items
-    };
-    let recorded = recorded.clone();
-    let from_kept = replay(kept).await;
-    assert_eq!(from_kept, recorded, "the recorded events, verbatim");
-    let from_fold = replay(folded).await;
-    assert_ne!(
-        from_fold, recorded,
-        "the fold re-emits its own boundaries, not the original deltas"
-    );
-}
-
 // ---- the stream writer mints; a handler names no block id ----
 
 #[tokio::test]
@@ -2043,7 +1609,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
     struct Writes;
 
     impl Serve for Writes {
-        type Family = crate::effect::family::Dynamic;
+        type Family = rig_core::effect::family::Dynamic;
 
         fn descriptor(&self) -> HandlerDescriptor {
             HandlerDescriptor {
@@ -2063,9 +1629,9 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
             let _ = out.tool_call("add", json!({"x": 1})).await;
             let _ = out.text("after").await;
             let _ = out
-                .finish(crate::streaming::StreamFinal::new(
+                .finish(rig_core::streaming::StreamFinal::new(
                     "writer",
-                    crate::completion::Usage::new(),
+                    rig_core::completion::Usage::new(),
                 ))
                 .await;
         }
@@ -2112,7 +1678,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
         assert!(ends.contains(id), "block {id} ends before the terminal");
     }
     assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    let mut accumulator = crate::streaming::BlockAccumulator::new();
+    let mut accumulator = rig_core::streaming::BlockAccumulator::new();
     for event in &events {
         accumulator
             .apply(event)
