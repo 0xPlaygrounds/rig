@@ -350,7 +350,9 @@ pub async fn handle_add_tool_uses_canonical_static_name() {
 #[tokio::test]
 pub async fn retrieval_resolves_canonical_key() {
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(NamedTool::new());
+    toolset
+        .add_retrieved_tool(NamedTool::new())
+        .expect("the tool context serializes");
     let handle = ToolServer::new()
         .retrieved_tools(1, MockToolIndex::new([NamedTool::NAME]), toolset)
         .run();

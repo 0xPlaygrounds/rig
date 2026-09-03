@@ -54,8 +54,12 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
         "dynamic_tools/dynamic_tool_retrieved_and_merged_with_static",
         |client| async move {
             let mut toolset = ToolSet::default();
-            toolset.add_retrieved_tool(subtract);
-            toolset.add_retrieved_tool(EmbedMultiply::default());
+            toolset
+                .add_retrieved_tool(subtract)
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedMultiply::default())
+                .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
@@ -97,8 +101,12 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
         "dynamic_tools/dynamic_only_agent_retrieves_tool_per_prompt",
         |client| async move {
             let mut toolset = ToolSet::default();
-            toolset.add_retrieved_tool(add);
-            toolset.add_retrieved_tool(EmbedSubtract::default());
+            toolset
+                .add_retrieved_tool(add)
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedSubtract::default())
+                .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
@@ -134,9 +142,15 @@ async fn sample_caps_retrieved_definitions() {
         "dynamic_tools/sample_caps_retrieved_definitions",
         |client| async move {
             let mut toolset = ToolSet::default();
-            toolset.add_retrieved_tool(EmbedAdd::default());
-            toolset.add_retrieved_tool(EmbedSubtract::default());
-            toolset.add_retrieved_tool(EmbedMultiply::default());
+            toolset
+                .add_retrieved_tool(EmbedAdd::default())
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedSubtract::default())
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedMultiply::default())
+                .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client

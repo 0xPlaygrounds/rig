@@ -132,17 +132,21 @@ impl AgentRunner {
     /// Append an unconditional selecting hook last when the run must always
     /// use one model.
     pub fn using_model(mut self, label: impl Into<ModelRef>) -> Self {
-        self.config.model_key = rig_core::bus::model_key(label.into().as_str());
+        self.config.model_key = self.config.bus.model_key(label.into().as_str());
+        self.config.anonymous_model = None;
         self
     }
 
     /// Register `model` on the agent's bus under a generated label and use
-    /// it as this run's default.
+    /// it as this run's default. The registration is scoped to this runner
+    /// and the run it produces: it leaves the bus when they drop.
     pub fn using_model_value<M>(mut self, model: M) -> Self
     where
         M: CompletionModel + 'static,
     {
-        self.config.model_key = self.config.bus.register_anonymous_model(model);
+        let anonymous = self.config.bus.register_anonymous_model(model);
+        self.config.model_key = anonymous.key().clone();
+        self.config.anonymous_model = Some(anonymous);
         self
     }
 

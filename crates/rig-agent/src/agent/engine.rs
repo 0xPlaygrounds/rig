@@ -1749,12 +1749,13 @@ pub(crate) async fn run_single_tool(
     .await
     {
         Ok(dispatch) => dispatch,
-        Err(reason) => {
+        Err(ToolDispatchAbort::Cancelled(reason)) => {
             return Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
                 reason,
             ));
         }
+        Err(ToolDispatchAbort::Failed(report)) => return Err(PromptError::Report(report)),
     };
 
     // A hook patched the arguments: re-record the span so the trace reflects
@@ -2100,7 +2101,7 @@ pub(crate) async fn dispatch_completion(
     stream: bool,
 ) -> Result<CompletionDispatch, CompletionDispatchError> {
     let hooks = &runner.config.hooks;
-    let dispatcher = model.dispatcher();
+    let dispatcher = runner.config.bus.dispatcher();
     let id = dispatcher.mint_id();
     let kind = EffectKind::Completion { request, stream };
     let kind = match hooks
@@ -2176,6 +2177,14 @@ pub(crate) struct ToolCallDispatch {
 /// the bus, `on_outcome` after (replace what the run sees, or stop).
 /// `Err(reason)` cancels the run; every other failure is the tool result
 /// the model sees.
+/// Why a tool dispatch produced no result for the model: a hook cancelled
+/// the run, or the bus could not serve the call (closed, or the tool's
+/// handler gone) — a failure of the run, not of the tool.
+pub(crate) enum ToolDispatchAbort {
+    Cancelled(String),
+    Failed(ErrorReport),
+}
+
 pub(crate) async fn dispatch_tool_call(
     runner: &AgentRunner,
     ctx: &HookContext,
@@ -2184,7 +2193,7 @@ pub(crate) async fn dispatch_tool_call(
     args: String,
     block_id: &BlockId,
     tool_context: &crate::tool::ToolContext,
-) -> Result<ToolCallDispatch, String> {
+) -> Result<ToolCallDispatch, ToolDispatchAbort> {
     let hooks = &runner.config.hooks;
     let dispatcher = runner.config.bus.dispatcher();
     let id = dispatcher.mint_id();
@@ -2215,7 +2224,7 @@ pub(crate) async fn dispatch_tool_call(
         },
         DispatchAction::Deny(report) => {
             if report.kind == ErrorKind::Cancelled {
-                return Err(report.message);
+                return Err(ToolDispatchAbort::Cancelled(report.message));
             }
             tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call rejected");
             // A patch an earlier hook made before the denial is what the
@@ -2277,7 +2286,19 @@ pub(crate) async fn dispatch_tool_call(
             args: effective_args,
         },
         // A hook that observed the result stopped the run.
-        Err(report) if report.kind == ErrorKind::Cancelled => return Err(report.message),
+        Err(report) if report.kind == ErrorKind::Cancelled => {
+            return Err(ToolDispatchAbort::Cancelled(report.message));
+        }
+        // The bus could not serve the call: the run fails with the report
+        // rather than telling the model its tool failed.
+        Err(report)
+            if matches!(
+                report.kind,
+                ErrorKind::BusClosed | ErrorKind::HandlerUnavailable
+            ) =>
+        {
+            return Err(ToolDispatchAbort::Failed(report));
+        }
         Err(report) => ToolCallDispatch {
             result: ToolResult::failed(
                 crate::tool::ToolExecutionError::other(report.message.clone())

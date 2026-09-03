@@ -397,14 +397,54 @@ impl HookContext {
         self.turn.store(turn, Ordering::Relaxed);
     }
 
-    /// Stable run identifier.
-    /// The bus this run dispatches through, for a hook that wants to
-    /// dispatch its own effects (a retrieval, a custom effect). `None` for
-    /// a context built outside a run.
-    pub fn dispatcher(&self) -> Option<&rig_core::bus::Dispatcher> {
-        self.dispatcher.as_ref()
+    /// The run's bus, for a hook binding a typed view; fails when the
+    /// context was built outside a run.
+    fn bus(&self) -> Result<&rig_core::bus::Dispatcher, ErrorReport> {
+        self.dispatcher.as_ref().ok_or_else(|| {
+            ErrorReport::new(
+                ErrorKind::BusClosed,
+                "this hook context was built outside a run and has no bus",
+            )
+        })
     }
 
+    /// Bind the retrieval index under `key` on the run's bus, for a hook
+    /// that retrieves for itself. The view routes through the run's driver
+    /// and cannot outlive it; a dispatch a hook makes this way is served
+    /// and recorded but does not re-enter the hook stack. Fails when the
+    /// context was built outside a run or `key` serves another family.
+    pub fn index(
+        &self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<rig_core::bus::IndexHandle, ErrorReport> {
+        self.bus()?.handle(key)
+    }
+
+    /// [`index`](Self::index) for a completion model.
+    pub fn model(
+        &self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<rig_core::bus::ModelHandle, ErrorReport> {
+        self.bus()?.handle(key)
+    }
+
+    /// [`index`](Self::index) for a tool.
+    pub fn tool(
+        &self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<rig_core::bus::ToolHandle, ErrorReport> {
+        self.bus()?.handle(key)
+    }
+
+    /// [`index`](Self::index) for conversation memory.
+    pub fn memory(
+        &self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<rig_core::bus::MemoryHandle, ErrorReport> {
+        self.bus()?.handle(key)
+    }
+
+    /// Stable run identifier.
     pub fn run_id(&self) -> RunId {
         self.run_id
     }

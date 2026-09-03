@@ -1936,3 +1936,50 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
     assert_eq!(observed[0], (1, None, None, None));
     assert_eq!(observed[1], (2, Some("alpha".to_owned()), None, None));
 }
+
+#[tokio::test]
+async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
+    let agent = AgentBuilder::named_model("alpha", alpha_static("one")).build();
+    let parts = agent
+        .into_parts()
+        .map_err(|_| "the only clone can take the bus apart")
+        .expect("into_parts");
+    let rig_agent::agent::AgentParts {
+        dispatcher,
+        driver,
+        agent,
+    } = parts;
+    let task = tokio::spawn(driver);
+    let handle: rig_core::bus::ModelHandle = dispatcher
+        .handle(agent.model_key())
+        .expect("bound before the swap");
+    let before = handle.descriptor();
+
+    let first = agent.prompt("hi").run().await.expect("first run");
+    assert_eq!(first.output, "one");
+
+    let label = agent.register_model(
+        "alpha",
+        BetaModel(Script::composing(
+            "beta",
+            [],
+            Turn::text("two", 2, "beta-message"),
+        )),
+    );
+    assert_eq!(
+        label.as_str(),
+        "alpha",
+        "the same label, a new model behind it"
+    );
+
+    let second = agent.prompt("hi").run().await.expect("second run");
+    assert_eq!(second.output, "two", "the swap serves the next run");
+    let after = handle.descriptor();
+    assert_ne!(
+        before, after,
+        "a handle bound before the swap reports the new descriptor"
+    );
+    assert_eq!(handle.model_ref().as_str(), "alpha");
+    drop((agent, dispatcher, handle));
+    task.await.expect("driver task");
+}

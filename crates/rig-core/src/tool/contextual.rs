@@ -769,24 +769,12 @@ impl ToolSet {
     }
 
     /// Register a retrievable tool; returns its name. A context that does
-    /// not serialize is registered as a plain tool.
-    pub fn add_retrieved_tool<T>(&mut self, tool: T) -> String
+    /// not serialize is the error, and nothing is registered.
+    pub fn add_retrieved_tool<T>(&mut self, tool: T) -> Result<String, serde_json::Error>
     where
         T: ToolEmbedding + 'static,
     {
-        match RegisteredTool::from_retrievable(tool) {
-            Ok(registered) => self.insert(registered),
-            Err(error) => {
-                tracing::warn!(
-                    tool_name = T::NAME,
-                    %error,
-                    "tool embedding context did not serialize; registered without retrieval"
-                );
-                // The tool was consumed by the failed attempt; nothing to
-                // register under its name.
-                T::NAME.to_owned()
-            }
-        }
+        RegisteredTool::from_retrievable(tool).map(|registered| self.insert(registered))
     }
 
     /// Register an already-built registration; returns its name.

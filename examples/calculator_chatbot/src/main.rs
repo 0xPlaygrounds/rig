@@ -250,10 +250,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create dynamic tools embeddings
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(Add);
-    toolset.add_retrieved_tool(Subtract);
-    toolset.add_retrieved_tool(Multiply);
-    toolset.add_retrieved_tool(Divide);
+    toolset.add_retrieved_tool(Add)?;
+    toolset.add_retrieved_tool(Subtract)?;
+    toolset.add_retrieved_tool(Multiply)?;
+    toolset.add_retrieved_tool(Divide)?;
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?

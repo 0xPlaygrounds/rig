@@ -66,6 +66,11 @@ pub trait PortableToolEmbedding: PortableTool {
 /// A liveness probe: whether the tool's owner still serves it. A plain
 /// function, not a behaviour trait — it is exempt from the one-erasure
 /// rule the way `dyn Fn` is everywhere else.
+///
+/// Deregistration is lazy: a registry consults the probe on its next read
+/// (a snapshot for a request, a managed reconcile), not when the owner's
+/// transport closes. A dispatch that reaches the tool in that window fails
+/// at the transport, as the tool's own error, not as `HandlerUnavailable`.
 #[cfg(not(target_family = "wasm"))]
 pub(crate) type LivenessFn = Arc<dyn Fn() -> bool + Send + Sync>;
 /// A liveness probe (browser wasm: no `Send + Sync`, no threads).
