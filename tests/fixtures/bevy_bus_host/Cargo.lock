@@ -1031,6 +1031,7 @@ dependencies = [
  "bevy_tasks",
  "rig-bus",
  "rig-core",
+ "serde",
  "serde_json",
 ]
 

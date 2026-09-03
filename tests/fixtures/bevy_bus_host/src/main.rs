@@ -34,6 +34,12 @@
 //!    later tick, the model is re-registered, and a `ModelHandle` component
 //!    bound before the restart completes again — nothing re-inserted.
 //!
+//! 10. Scene round-trip: every `PendingEffect { key, kind }` (serde) and the
+//!     bus's descriptors (`Dispatcher::descriptors`) are serialized, the
+//!     world is cleared and rebuilt from that text, handles are re-bound
+//!     with `Handle::rebind` and the effects re-dispatched under fresh ids
+//!     (`mint_id` + `dispatch_with_id`); they resolve.
+//!
 //! Every proof runs under a wall-clock guard; a hang is a failure, never a
 //! wait.
 
@@ -260,6 +266,24 @@ struct InFlightStream(EffectStream);
 
 #[derive(Resource, Default)]
 struct Ticks(usize);
+
+// ---- proof 10: scene round-trip ----
+
+/// In-flight intent as data: what a scene stores for a dispatch, whether
+/// or not it had been sent.
+#[derive(Component, serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct PendingEffect {
+    key: HandlerKey,
+    kind: EffectKind,
+}
+
+/// What a scene stores for the bus side: the descriptors, so a load can
+/// re-bind handles before the handlers are re-registered.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Scene {
+    handlers: Vec<HandlerDescriptor>,
+    effects: Vec<PendingEffect>,
+}
 
 // ---- proof 8: a tool that is a system ----
 
@@ -777,6 +801,99 @@ fn main() {
         assert_eq!(restarted.unary_served.load(Ordering::SeqCst), 1);
         assert_eq!(counters.unary_served.load(Ordering::SeqCst), 1);
         println!("proof 9: the driver restarted under a handle bound before the restart");
+    }
+
+    // ---- proof 10: scene round-trip ----
+    {
+        let counters = Arc::new(Counters::default());
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        driver
+            .register(
+                "model",
+                MockModel {
+                    counters: counters.clone(),
+                },
+            )
+            .expect("register");
+        let _driver_task = pool.spawn(driver);
+        // The world before the save: two effects, one in flight and one
+        // never sent; a handle component.
+        let mut world = World::new();
+        let handle: ModelHandle = dispatcher
+            .handle(&HandlerKey::from("model"))
+            .expect("bound");
+        world.spawn(Model(handle));
+        for n in 0..2u64 {
+            let effect = PendingEffect {
+                key: HandlerKey::from("model"),
+                kind: EffectKind::Custom {
+                    kind: Arc::from("host:scene"),
+                    payload: serde_json::json!({ "n": n }),
+                },
+            };
+            world.spawn(effect);
+        }
+        // Save: the descriptors in one snapshot, every pending effect.
+        let scene = Scene {
+            handlers: dispatcher.descriptors(),
+            effects: world
+                .query::<&PendingEffect>()
+                .iter(&world)
+                .cloned()
+                .collect(),
+        };
+        let text = serde_json::to_string(&scene).expect("proof 10: the scene serializes");
+        drop(world);
+
+        // Load: a fresh world and a fresh bus (a new process), no handler
+        // registered yet — the handle is re-bound from the stored
+        // descriptor first, the handlers arrive later.
+        let loaded: Scene = serde_json::from_str(&text).expect("proof 10: the scene loads");
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        let mut world = World::new();
+        let stored = loaded
+            .handlers
+            .iter()
+            .find(|d| d.key == HandlerKey::from("model"))
+            .cloned()
+            .expect("proof 10: the model's descriptor was stored");
+        let handle: ModelHandle = ModelHandle::rebind(dispatcher.clone(), stored);
+        world.spawn(Model(handle));
+        let mut re_dispatched = Vec::new();
+        for effect in loaded.effects {
+            // Fresh ids: an `EffectId` is never persisted.
+            let id = dispatcher.mint_id();
+            re_dispatched.push((id, dispatcher.dispatch_with_id(id, &effect.key, effect.kind.clone())));
+            world.spawn(effect);
+        }
+        assert_eq!(world.query::<&PendingEffect>().iter(&world).count(), 2);
+        // Now the handlers: a mock that answers the custom kind.
+        driver
+            .register(
+                "model",
+                MockModel {
+                    counters: counters.clone(),
+                },
+            )
+            .expect("register");
+        let _driver_task = pool.spawn(driver);
+        let mut outcomes = Vec::new();
+        for (id, mut pending) in re_dispatched {
+            assert_eq!(pending.id(), id);
+            let outcome = guarded("proof 10", || pending.poll_outcome());
+            outcomes.push(outcome);
+        }
+        // The mock answers a custom kind with `HandlerUnavailable` — the
+        // point is that the re-dispatched effects reached the handler that
+        // arrived after the load, through the re-bound view's key.
+        for outcome in &outcomes {
+            let report = outcome.as_ref().expect_err("proof 10: the mock refuses custom kinds");
+            assert_eq!(report.kind, ErrorKind::HandlerUnavailable, "proof 10: {report:?}");
+            assert!(report.message.contains("mock model cannot serve"), "proof 10: {report:?}");
+        }
+        let model = world.query::<&Model>().single(&world).expect("proof 10: one model");
+        assert_eq!(model.0.key(), &HandlerKey::from("model"));
+        println!("proof 10: a scene of pending effects and descriptors round-tripped and re-dispatched");
     }
 
     // ---- proof 4 (buffered): a dispatch dropped before the driver ran ----
