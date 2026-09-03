@@ -87,7 +87,7 @@ fn an_established_name_is_never_overwritten() {
 #[test]
 fn a_handle_only_result_resolves_from_an_id_less_call() {
     let id_less = ToolCall::new(
-        crate::message::ToolCallId::mint(),
+        crate::message::ToolCallId::minted(0),
         ToolFunction {
             name: "lookup".to_owned(),
             arguments: serde_json::json!({}),

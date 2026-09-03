@@ -12,6 +12,7 @@ mod embed_macro;
 mod loaders;
 mod name_keyed_serializers;
 mod nightly_paths_registry;
+mod no_random_ids;
 mod one_erasure;
 mod prompt_response_messages;
 mod provider_layout;
