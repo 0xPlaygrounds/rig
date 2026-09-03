@@ -112,6 +112,28 @@ impl<F: Family> Handle<F> {
         self.dispatcher.is_closed()
     }
 
+    /// A view over `dispatcher` from a descriptor a host kept — a scene
+    /// loaded before its handlers are re-registered — with **no** table
+    /// check: the first dispatch answers `HandlerUnavailable` if nothing
+    /// serves the key by then, exactly as for any stale key. The
+    /// descriptor's family must be `F`; a mismatch is the host's
+    /// programming error and panics here, at the host's line.
+    #[track_caller]
+    pub fn rebind(dispatcher: Dispatcher, descriptor: HandlerDescriptor) -> Self {
+        assert!(
+            descriptor.family.family() == F::FAMILY,
+            "rebind: descriptor for `{}` serves the {} family, not {}",
+            descriptor.key,
+            descriptor.family.family(),
+            F::FAMILY
+        );
+        Self {
+            dispatcher,
+            descriptor,
+            _family: PhantomData,
+        }
+    }
+
     fn dispatch_kind(&self, kind: EffectKind) -> Pending {
         self.dispatcher.dispatch(&self.descriptor.key, kind)
     }

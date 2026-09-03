@@ -2215,3 +2215,123 @@ fn pendings_and_streams_created_while_closed_stay_closed_after_reopen() {
     assert_eq!(served.load(Ordering::SeqCst), 0, "nothing was resurrected");
     assert_eq!(dispatcher.buffered(), 0);
 }
+
+#[test]
+fn descriptors_is_one_snapshot_and_a_bus_id_tells_buses_apart() {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    driver
+        .register("add", ToolAdapter::new(Add))
+        .expect("register");
+    let snapshot = dispatcher.descriptors();
+    assert_eq!(
+        snapshot.iter().map(|d| d.key.as_str()).collect::<Vec<_>>(),
+        ["add", "echo"],
+        "key order, one lock"
+    );
+    assert_eq!(snapshot[0].family.family(), EffectFamily::Tool);
+    // A registration after the snapshot does not tear it.
+    let (echo, _) = Echo::new();
+    registrar.register("echo2", echo).expect("register");
+    assert_eq!(snapshot.len(), 2);
+    assert_eq!(dispatcher.descriptors().len(), 3);
+
+    let (other, _r, _d) = Bus::channel();
+    assert_ne!(dispatcher.id(), other.id(), "two buses, two ids");
+    assert_eq!(dispatcher.id(), dispatcher.clone().id(), "one bus, one id");
+    assert_eq!(dispatcher.id(), registrar_bus_id(&registrar, &dispatcher));
+    assert_ne!(dispatcher.id().as_u64(), 0);
+    assert!(dispatcher.id().to_string().starts_with("bus#"));
+}
+
+fn registrar_bus_id(_registrar: &Registrar, dispatcher: &Dispatcher) -> super::BusId {
+    // A registrar has no id of its own: the dispatcher's is the bus's.
+    dispatcher.id()
+}
+
+#[test]
+fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    // What a scene stored: the descriptor, no handler yet.
+    let stored = HandlerDescriptor {
+        key: HandlerKey::from("model"),
+        family: FamilyDescriptor::Completion {
+            model: "gpt".into(),
+            capabilities: Default::default(),
+        },
+    };
+    let handle: ModelHandle = super::Handle::rebind(dispatcher.clone(), stored.clone());
+    assert_eq!(handle.key(), &HandlerKey::from("model"));
+    assert_eq!(
+        handle.descriptor(),
+        stored,
+        "the snapshot until the table says otherwise"
+    );
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let mut pending = handle.complete(completion_request_value());
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let report = match pending.poll_unpin(&mut cx) {
+        Poll::Ready(Err(report)) => report,
+        other => panic!("expected HandlerUnavailable, got {other:?}"),
+    };
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    // Registered later, the same handle works.
+    driver
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "gpt",
+                MockCompletionModel::from_turns([MockTurn::text("hi")]),
+            ),
+        )
+        .expect("register");
+    let mut pending = handle.complete(completion_request_value());
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(pending.poll_unpin(&mut cx).is_ready());
+}
+
+#[test]
+#[should_panic(expected = "serves the tool_call family, not completion")]
+fn a_rebind_of_the_wrong_family_panics_at_the_hosts_line() {
+    let (dispatcher, _registrar, _driver) = Bus::channel();
+    let stored = rig_core::serve::Serve::descriptor(&ToolAdapter::new(Add));
+    let _: ModelHandle = super::Handle::rebind(dispatcher, stored);
+}
+
+#[test]
+fn a_pending_whose_dispatcher_died_before_its_first_poll_is_bus_closed_while_a_stream_is_in_flight()
+{
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, _open_never) = Echo::gated();
+    driver.register("echo", echo).expect("register");
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    // A long dispatch in flight (the gate never opens).
+    let mut held = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    assert!(held.poll_outcome().is_none());
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 1);
+    // A dispatch minted but not yet polled when its dispatcher goes.
+    let mut late = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(2)));
+    drop(dispatcher);
+    // The driver notices the last dispatcher went with nothing buffered.
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(
+        driver.poll_unpin(&mut cx).is_pending(),
+        "the held dispatch keeps the driver alive"
+    );
+    // The late send is refused at once — not held until the stream ends.
+    let report = late
+        .poll_outcome()
+        .expect("decided now")
+        .expect_err("closed");
+    assert_eq!(report.kind, ErrorKind::BusClosed);
+    assert!(
+        held.poll_outcome().is_none(),
+        "the in-flight one is untouched"
+    );
+}

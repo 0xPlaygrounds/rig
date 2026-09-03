@@ -65,6 +65,11 @@ pub(super) struct Shared {
     /// Whether a driver currently owns this bus. A driver's construction
     /// sets it, its drop clears it; `reopen` needs it clear.
     driver_alive: AtomicBool,
+    /// Set by the driver once every `Dispatcher` has dropped and the buffer
+    /// is empty: the driver will not drain again, so a `Pending` created
+    /// before its dispatcher went and polled after answers `BusClosed` at
+    /// once instead of waiting for the driver's last in-flight work to end.
+    commands_closed: AtomicBool,
     /// Bumped by every `reopen`. A `Pending`/`EffectStream` remembers the
     /// generation it was dispatched under: one minted against a driver that
     /// has since died answers `BusClosed` even after a new driver took over
@@ -72,6 +77,23 @@ pub(super) struct Shared {
     generation: AtomicU64,
     /// The config the bus was opened with; a reopened driver keeps it.
     config: super::BusConfig,
+}
+
+/// A bus's identity while it lives (see [`Dispatcher::id`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct BusId(u64);
+
+impl BusId {
+    /// The raw value.
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
+impl fmt::Display for BusId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "bus#{:x}", self.0)
+    }
 }
 
 /// What became of an offered command.
@@ -117,9 +139,31 @@ impl Shared {
             dispatchers: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
             driver_alive: AtomicBool::new(false),
+            commands_closed: AtomicBool::new(false),
             generation: AtomicU64::new(0),
             config,
         }
+    }
+
+    /// The driver stopped draining: no dispatcher is left to send.
+    pub(super) fn close_commands(&self) {
+        self.commands_closed.store(true, Ordering::SeqCst);
+    }
+
+    /// A bus's identity while it lives: two buses in one process never
+    /// share one, so a host keying its bookkeeping by `(BusId, EffectId)`
+    /// never confuses two buses' effects.
+    pub(super) fn id(self: &Arc<Self>) -> BusId {
+        BusId(Arc::as_ptr(self) as usize as u64)
+    }
+
+    pub(super) fn descriptors(&self) -> Vec<HandlerDescriptor> {
+        self.descriptors
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub(super) fn config(&self) -> super::BusConfig {
@@ -158,6 +202,7 @@ impl Shared {
         let _queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.closed.store(false, Ordering::SeqCst);
+        self.commands_closed.store(false, Ordering::SeqCst);
         true
     }
 
@@ -202,7 +247,7 @@ impl Shared {
             return Enqueue::Refused(command);
         }
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
-        if self.closed.load(Ordering::SeqCst) {
+        if self.closed.load(Ordering::SeqCst) || self.commands_closed.load(Ordering::SeqCst) {
             drop(command);
             return Enqueue::Closed;
         }
@@ -588,6 +633,25 @@ impl Dispatcher {
     /// Every registered key, in key order.
     pub fn keys(&self) -> Vec<HandlerKey> {
         self.shared.keys()
+    }
+
+    /// Every registered descriptor, in key order, as one snapshot under one
+    /// lock — a registration made while a host iterates cannot tear it.
+    /// The scene half of a bus: what a save stores and a load re-binds
+    /// ([`Handle::rebind`](super::Handle::rebind)).
+    pub fn descriptors(&self) -> Vec<HandlerDescriptor> {
+        self.shared.descriptors()
+    }
+
+    /// This bus's identity for as long as it lives: distinct from every
+    /// other live bus in the process, the same for every clone and handle
+    /// over this bus, and stable across [`Bus::reopen`](super::Bus::reopen).
+    /// Derived from the bus's allocation, so it is **not** a persistent
+    /// identifier: a scene stores keys and descriptors, never a `BusId`. Its
+    /// use is in-memory bookkeeping — `EffectId`s are minted per bus, so a
+    /// host with two buses keys its map by `(BusId, EffectId)`.
+    pub fn id(&self) -> BusId {
+        self.shared.id()
     }
 
     /// Whether the driver has been dropped. A dispatch on a closed bus

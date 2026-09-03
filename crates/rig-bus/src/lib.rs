@@ -168,7 +168,7 @@ mod handle;
 mod registrar;
 mod sync;
 
-pub use dispatcher::{Dispatcher, EffectStream, Pending};
+pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
 pub use driver::{BusConfig, BusDriver, Recorder};
 pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
