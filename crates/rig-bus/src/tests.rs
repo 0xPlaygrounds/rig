@@ -1816,3 +1816,104 @@ async fn a_non_clone_rerank_model_registers_and_its_error_is_a_report() {
     drop((handle, dispatcher));
     within(task).await.expect("driver task");
 }
+
+/// Counts what the driver tells a recorder: `begin` per served dispatch,
+/// `resolve` per outcome.
+#[derive(Clone, Default)]
+struct Counting {
+    begun: Arc<AtomicUsize>,
+    resolved: Arc<AtomicUsize>,
+}
+
+impl super::Recorder for Counting {
+    fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
+    fn begin(&self, _id: rig_core::effect::EffectId, _key: HandlerKey, _kind: EffectKind) {
+        self.begun.fetch_add(1, Ordering::SeqCst);
+    }
+    fn keep_events(&self) -> bool {
+        false
+    }
+    fn event(&self, _id: rig_core::effect::EffectId, _event: &StreamEvent) {}
+    fn resolve(&self, _id: rig_core::effect::EffectId, _outcome: Result<Outcome, ErrorReport>) {
+        self.resolved.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn a_pending_dropped_before_the_driver_polls_never_reaches_its_handler() {
+    // The Bevy shape: a system dispatches (one poll sends the command) and
+    // the entity is despawned in the same frame, before the driver task
+    // runs. The handler must not get a poll — one poll of a provider call
+    // is an HTTP request — and the recorder must not open a record.
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let recorder = Counting::default();
+    driver.record_to(recorder.clone());
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    assert_eq!(dispatcher.buffered(), 1, "sent, not yet taken");
+    drop(pending);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(served.load(Ordering::SeqCst), 0, "the handler was polled");
+    assert_eq!(
+        recorder.begun.load(Ordering::SeqCst),
+        0,
+        "a record was opened"
+    );
+    assert_eq!(driver.in_flight(), 0);
+    assert_eq!(dispatcher.buffered(), 0);
+
+    // The same for a stream dispatch.
+    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("echo"), completion_kind(true));
+    assert!(stream.poll_next_unpin(&mut cx).is_pending());
+    assert_eq!(dispatcher.buffered(), 1);
+    drop(stream);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(served.load(Ordering::SeqCst), 0);
+    assert_eq!(recorder.begun.load(Ordering::SeqCst), 0);
+    assert_eq!(driver.in_flight(), 0);
+
+    // And a live dispatch on the same driver is still served and recorded.
+    let mut live = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(2)));
+    assert!(live.poll_unpin(&mut cx).is_pending());
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(live.poll_unpin(&mut cx).is_ready());
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert_eq!(recorder.begun.load(Ordering::SeqCst), 1);
+    assert_eq!(recorder.resolved.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_serial_key_is_not_occupied_by_a_dispatch_cancelled_before_it_was_served() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        serial_per_handler: true,
+        ..BusConfig::default()
+    });
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let key = HandlerKey::from("echo");
+    let mut cancelled = dispatcher.dispatch(&key, custom(json!(1)));
+    let mut kept = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(cancelled.poll_unpin(&mut cx).is_pending());
+    assert!(kept.poll_unpin(&mut cx).is_pending());
+    drop(cancelled);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(
+        kept.poll_unpin(&mut cx).is_ready(),
+        "the cancelled dispatch left the key busy"
+    );
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+}

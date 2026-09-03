@@ -9,7 +9,9 @@
 //!    system polls it across ticks with `block_on(poll_once(&mut pending))`
 //!    — `Unpin` and executor-neutrality in the canonical Bevy pattern.
 //! 4. Despawn cancels: despawning the entity holding the driver task mid
-//!    dispatch resolves the in-flight `Pending` with `BusClosed`.
+//!    dispatch resolves the in-flight `Pending` with `BusClosed`; and a
+//!    `Pending` dropped after its send but before the driver ran is never
+//!    served — its handler is not entered.
 //! 5. Non-blocking dispatch: with the command channel full, `dispatch` from
 //!    a system returns immediately; the pressure lands on the `Pending`.
 //! 6. A `dispatch_stream` consumed across ticks then dropped mid-stream is
@@ -530,6 +532,53 @@ fn main() {
             "proof 6: the stream was cancelled, not capped"
         );
         println!("proof 6: handler observed cancellation after {received} events");
+    }
+
+    // ---- proof 4 (buffered): a dispatch dropped before the driver ran ----
+    // The same-frame despawn: a system dispatches (one poll sends), the
+    // entity is despawned before the driver task ever runs. The handler
+    // must not be entered at all — one poll of a provider call would be an
+    // HTTP request nobody wants.
+    {
+        let counters = Arc::new(Counters::default());
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        driver
+            .register(
+                "model",
+                MockModel {
+                    counters: counters.clone(),
+                },
+            )
+            .expect("register");
+        let key = HandlerKey::from("model");
+        let mut dropped = dispatcher.dispatch(
+            &key,
+            EffectKind::Completion {
+                request: request(),
+                stream: false,
+            },
+        );
+        let _ = block_on(poll_once(&mut dropped));
+        assert_eq!(dispatcher.buffered(), 1, "proof 4: sent, not yet taken");
+        drop(dropped);
+        let _driver_task = pool.spawn(driver);
+        // A later dispatch on the same bus is served in order after the
+        // cancelled one was taken and skipped, so its answer bounds the test.
+        let mut later = dispatcher.dispatch(
+            &key,
+            EffectKind::Completion {
+                request: request(),
+                stream: false,
+            },
+        );
+        let outcome = guarded("proof 4", || block_on(poll_once(&mut later)));
+        assert!(outcome.is_ok(), "proof 4: {outcome:?}");
+        assert_eq!(
+            counters.unary_started.load(Ordering::SeqCst),
+            1,
+            "proof 4: the dispatch dropped before the driver ran was served"
+        );
+        println!("proof 4: a dispatch cancelled while buffered never entered its handler");
     }
 
     println!("bevy-bus-host: ok");

@@ -273,7 +273,8 @@ impl BusDriver {
 
     /// Start serving `command`. Returns whether it went in flight; a command
     /// with no handler is answered `HandlerUnavailable` on the spot and
-    /// never occupies its key.
+    /// never occupies its key, and a command whose consumer is already gone
+    /// is dropped unserved — no handler poll, no record.
     fn serve(&mut self, command: Command) -> bool {
         let Command {
             id,
@@ -281,8 +282,17 @@ impl BusDriver {
             kind,
             reply,
             span,
-            cancel,
+            mut cancel,
         } = command;
+        // A `Pending`/`EffectStream` dropped between its send and this poll
+        // (a host despawning in the frame it dispatched) has already
+        // resolved `cancel`. Serving it would give the handler one poll —
+        // enough to start a provider request — and open a record nobody
+        // asked for; a dispatch nobody wants is never served.
+        if cancel.try_recv().is_err() {
+            drop(reply);
+            return false;
+        }
         let Some(handler) = self.handlers.get(&key).cloned() else {
             reply.fail(handler_unavailable(&key));
             return false;
@@ -306,6 +316,11 @@ impl BusDriver {
                 // Cancellation is drop: the consumer dropping its `Pending` or
                 // `EffectStream` resolves `cancel`, which drops the handler
                 // future — and with it the provider call or stream inside.
+                // The handler is polled first on purpose: a handler in
+                // flight observes the cancel on its own next poll (its send
+                // answers `SinkClosed`) before the future is dropped, which
+                // is how a streaming adapter stops cleanly. A cancel that
+                // arrived *before* serving never gets here (`serve` above).
                 let serving = handler.handle(kind, sink);
                 futures::pin_mut!(serving);
                 let _ = futures::future::select(serving, cancel).await;
