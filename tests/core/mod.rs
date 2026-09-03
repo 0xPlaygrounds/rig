@@ -11,6 +11,7 @@ mod dependency_graph;
 mod embed_macro;
 mod fixtures_hold_no_key;
 mod golden_hooks;
+mod golden_outcome;
 mod golden_pairing;
 mod golden_recovery;
 mod loaders;

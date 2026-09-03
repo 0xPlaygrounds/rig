@@ -4,6 +4,7 @@ mod cassette {
     mod agent;
     mod boxed_transport;
     mod corpus_hooks;
+    mod corpus_outcome;
     mod corpus_request_shape;
     mod corpus_serving;
     mod default_max_turns;

@@ -320,3 +320,82 @@ impl rig::agent::AgentHook for RouteAfterFirstTurn {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// The outcome matrix's tool (Matrix D).
+
+#[allow(dead_code)]
+pub(crate) const BROKEN_ADD: &str = "the adder is broken";
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct FailingAddArgs {
+    pub(crate) x: i64,
+    pub(crate) y: i64,
+}
+
+/// An `add` that fails every call: the tool record's outcome is a failed
+/// result, which the model sees and answers around.
+#[allow(dead_code)]
+pub(crate) struct FailingAdd;
+
+impl rig::tool::Tool for FailingAdd {
+    const NAME: &'static str = "add";
+    type Args = FailingAddArgs;
+    type Output = i64;
+    type Error = rig::tool::ToolExecutionError;
+
+    fn description(&self) -> String {
+        "adds two integers".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: FailingAddArgs,
+    ) -> Result<i64, Self::Error> {
+        Err(rig::tool::ToolExecutionError::other(BROKEN_ADD))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The outcome matrix's long-argument tool: a call whose arguments stream
+// for long enough that a consumer's drop lands mid-call.
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct NoteArgs {
+    pub(crate) title: String,
+    pub(crate) body: String,
+}
+
+/// Writes a note; its `body` is what the model streams at length.
+#[allow(dead_code)]
+pub(crate) struct WriteNote;
+
+impl rig::tool::Tool for WriteNote {
+    const NAME: &'static str = "write_note";
+    type Args = NoteArgs;
+    type Output = String;
+    type Error = rig::tool::ToolExecutionError;
+
+    fn description(&self) -> String {
+        "writes a note with a title and a body".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}}, "required": ["title", "body"]})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: NoteArgs,
+    ) -> Result<String, Self::Error> {
+        Ok(format!("saved {} ({} chars)", args.title, args.body.len()))
+    }
+}

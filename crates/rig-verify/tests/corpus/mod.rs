@@ -119,6 +119,13 @@ pub enum Ending {
     /// model still calling tools (a per-run `tool_choice` that forces a
     /// call does this). Every record is a success; the run is not.
     MaxTurns,
+    /// `PromptError::Report` of kind `ProviderResponse`: the completion
+    /// record's outcome is the provider's error and the run fails at it.
+    ProviderError,
+    /// `PromptError::UnknownToolCall`: the model called a tool the program
+    /// does not advertise and no hook resolved it; the run fails at the
+    /// completion record.
+    UnknownToolCall,
 }
 
 /// The producer's tool choice, as data.
@@ -655,7 +662,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
         }
         let mut stream = runner.stream().await;
         let mut output = None;
-        let mut max_turns_reached = false;
+        let mut failed_as_expected = false;
         while let Some(item) = within(stream.next()).await {
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -671,7 +678,25 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     if program.ending == Ending::MaxTurns
                         && matches!(*error, PromptError::MaxTurnsError { .. }) =>
                 {
-                    max_turns_reached = true;
+                    failed_as_expected = true;
+                }
+                Err(StreamingError::Prompt(error))
+                    if program.ending == Ending::UnknownToolCall
+                        && matches!(*error, PromptError::UnknownToolCall { .. }) =>
+                {
+                    failed_as_expected = true;
+                }
+                Err(StreamingError::Report(report))
+                    if program.ending == Ending::ProviderError
+                        && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
+                {
+                    failed_as_expected = true;
+                }
+                Err(StreamingError::Completion(error))
+                    if program.ending == Ending::ProviderError =>
+                {
+                    let _ = error;
+                    failed_as_expected = true;
                 }
                 Err(error) => {
                     panic!("the replayer answered every request it recognised: {error:?}")
@@ -686,8 +711,8 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 tokio::task::yield_now().await;
             }
             None
-        } else if program.ending == Ending::MaxTurns {
-            assert!(max_turns_reached, "the run ends in MaxTurnsError");
+        } else if program.ending != Ending::Answer {
+            assert!(failed_as_expected, "the run ends in {:?}", program.ending);
             None
         } else {
             Some(output.expect("the stream yields a final response"))
@@ -706,9 +731,15 @@ pub async fn bus_engine_reproduces(program: &Program) {
         runner = runner.max_invalid_tool_call_retries(program.invalid_retries);
         match (within(runner.run()).await, program.ending) {
             (Ok(response), Ending::Answer) => Some(response.output),
-            (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => None,
-            (Ok(response), Ending::MaxTurns) => {
-                panic!("the run ends in MaxTurnsError, not an answer: {response:?}")
+            (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+            | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => None,
+            (Err(PromptError::Report(report)), Ending::ProviderError)
+                if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
+            {
+                None
+            }
+            (Ok(response), ending) => {
+                panic!("the run ends in {ending:?}, not an answer: {response:?}")
             }
             (Err(error), _) => {
                 panic!("the replayer answered every request it recognised: {error:?}")
@@ -783,10 +814,9 @@ pub async fn call_tools(
         let answer = within(handle.call(name.clone(), args, ToolContext::new()))
             .await
             .expect("the replayer answered the recorded call");
-        let mut output = answer
-            .result
-            .into_result()
-            .expect("every tool in the corpus succeeded");
+        // The model-visible output of the result, failed or not: what the
+        // engine shapes into the transcript.
+        let mut output = answer.result.output().clone();
         if is_add && hooks.contains(&Hook::ReplaceAddResult) {
             output = ToolOutput::text(REPLACED_RESULT);
         }
@@ -814,7 +844,9 @@ pub fn run_spec(program: &Program) -> RunSpec {
         max_tokens: program.max_tokens,
         temperature: program.temperature,
         tool_choice: program.tool_choice.map(Choice::tool_choice),
-        max_turns: program.max_turns,
+        // The runner's budget, else the builder's default, as the engine
+        // resolves it.
+        max_turns: program.max_turns.or(program.default_max_turns),
         max_invalid_tool_call_retries: program.invalid_retries,
         output_schema: program.output_schema.map(|schema| schema()),
         ..RunSpec::new()
@@ -925,6 +957,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 let turn = if program.streamed {
                     let mut stream = model.stream(request);
                     let mut assembler = StreamedTurnAssembler::new(executable, allowed);
+                    let mut provider_failed = false;
                     while let Some(event) = within(stream.next()).await {
                         let event = match event {
                             Ok(event) => event,
@@ -932,6 +965,14 @@ pub async fn hand_driver_reproduces(program: &Program) {
                                 if program.cancel_after_first_delta
                                     && report.kind == rig_core::error::ErrorKind::Cancelled =>
                             {
+                                break;
+                            }
+                            Err(report)
+                                if program.ending == Ending::ProviderError
+                                    && report.kind
+                                        == rig_core::error::ErrorKind::ProviderResponse =>
+                            {
+                                provider_failed = true;
                                 break;
                             }
                             Err(report) => {
@@ -947,6 +988,14 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         }
                         break None;
                     }
+                    if program.ending == Ending::ProviderError {
+                        assert!(
+                            provider_failed,
+                            "the stream fails with the provider's error"
+                        );
+                        drop(stream);
+                        break None;
+                    }
                     let usage = stream.usage();
                     let snapshot = stream.snapshot();
                     let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
@@ -958,21 +1007,42 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         streamed.allowed_tool_names,
                     )
                 } else {
-                    let response = within(model.complete(request))
-                        .await
-                        .expect("the replayer recognised the request");
+                    let response = match (within(model.complete(request)).await, program.ending) {
+                        (Ok(response), _) => response,
+                        (Err(report), Ending::ProviderError)
+                            if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
+                        {
+                            break None;
+                        }
+                        (Err(report), _) => {
+                            panic!("the replayer recognised the request: {report:?}")
+                        }
+                    };
                     ModelTurn::from_response_parts(&response, executable, allowed)
                 };
                 let choice = turn.choice.clone();
                 let mut outcome = run.model_response(turn).expect("a model turn");
+                let mut unknown_tool_call = false;
                 while let ModelTurnOutcome::NeedsResolution(invalid) = outcome {
-                    assert!(
-                        program.hooks.contains(&Hook::RetryUnknownTool),
-                        "only the recovery program sees an invalid call"
-                    );
+                    if !program.hooks.contains(&Hook::RetryUnknownTool) {
+                        // No hook: the run's own policy, `Fail` by default.
+                        let error = run
+                            .resolve_unhandled_invalid_tool_call()
+                            .expect_err("an unhandled invalid call fails the run");
+                        assert!(
+                            program.ending == Ending::UnknownToolCall
+                                && matches!(error, PromptError::UnknownToolCall { .. }),
+                            "{error:?}"
+                        );
+                        unknown_tool_call = true;
+                        break;
+                    }
                     outcome = run
                         .resolve_invalid_tool_call(retry_feedback(&invalid.tool_name))
                         .expect("the retry is resolved");
+                }
+                if unknown_tool_call {
+                    break None;
                 }
                 // The outcome and model-turn hooks, as the engine settles a
                 // turn: a replacement of the accepted choice, then a retry.
@@ -1026,6 +1096,145 @@ pub async fn hand_driver_reproduces(program: &Program) {
     let log = replay.log.clone();
     let replayed = replay.close().await;
     assert_same_records(&replayed, &log, "hand driver");
+}
+
+/// The run continued: the hand driver takes the program up to and
+/// including its first tool call's result, serializes the `AgentRun`, and
+/// the bus engine resumes it on the same replay bus — whose replayers have
+/// answered the head and hold the tail — to the golden's answer. The
+/// recorded log is the whole golden: the head by hand, the tail by the
+/// engine, one record sequence.
+pub async fn resume_reproduces(program: &Program) {
+    assert!(
+        program.hooks.is_empty() && program.conversation.is_none() && program.route.is_none(),
+        "resume rows are plain tool programs"
+    );
+    let replay = Replay::open(program);
+    let server = replay.tool_server();
+    server.attach(&replay.registrar);
+    let tools = tool_handles(&replay);
+    let model: ModelHandle = replay
+        .dispatcher
+        .handle(&replay.model_key)
+        .expect("the model");
+    let spec = run_spec(program);
+    let definitions = server.static_tool_defs();
+    let mut run = AgentRun::from_spec(&spec, program.prompt, None);
+    // Up to and including the first tool turn's results; then suspended
+    // with the next model call pending, the state a driver persists
+    // between steps.
+    loop {
+        match run.next_step().expect("a step") {
+            AgentRunStep::CallModel {
+                prompt,
+                history,
+                turn,
+            } => {
+                let prepared = prepare_request(
+                    &spec,
+                    &model.capabilities(),
+                    &history,
+                    definitions.clone(),
+                    run.output_tool_name(),
+                    None,
+                )
+                .expect("prepared");
+                run.set_output_tool_name(prepared.output_tool_name.clone());
+                run.advertise_tools(turn, prepared.tools.clone());
+                let executable = prepared.executable_tool_names.clone();
+                let allowed = prepared.allowed_tool_names.clone();
+                let request = prepared
+                    .apply(CompletionRequestBuilder::unbound(prompt))
+                    .build();
+                let turn = if program.streamed {
+                    let mut stream = model.stream(request);
+                    let mut assembler = StreamedTurnAssembler::new(executable, allowed);
+                    while let Some(event) = within(stream.next()).await {
+                        let event = event.expect("the replayer re-emitted the recorded stream");
+                        assembler.ingest(&event).expect("a well-formed stream");
+                    }
+                    let usage = stream.usage();
+                    let snapshot = stream.snapshot();
+                    let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
+                    ModelTurn::new(
+                        streamed.message_id,
+                        streamed.choice,
+                        usage,
+                        streamed.executable_tool_names,
+                        streamed.allowed_tool_names,
+                    )
+                } else {
+                    let response = within(model.complete(request))
+                        .await
+                        .expect("the replayer recognised the request");
+                    ModelTurn::from_response_parts(&response, executable, allowed)
+                };
+                run.model_response(turn).expect("a model turn");
+            }
+            AgentRunStep::CallTools { calls } => {
+                let results =
+                    call_tools(calls, &tools, program.tool_concurrency.unwrap_or(1), &[]).await;
+                run.tool_results(results).expect("results for every call");
+                break;
+            }
+            AgentRunStep::Done(_) => panic!("the program has a tool turn"),
+        }
+    }
+    let state = serde_json::to_string(&run).expect("the run state serializes");
+    drop((model, tools));
+    let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
+
+    let mut builder = AgentBuilder::over_bus(
+        replay.dispatcher.clone(),
+        replay.registrar.clone(),
+        program.owner,
+        replay.model_key.clone(),
+    )
+    .name(program.owner)
+    .tool_server_handle(server);
+    builder = match program.preamble {
+        Some(preamble) => builder.preamble(preamble),
+        None => builder.without_preamble(),
+    };
+    if let Some(temperature) = program.temperature {
+        builder = builder.temperature(temperature);
+    }
+    if let Some(default_max_turns) = program.default_max_turns {
+        builder = builder.default_max_turns(default_max_turns);
+    }
+    let agent = builder.build();
+    agent
+        .check_replayable(&replay.log)
+        .expect("the same program as the one recorded");
+    let mut runner = agent.runner("ignored").resume(restored);
+    if let Some(max_turns) = program.max_turns {
+        runner = runner.max_turns(max_turns);
+    }
+    if let Some(concurrency) = program.tool_concurrency {
+        runner = runner.tool_concurrency(concurrency);
+    }
+    // The medium the producer ran on: a streamed program's tail asks the
+    // model for a stream, as its record says.
+    let output = if program.streamed {
+        let mut stream = runner.stream().await;
+        let mut output = None;
+        while let Some(item) = within(stream.next()).await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
+                Ok(_) => {}
+                Err(error) => panic!("the resumed stream: {error:?}"),
+            }
+        }
+        drop(stream);
+        output.expect("the resumed stream yields a final response")
+    } else {
+        within(runner.run()).await.expect("the resumed run").output
+    };
+    assert_eq!(output, golden_answer(&replay.log));
+    drop(agent);
+    let log = replay.log.clone();
+    let replayed = replay.close().await;
+    assert_same_records(&replayed, &log, "hand driver head, bus engine tail");
 }
 
 /// Both interpreters, as two tests each, for the rows named: `test: PROGRAM`.
