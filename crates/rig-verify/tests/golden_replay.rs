@@ -32,6 +32,10 @@
 //! | `anthropic_concurrent_tools_serial` | `tests/providers/anthropic/cassette/streaming_tools.rs` `concurrent_tools_serial_effect_log_is_the_golden_fixture` |
 //! | `gemini_tool_call_turns` | `tests/providers/gemini/cassette/hook_stress.rs` `tool_call_turns_effect_log_is_the_golden_fixture` |
 //! | `mock_invalid_tool_call_recovery` | `tests/core/golden_recovery.rs` `invalid_tool_call_recovery_effect_log_is_the_golden_fixture` |
+//! | `anthropic_tool_call_turn` | `tests/providers/anthropic/cassette/effect_corpus.rs` `tool_call_turn_effect_log_is_the_golden_fixture` |
+//! | `anthropic_cancelled_stream` | `tests/providers/anthropic/cassette/effect_corpus.rs` `cancelled_stream_effect_log_is_the_golden_fixture` |
+//! | `openai_streaming_with_events` | `tests/providers/openai/cassette/effect_corpus.rs` `streaming_with_events_effect_log_is_the_golden_fixture` |
+//! | `openai_tool_call_turns` | `tests/providers/openai/cassette/effect_corpus.rs` `tool_call_turns_effect_log_is_the_golden_fixture` |
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
@@ -40,7 +44,7 @@ use std::time::Duration;
 use futures::StreamExt;
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
-    agent::MultiTurnStreamItem,
+    agent::{MultiTurnStreamItem, StreamingError},
     run::{
         AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
         ModelTurnOutcome, PendingToolCall, RunSpec, StreamedTurnAssembler, prepare_request,
@@ -77,6 +81,11 @@ struct Program {
     /// The producer's hook: retry an unknown tool once with feedback.
     retry_unknown_tool: bool,
     invalid_retries: usize,
+    /// The producer dropped the stream after its first text delta: the
+    /// one record is a `Cancelled` completion and the run never finishes.
+    /// On replay the replayer answers that record as the cancel it was, so
+    /// the consumer sees the cancel as its first item, never a delta.
+    cancel_after_first_delta: bool,
 }
 
 /// The root suite's constants, verbatim (`tests/common/support.rs`,
@@ -98,6 +107,12 @@ const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUST use the p
      every arithmetic operation instead of computing results yourself. Perform the steps in order, \
      using the result of each step as an input to the next. Once you have the final tool result, \
      reply with the final numeric answer in plain text.";
+const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
+const TOOL_CALL_TURN_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
+const CANCELLED_STREAM_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
+const CANCELLED_STREAM_PROMPT: &str =
+    "Write a 600-word essay on the history of the Rust programming language.";
 const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
      subtract tool. Report the final number.";
 
@@ -114,6 +129,7 @@ const DEFAULT: Program = Program {
     conversation: None,
     retry_unknown_tool: false,
     invalid_retries: 0,
+    cancel_after_first_delta: false,
 };
 
 const COMPLETION_SMOKE: Program = Program {
@@ -164,6 +180,41 @@ const INVALID_TOOL_CALL_RECOVERY: Program = Program {
     max_turns: Some(4),
     retry_unknown_tool: true,
     invalid_retries: 1,
+    ..DEFAULT
+};
+
+const ANTHROPIC_TOOL_CALL_TURN: Program = Program {
+    fixture: "anthropic_tool_call_turn",
+    preamble: TOOLS_PREAMBLE,
+    prompt: TOOL_CALL_TURN_PROMPT,
+    temperature: Some(0.0),
+    max_turns: Some(3),
+    ..DEFAULT
+};
+const ANTHROPIC_CANCELLED_STREAM: Program = Program {
+    fixture: "anthropic_cancelled_stream",
+    preamble: CANCELLED_STREAM_PREAMBLE,
+    prompt: CANCELLED_STREAM_PROMPT,
+    temperature: Some(0.0),
+    streamed: true,
+    cancel_after_first_delta: true,
+    ..DEFAULT
+};
+const OPENAI_STREAMING_WITH_EVENTS: Program = Program {
+    fixture: "openai_streaming_with_events",
+    preamble: STREAMING_TOOLS_PREAMBLE,
+    prompt: STREAMING_TOOLS_PROMPT,
+    temperature: Some(0.0),
+    max_turns: Some(3),
+    streamed: true,
+    ..DEFAULT
+};
+const OPENAI_TOOL_CALL_TURNS: Program = Program {
+    fixture: "openai_tool_call_turns",
+    preamble: CHAIN_PREAMBLE,
+    prompt: CHAIN_PROMPT,
+    temperature: Some(0.0),
+    max_turns: Some(6),
     ..DEFAULT
 };
 
@@ -373,25 +424,48 @@ async fn bus_engine_reproduces(program: &Program) {
         let mut stream = runner.stream().await;
         let mut output = None;
         while let Some(item) = within(stream.next()).await {
-            if let MultiTurnStreamItem::FinalResponse(response) =
-                item.expect("the replayer answered every request it recognised")
-            {
-                output = Some(response.output);
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    output = Some(response.output);
+                }
+                Err(StreamingError::Report(report))
+                    if program.cancel_after_first_delta
+                        && report.kind == rig_core::error::ErrorKind::Cancelled =>
+                {
+                    break;
+                }
+                Err(error) => {
+                    panic!("the replayer answered every request it recognised: {error:?}")
+                }
+                Ok(_) => {}
             }
         }
-        output.expect("the stream yields a final response")
+        drop(stream);
+        if program.cancel_after_first_delta {
+            // The driver resolves the cancelled dispatch on its own task.
+            for _ in 0..64 {
+                tokio::task::yield_now().await;
+            }
+            None
+        } else {
+            Some(output.expect("the stream yields a final response"))
+        }
     } else {
         let mut runner = agent.prompt(program.prompt);
         if let Some(max_turns) = program.max_turns {
             runner = runner.max_turns(max_turns);
         }
         runner = runner.max_invalid_tool_call_retries(program.invalid_retries);
-        within(runner.run())
-            .await
-            .expect("the replayer answered every request it recognised")
-            .output
+        Some(
+            within(runner.run())
+                .await
+                .expect("the replayer answered every request it recognised")
+                .output,
+        )
     };
-    assert_eq!(output, golden_answer(&replay.log));
+    if let Some(output) = output {
+        assert_eq!(output, golden_answer(&replay.log));
+    }
     drop(agent);
     let log = replay.log.clone();
     let replayed = replay.close().await;
@@ -549,8 +623,26 @@ async fn hand_driver_reproduces(program: &Program) {
                     let mut stream = model.stream(request);
                     let mut assembler = StreamedTurnAssembler::new(executable, allowed);
                     while let Some(event) = within(stream.next()).await {
-                        let event = event.expect("the replayer re-emitted the recorded stream");
+                        let event = match event {
+                            Ok(event) => event,
+                            Err(report)
+                                if program.cancel_after_first_delta
+                                    && report.kind == rig_core::error::ErrorKind::Cancelled =>
+                            {
+                                break;
+                            }
+                            Err(report) => {
+                                panic!("the replayer re-emitted the recorded stream: {report:?}")
+                            }
+                        };
                         assembler.ingest(&event).expect("a well-formed stream");
+                    }
+                    if program.cancel_after_first_delta {
+                        drop(stream);
+                        for _ in 0..64 {
+                            tokio::task::yield_now().await;
+                        }
+                        break None;
                     }
                     let usage = stream.usage();
                     let snapshot = stream.snapshot();
@@ -584,8 +676,15 @@ async fn hand_driver_reproduces(program: &Program) {
                     call_tools(calls, &tools, program.tool_concurrency.unwrap_or(1)).await;
                 run.tool_results(results).expect("results for every call");
             }
-            AgentRunStep::Done(response) => break response,
+            AgentRunStep::Done(response) => break Some(response),
         }
+    };
+    let Some(response) = response else {
+        drop((model, tools, memory));
+        let log = replay.log.clone();
+        let replayed = replay.close().await;
+        assert_same_records(&replayed, &log, "hand driver");
+        return;
     };
     if let Some((handle, id)) = &memory {
         within(handle.append(id.clone(), response.messages.clone().unwrap_or_default()))
@@ -627,4 +726,44 @@ async fn the_hand_driver_reproduces_tool_call_turns() {
 #[tokio::test]
 async fn the_hand_driver_reproduces_invalid_tool_call_recovery() {
     hand_driver_reproduces(&INVALID_TOOL_CALL_RECOVERY).await;
+}
+
+#[tokio::test]
+async fn the_bus_engine_reproduces_anthropic_tool_call_turn() {
+    bus_engine_reproduces(&ANTHROPIC_TOOL_CALL_TURN).await;
+}
+
+#[tokio::test]
+async fn the_bus_engine_reproduces_anthropic_cancelled_stream() {
+    bus_engine_reproduces(&ANTHROPIC_CANCELLED_STREAM).await;
+}
+
+#[tokio::test]
+async fn the_bus_engine_reproduces_openai_streaming_with_events() {
+    bus_engine_reproduces(&OPENAI_STREAMING_WITH_EVENTS).await;
+}
+
+#[tokio::test]
+async fn the_bus_engine_reproduces_openai_tool_call_turns() {
+    bus_engine_reproduces(&OPENAI_TOOL_CALL_TURNS).await;
+}
+
+#[tokio::test]
+async fn the_hand_driver_reproduces_anthropic_tool_call_turn() {
+    hand_driver_reproduces(&ANTHROPIC_TOOL_CALL_TURN).await;
+}
+
+#[tokio::test]
+async fn the_hand_driver_reproduces_anthropic_cancelled_stream() {
+    hand_driver_reproduces(&ANTHROPIC_CANCELLED_STREAM).await;
+}
+
+#[tokio::test]
+async fn the_hand_driver_reproduces_openai_streaming_with_events() {
+    hand_driver_reproduces(&OPENAI_STREAMING_WITH_EVENTS).await;
+}
+
+#[tokio::test]
+async fn the_hand_driver_reproduces_openai_tool_call_turns() {
+    hand_driver_reproduces(&OPENAI_TOOL_CALL_TURNS).await;
 }
