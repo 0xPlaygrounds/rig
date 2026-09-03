@@ -1,4 +1,4 @@
-# bevy @ 823bcc935 requires rustc 1.95; the main workspace pins 1.94. The
+# bevy 0.19.1 requires rustc 1.95; the main workspace pins 1.94. The
 # fixture is its own workspace, so it carries its own pin. The root test
 # runs cargo from this directory so rustup honours it.
 [toolchain]

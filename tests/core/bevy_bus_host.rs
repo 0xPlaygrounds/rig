@@ -2,8 +2,8 @@
 //!
 //! `tests/fixtures/bevy_bus_host` is its own workspace (bevy stays out of the
 //! main lock file) depending on rig-core and rig-bus only on the rig side and on
-//! `bevy_ecs` + `bevy_tasks` only on the host side, pinned by git revision.
-//! This test runs the fixture binary and checks that graph.
+//! `bevy_ecs` + `bevy_tasks` only on the host side, from crates.io at one
+//! release version. This test runs the fixture binary and checks that graph.
 
 use std::{
     io::Read,
@@ -89,7 +89,7 @@ fn target_dir() -> PathBuf {
 }
 
 #[test]
-fn bevy_host_runs_the_seven_proofs() -> Result<(), Box<dyn std::error::Error>> {
+fn bevy_host_runs_the_ten_proofs() -> Result<(), Box<dyn std::error::Error>> {
     let child = fixture_cargo()
         .args(["run", "--quiet", "--locked", "--manifest-path"])
         .arg(fixture_manifest())
@@ -189,33 +189,55 @@ fn bevy_host_fixture_graph_is_rig_core_and_bevy_ecs_tasks_only()
         )
         .into());
     }
-    // Bevy is pinned by revision, not version: every `bevy_*` dependency
-    // in the manifest — inline table or `[dependencies.bevy_*]` table —
-    // carries the one rev.
+    // Bevy comes from crates.io at one release version — never git, never a
+    // path: every `bevy_*` dependency in the manifest (inline table or
+    // `[dependencies.bevy_*]` table) requires `BEVY_VERSION`, and the lock
+    // file resolves every `bevy_*` package to exactly that version.
     let manifest = std::fs::read_to_string(fixture_manifest())?;
     let pins = bevy_pins(&manifest);
     if pins.is_empty() {
         return Err("the fixture manifest declares no bevy_* dependency".into());
     }
-    for (name, rev) in &pins {
-        match rev {
-            Some(rev) if rev == BEVY_REV => {}
-            Some(rev) => {
-                return Err(format!("{name} is pinned to `{rev}`, not `{BEVY_REV}`").into());
+    for (name, pin) in &pins {
+        match pin {
+            BevyPin::Version(version) if version == BEVY_VERSION => {}
+            BevyPin::Version(version) => {
+                return Err(format!("{name} requires `{version}`, not `{BEVY_VERSION}`").into());
             }
-            None => return Err(format!("{name} is not pinned by rev").into()),
+            BevyPin::Git => return Err(format!("{name} comes from git, not crates.io").into()),
+            BevyPin::Path => return Err(format!("{name} comes from a path, not crates.io").into()),
+            BevyPin::Unpinned => return Err(format!("{name} declares no version").into()),
+        }
+    }
+    let lock = std::fs::read_to_string(fixture_dir().join("Cargo.lock"))?;
+    let resolved = bevy_lock_versions(&lock);
+    if resolved.is_empty() {
+        return Err("the fixture lock file resolves no bevy_* package".into());
+    }
+    for (name, version) in &resolved {
+        if version != BEVY_VERSION {
+            return Err(format!(
+                "the lock file resolves {name} to `{version}`, not `{BEVY_VERSION}`"
+            )
+            .into());
         }
     }
     Ok(())
 }
 
-/// The revision the proofs ran against.
-const BEVY_REV: &str = "823bcc935";
+/// The crates.io release the proofs ran against.
+const BEVY_VERSION: &str = "0.19.1";
 
-/// Every `bevy_*` dependency in a manifest with its `rev`, whether written
-/// as an inline table (`bevy_ecs = { git = …, rev = "…" }`) or a dependency
-/// table (`[dependencies.bevy_ecs]` followed by `rev = "…"`).
-fn bevy_pins(manifest: &str) -> Vec<(String, Option<String>)> {
+/// How a `bevy_*` dependency is declared.
+#[derive(Debug, PartialEq, Eq)]
+enum BevyPin {
+    Version(String),
+    Git,
+    Path,
+    Unpinned,
+}
+
+fn classify(text: &str) -> BevyPin {
     fn quoted_value(text: &str, key: &str) -> Option<String> {
         let at = text.find(key)?;
         let rest = text[at + key.len()..].trim_start();
@@ -223,61 +245,142 @@ fn bevy_pins(manifest: &str) -> Vec<(String, Option<String>)> {
         let rest = rest.strip_prefix('"')?;
         rest.split('"').next().map(str::to_owned)
     }
+    if quoted_value(text, "git").is_some() {
+        return BevyPin::Git;
+    }
+    if quoted_value(text, "path").is_some() {
+        return BevyPin::Path;
+    }
+    // `bevy_ecs = "0.19.1"` (a bare string) or `version = "0.19.1"`.
+    let bare = text
+        .trim()
+        .strip_prefix('"')
+        .and_then(|rest| rest.split('"').next())
+        .map(str::to_owned);
+    match quoted_value(text, "version").or(bare) {
+        Some(version) => BevyPin::Version(version),
+        None => BevyPin::Unpinned,
+    }
+}
+
+/// Every `bevy_*` dependency in a manifest with how it is pinned, whether
+/// written as an inline table (`bevy_ecs = { version = "…", … }`), a bare
+/// string, or a dependency table (`[dependencies.bevy_ecs]` followed by
+/// its keys).
+fn bevy_pins(manifest: &str) -> Vec<(String, BevyPin)> {
     let mut pins = Vec::new();
-    let mut table: Option<(String, Option<String>)> = None;
+    let mut table: Option<(String, String)> = None;
     for line in manifest.lines().map(str::trim) {
         if line.starts_with('[') {
-            if let Some(pin) = table.take() {
-                pins.push(pin);
+            if let Some((name, body)) = table.take() {
+                pins.push((name, classify(&body)));
             }
             if let Some(name) = line
                 .strip_prefix("[dependencies.")
                 .and_then(|rest| rest.strip_suffix(']'))
                 .filter(|name| name.starts_with("bevy_"))
             {
-                table = Some((name.to_owned(), None));
+                table = Some((name.to_owned(), String::new()));
             }
             continue;
         }
-        if let Some((_, rev)) = table.as_mut() {
-            if line.starts_with("rev") {
-                *rev = quoted_value(line, "rev");
-            }
+        if let Some((_, body)) = table.as_mut() {
+            body.push_str(line);
+            body.push('\n');
             continue;
         }
         if line.starts_with("bevy_")
             && let Some((name, value)) = line.split_once('=')
         {
-            pins.push((name.trim().to_owned(), quoted_value(value, "rev")));
+            pins.push((name.trim().to_owned(), classify(value)));
         }
     }
-    if let Some(pin) = table.take() {
-        pins.push(pin);
+    if let Some((name, body)) = table.take() {
+        pins.push((name, classify(&body)));
     }
     pins
 }
 
+/// Every `bevy_*` package in a lock file with its resolved version.
+fn bevy_lock_versions(lock: &str) -> Vec<(String, String)> {
+    let mut versions = Vec::new();
+    let mut current: Option<String> = None;
+    for line in lock.lines().map(str::trim) {
+        if line == "[[package]]" {
+            current = None;
+            continue;
+        }
+        if let Some(name) = line.strip_prefix("name = \"") {
+            let name = name.trim_end_matches('"');
+            current = name.starts_with("bevy_").then(|| name.to_owned());
+            continue;
+        }
+        if let (Some(name), Some(version)) = (current.take(), line.strip_prefix("version = \"")) {
+            versions.push((name, version.trim_end_matches('"').to_owned()));
+        }
+    }
+    versions
+}
+
 #[test]
-fn bevy_pins_reads_both_manifest_forms() {
+fn bevy_pins_reads_every_manifest_form() {
     let manifest = r#"
 [dependencies]
 rig-core = { path = "x" }
-bevy_ecs = { git = "https://github.com/bevyengine/bevy", rev = "823bcc935", default-features = false }
+bevy_ecs = { version = "0.19.1", default-features = false }
+bevy_tasks = "0.19.1"
+bevy_app = { git = "https://github.com/bevyengine/bevy", rev = "823bcc935" }
 
-[dependencies.bevy_tasks]
-git = "https://github.com/bevyengine/bevy"
-rev = "823bcc935"
+[dependencies.bevy_asset]
+version = "0.19.1"
 features = ["multi_threaded"]
 
-[dependencies.bevy_app]
-git = "https://github.com/bevyengine/bevy"
+[dependencies.bevy_reflect]
+path = "../bevy/crates/bevy_reflect"
+
+[dependencies.bevy_time]
+features = ["x"]
 "#;
     assert_eq!(
         bevy_pins(manifest),
         vec![
-            ("bevy_ecs".to_owned(), Some("823bcc935".to_owned())),
-            ("bevy_tasks".to_owned(), Some("823bcc935".to_owned())),
-            ("bevy_app".to_owned(), None),
+            ("bevy_ecs".to_owned(), BevyPin::Version("0.19.1".to_owned())),
+            (
+                "bevy_tasks".to_owned(),
+                BevyPin::Version("0.19.1".to_owned())
+            ),
+            ("bevy_app".to_owned(), BevyPin::Git),
+            (
+                "bevy_asset".to_owned(),
+                BevyPin::Version("0.19.1".to_owned())
+            ),
+            ("bevy_reflect".to_owned(), BevyPin::Path),
+            ("bevy_time".to_owned(), BevyPin::Unpinned),
+        ]
+    );
+}
+
+#[test]
+fn bevy_lock_versions_reads_packages() {
+    let lock = r#"
+[[package]]
+name = "bevy_ecs"
+version = "0.19.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "serde"
+version = "1.0.0"
+
+[[package]]
+name = "bevy_tasks"
+version = "0.19.0"
+"#;
+    assert_eq!(
+        bevy_lock_versions(lock),
+        vec![
+            ("bevy_ecs".to_owned(), "0.19.1".to_owned()),
+            ("bevy_tasks".to_owned(), "0.19.0".to_owned()),
         ]
     );
 }

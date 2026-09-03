@@ -27,4 +27,12 @@ loom = "0.7"
 
 [dev-dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
+
+# The one executed wasm test in the tree (`tests/wasm.rs`): the bus driven by
+# `spawn_local` in the browser target, under `wasm-bindgen-test-runner`.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+wasm-bindgen-futures = { workspace = true }
