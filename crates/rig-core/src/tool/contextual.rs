@@ -36,6 +36,10 @@
 //! #[derive(Serialize, Deserialize)]
 //! struct AuditRecord(i64);
 //!
+//! impl rig_core::tool::ContextValue for AuditRecord {
+//!     const KEY: &'static str = "audit_record";
+//! }
+//!
 //! struct Add;
 //!
 //! impl Tool for Add {

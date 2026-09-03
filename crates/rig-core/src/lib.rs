@@ -198,6 +198,9 @@ pub use serde_json;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use rig_derive::ContextValue;
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::Embed;
 
 // The portable `#[rig_tool]` macro produces context-free `PortableTool`s, which

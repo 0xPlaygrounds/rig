@@ -10,7 +10,19 @@ use std::{
 
 use super::*;
 use crate::message::{ImageMediaType, ToolResultContent};
-use crate::tool::ToolErrorKind;
+use crate::tool::{ContextValue, ToolErrorKind};
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+struct Counter(u32);
+impl ContextValue for Counter {
+    const KEY: &'static str = "test.counter";
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+struct Note(String);
+impl ContextValue for Note {
+    const KEY: &'static str = "test.note";
+}
 
 fn rich_error_output(label: &str) -> ToolOutput {
     ToolOutput::content(vec![
@@ -51,10 +63,10 @@ impl Tool for Echo {
         context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        if let Some(value) = context.get::<u32>() {
-            context.insert(value + 1)?;
+        if let Some(Counter(value)) = context.get::<Counter>()? {
+            context.insert(Counter(value + 1))?;
         }
-        context.insert_result("result-metadata".to_string())?;
+        context.insert_result(Note("result-metadata".to_string()))?;
         Ok(args)
     }
 }
@@ -67,7 +79,7 @@ async fn toolset_dispatch_snapshot_is_canonical_and_returns_result_metadata() {
     assert_eq!(definitions[0].name, "echo");
 
     let mut context = ToolContext::new();
-    context.insert(7_u32).unwrap();
+    context.insert(Counter(7)).unwrap();
     let result = set.execute("echo", r#"{"value":1}"#, &mut context).await;
     assert!(result.is_success());
     assert_eq!(
@@ -75,13 +87,13 @@ async fn toolset_dispatch_snapshot_is_canonical_and_returns_result_metadata() {
         &ToolOutput::json(serde_json::json!({"value": 1}))
     );
     assert_eq!(
-        context.get::<u32>(),
-        Some(7),
+        context.get::<Counter>().unwrap(),
+        Some(Counter(7)),
         "tool-local inbound mutations must not change the caller's context"
     );
     assert_eq!(
-        context.result::<String>().as_deref(),
-        Some("result-metadata")
+        context.result::<Note>().unwrap(),
+        Some(Note("result-metadata".to_string()))
     );
 }
 
@@ -106,7 +118,7 @@ impl Tool for PendingTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result("unpublished".to_string())?;
+        context.insert_result(Note("unpublished".to_string()))?;
         self.0.store(true, Ordering::SeqCst);
         pending().await
     }
@@ -118,7 +130,7 @@ async fn cancelled_toolset_dispatch_does_not_retain_stale_result_metadata() {
     let started = Arc::new(AtomicBool::new(false));
     set.add_tool(PendingTool(started.clone()));
     let mut context = ToolContext::new();
-    context.insert_result("stale".to_string()).unwrap();
+    context.insert_result(Note("stale".to_string())).unwrap();
 
     let mut execution = Box::pin(set.execute(PendingTool::NAME, "null", &mut context));
     tokio::time::timeout(
@@ -138,7 +150,7 @@ async fn cancelled_toolset_dispatch_does_not_retain_stale_result_metadata() {
     .expect("pending tool did not start");
     drop(execution);
 
-    assert!(context.result::<String>().is_none());
+    assert_eq!(context.result::<Note>().unwrap(), None);
 }
 
 #[tokio::test]

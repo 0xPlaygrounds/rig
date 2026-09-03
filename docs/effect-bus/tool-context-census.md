@@ -7,15 +7,15 @@ serde. Semantics-only calls (`for_dispatch`, `accept_dispatch_result`,
 
 ## Non-test sites
 
-| Site | Map | Value type | Port |
-| --- | --- | --- | --- |
-| `crates/rig-rmcp/src/native.rs:478` | inbound read | `rmcp::model::Meta` | serde already; `get` now returns an owned value (drop `.cloned()`) |
-| `crates/rig-rmcp/src/native.rs:443` | result write | `serde_json::Value` (`structuredContent`) | serde already; unchanged |
-| `crates/rig-rmcp/src/native.rs:446` | result write | `rmcp::model::Meta` | serde already; unchanged |
-| `crates/rig-rmcp/src/native.rs:448` | result write | `rmcp::model::CallToolResult` | serde already; unchanged |
-| `crates/rig-agent/src/test_utils/tools.rs:122` | inbound read | `SessionId` | derive serde |
-| `crates/rig-agent/src/test_utils/tools.rs:646` | result write | `MockRequestId` | derive serde |
-| `examples/tool_result_outcomes/src/main.rs:142,191,389` | result write/read | `FailureSite` | derive serde |
+| Site | Map | Value type | Key (`ContextValue::KEY`) | Port |
+| --- | --- | --- | --- | --- |
+| `crates/rig-rmcp/src/native.rs` (request `_meta`) | inbound read | `McpMeta(rmcp::model::Meta)` | `rmcp.meta` | newtype: the context stores values under declared keys and `rmcp::model::Meta` is not rig-rmcp's to implement `ContextValue` for |
+| `crates/rig-rmcp/src/native.rs` (`preserve_mcp_result`) | result write | `McpStructuredContent(serde_json::Value)` | `rmcp.structured_content` | newtype |
+| ″ | result write | `McpResponseMeta(rmcp::model::Meta)` | `rmcp.response_meta` | newtype |
+| ″ | result write | `McpCallToolResult(rmcp::model::CallToolResult)` | `rmcp.call_tool_result` | newtype |
+| `crates/rig-agent/src/test_utils/tools.rs` | inbound read | `SessionId` | `test.session_id` | manual impl |
+| ″ | result write | `MockRequestId` | `test.mock_request_id` | manual impl |
+| `examples/tool_result_outcomes/src/main.rs` | result write/read | `FailureSite` | `example.failure_site` | `#[derive(ContextValue)]` |
 | `crates/rig-core/src/tool/contextual.rs:584,601,798` | — | — | semantics only (dispatch snapshot / publish / clear) |
 | `crates/rig-core/src/tool/catalog.rs:81` | — | — | semantics only |
 | `crates/rig-agent/src/tool/server.rs:340` | — | — | semantics only |
@@ -49,8 +49,16 @@ between signatures and are unaffected by the storage change.
 
 ## Semantic shift, stated once
 
-`ToolContext` values are data: inserting a value serializes it, reading one
-deserializes it. Values with interior sharing (`Arc<Mutex<_>>`, atomics,
+`ToolContext` values are data under **declared keys**: a value type implements
+`ContextValue { const KEY }` (derive it, or one line), inserting a value
+serializes it under that key, reading one deserializes it. The key is the
+value's identity on the wire — stable across a rename, a module move, a
+persisted `EffectLog`, or a different toolchain, where `std::any::type_name`
+(the first serde port's key) was not. `get`/`result` return
+`Result<Option<T>, ToolContextError>`: an empty slot is `Ok(None)`, a slot
+holding something that is not a `T` is `Err(Decode)` — absence and a shape
+mismatch are different facts. `insert` never fails after a successful write:
+a displaced value that does not decode as `T` is simply replaced. Values with interior sharing (`Arc<Mutex<_>>`, atomics,
 channels) no longer travel through dispatch context; each such use moves to
 the tool instance, which is what tool instances are for. Clone-per-dispatch
 and dispatch-returns-result-without-replacing-inbound are preserved exactly.

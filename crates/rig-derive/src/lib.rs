@@ -3,6 +3,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
+mod context;
 mod embed;
 mod resolve;
 mod tool;
@@ -29,6 +30,27 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(item as DeriveInput);
 
     embed::expand_derive_embedding(&mut input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Implements `rig_core::tool::ContextValue` (re-exported as
+/// `rig::tool::ContextValue`): the key a value lives under in a
+/// `ToolContext`. The key defaults to the type's name; override it with
+/// `#[context(key = "…")]` when the name is not the stable identity you
+/// want on the wire.
+///
+/// ```text
+/// use rig::tool::ContextValue;
+///
+/// #[derive(serde::Serialize, serde::Deserialize, ContextValue)]
+/// #[context(key = "session.id")]
+/// struct SessionId(String);
+/// ```
+#[proc_macro_derive(ContextValue, attributes(context))]
+pub fn derive_context_value(item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+    context::expand_derive_context_value(&input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
@@ -137,10 +159,12 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
 ///     #[rig(context)] context: &mut ToolContext,
 ///     greeting: String,
 /// ) -> Result<String, rig::tool::ToolExecutionError> {
+///     // `CurrentUser` derives `rig::tool::ContextValue` (serde data under a
+///     // declared key); `get` distinguishes absence from an undecodable slot.
 ///     let user = context
-///         .get::<String>()
-///         .map(String::as_str)
-///         .unwrap_or("guest");
+///         .get::<CurrentUser>()?
+///         .map(|user| user.0)
+///         .unwrap_or_else(|| "guest".to_owned());
 ///     Ok(format!("{greeting}, {user}!"))
 /// }
 /// ```

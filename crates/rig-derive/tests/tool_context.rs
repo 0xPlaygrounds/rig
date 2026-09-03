@@ -11,13 +11,14 @@
 use rig_agent::tool::{Tool, ToolContext};
 use rig_derive::rig_tool;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, rig_core::ContextValue)]
 struct Offset(i32);
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, rig_core::ContextValue)]
 struct Prefix(String);
 
-#[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, rig_core::ContextValue)]
+#[context(key = "test.invocation")]
 struct Invocation(String);
 
 #[rig_tool(
@@ -53,8 +54,8 @@ async fn async_context_first(
     value: String,
 ) -> Result<String, rig_core::tool::ToolExecutionError> {
     let prefix = context
-        .get::<Prefix>()
-        .map(|prefix| prefix.0.clone())
+        .get::<Prefix>()?
+        .map(|prefix| prefix.0)
         .unwrap_or_default();
     std::future::ready(()).await;
     context.insert_result(Invocation("async".into()))?;
@@ -112,7 +113,7 @@ async fn sync_context_is_excluded_from_schema_and_passed_in_argument_order() {
 
     assert_eq!(output, 19);
     assert_eq!(
-        context.result::<Invocation>(),
+        context.result::<Invocation>().unwrap(),
         Some(Invocation("sync".into()))
     );
 }
@@ -143,7 +144,7 @@ async fn async_context_is_excluded_from_schema_and_passed_to_the_function() {
 
     assert_eq!(output, "hello world");
     assert_eq!(
-        context.result::<Invocation>(),
+        context.result::<Invocation>().unwrap(),
         Some(Invocation("async".into()))
     );
 }
@@ -187,7 +188,7 @@ async fn explicit_marker_supports_imported_aliases() {
         .unwrap();
     assert_eq!(output, "ok");
     assert_eq!(
-        context.result::<Invocation>(),
+        context.result::<Invocation>().unwrap(),
         Some(Invocation("alias".into()))
     );
 }

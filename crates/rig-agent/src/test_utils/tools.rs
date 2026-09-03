@@ -70,6 +70,10 @@ impl Tool for MockAddTool {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionId(pub String);
 
+impl rig_core::tool::ContextValue for SessionId {
+    const KEY: &'static str = "test.session_id";
+}
+
 /// A mock tool that records whatever it observed in its per-call
 /// [`ToolContext`], so tests can assert the context reached tool execution.
 ///
@@ -119,7 +123,7 @@ impl Tool for MockContextProbeTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        let observed = match context.get::<SessionId>() {
+        let observed = match context.get::<SessionId>()? {
             Some(session) => format!("session:{}", session.0),
             None => "no-session".to_string(),
         };
@@ -618,6 +622,10 @@ impl Tool for MockDeniedTool {
 /// verify that result metadata reaches hooks without being sent to the model.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MockRequestId(pub String);
+
+impl rig_core::tool::ContextValue for MockRequestId {
+    const KEY: &'static str = "test.mock_request_id";
+}
 
 /// A tool whose success carries a [`MockRequestId`] in its result metadata.
 /// Registered under the name `with_meta`.
