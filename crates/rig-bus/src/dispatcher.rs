@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     fmt,
     pin::Pin,
-    sync::{Arc, PoisonError},
+    sync::{Arc, PoisonError, Weak},
     task::{Context, Poll, Waker},
 };
 
@@ -17,6 +17,7 @@ use super::sync::{
 use futures::{
     Stream,
     channel::{mpsc, oneshot},
+    task::{AtomicWaker, noop_waker_ref},
 };
 
 use rig_core::{
@@ -80,9 +81,13 @@ struct CommandQueue {
     /// The driver's waker, refreshed on every driver poll; woken when a
     /// command is enqueued or the last dispatcher drops.
     driver: Option<Waker>,
-    /// The wakers of `Pending`/`EffectStream` values parked at the send
-    /// stage because the buffer was full; all woken when the driver drains.
-    senders: Vec<Waker>,
+    /// The `Pending`/`EffectStream` values parked at the send stage because
+    /// the buffer was full — **one slot per value**, however many times it
+    /// is polled while parked (a frame-ticked host polls it once per frame
+    /// with a fresh waker each time; the value's `AtomicWaker` keeps only
+    /// the latest). All woken when the driver drains; a slot whose value
+    /// was dropped is skipped.
+    senders: Vec<Weak<AtomicWaker>>,
 }
 
 impl Shared {
@@ -122,16 +127,20 @@ impl Shared {
         for command in commands {
             command.reply.fail(bus_closed());
         }
-        for waker in senders {
-            waker.wake();
-        }
+        wake_parked(senders);
     }
 
     /// Offer `command` to the buffer. A full buffer hands the command back
-    /// (`Parked`) and parks `cx`'s waker until the driver drains; the caller
-    /// keeps the command and retries when woken. A dispatch that would queue
-    /// behind the handler that is making it is `Refused`.
-    pub(super) fn enqueue(&self, command: Box<Command>, cx: &Context<'_>) -> Enqueue {
+    /// (`Parked`) and parks the caller — `parked` is the caller's one slot,
+    /// which `cx`'s waker is stored in — until the driver drains; the
+    /// caller keeps the command and retries when woken. A dispatch that
+    /// would queue behind the handler that is making it is `Refused`.
+    pub(super) fn enqueue(
+        &self,
+        command: Box<Command>,
+        parked: &Arc<AtomicWaker>,
+        cx: &Context<'_>,
+    ) -> Enqueue {
         if self.is_reentrant(&command.key) {
             return Enqueue::Refused(command);
         }
@@ -141,9 +150,13 @@ impl Shared {
             return Enqueue::Closed;
         }
         if queue.commands.len() >= queue.capacity {
-            let waker = cx.waker();
-            if !queue.senders.iter().any(|parked| parked.will_wake(waker)) {
-                queue.senders.push(waker.clone());
+            parked.register(cx.waker());
+            if !queue
+                .senders
+                .iter()
+                .any(|slot| Weak::ptr_eq(slot, &Arc::downgrade(parked)))
+            {
+                queue.senders.push(Arc::downgrade(parked));
             }
             return Enqueue::Parked(command);
         }
@@ -169,10 +182,18 @@ impl Shared {
             std::mem::take(&mut queue.senders)
         };
         drop(queue);
-        for waker in senders {
-            waker.wake();
-        }
+        wake_parked(senders);
         commands
+    }
+
+    /// Values parked at the send stage (test seam).
+    #[cfg(test)]
+    pub(super) fn parked_senders(&self) -> usize {
+        self.queue
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .senders
+            .len()
     }
 
     /// Commands buffered and not yet taken by the driver.
@@ -297,6 +318,15 @@ impl Shared {
             .keys()
             .cloned()
             .collect()
+    }
+}
+
+/// Wake every parked value that is still alive.
+fn wake_parked(senders: Vec<Weak<AtomicWaker>>) {
+    for slot in senders {
+        if let Some(parked) = slot.upgrade() {
+            parked.wake();
+        }
     }
 }
 
@@ -432,6 +462,7 @@ impl Dispatcher {
             },
             receiver,
             shared: self.shared.clone(),
+            parked: Arc::new(AtomicWaker::new()),
             _cancel_guard: cancel_guard,
         }
     }
@@ -464,6 +495,7 @@ impl Dispatcher {
                     ),
                 ))),
                 shared: self.shared.clone(),
+                parked: Arc::new(AtomicWaker::new()),
             };
         }
         let (events, receiver) = mpsc::channel(self.stream_capacity);
@@ -482,6 +514,7 @@ impl Dispatcher {
                 receiver: Some(receiver),
             },
             shared: self.shared.clone(),
+            parked: Arc::new(AtomicWaker::new()),
             _cancel_guard: Some(cancel_guard),
         }
     }
@@ -561,11 +594,18 @@ enum PendingState {
 /// A unary dispatch in flight: a plain `Unpin` future with no executor
 /// affinity, resolving to the outcome or a report. Dropping it cancels the
 /// dispatch (the handler's sink reports closed).
+///
+/// A host that ticks rather than awaits — a Bevy system, once per frame —
+/// probes it with [`Pending::poll_outcome`] instead of `block_on`: no
+/// executor, no waker minted per frame.
 pub struct Pending {
     id: EffectId,
     state: PendingState,
     receiver: oneshot::Receiver<Result<Outcome, ErrorReport>>,
     shared: Arc<Shared>,
+    /// This value's one slot in the bus's parked-sender list while it waits
+    /// on a full buffer; holds the latest waker it was polled with.
+    parked: Arc<AtomicWaker>,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: oneshot::Sender<()>,
 }
@@ -574,6 +614,20 @@ impl Pending {
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.id
+    }
+
+    /// One poll, no executor: the outcome if the dispatch has resolved,
+    /// `None` if not yet. The first call performs the send (or parks on a
+    /// full buffer), exactly as the first `poll` would; a host calls it
+    /// once per tick. Polling with a real waker and probing may be mixed —
+    /// the bus keeps only the latest waker, and a probe's is a no-op, so a
+    /// host that probes must keep probing.
+    pub fn poll_outcome(&mut self) -> Option<Result<Outcome, ErrorReport>> {
+        let mut cx = Context::from_waker(noop_waker_ref());
+        match Pin::new(self).poll(&mut cx) {
+            Poll::Ready(outcome) => Some(outcome),
+            Poll::Pending => None,
+        }
     }
 }
 
@@ -600,7 +654,7 @@ impl Future for Pending {
                             "a dispatch was sent twice",
                         )));
                     };
-                    match this.shared.enqueue(taken, cx) {
+                    match this.shared.enqueue(taken, &this.parked, cx) {
                         Enqueue::Sent => this.state = PendingState::Waiting,
                         Enqueue::Parked(kept) => {
                             *command = Some(kept);
@@ -644,11 +698,14 @@ enum StreamState {
 /// `Result<StreamEvent, ErrorReport>`, `Final`-terminated. Dropping it
 /// cancels the dispatch: the handler's next send fails and the provider
 /// stream is dropped. Pause is client-side back-pressure — stop polling and
-/// the bounded channel stalls the handler.
+/// the bounded channel stalls the handler. A ticking host probes it with
+/// [`EffectStream::poll_item`].
 pub struct EffectStream {
     id: EffectId,
     state: StreamState,
     shared: Arc<Shared>,
+    /// This value's one slot in the parked-sender list (see [`Pending`]).
+    parked: Arc<AtomicWaker>,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: Option<oneshot::Sender<()>>,
 }
@@ -657,6 +714,18 @@ impl EffectStream {
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.id
+    }
+
+    /// One poll, no executor: `Some(Some(item))` for the next item,
+    /// `Some(None)` once the stream has ended, `None` if nothing is ready
+    /// yet. The first call performs the send; a host calls it once per
+    /// tick (or in a loop until `None`, to drain what a tick delivered).
+    pub fn poll_item(&mut self) -> Option<Option<Result<StreamEvent, ErrorReport>>> {
+        let mut cx = Context::from_waker(noop_waker_ref());
+        match Pin::new(self).poll_next(&mut cx) {
+            Poll::Ready(item) => Some(item),
+            Poll::Pending => None,
+        }
     }
 }
 
@@ -693,7 +762,7 @@ impl Stream for EffectStream {
                             "a stream dispatch was sent twice",
                         ))));
                     };
-                    match this.shared.enqueue(taken, cx) {
+                    match this.shared.enqueue(taken, &this.parked, cx) {
                         Enqueue::Sent => {}
                         Enqueue::Parked(kept) => {
                             *command = Some(kept);
@@ -763,26 +832,25 @@ impl Stream for EffectStream {
 const _: () = {
     const fn assert_dispatcher<T: Clone + Send + Sync + 'static>() {}
     const fn assert_unpin<T: Unpin + 'static>() {}
+    // The values a dispatch returns are `Send` on every target — a Bevy
+    // `Component` in the browser too — not only natively: they hold serde
+    // data, channels and atomics, never a handler.
+    const fn assert_send<T: Send + 'static>() {}
     assert_dispatcher::<Dispatcher>();
     assert_unpin::<Pending>();
     assert_unpin::<EffectStream>();
+    assert_send::<Pending>();
+    assert_send::<EffectStream>();
     assert!(
         size_of::<Dispatcher>() <= 32,
         "Dispatcher budget: 32 bytes (measured 16 natively)"
     );
     assert!(
         size_of::<Pending>() <= 64,
-        "Pending budget: 64 bytes (measured 48 natively)"
+        "Pending budget: 64 bytes (measured 56 natively: one parked-sender slot)"
     );
     assert!(
         size_of::<EffectStream>() <= 160,
-        "EffectStream budget: 160 bytes (measured 144 natively)"
+        "EffectStream budget: 160 bytes (measured 152 natively: one parked-sender slot)"
     );
-};
-
-#[cfg(not(target_family = "wasm"))]
-const _: () = {
-    const fn assert_send<T: Send + 'static>() {}
-    assert_send::<Pending>();
-    assert_send::<EffectStream>();
 };

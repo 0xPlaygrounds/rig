@@ -1576,6 +1576,7 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
             span: tracing::Span::none(),
             cancel,
         }),
+        &Arc::new(futures::task::AtomicWaker::new()),
         &cx,
     );
     assert!(matches!(offered, super::dispatcher::Enqueue::Closed));
@@ -1916,4 +1917,103 @@ fn a_serial_key_is_not_occupied_by_a_dispatch_cancelled_before_it_was_served() {
         "the cancelled dispatch left the key busy"
     );
     assert_eq!(served.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_probe_resolves_a_dispatch_without_an_executor() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(7)));
+    assert!(pending.poll_outcome().is_none(), "the first probe sends");
+    assert_eq!(dispatcher.buffered(), 1);
+    let _ = driver.poll_unpin(&mut cx);
+    let outcome = pending.poll_outcome().expect("served").expect("ok");
+    assert!(matches!(outcome, Outcome::Custom(ref payload) if *payload == json!(7)));
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+
+    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+    // Unknown key: the probe sends, the driver answers, the probe drains.
+    assert!(stream.poll_item().is_none());
+    let _ = driver.poll_unpin(&mut cx);
+    let first = stream.poll_item().expect("ready").expect("an item");
+    assert_eq!(
+        first.expect_err("unavailable").kind,
+        ErrorKind::HandlerUnavailable
+    );
+    assert!(stream.poll_item().expect("ready").is_none(), "then the end");
+}
+
+#[test]
+fn ten_thousand_probes_on_a_full_bus_keep_one_waker() {
+    // A frame-ticked host probes a parked dispatch once per frame; the bus
+    // keeps one slot per parked value, not one waker per probe.
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        command_capacity: 1,
+        ..BusConfig::default()
+    });
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let key = HandlerKey::from("echo");
+    let mut first = dispatcher.dispatch(&key, custom(json!(1)));
+    let mut parked = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(first.poll_outcome().is_none());
+    for _ in 0..10_000 {
+        assert!(parked.poll_outcome().is_none());
+        // A real waker per poll, as `block_on(poll_once)` mints, is one
+        // slot too.
+        let waker = futures::task::waker(Arc::new(CountingWake));
+        let mut cx = Context::from_waker(&waker);
+        assert!(parked.poll_unpin(&mut cx).is_pending());
+    }
+    assert_eq!(dispatcher.shared.parked_senders(), 1);
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(first.poll_outcome().is_some());
+    // The drain freed the buffer and woke the parked value: its next probe
+    // sends, and one more driver poll serves it.
+    assert!(parked.poll_outcome().is_none(), "sent on this probe");
+    assert_eq!(dispatcher.buffered(), 1);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(parked.poll_outcome().is_some(), "served");
+    assert_eq!(served.load(Ordering::SeqCst), 2);
+    assert_eq!(dispatcher.shared.parked_senders(), 0);
+}
+
+struct CountingWake;
+
+impl futures::task::ArcWake for CountingWake {
+    fn wake_by_ref(_arc_self: &Arc<Self>) {}
+}
+
+#[test]
+fn a_parked_value_dropped_before_the_drain_leaves_no_slot_to_wake() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        command_capacity: 1,
+        ..BusConfig::default()
+    });
+    let (echo, _served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let key = HandlerKey::from("echo");
+    let mut first = dispatcher.dispatch(&key, custom(json!(1)));
+    let mut parked = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(first.poll_outcome().is_none());
+    assert!(parked.poll_outcome().is_none());
+    assert_eq!(dispatcher.shared.parked_senders(), 1);
+    drop(parked);
+    let waker = noop_waker_ref();
+    let mut cx = Context::from_waker(waker);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(
+        dispatcher.shared.parked_senders(),
+        0,
+        "the dead slot was dropped by the drain"
+    );
 }

@@ -81,7 +81,8 @@ fn loom_close_fails_what_the_driver_never_took() {
                 if shared.is_closed() {
                     return (true, receiver);
                 }
-                match shared.enqueue(cmd, &cx) {
+                let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
+                match shared.enqueue(cmd, &parked, &cx) {
                     Enqueue::Sent => (false, receiver),
                     Enqueue::Closed => (true, receiver),
                     Enqueue::Parked(_) | Enqueue::Refused(_) => panic!("neither"),
@@ -144,7 +145,8 @@ fn loom_a_registration_before_a_dispatch_is_installed_first() {
                 let (cmd, receiver) = command(1);
                 let (_flag, waker) = recording();
                 let cx = Context::from_waker(&waker);
-                assert!(matches!(shared.enqueue(cmd, &cx), Enqueue::Sent));
+                let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
+                assert!(matches!(shared.enqueue(cmd, &parked, &cx), Enqueue::Sent));
                 receiver
             })
         };
@@ -194,9 +196,10 @@ fn loom_bound_is_never_exceeded_and_no_sender_is_lost() {
                 let (mut cmd, _receiver) = command(id);
                 let (flag, waker) = recording();
                 let cx = Context::from_waker(&waker);
+                let slot = std::sync::Arc::new(futures::task::AtomicWaker::new());
                 let mut parked = false;
                 loop {
-                    match shared.enqueue(cmd, &cx) {
+                    match shared.enqueue(cmd, &slot, &cx) {
                         Enqueue::Sent => break,
                         Enqueue::Parked(kept) => {
                             parked = true;

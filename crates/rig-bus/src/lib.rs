@@ -179,12 +179,16 @@ pub use registrar::Registrar;
 use std::sync::Arc;
 
 // The typed views every driver (futures agent, systems runtime, registry)
-// holds cross threads; losing `Send + Sync` is an API break that fails here.
-#[cfg(not(target_family = "wasm"))]
-const _: fn() = || {
-    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+// holds cross threads — on every target, the browser included, which is
+// what makes them Bevy components there; losing `Send + Sync` is an API
+// break that fails here.
+const _: () = {
+    const fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    const fn assert_send_static<T: Send + 'static>() {}
     assert_send_sync_static::<ModelHandle>();
     assert_send_sync_static::<Dispatcher>();
+    assert_send_static::<Pending>();
+    assert_send_static::<EffectStream>();
 };
 
 /// Constructors for a bus.
