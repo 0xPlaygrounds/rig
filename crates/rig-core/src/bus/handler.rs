@@ -13,7 +13,8 @@ use crate::{
 };
 
 /// The future a handler returns: boxed, because the driver holds handlers
-/// as `Box<dyn Handler>` and the trait must be object-safe. `Send` on native
+/// as `Arc<dyn Handler>` (an in-flight task holds its handler while the
+/// table is replaced) and the trait must be object-safe. `Send` on native
 /// (the `WasmBoxedFuture` fork), which is what makes `BusDriver: Send`.
 pub type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
 
@@ -151,6 +152,41 @@ impl Tap {
     }
 }
 
+/// A streaming dispatch answered with a non-completion outcome: what the
+/// consumer receives, and what the tap records.
+fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Internal,
+        format!(
+            "a streaming dispatch was answered with a {} outcome",
+            other.family()
+        ),
+    )
+}
+
+impl Drop for OutcomeSink {
+    fn drop(&mut self) {
+        // A sink dropped before it answered is a dispatch the consumer sees
+        // fail — a stream cut short before its `Final`, a unary handler
+        // that never resolved — and the log records the same failure the
+        // consumer receives rather than losing the dispatch.
+        let unanswered = match &self.inner {
+            SinkInner::Unary { reply, .. } => reply.is_some(),
+            SinkInner::Stream { finished, .. } => !*finished,
+        };
+        if unanswered && self.tap.as_ref().is_some_and(|tap| !tap.fired) {
+            let report = match &self.inner {
+                SinkInner::Unary { .. } => ErrorReport::new(
+                    ErrorKind::Internal,
+                    "the handler dropped its outcome sink without answering",
+                ),
+                SinkInner::Stream { .. } => super::dispatcher::stream_truncated(),
+            };
+            self.tap_outcome(&Err(report));
+        }
+    }
+}
+
 #[allow(
     clippy::large_enum_variant,
     reason = "one sink per dispatch, moved into the handler once; the unary arm carries the fold state"
@@ -248,7 +284,24 @@ impl OutcomeSink {
     /// error, is delivered as the stream's one item.
     pub fn resolve(mut self, outcome: Result<Outcome, ErrorReport>) -> HandlerFuture<'static> {
         Box::pin(async move {
-            self.tap_outcome(&outcome);
+            // What the tap records is what the consumer receives: a stream
+            // dispatch answered with a non-completion outcome is delivered
+            // as an error, and recorded as that error.
+            let delivered: Result<Outcome, ErrorReport> = match (&self.inner, &outcome) {
+                (SinkInner::Stream { .. }, Ok(other))
+                    if !matches!(other, Outcome::Completion(_)) =>
+                {
+                    Err(ErrorReport::new(
+                        ErrorKind::Internal,
+                        format!(
+                            "a streaming dispatch was answered with a {} outcome",
+                            other.family()
+                        ),
+                    ))
+                }
+                _ => outcome.clone(),
+            };
+            self.tap_outcome(&delivered);
             match &mut self.inner {
                 SinkInner::Unary { reply, .. } => {
                     if let Some(reply) = reply.take() {
@@ -260,24 +313,16 @@ impl OutcomeSink {
                     if *finished {
                         return;
                     }
-                    match outcome {
+                    match delivered {
                         Ok(Outcome::Completion(response)) => {
-                            for event in events_from_response(&response) {
-                                if events.send(Ok(event)).await.is_err() {
+                            for item in events_from_response(&response) {
+                                if events.send(item).await.is_err() {
                                     break;
                                 }
                             }
                         }
                         Ok(other) => {
-                            let _ = events
-                                .send(Err(ErrorReport::new(
-                                    ErrorKind::Internal,
-                                    format!(
-                                        "a streaming dispatch was answered with a {} outcome",
-                                        other.family()
-                                    ),
-                                )))
-                                .await;
+                            let _ = events.send(Err(wrong_stream_answer(&other))).await;
                         }
                         Err(report) => {
                             let _ = events.send(Err(report)).await;
@@ -385,7 +430,9 @@ pub(super) fn finish_unary(
 /// Re-emit a completed response as the events a stream consumer expects:
 /// one block per content item, then `Final`. Used when a unary answer meets
 /// a streaming dispatch (a replayed log, a unary-only custom handler).
-pub fn events_from_response(response: &CompletionResponse) -> Vec<StreamEvent> {
+pub fn events_from_response(
+    response: &CompletionResponse,
+) -> Vec<Result<StreamEvent, ErrorReport>> {
     use crate::{
         message::AssistantContent,
         providers::internal::adapter::AdapterOutput,
@@ -440,5 +487,9 @@ pub fn events_from_response(response: &CompletionResponse) -> Vec<StreamEvent> {
     terminal.model = response.model.clone();
     terminal.raw = response.raw.clone();
     out.final_record(terminal);
-    out.drain().filter_map(Result::ok).collect()
+    // An item that failed to re-emit (an image that did not serialize) is
+    // delivered as the error it is, not dropped.
+    out.drain()
+        .map(|item| item.map_err(|error| ErrorReport::from(&error)))
+        .collect()
 }

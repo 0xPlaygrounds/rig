@@ -102,7 +102,7 @@
 //! # }
 //! ```
 mod builder;
-mod bus;
+pub(crate) mod bus;
 mod completion;
 mod engine;
 pub mod hook;

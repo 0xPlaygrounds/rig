@@ -210,7 +210,7 @@ fn main() {
     // ---- proofs 1, 2, 3 ----
     {
         let (dispatcher, mut driver) = Bus::channel();
-        driver.register("model", model());
+        driver.register("model", model()).expect("register");
         let mut world = World::new();
         world.insert_resource(BusRes(dispatcher.clone()));
         world.insert_resource(Ticks::default());
@@ -331,7 +331,7 @@ fn main() {
             stream_capacity: 4,
             ..BusConfig::default()
         });
-        driver.register("model", model());
+        driver.register("model", model()).expect("register");
         let _driver_task = pool.spawn(driver);
         let mut stream: EffectStream = dispatcher.dispatch_stream(
             &HandlerKey::from("model"),

@@ -97,30 +97,40 @@ fn request() -> CompletionRequest {
 
 fn bus() -> (Dispatcher, tokio::task::JoinHandle<()>) {
     let (dispatcher, mut driver) = Bus::channel();
-    driver.register(
-        "model",
-        CompletionAdapter::new(
-            "mock",
-            MockCompletionModel::from_turns([MockTurn::text("unary"), MockTurn::text("again")]),
-        ),
-    );
-    driver.register(
-        "streamer",
-        CompletionAdapter::new(
-            "mock-stream",
-            MockCompletionModel::from_stream_turns([vec![
-                MockStreamEvent::text("str"),
-                MockStreamEvent::text("eamed"),
-                MockStreamEvent::final_response_with_total_tokens(4),
-            ]]),
-        ),
-    );
-    driver.register("double", ToolAdapter::new(Double));
-    driver.register(
-        "memory",
-        MemoryAdapter::new(InMemoryConversationMemory::new()),
-    );
-    driver.register("embed", EmbedAdapter::new("tiny", Tiny));
+    driver
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "mock",
+                MockCompletionModel::from_turns([MockTurn::text("unary"), MockTurn::text("again")]),
+            ),
+        )
+        .expect("register");
+    driver
+        .register(
+            "streamer",
+            CompletionAdapter::new(
+                "mock-stream",
+                MockCompletionModel::from_stream_turns([vec![
+                    MockStreamEvent::text("str"),
+                    MockStreamEvent::text("eamed"),
+                    MockStreamEvent::final_response_with_total_tokens(4),
+                ]]),
+            ),
+        )
+        .expect("register");
+    driver
+        .register("double", ToolAdapter::new(Double))
+        .expect("register");
+    driver
+        .register(
+            "memory",
+            MemoryAdapter::new(InMemoryConversationMemory::new()),
+        )
+        .expect("register");
+    driver
+        .register("embed", EmbedAdapter::new("tiny", Tiny))
+        .expect("register");
     (dispatcher, tokio::spawn(driver))
 }
 
@@ -186,13 +196,15 @@ async fn handle_descriptor_follows_a_runtime_replacement() {
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("model");
-    dispatcher.register(
-        "model",
-        CompletionAdapter::new(
-            "swapped",
-            MockCompletionModel::from_turns([MockTurn::text("swapped")]),
-        ),
-    );
+    dispatcher
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "swapped",
+                MockCompletionModel::from_turns([MockTurn::text("swapped")]),
+            ),
+        )
+        .expect("register");
     assert_eq!(
         model.model_ref().as_str(),
         "swapped",
@@ -256,7 +268,9 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
 #[tokio::test]
 async fn handles_fail_closed_when_the_driver_is_gone() {
     let (dispatcher, mut driver) = Bus::channel();
-    driver.register("double", ToolAdapter::new(Double));
+    driver
+        .register("double", ToolAdapter::new(Double))
+        .expect("register");
     let tool: ToolHandle = dispatcher
         .handle(&HandlerKey::from("double"))
         .expect("tool");

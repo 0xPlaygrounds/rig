@@ -35,7 +35,7 @@
 //! ```ignore
 //! // Bevy: one call site, both targets.
 //! let (dispatcher, mut driver) = rig_core::bus::Bus::channel();
-//! driver.register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model));
+//! driver.register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model))?;
 //! let task = IoTaskPool::get().spawn(driver);   // BusDriver: Send on native, !Send ok on wasm
 //! world.insert_resource(BusRes(dispatcher));     // Dispatcher: Send + Sync + 'static everywhere
 //! ```
@@ -46,7 +46,11 @@
 //! ```ignore
 //! let dispatcher = rig_core::bus::Bus::new_with(
 //!     rig_core::bus::BusConfig::default(),
-//!     |driver| driver.register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model)),
+//!     |driver| {
+//!         driver
+//!             .register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model))
+//!             .expect("a fresh key");
+//!     },
 //!     wasm_bindgen_futures::spawn_local,
 //! );
 //! ```
