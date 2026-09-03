@@ -320,7 +320,10 @@ impl<ToolState> AgentBuilder<ToolState> {
     }
 
     /// Name the agent's keys: `<owner>/model:<label>`, `<owner>/memory`,
-    /// `<owner>/retrieve:context#<n>`. The default is `agent#<n>` from a
+    /// `<owner>/retrieve:context#<n>`, and its own tools' `<owner>/tool:…`.
+    /// The default is the agent's [`name`](Self::name) when one is set —
+    /// so a named agent's keys are the same in every process, which a log
+    /// meant for replay elsewhere needs — else `agent#<n>` from a
     /// per-process counter.
     pub fn owner(mut self, label: impl Into<String>) -> Self {
         self.owner = Some(label.into());
@@ -378,7 +381,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         }
     }
 
-    fn build_agent(self, handle: impl FnOnce(ToolState) -> ToolServerHandle) -> Agent {
+    fn build_agent(self, handle: impl FnOnce(ToolState, &str) -> ToolServerHandle) -> Agent {
         let Self {
             mut config,
             tool_state,
@@ -391,7 +394,12 @@ impl<ToolState> AgentBuilder<ToolState> {
             record_effects,
             retrieval_indexes: _,
         } = self;
-        let owner = owner.unwrap_or_else(crate::agent::bus::default_owner);
+        // The owner: the label given, else the agent's name (so a named
+        // agent's keys are the same in every process — what a log meant
+        // for replay elsewhere needs), else a per-process counter.
+        let owner = owner
+            .or_else(|| config.name.clone())
+            .unwrap_or_else(crate::agent::bus::default_owner);
         config.bus = match bus {
             BusSource::Owned(bus_config) => {
                 let (dispatcher, registrar, driver) = Bus::channel_with(bus_config);
@@ -437,7 +445,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         if record_effects {
             crate::agent::bus::register_generated(config.bus.enable_recording());
         }
-        let tool_server_handle = handle(tool_state);
+        let tool_server_handle = handle(tool_state, config.bus.owner());
         tool_server_handle.attach(config.bus.registrar());
         Agent {
             tool_server_handle,
@@ -545,7 +553,7 @@ impl AgentBuilder<NoToolConfig> {
 
     /// Build the agent with no tools.
     pub fn build(self) -> Agent {
-        self.build_agent(|_| ToolServer::new().run())
+        self.build_agent(|_, owner| ToolServer::new().owner(owner).run())
     }
 }
 
@@ -587,7 +595,7 @@ impl AgentBuilder<NoToolConfig> {
 impl AgentBuilder<WithToolServerHandle> {
     /// Build the agent over the shared registry.
     pub fn build(self) -> Agent {
-        self.build_agent(|state| state.handle)
+        self.build_agent(|state, _| state.handle)
     }
 }
 
@@ -653,7 +661,9 @@ impl AgentBuilder<WithBuilderTools> {
 
     /// Build the agent with the builder's tools.
     pub fn build(self) -> Agent {
-        self.build_agent(|state| state.0.run())
+        // The builder's own registry takes the agent's owner, so a named
+        // agent's tool keys are stable too.
+        self.build_agent(|state, owner| state.0.owner(owner).run())
     }
 }
 

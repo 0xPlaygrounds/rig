@@ -1905,3 +1905,141 @@ async fn a_registration_posted_just_before_a_dispatch_serves_it_whichever_poll_e
         assert_eq!(served.load(Ordering::SeqCst), 1);
     }
 }
+
+// ---- the log carries its header; streams can be recorded verbatim ----
+
+#[tokio::test]
+async fn a_log_carries_its_header_and_a_replay_checks_it() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let recorder = EffectLogRecorder::new();
+    driver.record_to(recorder.clone());
+    let _task = spawn(driver);
+    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"n": 1}))))
+        .await
+        .expect("served");
+    let log = recorder.take();
+    assert_eq!(log.header.format, crate::effect::EFFECT_LOG_FORMAT);
+    assert_eq!(log.header.run_spec, None, "a bare-bus record names no spec");
+    assert_eq!(
+        log.header
+            .handlers
+            .iter()
+            .map(|descriptor| descriptor.key.clone())
+            .collect::<Vec<_>>(),
+        [HandlerKey::from("echo")],
+        "the handlers registered when recording began"
+    );
+    assert_eq!(
+        log.header.signature.get(&HandlerKey::from("echo")),
+        Some(&EffectFamily::Custom),
+        "the effect signature, read off the trace"
+    );
+    let json = serde_json::to_value(&log).expect("serializes");
+    assert!(json.get("header").is_some() && json.get("records").is_some());
+    let back: crate::effect::EffectLog = serde_json::from_value(json).expect("restores");
+    assert_eq!(back.header, log.header);
+    assert_eq!(back.len(), 1);
+
+    // A future format is refused with the version in the message.
+    let mut future = back.clone();
+    future.header.format = crate::effect::EFFECT_LOG_FORMAT + 1;
+    let (_dispatcher, _registrar, mut driver) = Bus::channel();
+    let report = EffectLogReplayer::register_all(&future, &mut driver).expect_err("refused");
+    assert!(
+        report
+            .message
+            .contains(&format!("format {}", crate::effect::EFFECT_LOG_FORMAT + 1)),
+        "{}",
+        report.message
+    );
+
+    // A signature that names a family the records do not answer is refused
+    // at registration, not at the first dispatch.
+    let mut lying = back.clone();
+    lying
+        .header
+        .signature
+        .insert(HandlerKey::from("echo"), EffectFamily::Completion);
+    let (_dispatcher, _registrar, mut driver) = Bus::channel();
+    let report = EffectLogReplayer::register_all(&lying, &mut driver).expect_err("refused");
+    assert!(
+        report
+            .message
+            .contains("signature says `echo` serves completion"),
+        "{}",
+        report.message
+    );
+    assert!(
+        driver.registrar().keys().is_empty(),
+        "nothing was registered"
+    );
+}
+
+#[tokio::test]
+async fn a_stream_recorded_verbatim_replays_its_own_events() {
+    let events = || {
+        vec![
+            MockStreamEvent::text("hel"),
+            MockStreamEvent::text("lo"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]
+    };
+    let record = |recorder: EffectLogRecorder| async move {
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        driver
+            .register(
+                "model",
+                CompletionAdapter::new("mock", MockCompletionModel::from_stream_turns([events()])),
+            )
+            .expect("register");
+        driver.record_to(recorder.clone());
+        let _task = spawn(driver);
+        let mut stream =
+            dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+        let mut seen = 0;
+        while let Some(item) = within(stream.next()).await {
+            item.expect("clean");
+            seen += 1;
+        }
+        (seen, recorder.take())
+    };
+
+    // The default: the fold, no events.
+    let (_, folded) = record(EffectLogRecorder::new()).await;
+    assert!(folded[0].events.is_none());
+    assert!(matches!(folded[0].outcome, Ok(Outcome::Completion(_))));
+
+    // Keeping events: the record holds them verbatim.
+    let (seen, kept) = record(EffectLogRecorder::keeping_stream_events()).await;
+    let recorded = kept[0].events.as_ref().expect("events kept");
+    assert_eq!(recorded.len(), seen, "every event the consumer received");
+    assert!(
+        matches!(kept[0].outcome, Ok(Outcome::Completion(_))),
+        "and still the fold"
+    );
+
+    // A replay of the kept record re-emits the events, delta boundaries and
+    // all; a replay of the folded record re-emits the fold.
+    let replay = |log: crate::effect::EffectLog| async move {
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
+        let _task = spawn(driver);
+        let mut stream =
+            dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+        let mut items = Vec::new();
+        while let Some(item) = within(stream.next()).await {
+            items.push(item.expect("clean"));
+        }
+        items
+    };
+    let recorded = recorded.clone();
+    let from_kept = replay(kept).await;
+    assert_eq!(from_kept, recorded, "the recorded events, verbatim");
+    let from_fold = replay(folded).await;
+    assert_ne!(
+        from_fold, recorded,
+        "the fold re-emits its own boundaries, not the original deltas"
+    );
+}
