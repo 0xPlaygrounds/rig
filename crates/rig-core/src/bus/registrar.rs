@@ -4,9 +4,11 @@
 use std::{
     collections::VecDeque,
     fmt,
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, PoisonError},
     task::{Context, Waker},
 };
+
+use super::sync::Mutex;
 
 use crate::{
     effect::{Family, HandlerDescriptor, HandlerKey},
@@ -72,7 +74,7 @@ impl Mailbox {
         }
     }
 
-    fn post(&self, registration: Registration) {
+    pub(super) fn post(&self, registration: Registration) {
         let driver = {
             let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
             if inner.closed {

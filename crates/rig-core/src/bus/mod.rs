@@ -155,6 +155,7 @@ mod handler;
 mod key;
 mod registrar;
 mod replay;
+mod sync;
 mod writer;
 
 pub use dispatcher::{Dispatcher, EffectStream, Pending};
@@ -225,5 +226,7 @@ pub fn tool_key(name: &str) -> HandlerKey {
     HandlerKey::from(format!("tool:{name}"))
 }
 
-#[cfg(test)]
+#[cfg(all(test, rig_loom))]
+mod loom_models;
+#[cfg(all(test, not(rig_loom)))]
 mod tests;

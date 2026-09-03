@@ -69,6 +69,12 @@ exclude = [
     "examples/discord_bot",
 ]
 
+[workspace.lints.rust]
+# `--cfg rig_loom` selects the model checker's sync shims (`bus/sync.rs`,
+# `agent/sync.rs`); a build flag, not a feature, and crate-specific so no
+# dependency reacts to it (`event-listener` reacts to a bare `loom`).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rig_loom)'] }
+
 [workspace.lints.clippy]
 dbg_macro = "forbid"
 await_holding_lock = "deny"

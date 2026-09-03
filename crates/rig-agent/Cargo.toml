@@ -35,6 +35,11 @@ tokio = { workspace = true, features = ["rt", "sync"], optional = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
+# The model checker's shims, only under `RUSTFLAGS=--cfg rig_loom` (the
+# pattern tokio uses): nothing is added to the default graph.
+[target.'cfg(rig_loom)'.dependencies]
+loom = "0.7"
+
 [dev-dependencies]
 rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }

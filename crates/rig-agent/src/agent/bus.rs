@@ -21,7 +21,12 @@ use std::{
     task::{Context, Poll, Wake, Waker},
 };
 
-use futures::{Stream, lock::Mutex};
+use futures::Stream;
+
+use super::sync::Mutex;
+
+#[cfg(all(test, rig_loom))]
+mod loom_models;
 use rig_core::{
     bus::{
         BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Key, Registrar,
@@ -127,7 +132,10 @@ impl AgentBus {
             ));
         };
         let recorder = EffectLogRecorder::new();
-        driver.get_mut().record_to(recorder.clone());
+        driver
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .record_to(recorder.clone());
         self.recorder = Some(recorder);
         Ok(())
     }
@@ -207,7 +215,10 @@ impl AgentBus {
         handler: ErasedHandler,
     ) -> Result<(), ErrorReport> {
         match self.driver.as_mut().and_then(Arc::get_mut) {
-            Some(driver) => driver.get_mut().register_erased(key, handler),
+            Some(driver) => driver
+                .get_mut()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .register_erased(key, handler),
             None => self.registrar.register_erased(key, handler),
         }
     }
@@ -267,7 +278,12 @@ impl AgentBus {
             return Err(self);
         };
         match Arc::try_unwrap(driver) {
-            Ok(mutex) => Ok((self.dispatcher, mutex.into_inner())),
+            Ok(mutex) => Ok((
+                self.dispatcher,
+                mutex
+                    .into_inner()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            )),
             Err(driver) => Err(Self {
                 driver: Some(driver),
                 ..self
@@ -357,11 +373,24 @@ impl<S> Driven<S> {
             return;
         };
         self.wakers.register(self.slot, cx.waker());
-        if let Some(mut guard) = driver.try_lock() {
+        if let Some(mut guard) = try_lock(driver) {
             let waker = Waker::from(Arc::clone(&self.wakers));
             let mut driver_cx = Context::from_waker(&waker);
             let _ = Pin::new(&mut *guard).poll(&mut driver_cx);
         }
+    }
+}
+
+/// The driver lock is only ever held for one synchronous poll, so it is a
+/// plain mutex and every acquisition is a `try_lock`: a run that finds it
+/// taken is being polled from inside another run's driver poll and yields.
+/// A poisoned lock (a handler panicked under a poll) is taken over, as
+/// everywhere else in the bus.
+fn try_lock<T>(driver: &Mutex<T>) -> Option<super::sync::MutexGuard<'_, T>> {
+    match driver.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+        Err(std::sync::TryLockError::WouldBlock) => None,
     }
 }
 
@@ -381,7 +410,7 @@ impl<S> Drop for Driven<S> {
             return;
         }
         if let Some(driver) = &self.driver
-            && let Some(mut guard) = driver.try_lock()
+            && let Some(mut guard) = try_lock(driver)
         {
             let waker = Waker::from(Arc::clone(&self.wakers));
             let mut driver_cx = Context::from_waker(&waker);
@@ -430,7 +459,7 @@ impl<S: Unpin> Unpin for Driven<S> {}
 /// waiting on it; each run keeps its own slot current on every poll.
 #[derive(Default)]
 pub(crate) struct WakerSet {
-    slots: std::sync::Mutex<Vec<(u64, Waker)>>,
+    slots: Mutex<Vec<(u64, Waker)>>,
     next_slot: AtomicU64,
 }
 

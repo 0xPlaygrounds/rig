@@ -393,6 +393,28 @@ jobs:
   # run in parallel: each step deliberately compiles a package set with its
   # own feature configuration (see the comments below), which serializes
   # poorly behind the default-feature sweep above.
+  # The bus's wait/wake protocols under the loom model checker: every
+  # interleaving of the small models in rig-core's `bus/loom_models.rs`
+  # and rig-agent's `agent/bus/loom_models.rs`. Stable toolchain;
+  # `--cfg rig_loom` selects the sync shims. A failing model is a
+  # protocol bug.
+  loom:
+    name: stable / loom models
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUSTFLAGS: --cfg rig_loom
+      LOOM_MAX_PREEMPTIONS: "3"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+
+      - name: Run the loom models
+        run: cargo test --locked -p rig-core -p rig-agent --lib --release loom_
+
   test-guards:
     name: stable / test guards
     runs-on: ubuntu-latest

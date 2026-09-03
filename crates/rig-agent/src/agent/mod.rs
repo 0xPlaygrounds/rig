@@ -109,6 +109,7 @@ pub mod hook;
 pub mod run;
 pub mod runner;
 mod streaming;
+pub(crate) mod sync;
 mod telemetry;
 mod tool;
 mod typed;
