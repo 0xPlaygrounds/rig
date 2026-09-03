@@ -408,6 +408,18 @@ impl HookContext {
         })
     }
 
+    /// Bind a typed view to a key that carries its family (what the agent
+    /// and its registries mint), on the run's bus. Routes through the run's
+    /// driver and cannot outlive it; a dispatch a hook makes this way is
+    /// served and recorded but does not re-enter the hook stack. Fails when
+    /// the context was built outside a run.
+    pub fn bind<F: rig_core::effect::Family>(
+        &self,
+        key: &rig_core::bus::Key<F>,
+    ) -> Result<rig_core::bus::Handle<F>, ErrorReport> {
+        self.bus()?.bind(key)
+    }
+
     /// Bind the retrieval index under `key` on the run's bus, for a hook
     /// that retrieves for itself. The view routes through the run's driver
     /// and cannot outlive it; a dispatch a hook makes this way is served

@@ -158,7 +158,7 @@ async fn into_parts_hands_over_the_driver_with_the_dispatcher() {
     // resolve through it.
     let task = tokio::spawn(driver);
     let handle: rig_core::bus::ModelHandle = dispatcher
-        .handle(agent.model_key())
+        .bind(agent.model_key())
         .expect("the model is registered");
     assert_eq!(handle.model_ref().as_str(), "default");
     let response = within(agent.prompt("hello").run())
@@ -1360,8 +1360,9 @@ async fn registering_an_explicit_key_that_is_live_keeps_it_served() {
     let server = rig_agent::tool::server::ToolServer::new().run();
     server.attach(&registrar);
     let registration = || {
-        rig_core::tool::RegisteredTool::from_tool(Slow::default())
-            .with_key(HandlerKey::from("host/tool:slow"))
+        rig_core::tool::RegisteredTool::from_tool(Slow::default()).with_key(
+            rig_core::bus::Key::new_unchecked(HandlerKey::from("host/tool:slow")),
+        )
     };
     server.add_registered_tool(registration());
     let snapshot = server.snapshot();
@@ -1529,7 +1530,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
     } = parts;
     let task = tokio::spawn(driver);
     let model: rig_core::bus::ModelHandle = dispatcher
-        .handle(agent.model_key())
+        .bind(agent.model_key())
         .expect("the model is registered");
     let streamer: rig_core::bus::ModelHandle = dispatcher
         .handle(&HandlerKey::from(format!(

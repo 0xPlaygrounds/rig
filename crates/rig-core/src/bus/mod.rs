@@ -32,6 +32,23 @@
 //! observable only to a caller that registers and dispatches without ever
 //! driving, which the ownership rule below already forbids.
 //!
+//! # Typed views, typed keys, custom effects
+//!
+//! A [`Handle<F>`] is a typed view for one family: [`Handle::dispatch`]
+//! takes the family's request and resolves to its answer — the shapes
+//! come from [`Family`](crate::effect::Family), and the conveniences
+//! (`complete`, `call`, `load`, `top_n`, `embed_texts`, …) are those
+//! dispatches narrowed. A [`Key<F>`] is a handler key that carries its
+//! family: what rig mints for what it registers, bound with
+//! [`Dispatcher::bind`] on an existence check alone; an explicit or
+//! replayed key is a plain [`HandlerKey`] and binds through
+//! [`Dispatcher::handle`], which checks the family. On the wire both are
+//! the same string. A host's own effect implements
+//! [`CustomEffect`](crate::effect::CustomEffect) — a declared kind label
+//! and answer type — and dispatches through
+//! `Handle<family::Custom<E>>` ([`Dispatcher::custom`]); the wire form is
+//! [`EffectKind::Custom`](crate::effect::EffectKind::Custom), unchanged.
+//!
 //! # The three spawning layers
 //!
 //! 1. **Inline** — [`Bus::channel`] gives you a [`Dispatcher`] and a
@@ -131,6 +148,7 @@ mod dispatcher;
 mod driver;
 mod handle;
 mod handler;
+mod key;
 mod registrar;
 mod replay;
 
@@ -144,6 +162,7 @@ pub use handler::{
     ErasedHandler, Handler, HandlerFuture, OutcomeSink, SinkClosed, events_from_response,
     serve_inline,
 };
+pub use key::Key;
 pub use registrar::Registrar;
 pub use replay::EffectLogReplayer;
 

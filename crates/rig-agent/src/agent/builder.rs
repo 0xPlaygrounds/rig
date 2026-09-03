@@ -18,11 +18,11 @@ use std::sync::{Arc, OnceLock};
 
 use rig_core::{
     bus::{
-        Bus, BusConfig, Dispatcher, ErasedHandler, Registrar,
+        Bus, BusConfig, Dispatcher, ErasedHandler, Key, Registrar,
         adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter},
     },
     completion::{CompletionModel, Document, ModelRef},
-    effect::HandlerKey,
+    effect::{HandlerKey, family},
     memory::ConversationMemory,
     vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -49,7 +49,7 @@ use super::{Agent, OutputMode, bus::AgentBus, completion::AgentConfig};
 struct DynamicContext {
     samples: usize,
     /// The index's key, minted at build once the agent's owner is known.
-    key: Arc<OnceLock<HandlerKey>>,
+    key: Arc<OnceLock<Key<family::Retrieve>>>,
 }
 
 impl AgentHook for DynamicContext {
@@ -73,7 +73,7 @@ impl AgentHook for DynamicContext {
                 "dynamic context is keyed at build; this hook was not built",
             );
         };
-        let index = match ctx.index(key) {
+        let index = match ctx.bind(key) {
             Ok(index) => index,
             Err(report) => {
                 return CompletionCallAction::stop(format!(
@@ -148,7 +148,7 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     /// Handlers to register at build, by key suffix.
     pending: Vec<(String, ErasedHandler)>,
     /// The dynamic-context hooks' key slots, by key suffix.
-    dynamic_contexts: Vec<(String, Arc<OnceLock<HandlerKey>>)>,
+    dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
     memory: bool,
     record_effects: bool,
     retrieval_indexes: usize,
@@ -404,10 +404,24 @@ impl<ToolState> AgentBuilder<ToolState> {
                 pending.insert(0, (suffix, handler));
                 config.bus.model_key(label.as_str())
             }
-            DefaultModel::Key(key) => key,
+            DefaultModel::Key(key) => {
+                // A host's key is asserted, not minted: check what it serves
+                // now, and say so at build rather than at the first run.
+                if let Some(descriptor) = config.bus.dispatcher().descriptor(&key)
+                    && descriptor.family.family()
+                        != <family::Completion as rig_core::effect::Family>::FAMILY
+                {
+                    tracing::error!(
+                        key = %key,
+                        family = %descriptor.family.family(),
+                        "the model key handed to `over_bus` does not serve a completion model"
+                    );
+                }
+                Key::new_unchecked(key)
+            }
         };
         for (suffix, handler) in pending {
-            let key = config.bus.key(&suffix);
+            let key = config.bus.raw_key(&suffix);
             crate::agent::bus::register_generated(config.bus.register_erased(key, handler));
         }
         for (suffix, slot) in dynamic_contexts {
@@ -484,10 +498,10 @@ impl AgentBuilder<NoToolConfig> {
         // The config's bus and model key are placeholders until build mints
         // the real ones under the owner.
         let (placeholder, placeholder_registrar, _driver) = Bus::channel_with(BusConfig::default());
-        let key = match &model {
+        let key = Key::new_unchecked(match &model {
             DefaultModel::Labelled(label, _) => HandlerKey::from(label.as_str()),
             DefaultModel::Key(key) => key.clone(),
-        };
+        });
         Self {
             config: AgentConfig::new(
                 AgentBus::over(placeholder, placeholder_registrar, String::new()),

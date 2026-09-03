@@ -25,8 +25,8 @@ use std::sync::{
 
 use indexmap::IndexMap;
 use rig_core::{
-    bus::{Registrar, adapters::RetrieveAdapter},
-    effect::HandlerKey,
+    bus::{Key, Registrar, adapters::RetrieveAdapter},
+    effect::{HandlerKey, family},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -107,10 +107,10 @@ struct ToolServerState {
 }
 
 impl ToolServerState {
-    fn generation_key(&mut self, name: &str) -> HandlerKey {
+    fn generation_key(&mut self, name: &str) -> Key<family::Tool> {
         let n = self.next_generation;
         self.next_generation += 1;
-        HandlerKey::from(format!("{}/tool:{name}#{n}", self.owner))
+        Key::new_unchecked(HandlerKey::from(format!("{}/tool:{name}#{n}", self.owner)))
     }
 
     fn lease(&self) -> Arc<LeaseToken> {
@@ -122,7 +122,7 @@ impl ToolServerState {
     fn publish(&self, tool: &RegisteredTool) {
         for bus in &self.buses {
             crate::agent::bus::register_generated(
-                bus.register_erased(tool.key().clone(), tool.handler().clone()),
+                bus.register_erased(tool.key().raw().clone(), tool.handler().clone()),
             );
         }
     }
@@ -138,7 +138,7 @@ impl ToolServerState {
     fn retire(&mut self, name: &str) {
         if let (Some(tool), Some(lease)) = (self.toolset.get(name), self.leases.remove(name)) {
             self.retired.push(RetiredGeneration {
-                key: tool.key().clone(),
+                key: tool.key().raw().clone(),
                 lease: Arc::downgrade(&lease),
             });
             // The lease's own drop cannot take the lock this thread holds;
@@ -223,7 +223,7 @@ impl ToolServerState {
     fn attach(&mut self, bus: &Registrar) {
         for (_, tool) in self.toolset.iter() {
             crate::agent::bus::register_generated(
-                bus.register_erased(tool.key().clone(), tool.handler().clone()),
+                bus.register_erased(tool.key().raw().clone(), tool.handler().clone()),
             );
         }
         for index in &self.retrieval_indexes {

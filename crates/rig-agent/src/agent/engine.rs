@@ -2243,7 +2243,11 @@ pub(crate) async fn dispatch_tool_call(
             context: tool_context.for_dispatch(),
         }),
         None => match tool_snapshot.key(tool_name) {
-            Some(key) => dispatcher.dispatch_with_id(id, key, kind.clone()).await,
+            Some(key) => {
+                dispatcher
+                    .dispatch_with_id(id, key.raw(), kind.clone())
+                    .await
+            }
             None => Ok(Outcome::ToolResult {
                 result: ToolResult::failed(
                     crate::tool::ToolExecutionError::not_found(format!(

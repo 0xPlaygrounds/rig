@@ -12,8 +12,11 @@ use crate::{
 };
 use rig_core::bus::{BusDriver, Dispatcher, ModelHandle};
 use rig_core::completion::ModelRef;
-use rig_core::effect::{EffectLog, HandlerDescriptor, HandlerKey};
 use rig_core::id::ConversationId;
+use rig_core::{
+    bus::Key,
+    effect::{EffectLog, HandlerDescriptor, family},
+};
 
 use super::bus::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
@@ -213,7 +216,7 @@ pub(crate) struct AgentConfig {
     /// The bus every run dispatches through.
     pub(crate) bus: AgentBus,
     /// The key of the default model on the bus.
-    pub(crate) model_key: HandlerKey,
+    pub(crate) model_key: Key<family::Completion>,
     /// System prompt
     pub(crate) preamble: Option<String>,
     /// Context documents always available to the agent
@@ -246,7 +249,7 @@ pub(crate) struct AgentConfig {
     /// prompt injection (see [`OutputMode`] and issue #1928).
     pub(crate) output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
-    pub(crate) memory_key: Option<HandlerKey>,
+    pub(crate) memory_key: Option<Key<family::Memory>>,
     /// Optional conversation id used when none is set per-request.
     pub(crate) conversation_id: Option<ConversationId>,
     /// The anonymous model this value selected ([`Agent::set_model`],
@@ -257,7 +260,7 @@ pub(crate) struct AgentConfig {
 
 impl AgentConfig {
     /// The unconfigured starting point for a builder over `model`.
-    pub(crate) fn new(bus: AgentBus, model_key: HandlerKey) -> Self {
+    pub(crate) fn new(bus: AgentBus, model_key: Key<family::Completion>) -> Self {
         Self {
             name: None,
             description: None,
@@ -282,7 +285,7 @@ impl AgentConfig {
 
     /// Bind the default model's typed view.
     pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::ErrorReport> {
-        self.bus.dispatcher().handle(&self.model_key)
+        self.bus.dispatcher().bind(&self.model_key)
     }
 
     /// The default model's label as registered now (the key's tail when
@@ -291,7 +294,7 @@ impl AgentConfig {
         match self
             .bus
             .dispatcher()
-            .descriptor(&self.model_key)
+            .descriptor(self.model_key.raw())
             .map(|descriptor| descriptor.family)
         {
             Some(rig_core::effect::FamilyDescriptor::Completion { model, .. }) => model,
@@ -302,7 +305,7 @@ impl AgentConfig {
             | Some(rig_core::effect::FamilyDescriptor::Custom { .. })
             | None => ModelRef::new(
                 self.bus
-                    .model_label(&self.model_key)
+                    .model_label(self.model_key.raw())
                     .unwrap_or(self.model_key.as_str()),
             ),
         }
@@ -315,7 +318,7 @@ impl AgentConfig {
     ) -> Result<ModelHandle, rig_core::error::ErrorReport> {
         self.bus
             .dispatcher()
-            .handle(&self.bus.model_key(label.as_str()))
+            .bind(&self.bus.model_key(label.as_str()))
     }
 
     /// Bind the memory handle, when memory is configured.
@@ -324,7 +327,7 @@ impl AgentConfig {
     ) -> Option<Result<rig_core::bus::MemoryHandle, rig_core::error::ErrorReport>> {
         self.memory_key
             .as_ref()
-            .map(|key| self.bus.dispatcher().handle(key))
+            .map(|key| self.bus.dispatcher().bind(key))
     }
 }
 
@@ -417,8 +420,9 @@ impl Agent {
         AgentRunner::from_agent(self, prompt)
     }
 
-    /// The key of this agent's default model on its bus.
-    pub fn model_key(&self) -> &HandlerKey {
+    /// The key of this agent's default model on its bus (a completion key;
+    /// `.raw()` for the wire string).
+    pub fn model_key(&self) -> &Key<family::Completion> {
         &self.config.model_key
     }
 
@@ -427,7 +431,7 @@ impl Agent {
         self.config
             .bus
             .dispatcher()
-            .descriptor(&self.config.model_key)
+            .descriptor(self.config.model_key.raw())
     }
 
     /// The label of this agent's default model, as registered now.

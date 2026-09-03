@@ -229,9 +229,10 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
         .handle(&HandlerKey::from("double"))
         .expect("tool");
     assert_eq!(tool.name(), "double");
-    let (result, _context) = within(tool.call("double", r#"{"x": 21}"#, ToolContext::new()))
-        .await
-        .expect("called");
+    let crate::effect::ToolAnswer { result, .. } =
+        within(tool.call("double", r#"{"x": 21}"#, ToolContext::new()))
+            .await
+            .expect("called");
     assert_eq!(result.output().as_json(), Some(&json!(42)));
 
     let memory: MemoryHandle = dispatcher

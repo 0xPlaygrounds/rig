@@ -47,6 +47,7 @@ use crate::{
     streaming::StreamEvent,
     tool::{ToolContext, ToolResult},
     vector_store::request::{Filter, VectorSearchRequest},
+    wasm_compat::WasmCompatSend,
 };
 
 /// The identity of one dispatch, minted by the dispatcher.
@@ -203,39 +204,231 @@ impl fmt::Display for EffectFamily {
 }
 
 /// A type-level family marker: what a typed view (`Handle<F>`) is generic
-/// over. Implemented by the unit types in [`family`].
-pub trait Family: Clone + Copy + Send + Sync + 'static {
+/// over, and what it knows: the request a typed dispatch of the family
+/// takes, the answer it resolves to, and how each maps onto the wire's
+/// [`EffectKind`] and [`Outcome`]. Implemented by the unit types in
+/// [`family`] and by [`family::Custom<E>`] for a host's [`CustomEffect`];
+/// sealed — hosts define custom *effects*, never new families (the
+/// transcription rule keeps the vocabulary to the five impl-side traits).
+pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     /// The family this marker names.
     const FAMILY: EffectFamily;
+    /// What a typed dispatch of this family takes.
+    type Request: WasmCompatSend + 'static;
+    /// What it resolves to.
+    type Answer: WasmCompatSend + 'static;
+    /// The wire form of a request.
+    fn wrap(request: Self::Request) -> EffectKind;
+    /// The typed answer, or the report for an outcome of another family.
+    fn unwrap(outcome: Outcome) -> Result<Self::Answer, ErrorReport>;
+    /// The report [`Family::unwrap`] gives for an outcome of another family.
+    fn mismatch(outcome: &Outcome) -> ErrorReport {
+        ErrorReport::new(
+            crate::error::ErrorKind::Internal,
+            format!(
+                "expected a {} outcome, the handler answered {}",
+                Self::FAMILY,
+                outcome.family()
+            ),
+        )
+    }
+}
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// A tool call as a typed request: the raw JSON arguments and the
+/// dispatch-scoped context.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolCallRequest {
+    /// The tool's name (the name the model calls it by).
+    pub name: String,
+    /// The arguments as a JSON string.
+    pub args: String,
+    /// The context the tool runs with.
+    pub context: ToolContext,
+}
+
+/// A tool call's typed answer: the result and the context the tool
+/// published.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolAnswer {
+    /// The result.
+    pub result: ToolResult,
+    /// The dispatch context after the tool ran.
+    pub context: ToolContext,
+}
+
+/// A host's own effect, typed the way a [`ToolContext`] value is: a
+/// declared kind label and a declared answer type, both serde. The wire
+/// form is [`EffectKind::Custom`] / [`Outcome::Custom`]; the type never
+/// crosses it.
+pub trait CustomEffect: Serialize + serde::de::DeserializeOwned + WasmCompatSend + 'static {
+    /// The kind label this effect dispatches under; a handler's
+    /// [`FamilyDescriptor::Custom`] must name the same label.
+    const KIND: &'static str;
+    /// What the handler answers.
+    type Answer: Serialize + serde::de::DeserializeOwned + WasmCompatSend + 'static;
 }
 
 /// The family markers.
 pub mod family {
-    use super::{EffectFamily, Family};
+    use std::marker::PhantomData;
+
+    use super::{
+        CustomEffect, EffectFamily, EffectKind, EmbedInputs, EmbedOutputs, Family, MemoryOp,
+        MemoryOutcome, Outcome, RetrieveQuery, RetrievedDocuments, ToolAnswer, ToolCallRequest,
+        sealed::Sealed,
+    };
+    use crate::{
+        completion::{CompletionRequest, CompletionResponse},
+        error::{ErrorKind, ErrorReport},
+    };
 
     macro_rules! marker {
-        ($($(#[$doc:meta])* $name:ident => $family:ident;)+) => {$(
+        ($($(#[$doc:meta])* $name:ident => $family:ident, $request:ty, $answer:ty, $wrap:expr, $unwrap:expr;)+) => {$(
             $(#[$doc])*
             #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
             pub struct $name;
 
+            impl Sealed for $name {}
+
             impl Family for $name {
                 const FAMILY: EffectFamily = EffectFamily::$family;
+                type Request = $request;
+                type Answer = $answer;
+
+                fn wrap(request: Self::Request) -> EffectKind {
+                    let wrap: fn(Self::Request) -> EffectKind = $wrap;
+                    wrap(request)
+                }
+
+                fn unwrap(outcome: Outcome) -> Result<Self::Answer, ErrorReport> {
+                    let unwrap: fn(Outcome) -> Result<Self::Answer, ErrorReport> = $unwrap;
+                    unwrap(outcome)
+                }
             }
         )+};
     }
 
     marker! {
-        /// The completion family.
-        Completion => Completion;
+        /// The completion family: a unary completion (a streaming dispatch is
+        /// `ModelHandle::stream`, not a typed request).
+        Completion => Completion, CompletionRequest, CompletionResponse,
+            |request| EffectKind::Completion { request, stream: false },
+            |outcome| match outcome {
+                Outcome::Completion(response) => Ok(response),
+                other => Err(Completion::mismatch(&other)),
+            };
         /// The tool family.
-        Tool => Tool;
+        Tool => Tool, ToolCallRequest, ToolAnswer,
+            |request| EffectKind::ToolCall { name: request.name, args: request.args, context: request.context },
+            |outcome| match outcome {
+                Outcome::ToolResult { result, context } => Ok(ToolAnswer { result, context }),
+                other => Err(Tool::mismatch(&other)),
+            };
         /// The embedding family.
-        Embed => Embed;
+        Embed => Embed, EmbedInputs, EmbedOutputs,
+            |inputs| EffectKind::Embed { inputs },
+            |outcome| match outcome {
+                Outcome::Embeddings(outputs) => Ok(outputs),
+                other => Err(Embed::mismatch(&other)),
+            };
         /// The conversation-memory family.
-        Memory => Memory;
+        Memory => Memory, MemoryOp, MemoryOutcome,
+            |op| EffectKind::Memory { op },
+            |outcome| match outcome {
+                Outcome::Memory(answer) => Ok(answer),
+                other => Err(Memory::mismatch(&other)),
+            };
         /// The retrieval family.
-        Retrieve => Retrieve;
+        Retrieve => Retrieve, RetrieveQuery, RetrievedDocuments,
+            |query| EffectKind::Retrieve { query },
+            |outcome| match outcome {
+                Outcome::Documents(documents) => Ok(documents),
+                other => Err(Retrieve::mismatch(&other)),
+            };
+    }
+
+    /// The family of one host-defined effect `E`: dispatches
+    /// [`EffectKind::Custom`] under `E::KIND` and answers `E::Answer`.
+    pub struct Custom<E: CustomEffect>(PhantomData<fn() -> E>);
+
+    impl<E: CustomEffect> Custom<E> {
+        /// The marker.
+        pub const fn new() -> Self {
+            Self(PhantomData)
+        }
+    }
+
+    // Written by hand: a derive would demand `E: Clone` (and friends), and
+    // the marker must be `Copy` for every `E`.
+    impl<E: CustomEffect> Clone for Custom<E> {
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+    impl<E: CustomEffect> Copy for Custom<E> {}
+    impl<E: CustomEffect> Default for Custom<E> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+    impl<E: CustomEffect> std::fmt::Debug for Custom<E> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Custom<{}>", E::KIND)
+        }
+    }
+    impl<E: CustomEffect> PartialEq for Custom<E> {
+        fn eq(&self, _: &Self) -> bool {
+            true
+        }
+    }
+    impl<E: CustomEffect> Eq for Custom<E> {}
+    impl<E: CustomEffect> std::hash::Hash for Custom<E> {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            E::KIND.hash(state);
+        }
+    }
+
+    impl<E: CustomEffect> Sealed for Custom<E> {}
+
+    impl<E: CustomEffect> Family for Custom<E> {
+        const FAMILY: EffectFamily = EffectFamily::Custom;
+        type Request = E;
+        type Answer = E::Answer;
+
+        fn wrap(request: E) -> EffectKind {
+            match serde_json::to_value(&request) {
+                Ok(payload) => EffectKind::Custom {
+                    kind: std::sync::Arc::from(E::KIND),
+                    payload,
+                },
+                // An effect that does not serialize is a defect in `E`; the
+                // dispatch carries the error as its payload so the handler
+                // (and the log) see it rather than a silent `null`.
+                Err(error) => EffectKind::Custom {
+                    kind: std::sync::Arc::from(E::KIND),
+                    payload: serde_json::json!({ "error": error.to_string() }),
+                },
+            }
+        }
+
+        fn unwrap(outcome: Outcome) -> Result<E::Answer, ErrorReport> {
+            match outcome {
+                Outcome::Custom(value) => serde_json::from_value(value).map_err(|error| {
+                    ErrorReport::new(
+                        ErrorKind::Internal,
+                        format!(
+                            "the answer to the `{}` effect did not deserialize: {error}",
+                            E::KIND
+                        ),
+                    )
+                }),
+                other => Err(Self::mismatch(&other)),
+            }
+        }
     }
 }
 

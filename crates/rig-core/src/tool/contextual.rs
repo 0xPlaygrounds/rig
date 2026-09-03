@@ -125,9 +125,9 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bus::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
+    bus::{ErasedHandler, Key, adapters::ToolCallback, adapters::ToolFn},
     completion::{self, ToolDefinition},
-    effect::{EffectKind, FamilyDescriptor, HandlerKey, Outcome, ToolEmbeddingDescriptor},
+    effect::{EffectKind, FamilyDescriptor, Outcome, ToolEmbeddingDescriptor, family},
     embeddings::{embed::EmbedError, tool::ToolSchema},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -461,7 +461,7 @@ pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
 pub struct RegisteredTool {
     definition: ToolDefinition,
     embedding: Option<ToolEmbeddingDescriptor>,
-    key: HandlerKey,
+    key: Key<family::Tool>,
     handler: ErasedHandler,
     liveness: Option<super::portable::LivenessFn>,
 }
@@ -546,7 +546,7 @@ impl RegisteredTool {
                 parameters,
             },
             embedding,
-            key: descriptor.key,
+            key: Key::new_unchecked(descriptor.key),
             handler: ErasedHandler::new(handler),
             liveness: None,
         })
@@ -555,7 +555,7 @@ impl RegisteredTool {
     /// Whether this registration is served under the default `tool:<name>`
     /// key (a registry that pins generations re-keys only those).
     pub fn has_default_key(&self) -> bool {
-        self.key == crate::bus::tool_key(&self.definition.name)
+        *self.key.raw() == crate::bus::tool_key(&self.definition.name)
     }
 
     fn from_parts(
@@ -564,7 +564,7 @@ impl RegisteredTool {
         handler: ErasedHandler,
         liveness: Option<super::portable::LivenessFn>,
     ) -> Self {
-        let key = crate::bus::tool_key(&definition.name);
+        let key = Key::new_unchecked(crate::bus::tool_key(&definition.name));
         Self {
             definition,
             embedding,
@@ -576,7 +576,7 @@ impl RegisteredTool {
 
     /// Serve this registration under `key` instead of the default
     /// `tool:<name>` (a registry that pins generations does this).
-    pub fn with_key(mut self, key: HandlerKey) -> Self {
+    pub fn with_key(mut self, key: Key<family::Tool>) -> Self {
         self.key = key;
         self
     }
@@ -586,8 +586,9 @@ impl RegisteredTool {
         self.definition.name.clone()
     }
 
-    /// The key the handler is served under.
-    pub fn key(&self) -> &HandlerKey {
+    /// The key the handler is served under: a tool key, proven at
+    /// construction (the descriptor was checked to be tool-family).
+    pub fn key(&self) -> &Key<family::Tool> {
         &self.key
     }
 

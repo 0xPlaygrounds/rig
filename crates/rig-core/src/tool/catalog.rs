@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use indexmap::IndexMap;
 
-use crate::{completion::ToolDefinition, effect::HandlerKey};
+use crate::{bus::Key, completion::ToolDefinition, effect::family};
 
 use super::{
     ToolContext, ToolResult,
@@ -86,7 +86,7 @@ impl ToolCatalog {
     }
 
     /// The bus key behind `name`, when the catalog has it.
-    pub fn key(&self, name: &str) -> Option<&HandlerKey> {
+    pub fn key(&self, name: &str) -> Option<&Key<family::Tool>> {
         self.tools.get(name).map(RegisteredTool::key)
     }
 
