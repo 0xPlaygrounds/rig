@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{
-    ErasedHandler, Handler, OutcomeSink,
+    ErasedHandler, OutcomeSink, Serve,
     dispatcher::{Command, Shared, handler_unavailable},
     registrar::{Mailbox, Registrar, Registration},
 };
@@ -228,7 +228,7 @@ impl BusDriver {
     pub fn register(
         &mut self,
         key: impl Into<HandlerKey>,
-        handler: impl Handler + 'static,
+        handler: impl Serve + 'static,
     ) -> Result<(), ErrorReport> {
         self.register_erased(key, ErasedHandler::new(handler))
     }
@@ -251,7 +251,7 @@ impl BusDriver {
     pub fn register_typed<F: crate::effect::Family>(
         &mut self,
         key: impl Into<HandlerKey>,
-        handler: impl Handler + 'static,
+        handler: impl Serve + 'static,
     ) -> Result<super::Key<F>, ErrorReport> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);

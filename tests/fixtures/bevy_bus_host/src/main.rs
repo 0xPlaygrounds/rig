@@ -36,8 +36,8 @@ use bevy_ecs::prelude::*;
 use bevy_tasks::{Task, TaskPool, block_on, futures_lite::future::poll_once};
 use rig_core::{
     bus::{
-        Bus, BusConfig, Dispatcher, EffectStream, Handler, HandlerFuture, ModelHandle, OutcomeSink,
-        Pending, Registrar,
+        Bus, BusConfig, Dispatcher, EffectStream, ModelHandle, OutcomeSink, Pending, Registrar,
+        Serve,
     },
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
@@ -94,7 +94,9 @@ impl Future for YieldNow {
     }
 }
 
-impl Handler for MockModel {
+impl Serve for MockModel {
+    type Family = rig_core::effect::family::Completion;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("model"),
@@ -105,53 +107,51 @@ impl Handler for MockModel {
         }
     }
 
-    fn handle(&self, kind: EffectKind, mut sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            match kind {
-                EffectKind::Completion { stream: false, .. } => {
-                    self.counters.unary_started.fetch_add(1, Ordering::SeqCst);
-                    while self.counters.hold.load(Ordering::SeqCst) {
-                        YieldNow(false).await;
-                    }
-                    self.counters.unary_served.fetch_add(1, Ordering::SeqCst);
-                    let response = CompletionResponse::new(
-                        vec![AssistantContent::text("hello from the world")],
-                        Usage::new(),
-                        "mock",
-                    );
-                    sink.resolve(Ok(Outcome::Completion(response))).await;
+    async fn serve(&self, kind: EffectKind, mut sink: OutcomeSink) {
+        match kind {
+            EffectKind::Completion { stream: false, .. } => {
+                self.counters.unary_started.fetch_add(1, Ordering::SeqCst);
+                while self.counters.hold.load(Ordering::SeqCst) {
+                    YieldNow(false).await;
                 }
-                EffectKind::Completion { stream: true, .. } => {
-                    let id = BlockId::minted(MintKind::Text, 0);
-                    loop {
-                        let event = StreamEvent::text(id.clone(), "tick ");
-                        if sink.send(Ok(event)).await.is_err() {
-                            self.counters
-                                .stream_cancelled
-                                .fetch_add(1, Ordering::SeqCst);
-                            return;
-                        }
-                        let sent = self.counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
-                        if sent >= STREAM_CAP {
-                            let _ = sink
-                                .send(Ok(StreamEvent::Final(StreamFinal::new(
-                                    "mock",
-                                    Usage::new(),
-                                ))))
-                                .await;
-                            return;
-                        }
+                self.counters.unary_served.fetch_add(1, Ordering::SeqCst);
+                let response = CompletionResponse::new(
+                    vec![AssistantContent::text("hello from the world")],
+                    Usage::new(),
+                    "mock",
+                );
+                sink.resolve(Ok(Outcome::Completion(response))).await;
+            }
+            EffectKind::Completion { stream: true, .. } => {
+                let id = BlockId::minted(MintKind::Text, 0);
+                loop {
+                    let event = StreamEvent::text(id.clone(), "tick ");
+                    if sink.send(Ok(event)).await.is_err() {
+                        self.counters
+                            .stream_cancelled
+                            .fetch_add(1, Ordering::SeqCst);
+                        return;
                     }
-                }
-                other => {
-                    sink.resolve(Err(rig_core::error::ErrorReport::new(
-                        ErrorKind::HandlerUnavailable,
-                        format!("mock model cannot serve {}", other.name()),
-                    )))
-                    .await;
+                    let sent = self.counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
+                    if sent >= STREAM_CAP {
+                        let _ = sink
+                            .send(Ok(StreamEvent::Final(StreamFinal::new(
+                                "mock",
+                                Usage::new(),
+                            ))))
+                            .await;
+                        return;
+                    }
                 }
             }
-        })
+            other => {
+                sink.resolve(Err(rig_core::error::ErrorReport::new(
+                    ErrorKind::HandlerUnavailable,
+                    format!("mock model cannot serve {}", other.name()),
+                )))
+                .await;
+            }
+        }
     }
 }
 

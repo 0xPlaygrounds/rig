@@ -181,6 +181,11 @@ pub struct ToolContext {
 /// Derive it (`#[derive(ContextValue)]`, key defaults to the type's name;
 /// `#[context(key = "…")]` overrides) or write the one-line impl. Two
 /// value types must not share a key.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` declares no `ToolContext` key",
+    label = "not a `ContextValue`",
+    note = "derive it (`#[derive(rig::ContextValue)]`, optionally `#[context(key = \"…\")]`) or write `impl ContextValue for {Self} {{ const KEY: &'static str = \"…\"; }}`; a bare `String`, integer or `serde_json::Value` cannot be stored — wrap it in a newtype"
+)]
 pub trait ContextValue: Serialize + DeserializeOwned + 'static {
     /// The slot this value lives under.
     const KEY: &'static str;

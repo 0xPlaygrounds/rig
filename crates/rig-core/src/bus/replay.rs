@@ -14,7 +14,7 @@ use crate::{
     error::{ErrorKind, ErrorReport},
 };
 
-use super::{Handler, HandlerFuture, OutcomeSink};
+use super::{OutcomeSink, Serve};
 
 /// A handler that answers dispatches from a recorded log instead of a
 /// provider: the replay half of record/replay.
@@ -229,18 +229,21 @@ fn describe(key: &HandlerKey, kind: &EffectKind, log: &EffectLog) -> FamilyDescr
     }
 }
 
-impl Handler for EffectLogReplayer {
+impl Serve for EffectLogReplayer {
+    /// A replayer answers whatever its log holds.
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         self.descriptor.clone()
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         let next = self
             .records
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front();
-        Box::pin(async move {
+        {
             let outcome = match next {
                 None => Err(ErrorReport::new(
                     ErrorKind::Internal,
@@ -266,6 +269,6 @@ impl Handler for EffectLogReplayer {
             };
             debug_assert_eq!(self.family, self.descriptor.family.family());
             sink.resolve(outcome).await;
-        })
+        }
     }
 }

@@ -520,7 +520,7 @@ impl RegisteredTool {
     /// — a replayer answering a recorded tool from the effect log, a host's
     /// own handler. Fails when the handler is not of the tool family.
     pub fn from_handler(
-        handler: impl crate::bus::Handler + 'static,
+        handler: impl crate::bus::Serve + 'static,
     ) -> Result<Self, crate::error::ErrorReport> {
         let descriptor = handler.descriptor();
         let FamilyDescriptor::Tool {

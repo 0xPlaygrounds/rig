@@ -238,6 +238,19 @@ mod sealed {
     pub trait Sealed {}
 }
 
+/// What a handler serves, as a type: a [`Family`] (`Some(F::FAMILY)`), or
+/// [`family::Dynamic`] (`None`) for a handler that answers whatever it is
+/// given — a replayer, an erased handler. A typed key can be proven only
+/// against a handler with a family. Sealed.
+pub trait Served: sealed::Sealed + 'static {
+    /// The family, when the handler has one.
+    const SERVED: Option<EffectFamily>;
+}
+
+impl<F: Family> Served for F {
+    const SERVED: Option<EffectFamily> = Some(F::FAMILY);
+}
+
 /// A tool call as a typed request: the raw JSON arguments and the
 /// dispatch-scoped context.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -349,6 +362,17 @@ pub mod family {
                 Outcome::Documents(documents) => Ok(documents),
                 other => Err(Retrieve::mismatch(&other)),
             };
+    }
+
+    /// A handler with no one family: a replayer answering whatever its log
+    /// holds, or an erased handler forwarding to whatever it wraps.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    pub struct Dynamic;
+
+    impl Sealed for Dynamic {}
+
+    impl super::Served for Dynamic {
+        const SERVED: Option<EffectFamily> = None;
     }
 
     /// The family of one host-defined effect `E`: dispatches

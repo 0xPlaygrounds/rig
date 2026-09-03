@@ -56,3 +56,9 @@ fn derived_values_round_trip_through_a_context_under_their_key() {
         serde_json::json!({"name": "acme"})
     );
 }
+
+#[test]
+fn a_bare_value_is_rejected_with_the_fix_named() {
+    let tests = trybuild::TestCases::new();
+    tests.compile_fail("tests/ui/tool_context/fail_bare_value_declares_no_key.rs");
+}

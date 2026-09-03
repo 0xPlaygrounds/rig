@@ -11,8 +11,8 @@ use futures::{FutureExt, StreamExt, channel::oneshot, future::poll_fn, task::noo
 use serde_json::json;
 
 use super::{
-    Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, Handler,
-    HandlerFuture, Key, ModelHandle, OutcomeSink, Registrar,
+    Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, Key, ModelHandle,
+    OutcomeSink, Registrar, Serve,
     adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter, ToolFn},
 };
 use crate::effect::CustomEffect;
@@ -94,7 +94,9 @@ impl Echo {
     }
 }
 
-impl Handler for Echo {
+impl Serve for Echo {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("echo"),
@@ -104,9 +106,9 @@ impl Handler for Echo {
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         let gate = self.gate.lock().expect("gate lock").take();
-        Box::pin(async move {
+        {
             if let Some(gate) = gate {
                 let _ = gate.await;
             }
@@ -119,7 +121,7 @@ impl Handler for Echo {
                 )),
             };
             sink.resolve(outcome).await;
-        })
+        }
     }
 }
 
@@ -129,7 +131,9 @@ struct Ordered {
     served: Arc<Mutex<Vec<u64>>>,
 }
 
-impl Handler for Ordered {
+impl Serve for Ordered {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("ordered"),
@@ -139,19 +143,17 @@ impl Handler for Ordered {
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            let (index, delay) = match &kind {
-                EffectKind::Custom { payload, .. } => (
-                    payload["index"].as_u64().unwrap_or(0),
-                    payload["delay_ms"].as_u64().unwrap_or(0),
-                ),
-                _ => (0, 0),
-            };
-            tokio::time::sleep(Duration::from_millis(delay)).await;
-            self.served.lock().expect("order lock").push(index);
-            sink.resolve(Ok(Outcome::Custom(json!(index)))).await;
-        })
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        let (index, delay) = match &kind {
+            EffectKind::Custom { payload, .. } => (
+                payload["index"].as_u64().unwrap_or(0),
+                payload["delay_ms"].as_u64().unwrap_or(0),
+            ),
+            _ => (0, 0),
+        };
+        tokio::time::sleep(Duration::from_millis(delay)).await;
+        self.served.lock().expect("order lock").push(index);
+        sink.resolve(Ok(Outcome::Custom(json!(index)))).await;
     }
 }
 
@@ -583,7 +585,9 @@ impl SelfCaller {
     }
 }
 
-impl Handler for SelfCaller {
+impl Serve for SelfCaller {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: self.key.clone(),
@@ -593,15 +597,14 @@ impl Handler for SelfCaller {
         }
     }
 
-    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
         if self.nested.swap(true, Ordering::SeqCst) {
-            return Box::pin(async move {
-                sink.resolve(Ok(Outcome::Custom(json!("plain")))).await;
-            });
+            sink.resolve(Ok(Outcome::Custom(json!("plain")))).await;
+            return;
         }
         let dispatcher = self.dispatcher.clone();
         let key = self.key.clone();
-        Box::pin(async move {
+        {
             let mut nested = dispatcher.dispatch(&key, custom(json!("nested")));
             // The first poll of the nested dispatch runs inside this
             // handler's poll: the bus must answer it, not queue it.
@@ -617,7 +620,7 @@ impl Handler for SelfCaller {
                 )),
             };
             sink.resolve(outcome).await;
-        })
+        }
     }
 }
 
@@ -815,7 +818,9 @@ async fn dropping_the_stream_cancels_the_handler() {
         sends: Arc<AtomicUsize>,
         cancelled: Arc<AtomicUsize>,
     }
-    impl Handler for Chatty {
+    impl Serve for Chatty {
+        type Family = crate::effect::family::Dynamic;
+
         fn descriptor(&self) -> HandlerDescriptor {
             HandlerDescriptor {
                 key: HandlerKey::from("chatty"),
@@ -825,20 +830,18 @@ async fn dropping_the_stream_cancels_the_handler() {
                 },
             }
         }
-        fn handle(&self, _kind: EffectKind, mut sink: OutcomeSink) -> HandlerFuture<'_> {
-            Box::pin(async move {
-                loop {
-                    let event = StreamEvent::text(
-                        crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0),
-                        "x",
-                    );
-                    if sink.send(Ok(event)).await.is_err() {
-                        self.cancelled.fetch_add(1, Ordering::SeqCst);
-                        return;
-                    }
-                    self.sends.fetch_add(1, Ordering::SeqCst);
+        async fn serve(&self, _kind: EffectKind, mut sink: OutcomeSink) {
+            loop {
+                let event = StreamEvent::text(
+                    crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0),
+                    "x",
+                );
+                if sink.send(Ok(event)).await.is_err() {
+                    self.cancelled.fetch_add(1, Ordering::SeqCst);
+                    return;
                 }
-            })
+                self.sends.fetch_add(1, Ordering::SeqCst);
+            }
         }
     }
     let sends = Arc::new(AtomicUsize::new(0));
@@ -1195,7 +1198,9 @@ impl Drop for DropFlag {
     }
 }
 
-impl Handler for Hanging {
+impl Serve for Hanging {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("hanging"),
@@ -1205,13 +1210,10 @@ impl Handler for Hanging {
         }
     }
 
-    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        let flag = DropFlag(self.dropped.clone());
-        Box::pin(async move {
-            let _flag = flag;
-            let _sink = sink;
-            futures::future::pending::<()>().await;
-        })
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        let _flag = DropFlag(self.dropped.clone());
+        let _sink = sink;
+        futures::future::pending::<()>().await;
     }
 }
 
@@ -1391,7 +1393,9 @@ fn register_refuses_a_family_change_under_a_live_key() {
 /// Sends one text event and drops its sink before the terminal.
 struct CutShort;
 
-impl Handler for CutShort {
+impl Serve for CutShort {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("cut"),
@@ -1402,18 +1406,16 @@ impl Handler for CutShort {
         }
     }
 
-    fn handle(&self, _kind: EffectKind, mut sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            let _ = sink
-                .send(Ok(StreamEvent::BlockDelta {
-                    id: crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0),
-                    delta: crate::streaming::Delta::Text {
-                        text: "partial".into(),
-                    },
-                }))
-                .await;
-            // Dropped here, before any `Final`.
-        })
+    async fn serve(&self, _kind: EffectKind, mut sink: OutcomeSink) {
+        let _ = sink
+            .send(Ok(StreamEvent::BlockDelta {
+                id: crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0),
+                delta: crate::streaming::Delta::Text {
+                    text: "partial".into(),
+                },
+            }))
+            .await;
+        // Dropped here, before any `Final`.
     }
 }
 
@@ -1457,7 +1459,9 @@ async fn a_stream_that_ends_without_final_is_reported_and_recorded() {
 /// Answers a stream dispatch with a non-completion outcome.
 struct WrongFamilyAnswer;
 
-impl Handler for WrongFamilyAnswer {
+impl Serve for WrongFamilyAnswer {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("wrong"),
@@ -1468,11 +1472,9 @@ impl Handler for WrongFamilyAnswer {
         }
     }
 
-    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            sink.resolve(Ok(Outcome::Custom(json!("not a completion"))))
-                .await;
-        })
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        sink.resolve(Ok(Outcome::Custom(json!("not a completion"))))
+            .await;
     }
 }
 
@@ -1576,7 +1578,9 @@ struct RegistersOnDrop {
     registrar: Registrar,
 }
 
-impl Handler for RegistersOnDrop {
+impl Serve for RegistersOnDrop {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("echo"),
@@ -1586,10 +1590,8 @@ impl Handler for RegistersOnDrop {
         }
     }
 
-    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            sink.resolve(Ok(Outcome::Custom(json!("never")))).await;
-        })
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        sink.resolve(Ok(Outcome::Custom(json!("never")))).await;
     }
 }
 
@@ -1634,7 +1636,9 @@ async fn a_displaced_handler_is_dropped_outside_every_lock() {
 /// A handler that reports its drop.
 struct DropCounter(Arc<AtomicUsize>);
 
-impl Handler for DropCounter {
+impl Serve for DropCounter {
+    type Family = crate::effect::family::Dynamic;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("flag"),
@@ -1644,10 +1648,8 @@ impl Handler for DropCounter {
         }
     }
 
-    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(async move {
-            sink.resolve(Ok(Outcome::Custom(json!(null)))).await;
-        })
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        sink.resolve(Ok(Outcome::Custom(json!(null)))).await;
     }
 }
 
@@ -1707,7 +1709,9 @@ struct AskUserHandler {
     misbehave: bool,
 }
 
-impl Handler for AskUserHandler {
+impl Serve for AskUserHandler {
+    type Family = crate::effect::family::Custom<AskUser>;
+
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("ask"),
@@ -1717,9 +1721,9 @@ impl Handler for AskUserHandler {
         }
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         let misbehave = self.misbehave;
-        Box::pin(async move {
+        {
             let EffectKind::Custom { payload, .. } = kind else {
                 sink.resolve(Err(ErrorReport::new(ErrorKind::Internal, "not custom")))
                     .await;
@@ -1732,7 +1736,7 @@ impl Handler for AskUserHandler {
                 json!({"text": format!("you asked: {}", ask.prompt)})
             };
             sink.resolve(Ok(Outcome::Custom(answer))).await;
-        })
+        }
     }
 }
 
