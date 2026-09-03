@@ -381,6 +381,22 @@ impl<ToolState> AgentBuilder<ToolState> {
     }
 
     fn build_agent(self, handle: impl FnOnce(ToolState, &str) -> ToolServerHandle) -> Agent {
+        /// A host's `over_bus` key that serves another family: the host's
+        /// programming error, reported at the host's line.
+        #[allow(
+            clippy::panic,
+            reason = "a wrong-family host key is a programming error at the host's call site, not a runtime condition; `build` stays infallible for every other case"
+        )]
+        fn host_key_of_another_family(
+            key: &HandlerKey,
+            caller: &'static std::panic::Location<'static>,
+            family: rig_core::effect::EffectFamily,
+        ) -> ! {
+            panic!(
+                "the model key `{key}` handed to `over_bus` at {caller} serves the {family} family, not a completion model"
+            )
+        }
+
         let Self {
             mut config,
             tool_state,
@@ -414,18 +430,18 @@ impl<ToolState> AgentBuilder<ToolState> {
             }
             DefaultModel::Key(key, caller) => {
                 // A host's key is asserted, not minted: check what it serves
-                // now, and say so at build — at the host's line — rather
-                // than at the first run.
+                // now, and fail at build — at the host's line — rather than
+                // at the first run. A key that serves another family is the
+                // host's programming error, not a runtime condition, so it
+                // is a panic (decided: `build()` stays infallible for every
+                // other case); a key nothing serves *yet* is legal — the
+                // host may register after building — and fails at the
+                // first run as `HandlerUnavailable`.
                 if let Some(descriptor) = config.bus.dispatcher().descriptor(&key)
                     && descriptor.family.family()
                         != <family::Completion as rig_core::effect::Family>::FAMILY
                 {
-                    tracing::error!(
-                        key = %key,
-                        family = %descriptor.family.family(),
-                        %caller,
-                        "the model key handed to `over_bus` does not serve a completion model"
-                    );
+                    host_key_of_another_family(&key, caller, descriptor.family.family());
                 }
                 Key::new_unchecked(key)
             }

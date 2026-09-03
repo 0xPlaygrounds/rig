@@ -495,3 +495,63 @@ async fn a_hooks_decision_is_program_not_record() {
         "the record refuses the changed program: {error}"
     );
 }
+
+/// A resumed run brought its history with it: it loads nothing from
+/// memory and saves nothing to it — no `Memory` dispatch, no memory record
+/// — so a resumed log is exactly the reference log's tail even when the
+/// program has a memory backend, and a backend that is down cannot fail a
+/// resume. (Before this held, the resume performed the load and threw the
+/// result away: a `Memory{Load}` record led every resumed log.)
+#[tokio::test]
+async fn a_resumed_run_loads_nothing_from_memory() {
+    use rig_core::memory::InMemoryConversationMemory;
+    fn builder() -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
+        AgentBuilder::new(script())
+            .owner(OWNER)
+            .tool(Tag::default())
+            .memory(InMemoryConversationMemory::new())
+            .conversation("durable-memory")
+            .record_effects()
+    }
+    // The reference program with memory: a load first, a save last.
+    let agent = builder().build();
+    let response = within(agent.prompt("go").max_turns(3).run())
+        .await
+        .expect("the reference run");
+    assert_eq!(response.output, "done");
+    let log = agent.take_effect_log().expect("recording");
+    let families: Vec<EffectFamily> = log.iter().map(|record| record.kind.family()).collect();
+    assert_eq!(
+        families.first(),
+        Some(&EffectFamily::Memory),
+        "loaded first"
+    );
+    assert_eq!(families.last(), Some(&EffectFamily::Memory), "saved last");
+
+    // Resumed from a fresh state through an agent that has the same
+    // memory configured: no memory dispatch at either end.
+    let agent = builder().build();
+    let spec = RunSpec {
+        max_turns: Some(3),
+        ..RunSpec::new()
+    };
+    let state = AgentRun::from_spec(&spec, "go", None);
+    let response = within(agent.runner("ignored").resume(state).run())
+        .await
+        .expect("the resumed run");
+    assert_eq!(response.output, "done");
+    let resumed = agent.take_effect_log().expect("recording");
+    let families: Vec<EffectFamily> = resumed.iter().map(|record| record.kind.family()).collect();
+    assert!(
+        !families.contains(&EffectFamily::Memory),
+        "a resumed run performed a memory dispatch: {families:?}"
+    );
+    assert_eq!(
+        families,
+        log.iter()
+            .map(|record| record.kind.family())
+            .filter(|family| *family != EffectFamily::Memory)
+            .collect::<Vec<_>>(),
+        "the resumed log is the reference log without its memory ends"
+    );
+}

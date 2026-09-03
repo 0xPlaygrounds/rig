@@ -270,11 +270,16 @@ impl AgentRunner {
 
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(true);
-        let resolved = {
-            let resolve = self.resolve_history_and_memory(&hook_ctx);
-            futures::pin_mut!(resolve);
-            let mut driven = bus.drive(futures::stream::once(resolve));
-            driven.next().await.unwrap_or(Ok((None, None)))
+        // A resumed run loads nothing and saves nothing (see `run`).
+        let resumed = self.resume.take();
+        let resolved = match &resumed {
+            Some(_) => Ok((None, None)),
+            None => {
+                let resolve = self.resolve_history_and_memory(&hook_ctx);
+                futures::pin_mut!(resolve);
+                let mut driven = bus.drive(futures::stream::once(resolve));
+                driven.next().await.unwrap_or(Ok((None, None)))
+            }
         };
         let (history_override, memory_handle) = match resolved {
             Ok(resolved) => resolved,
@@ -288,12 +293,6 @@ impl AgentRunner {
             }
         };
 
-        let resumed = self.resume.take();
-        let memory_handle = if resumed.is_some() {
-            None
-        } else {
-            memory_handle
-        };
         let run = match resumed {
             Some(run) => *run,
             None => self.build_run(history_override),

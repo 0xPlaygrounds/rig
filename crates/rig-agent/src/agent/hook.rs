@@ -1335,6 +1335,13 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// every family; `Memory`, `Retrieve`, `Embed`, `Rerank` and `Custom` dispatches
     /// are observe-only unless the hook opts in through
     /// [`AgentHook::observes`] for their [`StepEventKind`].
+    ///
+    /// Gated by [`AgentHook::observes`]: a hook whose `observes` answers
+    /// `false` for [`StepEventKind::CompletionDispatch`] or
+    /// [`StepEventKind::ToolDispatch`] is **not called** for those
+    /// dispatches and cannot deny, patch or replace them. A hook that
+    /// overrides `observes` to trim delta noise must keep the dispatch
+    /// kinds it means to gate.
     fn on_dispatch(
         &self,
         _ctx: &HookContext,
@@ -1343,7 +1350,8 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { DispatchAction::Proceed }
     }
 
-    /// An effect resolved on the agent's bus.
+    /// An effect resolved on the agent's bus. Gated by
+    /// [`AgentHook::observes`] like [`AgentHook::on_dispatch`].
     fn on_outcome(
         &self,
         _ctx: &HookContext,
@@ -1356,6 +1364,13 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// internal `Memory`/`Retrieve`/`Embed`/`Rerank`/`Custom` dispatch events are
     /// off by default: no hook saw those calls before the bus, so a hook
     /// that wants to gate them opts in here.
+    ///
+    /// This is a gate, not a hint, for the dispatch-boundary events: a
+    /// `false` for `CompletionDispatch` or `ToolDispatch` silences
+    /// [`AgentHook::on_dispatch`] and [`AgentHook::on_outcome`] for that
+    /// family — the hook can no longer deny a tool call. An override that
+    /// only wants to drop deltas answers `false` for the delta kinds alone
+    /// and leaves every `*Dispatch` kind at the default.
     fn observes(&self, kind: StepEventKind) -> bool {
         !matches!(
             kind,

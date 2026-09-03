@@ -429,13 +429,17 @@ impl AgentRunner {
     /// Open the per-run agent span, recording the prompt when content
     /// telemetry is enabled. Shared by the blocking and streaming surfaces.
     pub(crate) fn open_agent_span(&self) -> (tracing::Span, bool) {
+        // A resumed run ignores the prompt it was built with (its state
+        // carries the real one): the span records none.
+        let prompt_recorded = self.resume.is_none();
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.config.preamble.as_deref(),
             self.config.record_telemetry_content,
         );
 
-        if self.config.record_telemetry_content
+        if prompt_recorded
+            && self.config.record_telemetry_content
             && let Some(text) = self.prompt.rag_text()
         {
             agent_span.record("gen_ai.prompt", text);
@@ -506,21 +510,23 @@ impl AgentRunner {
         let (agent_span, created_agent_span) = self.open_agent_span();
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
-        // A memory load is a dispatch too: drive the bus while resolving.
-        let (history_override, memory_handle) = {
-            let resolve = self.resolve_history_and_memory(&hook_ctx);
-            futures::pin_mut!(resolve);
-            let mut driven = bus.drive(futures::stream::once(resolve));
-            match driven.next().await {
-                Some(resolved) => resolved?,
-                None => (None, None),
-            }
-        };
+        // A resumed run brought its history with it: nothing is loaded and
+        // nothing is saved — no `Memory` dispatch, no memory hook event, no
+        // record in the log — so its continuation is exactly the reference
+        // log's tail and a memory backend that is down cannot fail it.
         let resumed = self.resume.take();
-        let memory_handle = if resumed.is_some() {
-            None
-        } else {
-            memory_handle
+        let (history_override, memory_handle) = match &resumed {
+            Some(_) => (None, None),
+            None => {
+                // A memory load is a dispatch too: drive the bus while resolving.
+                let resolve = self.resolve_history_and_memory(&hook_ctx);
+                futures::pin_mut!(resolve);
+                let mut driven = bus.drive(futures::stream::once(resolve));
+                match driven.next().await {
+                    Some(resolved) => resolved?,
+                    None => (None, None),
+                }
+            }
         };
         let run = match resumed {
             Some(run) => *run,
