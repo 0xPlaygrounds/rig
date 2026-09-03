@@ -185,11 +185,38 @@ impl Shared {
         self.closed.load(Ordering::SeqCst)
     }
 
-    pub(super) fn register(&self, key: HandlerKey, handler: ErasedHandler) {
-        self.handlers
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(key, handler);
+    /// Install `handler` under `key`, replacing what served it. A
+    /// replacement must keep the key's family: a bound handle checked its
+    /// family at bind time, and that check stays true for its lifetime.
+    /// The displaced handler is dropped after the table lock is released —
+    /// its `Drop` may touch this bus.
+    pub(super) fn register(
+        &self,
+        key: HandlerKey,
+        handler: ErasedHandler,
+    ) -> Result<(), ErrorReport> {
+        let family = handler.descriptor().family.family();
+        let displaced = {
+            let mut handlers = self
+                .handlers
+                .write()
+                .unwrap_or_else(PoisonError::into_inner);
+            if let Some(current) = handlers.get(&key) {
+                let current_family = current.descriptor().family.family();
+                if current_family != family {
+                    return Err(ErrorReport::new(
+                        ErrorKind::HandlerUnavailable,
+                        format!(
+                            "key `{key}` serves the {current_family:?} family; a {family:?} handler cannot replace it"
+                        ),
+                    )
+                    .with_retryable(false));
+                }
+            }
+            handlers.insert(key, handler)
+        };
+        drop(displaced);
+        Ok(())
     }
 
     pub(super) fn deregister(&self, key: &HandlerKey) -> bool {
@@ -455,16 +482,26 @@ impl Dispatcher {
     }
 
     /// Register (or replace) the handler serving `key` on a live bus. Takes
-    /// effect for the next dispatch; an in-flight dispatch keeps the handler
-    /// it started with.
-    pub fn register(&self, key: impl Into<HandlerKey>, handler: impl Handler + 'static) {
+    /// effect for the next dispatch the driver *serves*; a dispatch already
+    /// in flight keeps the handler it started with. A replacement must keep
+    /// the key's family (a handle bound to the key checked its family at
+    /// bind time); a family change is refused with `HandlerUnavailable`.
+    pub fn register(
+        &self,
+        key: impl Into<HandlerKey>,
+        handler: impl Handler + 'static,
+    ) -> Result<(), ErrorReport> {
         self.shared
-            .register(key.into(), ErasedHandler::new(handler));
+            .register(key.into(), ErasedHandler::new(handler))
     }
 
     /// Register an already-erased handler on a live bus.
-    pub fn register_erased(&self, key: impl Into<HandlerKey>, handler: ErasedHandler) {
-        self.shared.register(key.into(), handler);
+    pub fn register_erased(
+        &self,
+        key: impl Into<HandlerKey>,
+        handler: ErasedHandler,
+    ) -> Result<(), ErrorReport> {
+        self.shared.register(key.into(), handler)
     }
 
     /// Remove the handler serving `key`; later dispatches answer
@@ -501,6 +538,16 @@ fn reentrant(key: &HandlerKey) -> ErrorReport {
         ),
     )
     .with_retryable(false)
+}
+
+/// A stream that ended before its `Final`: the handler dropped its sink
+/// mid-stream (the provider stream ended early, or the handler failed
+/// without reporting).
+pub(super) fn stream_truncated() -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Response,
+        "the stream ended before its terminal record",
+    )
 }
 
 pub(super) fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
@@ -697,16 +744,20 @@ impl Stream for EffectStream {
                             Poll::Ready(Some(item))
                         }
                         Poll::Ready(None) => {
-                            // The handler dropped the sink. A provider stream
-                            // that ends without its terminal record is the
-                            // consumer's truncation rule to apply; only a bus
-                            // that closed under the dispatch is reported here.
+                            // The handler dropped the sink. After the terminal
+                            // that is the normal end; before it, the stream
+                            // was cut short — by the bus closing, or by a
+                            // handler that ended without its `Final` — and
+                            // the consumer is told so as one last item rather
+                            // than left to infer it from silence.
                             let terminated = *saw_terminal;
                             this.state = StreamState::Done;
-                            if !terminated && this.shared.is_closed() {
+                            if terminated {
+                                Poll::Ready(None)
+                            } else if this.shared.is_closed() {
                                 Poll::Ready(Some(Err(bus_closed())))
                             } else {
-                                Poll::Ready(None)
+                                Poll::Ready(Some(Err(stream_truncated())))
                             }
                         }
                     };

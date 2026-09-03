@@ -178,10 +178,12 @@ impl<ToolState> AgentBuilder<ToolState> {
         let n = self.retrieval_indexes;
         self.retrieval_indexes += 1;
         let key = HandlerKey::from(format!("retrieve:context#{n}"));
-        self.config
-            .bus
-            .dispatcher()
-            .register(key.clone(), RetrieveAdapter::new(index));
+        crate::agent::bus::register_generated(
+            self.config
+                .bus
+                .dispatcher()
+                .register(key.clone(), RetrieveAdapter::new(index)),
+        );
         self.add_hook(DynamicContext { samples, key })
     }
 
@@ -258,10 +260,12 @@ impl<ToolState> AgentBuilder<ToolState> {
         B: ConversationMemory + 'static,
     {
         let key = HandlerKey::from("memory");
-        self.config
-            .bus
-            .dispatcher()
-            .register(key.clone(), MemoryAdapter::new(memory));
+        crate::agent::bus::register_generated(
+            self.config
+                .bus
+                .dispatcher()
+                .register(key.clone(), MemoryAdapter::new(memory)),
+        );
         self.config.memory_key = Some(key);
         self
     }
@@ -356,7 +360,9 @@ impl AgentBuilder<NoToolConfig> {
         let label = label.into();
         let (dispatcher, mut driver) = Bus::channel_with(bus_config);
         let key = model_key(label.as_str());
-        driver.register(key.clone(), CompletionAdapter::new(label, model));
+        crate::agent::bus::register_generated(
+            driver.register(key.clone(), CompletionAdapter::new(label, model)),
+        );
         let bus = AgentBus::owned(dispatcher, driver);
         Self {
             config: AgentConfig::new(bus, key),

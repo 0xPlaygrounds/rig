@@ -53,12 +53,36 @@ impl Default for BusConfig {
     }
 }
 
-/// A bus tap: every dispatch the driver serves is appended, as an
-/// [`EffectRecord`], when it resolves. Cloning shares the log; a streaming
-/// dispatch is recorded as the aggregated completion its events fold to.
+/// A bus tap: every dispatch the driver serves is recorded, as an
+/// [`EffectRecord`], **in dispatch order** — the slot is opened when the
+/// driver takes the command and filled when the dispatch resolves, so two
+/// concurrent dispatches to one key are logged in the order they were
+/// served, not the order they happened to finish. Cloning shares the log; a
+/// streaming dispatch is recorded as the aggregated completion its events
+/// fold to.
 #[derive(Clone, Default)]
 pub struct EffectLogRecorder {
-    log: Arc<Mutex<EffectLog>>,
+    slots: Arc<Mutex<Vec<RecordSlot>>>,
+}
+
+/// One dispatch the recorder has seen: opened at serve time, filled at
+/// resolution.
+struct RecordSlot {
+    id: EffectId,
+    key: HandlerKey,
+    kind: EffectKind,
+    outcome: Option<Result<Outcome, ErrorReport>>,
+}
+
+impl RecordSlot {
+    fn record(&self) -> Option<EffectRecord> {
+        self.outcome.as_ref().map(|outcome| EffectRecord {
+            id: self.id,
+            key: self.key.clone(),
+            kind: self.kind.clone(),
+            outcome: outcome.clone(),
+        })
+    }
 }
 
 impl EffectLogRecorder {
@@ -67,31 +91,70 @@ impl EffectLogRecorder {
         Self::default()
     }
 
-    /// A copy of everything recorded so far, in dispatch-resolution order.
+    /// A copy of every resolved dispatch so far, in dispatch order. A
+    /// dispatch still in flight is not in the log yet; it takes its place
+    /// (ahead of everything served after it) when it resolves.
     pub fn log(&self) -> EffectLog {
-        self.log
+        self.slots
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .iter()
+            .filter_map(RecordSlot::record)
+            .collect()
     }
 
-    /// Take the recorded log, leaving the recorder empty.
+    /// Take the resolved dispatches, leaving the recorder holding only the
+    /// ones still in flight.
     pub fn take(&self) -> EffectLog {
-        std::mem::take(&mut *self.log.lock().unwrap_or_else(PoisonError::into_inner))
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut taken = Vec::new();
+        slots.retain(|slot| match slot.record() {
+            Some(record) => {
+                taken.push(record);
+                false
+            }
+            None => true,
+        });
+        taken
     }
 
-    fn push(&self, record: EffectRecord) {
-        self.log
+    /// Dispatches recorded and not yet resolved.
+    pub fn in_flight(&self) -> usize {
+        self.slots
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(record);
+            .iter()
+            .filter(|slot| slot.outcome.is_none())
+            .count()
+    }
+
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind) {
+        self.slots
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(RecordSlot {
+                id,
+                key,
+                kind,
+                outcome: None,
+            });
+    }
+
+    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id) {
+            slot.outcome = Some(outcome);
+        }
     }
 }
 
 impl fmt::Debug for EffectLogRecorder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        let resolved = slots.iter().filter(|slot| slot.outcome.is_some()).count();
         f.debug_struct("EffectLogRecorder")
-            .field("records", &self.log().len())
+            .field("records", &resolved)
+            .field("in_flight", &(slots.len() - resolved))
             .finish()
     }
 }
@@ -153,14 +216,22 @@ impl BusDriver {
     /// Register (or replace) the handler serving `key` before the driver is
     /// spawned. The same table [`Dispatcher::register`](super::Dispatcher::register)
     /// writes at runtime.
-    pub fn register(&mut self, key: impl Into<HandlerKey>, handler: impl Handler + 'static) {
+    pub fn register(
+        &mut self,
+        key: impl Into<HandlerKey>,
+        handler: impl Handler + 'static,
+    ) -> Result<(), ErrorReport> {
         self.shared
-            .register(key.into(), ErasedHandler::new(handler));
+            .register(key.into(), ErasedHandler::new(handler))
     }
 
     /// Register an already-erased handler.
-    pub fn register_erased(&mut self, key: impl Into<HandlerKey>, handler: ErasedHandler) {
-        self.shared.register(key.into(), handler);
+    pub fn register_erased(
+        &mut self,
+        key: impl Into<HandlerKey>,
+        handler: ErasedHandler,
+    ) -> Result<(), ErrorReport> {
+        self.shared.register(key.into(), handler)
     }
 
     /// Remove the handler serving `key`. Returns whether one was registered.
@@ -204,7 +275,12 @@ impl BusDriver {
         }
         let sink = reply.into_sink(id);
         let sink = match &self.recorder {
-            Some(recorder) => tap(sink, recorder.clone(), id, key.clone(), kind.clone()),
+            Some(recorder) => {
+                // The record's place in the log is its place in the serve
+                // order; the outcome fills it in when the dispatch resolves.
+                recorder.begin(id, key.clone(), kind.clone());
+                tap(sink, recorder.clone(), id)
+            }
             None => sink,
         };
         let task_key = key.clone();
@@ -355,21 +431,10 @@ impl Drop for BusDriver {
     }
 }
 
-// A handler wrapper that records the dispatch when it resolves.
-fn tap(
-    sink: OutcomeSink,
-    recorder: EffectLogRecorder,
-    id: EffectId,
-    key: HandlerKey,
-    kind: EffectKind,
-) -> OutcomeSink {
+// A handler wrapper that fills the dispatch's record when it resolves.
+fn tap(sink: OutcomeSink, recorder: EffectLogRecorder, id: EffectId) -> OutcomeSink {
     sink.with_tap(Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
-        recorder.push(EffectRecord {
-            id,
-            key: key.clone(),
-            kind: kind.clone(),
-            outcome: outcome.clone(),
-        });
+        recorder.resolve(id, outcome.clone());
     }))
 }
 

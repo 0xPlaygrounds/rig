@@ -71,7 +71,9 @@ impl ToolServerState {
 
     fn publish(&self, tool: &RegisteredTool) {
         for bus in &self.buses {
-            bus.register_erased(tool.key().clone(), tool.handler().clone());
+            crate::agent::bus::register_generated(
+                bus.register_erased(tool.key().clone(), tool.handler().clone()),
+            );
         }
     }
 
@@ -154,10 +156,14 @@ impl ToolServerState {
 
     fn attach(&mut self, bus: &Dispatcher) {
         for (_, tool) in self.toolset.iter() {
-            bus.register_erased(tool.key().clone(), tool.handler().clone());
+            crate::agent::bus::register_generated(
+                bus.register_erased(tool.key().clone(), tool.handler().clone()),
+            );
         }
         for index in &self.retrieval_indexes {
-            bus.register_erased(index.key.clone(), index.handler.clone());
+            crate::agent::bus::register_generated(
+                bus.register_erased(index.key.clone(), index.handler.clone()),
+            );
         }
         self.buses.push(bus.clone());
     }

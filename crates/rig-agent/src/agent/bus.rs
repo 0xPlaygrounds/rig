@@ -108,8 +108,10 @@ impl AgentBus {
         M: CompletionModel + 'static,
     {
         let key = model_key(label.as_str());
-        self.dispatcher
-            .register(key.clone(), CompletionAdapter::new(label.clone(), model));
+        register_generated(
+            self.dispatcher
+                .register(key.clone(), CompletionAdapter::new(label.clone(), model)),
+        );
         key
     }
 
@@ -150,6 +152,18 @@ impl AgentBus {
             wakers: Arc::clone(&self.wakers),
             slot: self.wakers.slot(),
         }
+    }
+}
+
+/// The agent's generated keys are family-prefixed (`model:`, `tool:`,
+/// `memory`, `retrieve:`), so a registration under one can never change
+/// the key's family — the one thing `Dispatcher::register` refuses. The
+/// refusal is therefore unreachable here; it is asserted in debug builds
+/// and logged, never swallowed silently, in release.
+pub(crate) fn register_generated(registered: Result<(), rig_core::error::ErrorReport>) {
+    if let Err(report) = registered {
+        debug_assert!(false, "a generated key changed family: {report}");
+        tracing::error!(%report, "a generated bus key changed family; the registration was refused");
     }
 }
 

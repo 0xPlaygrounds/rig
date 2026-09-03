@@ -188,10 +188,12 @@ async fn into_parts_fails_while_a_clone_still_shares_the_driver() {
 #[tokio::test]
 async fn a_run_over_a_dropped_host_bus_answers_bus_closed_not_a_hang() {
     let (dispatcher, mut driver) = Bus::channel();
-    driver.register(
-        "model:host",
-        CompletionAdapter::new("host", MockCompletionModel::text("never")),
-    );
+    driver
+        .register(
+            "model:host",
+            CompletionAdapter::new("host", MockCompletionModel::text("never")),
+        )
+        .expect("register");
     let agent = AgentBuilder::over_bus(dispatcher, HandlerKey::from("model:host")).build();
     drop(driver);
     let error = within(agent.prompt("hello").run())
@@ -227,7 +229,7 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     let saved = serde_json::to_string(&log).expect("log serializes");
     let restored: rig_core::effect::EffectLog = serde_json::from_str(&saved).expect("restores");
     let (dispatcher, mut driver) = Bus::channel();
-    EffectLogReplayer::register_all(&restored, &mut driver);
+    EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
     let replay_task = tokio::spawn(driver);
 
     // The replayed agent advertises the same tool (its handler is the
