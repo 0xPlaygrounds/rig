@@ -150,8 +150,8 @@ jobs:
         run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
 
   # The Bevy host fixture (tests/fixtures/bevy_bus_host) is its own
-  # workspace pinned to bevy by git rev and to its own toolchain, so the
-  # matrix above cannot name it as a package. Its native run lives in the
+  # workspace on the latest crates.io Bevy release and its own toolchain, so
+  # the matrix above cannot name it as a package. Its native run lives in the
   # `test` sweep (tests/core/bevy_bus_host.rs); this job is the browser-target
   # half of that proof: bevy_tasks' wasm pool accepts the `!Send` driver, and
   # the whole stack must compile for wasm32-unknown-unknown.
@@ -172,6 +172,43 @@ jobs:
         run: |
           unset RUSTUP_TOOLCHAIN
           cargo check --locked --target wasm32-unknown-unknown
+
+  # The one *executed* wasm test in the tree: rig-bus's `tests/wasm.rs`,
+  # run under `wasm-bindgen-test-runner` on Node. Every other wasm job is a
+  # `cargo check`. The CLI must match the `wasm-bindgen` crate version the
+  # lock file resolves, so it is read from the lock file rather than pinned
+  # here (the classic red is a mismatch between the two).
+  test-rig-bus-wasm:
+    name: stable / test rig-bus wasm target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Resolve the lock file's wasm-bindgen version
+        id: wasm-bindgen
+        run: |
+          version=$(awk '/^name = "wasm-bindgen"$/ { getline; sub(/^version = "/, ""); sub(/"$/, ""); print; exit }' Cargo.lock)
+          if [ -z "$version" ]; then
+            echo "::error::Cargo.lock resolves no wasm-bindgen"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install wasm-bindgen-cli at the lock file's version
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
+
+      - name: Run the bus on wasm
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: cargo test --locked --package rig-bus --target wasm32-unknown-unknown --test wasm
 
   # `rig-rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
   # unconditionally, which rig's wasm tool registry cannot satisfy. Building it

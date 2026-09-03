@@ -26,7 +26,10 @@ fn crate_src(name: &str) -> PathBuf {
 
 /// The crates the guard scans: rig-core (the vocabulary, the handler seam
 /// and the one erasure), rig-bus (the runtime), rig-effect-log (record and
-/// replay) and rig-agent (the engine over them).
+/// replay) and rig-agent (the engine over them). A crate that is not
+/// listed is not scanned: a future `rig-bevy` (or any second runtime over
+/// the bus) must be added here the commit it appears, or a `dyn` it stores
+/// escapes the guard silently.
 const SCANNED: [&str; 4] = ["rig-core", "rig-bus", "rig-effect-log", "rig-agent"];
 
 /// Every `.rs` file under `root`, skipping test modules (`tests.rs`,

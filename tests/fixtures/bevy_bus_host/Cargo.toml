@@ -9,12 +9,14 @@ publish = false
 # A Bevy-shaped host over the effect bus: rig-core (default features off) and
 # rig-bus on the rig side, `bevy_ecs` + `bevy_tasks` only on the host side — never the
 # `bevy` facade, no tokio, no reqwest. `tests/core/bevy_bus_host.rs` runs this
-# binary and checks its dependency graph. Bevy is pinned by git revision: a
-# `0.20.0-dev` version string moves; the rev is what the proofs ran against.
+# binary and checks its dependency graph. Bevy comes from crates.io at the
+# latest release, never from git: the version here is the one the proofs
+# ran against, the lock file pins it exactly, and the guard rejects a
+# `git =` or `path =` Bevy. A new Bevy release is a version-bump commit.
 [dependencies]
 rig-core = { path = "../../../crates/rig-core", default-features = false }
 rig-bus = { path = "../../../crates/rig-bus" }
-bevy_ecs = { git = "https://github.com/bevyengine/bevy", rev = "823bcc935", default-features = false }
-bevy_tasks = { git = "https://github.com/bevyengine/bevy", rev = "823bcc935", default-features = false, features = ["multi_threaded"] }
+bevy_ecs = { version = "0.19.1", default-features = false }
+bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.150"
