@@ -8,13 +8,15 @@ use std::{
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{
-        EffectFamily, EffectKind, EffectLog, EffectRecord, EmbedModality, FamilyDescriptor,
-        HandlerDescriptor, HandlerKey,
+        EffectFamily, EffectKind, EffectRecord, EmbedModality, FamilyDescriptor, HandlerDescriptor,
+        HandlerKey,
     },
     error::{ErrorKind, ErrorReport},
 };
 
 use rig_core::serve::{OutcomeSink, Serve};
+
+use super::{EFFECT_LOG_FORMAT, EffectLog};
 
 /// A handler that answers dispatches from a recorded log instead of a
 /// provider: the replay half of record/replay.
@@ -77,7 +79,10 @@ impl EffectLogReplayer {
     /// log of another format, and a log whose signature names a family its
     /// records do not answer — before the first dispatch, not at the record
     /// where it would have diverged.
-    pub fn register_all(log: &EffectLog, driver: &mut super::BusDriver) -> Result<(), ErrorReport> {
+    pub fn register_all(
+        log: &EffectLog,
+        driver: &mut rig_bus::BusDriver,
+    ) -> Result<(), ErrorReport> {
         Self::check_header(log)?;
         for replayer in Self::for_log(log) {
             let key = replayer.key.clone();
@@ -90,13 +95,12 @@ impl EffectLogReplayer {
     /// this crate's, and every key the signature names is answered by
     /// records of that family.
     pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
-        if log.header.format != rig_core::effect::EFFECT_LOG_FORMAT {
+        if log.header.format != EFFECT_LOG_FORMAT {
             return Err(ErrorReport::new(
                 ErrorKind::Internal,
                 format!(
                     "replay refused: the log is format {}, this rig reads format {}",
-                    log.header.format,
-                    rig_core::effect::EFFECT_LOG_FORMAT
+                    log.header.format, EFFECT_LOG_FORMAT
                 ),
             ));
         }

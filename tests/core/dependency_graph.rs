@@ -61,7 +61,13 @@ fn rig_core_is_runtime_and_transport_free() {
 #[test]
 fn rig_bus_is_runtime_free_and_below_rig_core() {
     assert_absent("rig-bus", &[], &["tokio", "reqwest"]);
-    assert_absent("rig-core", &["--all-features"], &["rig-bus"]);
+    assert_absent("rig-effect-log", &[], &["tokio", "reqwest"]);
+    assert_absent(
+        "rig-core",
+        &["--all-features"],
+        &["rig-bus", "rig-effect-log"],
+    );
+    assert_absent("rig-bus", &[], &["rig-effect-log"]);
 }
 
 /// With default features on, and — the shape a host that steps `AgentRun`

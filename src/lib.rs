@@ -94,6 +94,12 @@ pub mod bus {
     pub use rig_bus::*;
 }
 
+/// Record and replay (`rig_effect_log`): the effect log, its header, the
+/// recorder a driver writes to and the replayer that answers from it.
+pub mod effect_log {
+    pub use rig_effect_log::*;
+}
+
 /// The sans-IO run layer of rig-agent (`rig_agent::run`): `AgentRun` and its
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision

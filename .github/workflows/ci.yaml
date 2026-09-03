@@ -132,7 +132,7 @@ jobs:
       # independent wasm breaks behind an extra CI round-trip.
       fail-fast: false
       matrix:
-        package: [rig-core, rig-bus, rig-reqwest, rig-agent, rig, rig-candle, candle_wasm_chat]
+        package: [rig-core, rig-bus, rig-effect-log, rig-reqwest, rig-agent, rig, rig-candle, candle_wasm_chat]
     steps:
       - name: Checkout
         uses: actions/checkout@v5

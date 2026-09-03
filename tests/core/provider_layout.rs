@@ -226,6 +226,12 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
         ),
     ),
     (
+        "rig-effect-log",
+        Exempt(
+            "record and replay over the bus — the effect log, recorder, replayer; no provider, no wire",
+        ),
+    ),
+    (
         "rig-verify",
         Exempt(
             "the bus's behavioural verification suite — tests over rig-core and rig-agent's public API, no provider, no wire",

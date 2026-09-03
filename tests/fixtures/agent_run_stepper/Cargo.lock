@@ -685,6 +685,7 @@ dependencies = [
  "loom",
  "rig-bus",
  "rig-core",
+ "rig-effect-log",
  "schemars",
  "serde",
  "serde_json",
@@ -742,6 +743,16 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "url",
+]
+
+[[package]]
+name = "rig-effect-log"
+version = "0.42.0"
+dependencies = [
+ "rig-bus",
+ "rig-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

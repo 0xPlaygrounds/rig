@@ -174,7 +174,7 @@ pub struct ToolContext {
 
 /// A value that may be stored in a [`ToolContext`]: serde data under a key
 /// the type declares. The key is what survives a refactor, a persisted
-/// [`EffectLog`](crate::effect::EffectLog), or a different toolchain —
+/// an effect log (`rig_effect_log`), or a different toolchain —
 /// unlike `std::any::type_name`, which changes with a rename or a module
 /// move and is not stable across compiler versions.
 ///

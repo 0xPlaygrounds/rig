@@ -51,6 +51,7 @@ default-members = [
     ".",
     "crates/rig-core",
     "crates/rig-bus",
+    "crates/rig-effect-log",
     "crates/rig-agent",
     "crates/rig-reqwest",
     "crates/rig-tungstenite",
@@ -124,6 +125,7 @@ rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
 rig-core = { path = "crates/rig-core", version = "0.42.0" }
 rig-bus = { path = "crates/rig-bus", version = "0.42.0" }
+rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
 anyhow = "1"
 arrow-array = "58"
 as-any = "0.3"
@@ -248,6 +250,7 @@ workspace = true
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
 rig-bus = { path = "crates/rig-bus", version = "0.42.0" }
+rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0", optional = true }

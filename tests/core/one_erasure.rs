@@ -25,9 +25,9 @@ fn crate_src(name: &str) -> PathBuf {
 }
 
 /// The crates the guard scans: rig-core (the vocabulary, the handler seam
-/// and the one erasure), rig-bus (the runtime) and rig-agent (the engine
-/// over it).
-const SCANNED: [&str; 3] = ["rig-core", "rig-bus", "rig-agent"];
+/// and the one erasure), rig-bus (the runtime), rig-effect-log (record and
+/// replay) and rig-agent (the engine over them).
+const SCANNED: [&str; 4] = ["rig-core", "rig-bus", "rig-effect-log", "rig-agent"];
 
 /// Every `.rs` file under `root`, skipping test modules (`tests.rs`,
 /// `*_tests.rs`, and `tests/` directories) — tests may build erased values

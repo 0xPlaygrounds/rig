@@ -24,13 +24,14 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_bus::{Bus, EffectLogReplayer, ModelHandle, ToolHandle};
+use rig_bus::{Bus, ModelHandle, ToolHandle};
 use rig_core::{
     completion::CompletionRequestBuilder,
-    effect::{EffectFamily, EffectLog},
+    effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
 };
+use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -285,7 +286,7 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         ..rig_bus::BusConfig::default()
     });
     EffectLogReplayer::register_all(&continuation, &mut driver).expect("fresh keys");
-    let recorder = rig_bus::EffectLogRecorder::new();
+    let recorder = EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let replay_task = tokio::spawn(driver);
     let model_key = reference_log[0].key.clone();

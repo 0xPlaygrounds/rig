@@ -6,16 +6,14 @@ use std::{
     sync::{Arc, Mutex, PoisonError},
 };
 
+use rig_bus::Recorder;
 use rig_core::{
-    effect::{
-        EffectId, EffectKind, EffectLog, EffectRecord, HandlerDescriptor, HandlerKey, LogHeader,
-        Outcome,
-    },
+    effect::{EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
 };
 
-use super::Recorder;
+use super::{EffectLog, LogHeader};
 
 /// A bus tap: every dispatch the driver serves is recorded, as an
 /// [`EffectRecord`], **in dispatch order** — the slot is opened when the
@@ -73,7 +71,7 @@ impl EffectLogRecorder {
     }
 
     /// The header the log will carry: set by the driver at
-    /// [`BusDriver::record_to`](crate::BusDriver::record_to) (the registered handlers) and by an agent
+    /// [`BusDriver::record_to`](rig_bus::BusDriver::record_to) (the registered handlers) and by an agent
     /// (the run spec hash); the signature accumulates as dispatches are
     /// served.
     pub fn header(&self) -> LogHeader {

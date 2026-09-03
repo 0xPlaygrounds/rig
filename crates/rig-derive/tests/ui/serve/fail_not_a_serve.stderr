@@ -13,13 +13,13 @@ help: the trait `rig_core::serve::handler::Serve` is not implemented for `NotAHa
    | ^^^^^^^^^^^^^^^^^^
    = help: the following other types implement trait `rig_core::serve::handler::Serve`:
              Arc<H>
-             EffectLogReplayer
              rig_core::serve::adapters::CompletionAdapter<M>
              rig_core::serve::adapters::EmbedAdapter<E>
              rig_core::serve::adapters::ImageEmbedAdapter<E>
              rig_core::serve::adapters::MemoryAdapter<M>
              rig_core::serve::adapters::RerankAdapter<M>
              rig_core::serve::adapters::RetrieveAdapter<I>
+             rig_core::serve::adapters::ToolAdapter<T>
            and $N others
 note: required by a bound in `Registrar::register`
   --> $WORKSPACE/crates/rig-bus/src/registrar.rs

@@ -5,7 +5,8 @@
 //! operation, a retrieval — expressed as a value rather than as a call on a
 //! trait object. The bus (`rig_bus`) carries these values to the
 //! handler registered for a [`HandlerKey`] and carries the [`Outcome`] back;
-//! the [`EffectLog`] records every exchange so a run can be replayed.
+//! an `EffectLog` (`rig_effect_log`) records every exchange so a run can be
+//! replayed.
 //!
 //! Everything in this module is serde, `Clone + Send + Sync + 'static`, with
 //! no lifetimes and no `dyn` (asserted at compile time on every target). A
@@ -845,128 +846,6 @@ pub struct EffectRecord {
     pub events: Option<Vec<StreamEvent>>,
 }
 
-/// The log format this crate writes and reads. A log with another format
-/// does not load: there is no tolerant decoder.
-pub const EFFECT_LOG_FORMAT: u32 = 1;
-
-/// What a log says about the run it records, so a replay can refuse a log
-/// the program has outgrown before the first dispatch diverges.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LogHeader {
-    /// The log format version ([`EFFECT_LOG_FORMAT`]).
-    pub format: u32,
-    /// A hash of the run spec the run was recorded under, when an agent
-    /// recorded it (`None` for a bare-bus record). An agent that replays
-    /// compares it with its own.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub run_spec: Option<u64>,
-    /// The handlers registered on the bus when recording began, stamped
-    /// with their keys.
-    #[serde(default)]
-    pub handlers: Vec<HandlerDescriptor>,
-    /// The effect signature: which keys the run performed effects on, and
-    /// of which family — the effect row read off the trace.
-    #[serde(default)]
-    pub signature: std::collections::BTreeMap<HandlerKey, EffectFamily>,
-}
-
-impl Default for LogHeader {
-    fn default() -> Self {
-        Self {
-            format: EFFECT_LOG_FORMAT,
-            run_spec: None,
-            handlers: Vec::new(),
-            signature: std::collections::BTreeMap::new(),
-        }
-    }
-}
-
-/// A recorded run: its header, then every exchange in dispatch order.
-/// Derefs to the records, so `log[i]`, `log.len()` and iteration read as
-/// they did when the log was a plain vector.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct EffectLog {
-    /// What the log says about the run.
-    pub header: LogHeader,
-    /// The exchanges, in dispatch order.
-    pub records: Vec<EffectRecord>,
-}
-
-impl EffectLog {
-    /// A log over `records` with a default header (no spec, no handlers,
-    /// the signature read off the records).
-    pub fn from_records(records: Vec<EffectRecord>) -> Self {
-        let mut header = LogHeader::default();
-        for record in &records {
-            header
-                .signature
-                .entry(record.key.clone())
-                .or_insert_with(|| record.kind.family());
-        }
-        Self { header, records }
-    }
-
-    /// The records from `at` on, under a copy of this header — the
-    /// continuation a resumed run replays.
-    pub fn tail(&self, at: usize) -> Self {
-        Self {
-            header: self.header.clone(),
-            records: self.records.get(at..).unwrap_or_default().to_vec(),
-        }
-    }
-}
-
-impl std::ops::Deref for EffectLog {
-    type Target = [EffectRecord];
-
-    fn deref(&self) -> &[EffectRecord] {
-        &self.records
-    }
-}
-
-impl From<Vec<EffectRecord>> for EffectLog {
-    fn from(records: Vec<EffectRecord>) -> Self {
-        Self::from_records(records)
-    }
-}
-
-impl FromIterator<EffectRecord> for EffectLog {
-    fn from_iter<I: IntoIterator<Item = EffectRecord>>(records: I) -> Self {
-        Self::from_records(records.into_iter().collect())
-    }
-}
-
-impl IntoIterator for EffectLog {
-    type Item = EffectRecord;
-    type IntoIter = std::vec::IntoIter<EffectRecord>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.records.into_iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a EffectLog {
-    type Item = &'a EffectRecord;
-    type IntoIter = std::slice::Iter<'a, EffectRecord>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.records.iter()
-    }
-}
-
-/// A stable 64-bit hash of `value`'s JSON form (FNV-1a over the bytes):
-/// the same on every platform and toolchain, unlike `std`'s hasher. What
-/// [`LogHeader::run_spec`] holds.
-pub fn stable_hash<T: Serialize>(value: &T) -> Result<u64, serde_json::Error> {
-    let json = serde_json::to_vec(value)?;
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in json {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    Ok(hash)
-}
-
 // The protocol crosses threads and serializes on every target.
 const _: fn() = || {
     fn assert_wire<T: Clone + Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}
@@ -987,7 +866,6 @@ const _: fn() = || {
     assert_wire::<MemoryOutcome>();
     assert_wire::<RetrievedDocuments>();
     assert_wire::<EffectRecord>();
-    assert_wire::<EffectLog>();
     assert_wire::<StreamEvent>();
 };
 

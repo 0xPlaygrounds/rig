@@ -1178,7 +1178,7 @@ impl Tool for Tag {
 #[tokio::test]
 async fn two_agents_on_one_host_bus_keep_their_own_keys() {
     let (dispatcher, registrar, mut driver) = Bus::channel();
-    let recorder = rig_bus::EffectLogRecorder::new();
+    let recorder = rig_effect_log::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     for label in ["left-host", "right-host"] {
         driver

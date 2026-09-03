@@ -153,22 +153,19 @@
 //! Provider and tool authors keep implementing the impl-side traits exactly
 //! as before; the adapters ([`rig_core::serve::adapters`]) wrap them. Implement [`Serve`](rig_core::serve::Serve) (an `async fn`) for
 //! an out-of-tree kind ([`EffectKind::Custom`](rig_core::effect::EffectKind::Custom))
-//! or for a replayer ([`EffectLogReplayer`]).
+//! or for a replayer (`rig_effect_log::EffectLogReplayer`).
 //!
 //! # Record and replay
 //!
-//! Install an [`EffectLogRecorder`] on the driver ([`BusDriver::record_to`],
-//! which takes any [`Recorder`]) and every served dispatch is appended to
-//! its [`EffectLog`](rig_core::effect::EffectLog) as it resolves; serialize the log, and later register an
-//! [`EffectLogReplayer`] under the same keys to answer the same dispatches
-//! from the record instead of a provider.
+//! [`BusDriver::record_to`] takes any [`Recorder`]; `rig_effect_log`'s
+//! `EffectLogRecorder` is the one that folds every served dispatch into an
+//! effect log as it resolves, and its `EffectLogReplayer` is the handler
+//! that answers the same dispatches from the record instead of a provider.
 
 mod dispatcher;
 mod driver;
 mod handle;
-mod recorder;
 mod registrar;
-mod replay;
 mod sync;
 
 pub use dispatcher::{Dispatcher, EffectStream, Pending};
@@ -177,9 +174,7 @@ pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
     Retrieval, ToolCall, ToolHandle, Typed, wrap_stream,
 };
-pub use recorder::EffectLogRecorder;
 pub use registrar::Registrar;
-pub use replay::EffectLogReplayer;
 
 use std::sync::Arc;
 

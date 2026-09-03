@@ -27,14 +27,15 @@ use super::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
-use rig_bus::{BusDriver, Dispatcher, EffectLogRecorder, Registrar};
+use rig_bus::{BusDriver, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
     completion::{CompletionModel, ModelRef},
-    effect::{EffectLog, HandlerKey, Key, family},
+    effect::{HandlerKey, Key, family},
     error::ErrorReport,
 };
+use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 /// The per-process counter behind an agent's default owner label.
 static NEXT_AGENT: AtomicU64 = AtomicU64::new(0);

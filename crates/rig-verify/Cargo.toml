@@ -17,6 +17,7 @@ doctest = false
 rig-core = { path = "../rig-core", features = ["test-utils"] }
 rig-agent = { path = "../rig-agent" }
 rig-bus = { path = "../rig-bus" }
+rig-effect-log = { path = "../rig-effect-log" }
 futures = { workspace = true }
 proptest = "1"
 serde = { workspace = true, features = ["derive"] }
