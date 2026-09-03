@@ -830,13 +830,10 @@ async fn dropping_the_stream_cancels_the_handler() {
                 },
             }
         }
-        async fn serve(&self, _kind: EffectKind, mut sink: OutcomeSink) {
+        async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+            let mut out = sink.writer();
             loop {
-                let event = StreamEvent::text(
-                    crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0),
-                    "x",
-                );
-                if sink.send(Ok(event)).await.is_err() {
+                if out.text("x").await.is_err() {
                     self.cancelled.fetch_add(1, Ordering::SeqCst);
                     return;
                 }
@@ -1406,15 +1403,9 @@ impl Serve for CutShort {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, mut sink: OutcomeSink) {
-        let _ = sink
-            .send(Ok(StreamEvent::BlockDelta {
-                id: crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0),
-                delta: crate::streaming::Delta::Text {
-                    text: "partial".into(),
-                },
-            }))
-            .await;
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        let mut out = sink.writer();
+        let _ = out.text("partial").await;
         // Dropped here, before any `Final`.
     }
 }
@@ -2041,5 +2032,95 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     assert_ne!(
         from_fold, recorded,
         "the fold re-emits its own boundaries, not the original deltas"
+    );
+}
+
+// ---- the stream writer mints; a handler names no block id ----
+
+#[tokio::test]
+async fn a_stream_written_through_the_writer_is_well_formed() {
+    struct Writes;
+
+    impl Serve for Writes {
+        type Family = crate::effect::family::Dynamic;
+
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: HandlerKey::from("writer"),
+                family: FamilyDescriptor::Completion {
+                    model: "writer".into(),
+                    capabilities: Default::default(),
+                },
+            }
+        }
+
+        async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+            let mut out = sink.writer();
+            let _ = out.reasoning("thinking").await;
+            let _ = out.text("hel").await;
+            let _ = out.text("lo").await;
+            let _ = out.tool_call("add", json!({"x": 1})).await;
+            let _ = out.text("after").await;
+            let _ = out
+                .finish(crate::streaming::StreamFinal::new(
+                    "writer",
+                    crate::completion::Usage::new(),
+                ))
+                .await;
+        }
+    }
+
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver.register("writer", Writes).expect("register");
+    let _task = spawn(driver);
+    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("writer"), completion_kind(true));
+    let mut items = Vec::new();
+    while let Some(item) = within(stream.next()).await {
+        items.push(item);
+    }
+    // The conformance laws hold for a stream nobody minted ids for: every
+    // delta's block was started, every started block ends before the
+    // terminal, distinct blocks carry distinct ids.
+    let events: Vec<StreamEvent> = items
+        .into_iter()
+        .map(|item| item.expect("a clean stream"))
+        .collect();
+    let starts: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::BlockStart { id, .. } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
+    let ends: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::BlockEnd { id, .. } => Some(id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        starts.len(),
+        4,
+        "reasoning, text, tool call, text: {starts:?}"
+    );
+    let distinct: std::collections::BTreeSet<String> =
+        starts.iter().map(ToString::to_string).collect();
+    assert_eq!(distinct.len(), 4, "distinct minted ids: {starts:?}");
+    for id in &starts {
+        assert!(ends.contains(id), "block {id} ends before the terminal");
+    }
+    assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
+    let mut accumulator = crate::streaming::BlockAccumulator::new();
+    for event in &events {
+        accumulator
+            .apply(event)
+            .expect("the accumulator accepts every event");
+    }
+    let choice = accumulator.finish();
+    assert_eq!(
+        choice.len(),
+        4,
+        "reasoning, text, tool call, text as content: {choice:?}"
     );
 }

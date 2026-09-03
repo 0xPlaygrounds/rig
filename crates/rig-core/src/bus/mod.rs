@@ -155,6 +155,7 @@ mod handler;
 mod key;
 mod registrar;
 mod replay;
+mod writer;
 
 pub use dispatcher::{Dispatcher, EffectStream, Pending};
 pub use driver::{BusConfig, BusDriver, EffectLogRecorder};
@@ -168,6 +169,7 @@ pub use handler::{
 pub use key::Key;
 pub use registrar::Registrar;
 pub use replay::EffectLogReplayer;
+pub use writer::StreamWriter;
 
 use std::sync::Arc;
 
