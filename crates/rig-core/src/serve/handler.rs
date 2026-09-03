@@ -251,22 +251,40 @@ impl Drop for OutcomeSink {
         // A sink dropped before it answered is a dispatch the consumer sees
         // fail — a stream cut short before its `Final`, a unary handler
         // that never resolved — and the log records the same failure the
-        // consumer receives rather than losing the dispatch.
+        // consumer receives rather than losing the dispatch. One case is
+        // not a failure of the handler: the consumer dropped its `Pending`
+        // or `EffectStream`, the driver dropped the handler future, and the
+        // sink went with it. That is a cancellation, and the record says so
+        // — a replay of the log must not answer it as a provider failure.
         let unanswered = match &self.inner {
             SinkInner::Unary { reply, .. } => reply.is_some(),
             SinkInner::Stream { finished, .. } => !*finished,
         };
         if unanswered && self.tap.as_ref().is_some_and(|tap| !tap.fired) {
-            let report = match &self.inner {
-                SinkInner::Unary { .. } => ErrorReport::new(
-                    ErrorKind::Internal,
-                    "the handler dropped its outcome sink without answering",
-                ),
-                SinkInner::Stream { .. } => stream_truncated(),
+            let report = if self.is_closed() {
+                cancelled()
+            } else {
+                match &self.inner {
+                    SinkInner::Unary { .. } => ErrorReport::new(
+                        ErrorKind::Internal,
+                        "the handler dropped its outcome sink without answering",
+                    ),
+                    SinkInner::Stream { .. } => stream_truncated(),
+                }
             };
             self.tap_outcome(&Err(report));
         }
     }
+}
+
+/// The report a dispatch resolves to in the record when its consumer went
+/// away before the handler answered.
+pub fn cancelled() -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Cancelled,
+        "the consumer cancelled the dispatch before it was answered",
+    )
+    .with_retryable(false)
 }
 
 #[allow(
@@ -421,12 +439,14 @@ impl OutcomeSink {
     ///
     /// `Err(SinkClosed)` means the consumer is gone: stop producing.
     pub async fn send(&mut self, item: Result<StreamEvent, ErrorReport>) -> Result<(), SinkClosed> {
+        // A finished stream sink takes nothing more, and the tap sees only
+        // what the consumer could receive.
+        if let SinkInner::Stream { finished: true, .. } = &self.inner {
+            return Err(SinkClosed);
+        }
         self.tap_item(&item);
         match &mut self.inner {
-            SinkInner::Stream { events, finished } => {
-                if *finished {
-                    return Err(SinkClosed);
-                }
+            SinkInner::Stream { events, .. } => {
                 // `Final` is not the end of the channel: a wire may still
                 // deliver frames after its terminal record (a late message
                 // id, a provider error), and the consumer's post-final rules
