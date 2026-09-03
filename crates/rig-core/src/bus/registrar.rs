@@ -9,11 +9,27 @@ use std::{
 };
 
 use crate::{
-    effect::{HandlerDescriptor, HandlerKey},
-    error::ErrorReport,
+    effect::{Family, HandlerDescriptor, HandlerKey},
+    error::{ErrorKind, ErrorReport},
 };
 
-use super::{ErasedHandler, Handler, dispatcher::Shared};
+use super::{ErasedHandler, Handler, Key, dispatcher::Shared};
+
+/// The report for a handler registered under a key of another family.
+pub(super) fn family_proof_failed(
+    key: &HandlerKey,
+    wanted: crate::effect::EffectFamily,
+    descriptor: &HandlerDescriptor,
+) -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::HandlerUnavailable,
+        format!(
+            "handler for `{key}` serves the {} family; a `Key<{wanted}>` cannot name it",
+            descriptor.family.family()
+        ),
+    )
+    .with_retryable(false)
+}
 
 /// A registration on its way to the driver.
 pub(super) enum Registration {
@@ -151,6 +167,24 @@ impl Registrar {
             .publish_descriptor(key.clone(), handler.descriptor())?;
         self.mailbox.post(Registration::Install { key, handler });
         Ok(())
+    }
+
+    /// [`register`](Self::register), returning a [`Key`] that carries the
+    /// family the handler proved by its descriptor: a handler of another
+    /// family is refused before anything is published.
+    pub fn register_typed<F: Family>(
+        &self,
+        key: impl Into<HandlerKey>,
+        handler: impl Handler + 'static,
+    ) -> Result<Key<F>, ErrorReport> {
+        let key = key.into();
+        let handler = ErasedHandler::new(handler);
+        let descriptor = handler.descriptor();
+        if descriptor.family.family() != F::FAMILY {
+            return Err(family_proof_failed(&key, F::FAMILY, &descriptor));
+        }
+        self.register_erased(key.clone(), handler)?;
+        Ok(Key::new_unchecked(key))
     }
 
     /// Remove the handler serving `key`. The descriptor goes at once, so a

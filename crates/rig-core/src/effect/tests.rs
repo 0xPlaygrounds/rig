@@ -402,3 +402,130 @@ fn custom_kind_label_is_a_plain_string_on_the_wire() {
         json!({"effect": "custom", "kind": "host:tick", "payload": 1})
     );
 }
+
+// ---- families know their shapes ----
+
+#[test]
+fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
+    let completion = family::Completion::wrap(request());
+    assert_eq!(completion.family(), EffectFamily::Completion);
+    let response =
+        CompletionResponse::new(vec![AssistantContent::text("hi")], Usage::new(), "mock");
+    let answer =
+        family::Completion::unwrap(Outcome::Completion(response.clone())).expect("own family");
+    assert_eq!(answer.choice, response.choice);
+
+    let tool = family::Tool::wrap(ToolCallRequest {
+        name: "add".into(),
+        args: "{}".into(),
+        context: ToolContext::new(),
+    });
+    assert_eq!(tool.family(), EffectFamily::Tool);
+    let answer = family::Tool::unwrap(Outcome::ToolResult {
+        result: ToolResult::success(ToolOutput::text("3")),
+        context: ToolContext::new(),
+    })
+    .expect("own family");
+    assert_eq!(answer.result.output().as_text(), Some("3"));
+
+    let memory = family::Memory::wrap(MemoryOp::Clear {
+        conversation: crate::id::ConversationId::new("c"),
+    });
+    assert_eq!(memory.family(), EffectFamily::Memory);
+    assert!(matches!(
+        family::Memory::unwrap(Outcome::Memory(MemoryOutcome::Cleared)),
+        Ok(MemoryOutcome::Cleared)
+    ));
+
+    let retrieve = family::Retrieve::wrap(RetrieveQuery::TopNIds {
+        req: VectorSearchRequest::builder()
+            .query("q")
+            .samples(1)
+            .build()
+            .map_filter(Filter::interpret),
+    });
+    assert_eq!(retrieve.family(), EffectFamily::Retrieve);
+    assert!(matches!(
+        family::Retrieve::unwrap(Outcome::Documents(RetrievedDocuments::Ids(vec![]))),
+        Ok(RetrievedDocuments::Ids(ids)) if ids.is_empty()
+    ));
+
+    let embed = family::Embed::wrap(EmbedInputs::Texts(vec!["a".into()]));
+    assert_eq!(embed.family(), EffectFamily::Embed);
+    assert!(
+        family::Embed::unwrap(Outcome::Embeddings(EmbedOutputs::Texts(
+            EmbeddingResponse::new(
+                vec![Embedding {
+                    document: "a".into(),
+                    vec: vec![0.0],
+                }],
+                "mock",
+            )
+        )))
+        .is_ok()
+    );
+}
+
+#[test]
+fn a_family_reports_another_familys_outcome_as_a_mismatch() {
+    let report = family::Completion::unwrap(Outcome::Memory(MemoryOutcome::Cleared))
+        .expect_err("not a completion");
+    assert_eq!(report.kind, ErrorKind::Internal);
+    assert!(
+        report.message.contains("expected a completion outcome")
+            && report.message.contains("memory"),
+        "{}",
+        report.message
+    );
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct AskUser {
+    prompt: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Reply {
+    text: String,
+}
+
+impl CustomEffect for AskUser {
+    const KIND: &'static str = "test:ask_user";
+    type Answer = Reply;
+}
+
+#[test]
+fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
+    let kind = family::Custom::<AskUser>::wrap(AskUser {
+        prompt: "name?".into(),
+    });
+    match &kind {
+        EffectKind::Custom { kind, payload } => {
+            assert_eq!(&**kind, AskUser::KIND);
+            assert_eq!(payload, &json!({"prompt": "name?"}));
+        }
+        other => panic!("expected a custom kind, got {other:?}"),
+    }
+    let answer = family::Custom::<AskUser>::unwrap(Outcome::Custom(json!({"text": "Ada"})))
+        .expect("the declared answer");
+    assert_eq!(answer, Reply { text: "Ada".into() });
+
+    let report = family::Custom::<AskUser>::unwrap(Outcome::Custom(json!({"nope": 1})))
+        .expect_err("not a Reply");
+    assert_eq!(report.kind, ErrorKind::Internal);
+    assert!(report.message.contains(AskUser::KIND), "{}", report.message);
+
+    let report = family::Custom::<AskUser>::unwrap(Outcome::Memory(MemoryOutcome::Cleared))
+        .expect_err("another family");
+    assert!(
+        report.message.contains("expected a custom outcome"),
+        "{}",
+        report.message
+    );
+
+    // The marker is `Copy` for any `E` and names its kind.
+    let marker = family::Custom::<AskUser>::new();
+    let copied = marker;
+    assert_eq!(marker, copied);
+    assert_eq!(format!("{marker:?}"), "Custom<test:ask_user>");
+}

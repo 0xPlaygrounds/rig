@@ -24,11 +24,11 @@ use std::{
 use futures::{Stream, lock::Mutex};
 use rig_core::{
     bus::{
-        BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Registrar,
+        BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Key, Registrar,
         adapters::CompletionAdapter,
     },
     completion::{CompletionModel, ModelRef},
-    effect::{EffectLog, HandlerKey},
+    effect::{EffectLog, HandlerKey, family},
     error::ErrorReport,
 };
 
@@ -44,19 +44,19 @@ pub(crate) fn default_owner() -> String {
 /// The registration of a model under a generated label, scoped to the
 /// values that selected it: the last clone dropping deregisters the key.
 pub(crate) struct AnonymousModel {
-    key: HandlerKey,
+    key: Key<family::Completion>,
     registrar: Registrar,
 }
 
 impl AnonymousModel {
-    pub(crate) fn key(&self) -> &HandlerKey {
+    pub(crate) fn key(&self) -> &Key<family::Completion> {
         &self.key
     }
 }
 
 impl Drop for AnonymousModel {
     fn drop(&mut self) {
-        self.registrar.deregister(&self.key);
+        self.registrar.deregister(self.key.raw());
     }
 }
 
@@ -173,14 +173,21 @@ impl AgentBus {
         &self.owner
     }
 
-    /// The key this agent mints for `suffix` (`model:<label>`, `memory`,
-    /// `retrieve:context#<n>`).
-    pub(crate) fn key(&self, suffix: &str) -> HandlerKey {
+    /// The wire key this agent mints for `suffix` (`model:<label>`,
+    /// `memory`, `retrieve:context#<n>`).
+    pub(crate) fn raw_key(&self, suffix: &str) -> HandlerKey {
         HandlerKey::from(format!("{}/{suffix}", self.owner))
     }
 
+    /// The key this agent mints for `suffix`, typed by the family the
+    /// builder registers under it. Minted, so asserted: the builder is the
+    /// one that registers the handler and knows its family.
+    pub(crate) fn key<F: rig_core::effect::Family>(&self, suffix: &str) -> Key<F> {
+        Key::new_unchecked(self.raw_key(suffix))
+    }
+
     /// The key this agent mints for the model labelled `label`.
-    pub(crate) fn model_key(&self, label: &str) -> HandlerKey {
+    pub(crate) fn model_key(&self, label: &str) -> Key<family::Completion> {
         self.key(rig_core::bus::model_key(label).as_str())
     }
 
@@ -221,14 +228,18 @@ impl AgentBus {
 
     /// Register `model` under `label` (replacing any model under it) and
     /// return the key a run selects it by.
-    pub(crate) fn register_model<M>(&self, label: &ModelRef, model: M) -> HandlerKey
+    pub(crate) fn register_model<M>(&self, label: &ModelRef, model: M) -> Key<family::Completion>
     where
         M: CompletionModel + 'static,
     {
         let key = self.model_key(label.as_str());
         register_generated(
             self.registrar
-                .register(key.clone(), CompletionAdapter::new(label.clone(), model)),
+                .register_typed::<family::Completion>(
+                    key.raw().clone(),
+                    CompletionAdapter::new(label.clone(), model),
+                )
+                .map(|_| ()),
         );
         key
     }

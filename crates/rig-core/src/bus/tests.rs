@@ -12,9 +12,10 @@ use serde_json::json;
 
 use super::{
     Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, Handler,
-    HandlerFuture, ModelHandle, OutcomeSink, Registrar,
+    HandlerFuture, Key, ModelHandle, OutcomeSink, Registrar,
     adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter, ToolFn},
 };
+use crate::effect::CustomEffect;
 use crate::{
     completion::{CompletionRequest, Message},
     effect::{
@@ -1681,4 +1682,177 @@ async fn a_dropped_driver_drops_the_registrations_it_never_installed() {
         .await
         .expect_err("closed");
     assert_eq!(report.kind, ErrorKind::BusClosed);
+}
+
+// ---- typed families, typed keys, custom effects ----
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct AskUser {
+    prompt: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct Reply {
+    text: String,
+}
+
+impl crate::effect::CustomEffect for AskUser {
+    const KIND: &'static str = "test:ask_user";
+    type Answer = Reply;
+}
+
+/// Answers `AskUser` with the prompt echoed, or with a payload that is not
+/// a `Reply` when asked to misbehave.
+struct AskUserHandler {
+    misbehave: bool,
+}
+
+impl Handler for AskUserHandler {
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("ask"),
+            family: FamilyDescriptor::Custom {
+                kind: AskUser::KIND.into(),
+            },
+        }
+    }
+
+    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+        let misbehave = self.misbehave;
+        Box::pin(async move {
+            let EffectKind::Custom { payload, .. } = kind else {
+                sink.resolve(Err(ErrorReport::new(ErrorKind::Internal, "not custom")))
+                    .await;
+                return;
+            };
+            let answer = if misbehave {
+                json!({"nope": 1})
+            } else {
+                let ask: AskUser = serde_json::from_value(payload).expect("an AskUser");
+                json!({"text": format!("you asked: {}", ask.prompt)})
+            };
+            sink.resolve(Ok(Outcome::Custom(answer))).await;
+        })
+    }
+}
+
+#[tokio::test]
+async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_family() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let key: Key<crate::effect::family::Completion> = driver
+        .register_typed(
+            "model",
+            CompletionAdapter::new(
+                "mock",
+                MockCompletionModel::from_turns([MockTurn::text("typed"), MockTurn::text("typed")]),
+            ),
+        )
+        .expect("a completion adapter proves a completion key");
+    assert_eq!(key.as_str(), "model");
+    assert_eq!(format!("{key}"), "model");
+    assert_eq!(
+        serde_json::to_value(&key).expect("serializes"),
+        json!("model"),
+        "on the wire a typed key is the bare string"
+    );
+    let back: Key<crate::effect::family::Completion> =
+        serde_json::from_value(json!("model")).expect("deserializes");
+    assert_eq!(back, key);
+    let _task = spawn(driver);
+
+    let model = dispatcher.bind(&key).expect("bound by existence");
+    let response = within(model.dispatch(completion_request_value()))
+        .await
+        .expect("the family's own answer");
+    assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
+    let response = within(model.complete(completion_request_value()))
+        .await
+        .expect("the convenience is the same dispatch");
+    assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
+
+    // A key asserted for the wrong family fails at bind, not silently.
+    let lie: Key<crate::effect::family::Tool> = Key::new_unchecked(HandlerKey::from("model"));
+    let report = dispatcher
+        .bind(&lie)
+        .expect_err("a completion is not a tool");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+}
+
+#[tokio::test]
+async fn register_typed_refuses_a_handler_of_another_family() {
+    let (_dispatcher, registrar, _driver) = Bus::channel();
+    let report = registrar
+        .register_typed::<crate::effect::family::Tool>(
+            "model",
+            CompletionAdapter::new("mock", MockCompletionModel::text("x")),
+        )
+        .expect_err("a completion adapter cannot prove a tool key");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    assert!(
+        report.message.contains("Key<tool_call>") && report.message.contains("completion"),
+        "{}",
+        report.message
+    );
+    assert!(
+        registrar.descriptor(&HandlerKey::from("model")).is_none(),
+        "nothing was published"
+    );
+}
+
+#[tokio::test]
+async fn a_custom_effect_round_trips_through_a_typed_handle() {
+    let (dispatcher, registrar, driver) = Bus::channel();
+    let key = registrar
+        .register_typed::<crate::effect::family::Custom<AskUser>>(
+            "ask",
+            AskUserHandler { misbehave: false },
+        )
+        .expect("a custom handler proves its kind");
+    registrar
+        .register("ask-badly", AskUserHandler { misbehave: true })
+        .expect("fresh key");
+    let _task = spawn(driver);
+
+    let ask = dispatcher.bind(&key).expect("bound");
+    let reply = within(ask.custom(AskUser {
+        prompt: "name?".into(),
+    }))
+    .await
+    .expect("the declared answer");
+    assert_eq!(
+        reply,
+        Reply {
+            text: "you asked: name?".into()
+        }
+    );
+
+    // `Dispatcher::custom` binds an explicit key against the declared kind.
+    let ask = dispatcher
+        .custom::<AskUser>(&HandlerKey::from("ask-badly"))
+        .expect("the kind matches");
+    let report = within(ask.custom(AskUser { prompt: "?".into() }))
+        .await
+        .expect_err("not a Reply");
+    assert_eq!(report.kind, ErrorKind::Internal);
+    assert!(report.message.contains(AskUser::KIND), "{}", report.message);
+
+    // A different kind under the key is refused at bind.
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Other;
+    impl crate::effect::CustomEffect for Other {
+        const KIND: &'static str = "test:other";
+        type Answer = ();
+    }
+    let report = dispatcher
+        .custom::<Other>(&HandlerKey::from("ask"))
+        .expect_err("another kind");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    assert!(report.message.contains("test:other"), "{}", report.message);
+}
+
+fn completion_request_value() -> crate::completion::CompletionRequest {
+    match completion_kind(false) {
+        EffectKind::Completion { request, .. } => request,
+        other => panic!("a completion kind, got {}", other.name()),
+    }
 }

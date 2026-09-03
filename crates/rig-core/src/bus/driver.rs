@@ -246,6 +246,27 @@ impl BusDriver {
         Ok(())
     }
 
+    /// [`register`](Self::register), returning a [`Key`](super::Key) that carries the
+    /// family the handler proved by its descriptor.
+    pub fn register_typed<F: crate::effect::Family>(
+        &mut self,
+        key: impl Into<HandlerKey>,
+        handler: impl Handler + 'static,
+    ) -> Result<super::Key<F>, ErrorReport> {
+        let key = key.into();
+        let handler = ErasedHandler::new(handler);
+        let descriptor = handler.descriptor();
+        if descriptor.family.family() != F::FAMILY {
+            return Err(super::registrar::family_proof_failed(
+                &key,
+                F::FAMILY,
+                &descriptor,
+            ));
+        }
+        self.register_erased(key.clone(), handler)?;
+        Ok(super::Key::new_unchecked(key))
+    }
+
     /// Remove the handler serving `key`. Returns whether one was registered.
     pub fn deregister(&mut self, key: &HandlerKey) -> bool {
         let published = self.shared.retract_descriptor(key);

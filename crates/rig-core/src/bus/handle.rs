@@ -39,22 +39,22 @@ use std::{
 use serde::de::DeserializeOwned;
 
 use crate::{
-    completion::{CompletionRequest, CompletionResponse, ProviderCapabilities},
+    completion::{CompletionRequest, ProviderCapabilities},
     effect::{
-        EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, Family, FamilyDescriptor,
-        HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
-        RetrievedDocuments, family,
+        CustomEffect, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, Family,
+        FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, RetrieveQuery,
+        RetrievedDocuments, ToolCallRequest, family,
     },
     embeddings::{Embedding, EmbeddingResponse, ImageEmbeddingResponse},
     error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::Message,
     streaming::StreamingCompletionResponse,
-    tool::{ToolContext, ToolResult},
+    tool::ToolContext,
     vector_store::request::{Filter, VectorSearchRequest},
 };
 
-use super::{Dispatcher, EffectStream, Pending};
+use super::{Dispatcher, EffectStream, Key, Pending};
 
 /// A typed view over the bus for the family `F`.
 #[derive(Clone)]
@@ -109,7 +109,7 @@ impl<F: Family> Handle<F> {
         self.dispatcher.is_closed()
     }
 
-    fn dispatch(&self, kind: EffectKind) -> Pending {
+    fn dispatch_kind(&self, kind: EffectKind) -> Pending {
         self.dispatcher.dispatch(&self.descriptor.key, kind)
     }
 }
@@ -145,32 +145,71 @@ impl Dispatcher {
             _family: PhantomData,
         })
     }
+
+    /// Bind a typed view to a key that carries its family: an existence
+    /// check only, the family was proven when the key was minted (a
+    /// [`Key::new_unchecked`] that lied fails here as `HandlerUnavailable`).
+    pub fn bind<F: Family>(&self, key: &Key<F>) -> Result<Handle<F>, ErrorReport> {
+        self.handle(key.raw())
+    }
+
+    /// Bind a typed view to a host's custom effect: the handler under `key`
+    /// must describe itself as [`FamilyDescriptor::Custom`] with `E::KIND`.
+    pub fn custom<E: CustomEffect>(
+        &self,
+        key: &HandlerKey,
+    ) -> Result<Handle<family::Custom<E>>, ErrorReport> {
+        let handle = self.handle::<family::Custom<E>>(key)?;
+        match &handle.descriptor.family {
+            FamilyDescriptor::Custom { kind } if kind == E::KIND => Ok(handle),
+            FamilyDescriptor::Custom { kind } => Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!(
+                    "handler `{key}` serves the custom kind `{kind}`, not `{}`",
+                    E::KIND
+                ),
+            )),
+            other => Err(family_mismatch(key, F_CUSTOM, other)),
+        }
+    }
 }
 
-/// A unary dispatch mapped to its typed answer: `Unpin`, executor-neutral,
-/// cancelled by drop — the same value as [`Pending`] with the outcome
-/// narrowed.
-pub struct Typed<T> {
+const F_CUSTOM: crate::effect::EffectFamily = crate::effect::EffectFamily::Custom;
+
+/// A unary dispatch of the family `F`, mapped to its typed answer:
+/// `Unpin`, executor-neutral, cancelled by drop — the same value as
+/// [`Pending`] with the outcome narrowed by [`Family::unwrap`]. The second
+/// parameter is the narrowed answer a convenience method returns
+/// (`MemoryHandle::load` narrows `MemoryOutcome` to the messages); by
+/// default it is the family's own answer.
+pub struct Typed<F: Family, T = <F as Family>::Answer> {
     pending: Pending,
-    map: fn(Outcome) -> Result<T, ErrorReport>,
+    map: fn(F::Answer) -> Result<T, ErrorReport>,
 }
 
-impl<T> Typed<T> {
+impl<F: Family, T> Typed<F, T> {
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.pending.id()
     }
-}
 
-impl<T> fmt::Debug for Typed<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Typed").field("id", &self.id()).finish()
+    fn narrow(pending: Pending, map: fn(F::Answer) -> Result<T, ErrorReport>) -> Self {
+        Self { pending, map }
     }
 }
 
-impl<T> Unpin for Typed<T> {}
+impl<F: Family, T> fmt::Debug for Typed<F, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Typed")
+            .field("family", &F::FAMILY)
+            .field("id", &self.id())
+            .finish()
+    }
+}
 
-impl<T> Future for Typed<T> {
+impl<F: Family, T> Unpin for Typed<F, T> {}
+
+impl<F: Family, T> Future for Typed<F, T> {
     type Output = Result<T, ErrorReport>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -178,27 +217,32 @@ impl<T> Future for Typed<T> {
         match Pin::new(&mut this.pending).poll(cx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(report)) => Poll::Ready(Err(report)),
-            Poll::Ready(Ok(outcome)) => Poll::Ready((this.map)(outcome)),
+            Poll::Ready(Ok(outcome)) => Poll::Ready(F::unwrap(outcome).and_then(this.map)),
         }
     }
 }
 
-fn wrong_outcome(expected: &'static str, outcome: &Outcome) -> ErrorReport {
-    ErrorReport::new(
-        ErrorKind::Internal,
-        format!(
-            "expected a {expected} outcome, the handler answered {}",
-            outcome.family()
-        ),
-    )
+/// A completion dispatch in flight.
+pub type Completion = Typed<family::Completion>;
+/// A tool call in flight: the result and the context the tool published.
+pub type ToolCall = Typed<family::Tool>;
+/// A retrieval in flight, deserialized on this side of the bus.
+pub type Retrieval<T> = Typed<family::Retrieve, Vec<(f64, String, T)>>;
+
+impl<F: Family> Handle<F> {
+    /// Dispatch a typed request of this family: one implementation for
+    /// every family, the shapes coming from [`Family`].
+    pub fn dispatch(&self, request: F::Request) -> Typed<F> {
+        Typed::narrow(self.dispatch_kind(F::wrap(request)), Ok)
+    }
 }
 
-/// A completion dispatch in flight.
-pub type Completion = Typed<CompletionResponse>;
-/// A tool call in flight: the result and the context the tool published.
-pub type ToolCall = Typed<(ToolResult, ToolContext)>;
-/// A retrieval in flight.
-pub type Retrieval<T> = Typed<Vec<(f64, String, T)>>;
+fn wrong_shape(expected: &'static str, family: crate::effect::EffectFamily) -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Internal,
+        format!("expected {expected}, the {family} handler answered another shape"),
+    )
+}
 
 impl ModelHandle {
     /// The capability snapshot the handler advertises now.
@@ -229,16 +273,7 @@ impl ModelHandle {
 
     /// A unary completion.
     pub fn complete(&self, request: CompletionRequest) -> Completion {
-        Typed {
-            pending: self.dispatch(EffectKind::Completion {
-                request,
-                stream: false,
-            }),
-            map: |outcome| match outcome {
-                Outcome::Completion(response) => Ok(response),
-                other => Err(wrong_outcome("completion", &other)),
-            },
-        }
+        self.dispatch(request)
     }
 
     /// A streaming completion, wrapped back into a
@@ -280,112 +315,112 @@ impl ToolHandle {
         args: impl Into<String>,
         context: ToolContext,
     ) -> ToolCall {
-        Typed {
-            pending: self.dispatch(EffectKind::ToolCall {
-                name: name.into(),
-                args: args.into(),
-                context,
-            }),
-            map: |outcome| match outcome {
-                Outcome::ToolResult { result, context } => Ok((result, context)),
-                other => Err(wrong_outcome("tool result", &other)),
-            },
-        }
+        self.dispatch(ToolCallRequest {
+            name: name.into(),
+            args: args.into(),
+            context,
+        })
     }
 }
 
 impl MemoryHandle {
     /// Load a conversation's history.
-    pub fn load(&self, conversation: ConversationId) -> Typed<Vec<Message>> {
-        Typed {
-            pending: self.dispatch(EffectKind::Memory {
-                op: MemoryOp::Load { conversation },
-            }),
-            map: |outcome| match outcome {
-                Outcome::Memory(MemoryOutcome::Loaded { messages }) => Ok(messages),
-                other => Err(wrong_outcome("loaded memory", &other)),
+    pub fn load(&self, conversation: ConversationId) -> Typed<family::Memory, Vec<Message>> {
+        Typed::narrow(
+            self.dispatch_kind(family::Memory::wrap(MemoryOp::Load { conversation })),
+            |answer| match answer {
+                MemoryOutcome::Loaded { messages } => Ok(messages),
+                MemoryOutcome::Appended | MemoryOutcome::Cleared => {
+                    Err(wrong_shape("loaded messages", family::Memory::FAMILY))
+                }
             },
-        }
+        )
     }
 
     /// Append messages to a conversation.
-    pub fn append(&self, conversation: ConversationId, messages: Vec<Message>) -> Typed<()> {
-        Typed {
-            pending: self.dispatch(EffectKind::Memory {
-                op: MemoryOp::Append {
-                    conversation,
-                    messages,
-                },
-            }),
-            map: |outcome| match outcome {
-                Outcome::Memory(MemoryOutcome::Appended) => Ok(()),
-                other => Err(wrong_outcome("appended memory", &other)),
+    pub fn append(
+        &self,
+        conversation: ConversationId,
+        messages: Vec<Message>,
+    ) -> Typed<family::Memory, ()> {
+        Typed::narrow(
+            self.dispatch_kind(family::Memory::wrap(MemoryOp::Append {
+                conversation,
+                messages,
+            })),
+            |answer| match answer {
+                MemoryOutcome::Appended => Ok(()),
+                MemoryOutcome::Loaded { .. } | MemoryOutcome::Cleared => {
+                    Err(wrong_shape("an append", family::Memory::FAMILY))
+                }
             },
-        }
+        )
     }
 
     /// Clear a conversation.
-    pub fn clear(&self, conversation: ConversationId) -> Typed<()> {
-        Typed {
-            pending: self.dispatch(EffectKind::Memory {
-                op: MemoryOp::Clear { conversation },
-            }),
-            map: |outcome| match outcome {
-                Outcome::Memory(MemoryOutcome::Cleared) => Ok(()),
-                other => Err(wrong_outcome("cleared memory", &other)),
+    pub fn clear(&self, conversation: ConversationId) -> Typed<family::Memory, ()> {
+        Typed::narrow(
+            self.dispatch_kind(family::Memory::wrap(MemoryOp::Clear { conversation })),
+            |answer| match answer {
+                MemoryOutcome::Cleared => Ok(()),
+                MemoryOutcome::Loaded { .. } | MemoryOutcome::Appended => {
+                    Err(wrong_shape("a clear", family::Memory::FAMILY))
+                }
             },
+        )
+    }
+}
+
+/// Deserialize scored documents on this side of the bus: the wire carries
+/// JSON, the type parameter never crosses it.
+fn deserialize_scored<T: DeserializeOwned>(
+    documents: RetrievedDocuments,
+) -> Result<Vec<(f64, String, T)>, ErrorReport> {
+    match documents {
+        RetrievedDocuments::Scored(results) => results
+            .into_iter()
+            .map(
+                |(score, id, document)| match serde_json::from_value::<T>(document) {
+                    Ok(document) => Ok((score, id, document)),
+                    Err(error) => Err(ErrorReport::new(
+                        ErrorKind::Json,
+                        format!("retrieved document `{id}` did not deserialize: {error}"),
+                    )),
+                },
+            )
+            .collect(),
+        RetrievedDocuments::Ids(_) => {
+            Err(wrong_shape("scored documents", family::Retrieve::FAMILY))
         }
     }
 }
 
 impl IndexHandle {
-    /// Scored documents, deserialized on this side of the bus: the wire
-    /// carries JSON, the type parameter never crosses it.
+    /// Scored documents, deserialized on this side of the bus.
     pub fn top_n<T: DeserializeOwned>(
         &self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> impl Future<Output = Result<Vec<(f64, String, T)>, ErrorReport>> + Unpin {
-        let scored: Typed<Vec<(f64, String, serde_json::Value)>> = Typed {
-            pending: self.dispatch(EffectKind::Retrieve {
-                query: RetrieveQuery::TopN { req },
-            }),
-            map: |outcome| match outcome {
-                Outcome::Documents(RetrievedDocuments::Scored(results)) => Ok(results),
-                other => Err(wrong_outcome("scored documents", &other)),
-            },
-        };
-        futures::future::FutureExt::map(scored, |result| {
-            result.and_then(|results| {
-                results
-                    .into_iter()
-                    .map(
-                        |(score, id, document)| match serde_json::from_value::<T>(document) {
-                            Ok(document) => Ok((score, id, document)),
-                            Err(error) => Err(ErrorReport::new(
-                                ErrorKind::Json,
-                                format!("retrieved document `{id}` did not deserialize: {error}"),
-                            )),
-                        },
-                    )
-                    .collect()
-            })
-        })
+    ) -> Retrieval<T> {
+        Typed::narrow(
+            self.dispatch_kind(family::Retrieve::wrap(RetrieveQuery::TopN { req })),
+            deserialize_scored::<T>,
+        )
     }
 
     /// Scored ids.
     pub fn top_n_ids(
         &self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> Typed<Vec<(f64, String)>> {
-        Typed {
-            pending: self.dispatch(EffectKind::Retrieve {
-                query: RetrieveQuery::TopNIds { req },
-            }),
-            map: |outcome| match outcome {
-                Outcome::Documents(RetrievedDocuments::Ids(results)) => Ok(results),
-                other => Err(wrong_outcome("scored ids", &other)),
+    ) -> Typed<family::Retrieve, Vec<(f64, String)>> {
+        Typed::narrow(
+            self.dispatch_kind(family::Retrieve::wrap(RetrieveQuery::TopNIds { req })),
+            |documents| match documents {
+                RetrievedDocuments::Ids(results) => Ok(results),
+                RetrievedDocuments::Scored(_) => {
+                    Err(wrong_shape("scored ids", family::Retrieve::FAMILY))
+                }
             },
-        }
+        )
     }
 }
 
@@ -427,16 +462,16 @@ impl EmbedHandle {
     }
 
     /// Embed text documents.
-    pub fn embed_texts(&self, texts: Vec<String>) -> Typed<EmbeddingResponse> {
-        Typed {
-            pending: self.dispatch(EffectKind::Embed {
-                inputs: EmbedInputs::Texts(texts),
-            }),
-            map: |outcome| match outcome {
-                Outcome::Embeddings(EmbedOutputs::Texts(response)) => Ok(response),
-                other => Err(wrong_outcome("text embeddings", &other)),
+    pub fn embed_texts(&self, texts: Vec<String>) -> Typed<family::Embed, EmbeddingResponse> {
+        Typed::narrow(
+            self.dispatch_kind(family::Embed::wrap(EmbedInputs::Texts(texts))),
+            |outputs| match outputs {
+                EmbedOutputs::Texts(response) => Ok(response),
+                EmbedOutputs::Images(_) => {
+                    Err(wrong_shape("text embeddings", family::Embed::FAMILY))
+                }
             },
-        }
+        )
     }
 
     /// Embed one text document.
@@ -457,16 +492,26 @@ impl EmbedHandle {
     }
 
     /// Embed image bytes.
-    pub fn embed_images(&self, images: Vec<Vec<u8>>) -> Typed<ImageEmbeddingResponse> {
-        Typed {
-            pending: self.dispatch(EffectKind::Embed {
-                inputs: EmbedInputs::Images(images),
-            }),
-            map: |outcome| match outcome {
-                Outcome::Embeddings(EmbedOutputs::Images(response)) => Ok(response),
-                other => Err(wrong_outcome("image embeddings", &other)),
+    pub fn embed_images(
+        &self,
+        images: Vec<Vec<u8>>,
+    ) -> Typed<family::Embed, ImageEmbeddingResponse> {
+        Typed::narrow(
+            self.dispatch_kind(family::Embed::wrap(EmbedInputs::Images(images))),
+            |outputs| match outputs {
+                EmbedOutputs::Images(response) => Ok(response),
+                EmbedOutputs::Texts(_) => {
+                    Err(wrong_shape("image embeddings", family::Embed::FAMILY))
+                }
             },
-        }
+        )
+    }
+}
+
+impl<E: CustomEffect> Handle<family::Custom<E>> {
+    /// Dispatch the host's own effect.
+    pub fn custom(&self, effect: E) -> Typed<family::Custom<E>> {
+        self.dispatch(effect)
     }
 }
 
