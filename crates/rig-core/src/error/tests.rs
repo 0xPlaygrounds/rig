@@ -271,9 +271,16 @@ fn a_provider_response_travels_with_the_report() {
     assert_eq!(report.provider_request_id(), Some("req-9"));
     assert!(report.retryable, "429 is retryable");
 
+    // Through serde the report keeps the response's identity and drops
+    // its headers, which are the transport's and never the same twice.
     let json = serde_json::to_string(&report).expect("serialize");
     let back: ErrorReport = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(back, report);
+    assert!(back.provider_response_headers().is_none());
+    let mut without_headers = report.clone();
+    without_headers.provider_response = without_headers
+        .provider_response
+        .map(|response| Box::new(response.with_headers(None)));
+    assert_eq!(back, without_headers);
 
     // A non-success HTTP failure carries its status and body the same way;
     // a diagnostic with no provider response carries nothing.

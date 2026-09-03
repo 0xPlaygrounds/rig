@@ -1,4 +1,4 @@
-//! The effect corpus: six golden effect logs, each recorded once by one
+//! The original effect corpus: ten golden effect logs, each recorded once by one
 //! root-suite test against a cassette transport (a real provider's bytes,
 //! replayed over HTTP) with `record_effects()`, committed under
 //! `fixtures/*.effects.json`, and replayed here with **no provider, no
@@ -39,54 +39,9 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::time::Duration;
+mod corpus;
 
-use futures::StreamExt;
-use rig_agent::{
-    AgentBuilder, AgentHook, HookContext,
-    agent::{MultiTurnStreamItem, StreamingError},
-    run::{
-        AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
-        ModelTurnOutcome, PendingToolCall, RunSpec, StreamedTurnAssembler, prepare_request,
-    },
-    tool::{RegisteredTool, server::ToolServer},
-};
-use rig_bus::{Bus, Dispatcher, MemoryHandle, ModelHandle, ToolHandle};
-use rig_core::{
-    completion::CompletionRequestBuilder,
-    effect::{EffectFamily, EffectRecord, HandlerKey},
-    id::ConversationId,
-    message::UserContent,
-    tool::ToolContext,
-    transcript::tool_result_output,
-};
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
-
-/// One golden's program: what the producing root test built, verbatim.
-struct Program {
-    fixture: &'static str,
-    owner: &'static str,
-    preamble: &'static str,
-    prompt: &'static str,
-    temperature: Option<f64>,
-    /// The builder's `default_max_turns`, part of the run spec the header
-    /// hashes; a runner-level `max_turns` is not.
-    default_max_turns: Option<usize>,
-    max_turns: Option<usize>,
-    tool_concurrency: Option<usize>,
-    /// The producer ran `stream_prompt`: the model is asked for a stream.
-    streamed: bool,
-    /// The producer attached conversation memory under this id.
-    conversation: Option<&'static str>,
-    /// The producer's hook: retry an unknown tool once with feedback.
-    retry_unknown_tool: bool,
-    invalid_retries: usize,
-    /// The producer dropped the stream after its first text delta: the
-    /// one record is a `Cancelled` completion and the run never finishes.
-    /// On replay the replayer answers that record as the cancel it was, so
-    /// the consumer sees the cancel as its first item, never a delta.
-    cancel_after_first_delta: bool,
-}
+use corpus::{Hook, Program};
 
 /// The root suite's constants, verbatim (`tests/common/support.rs`,
 /// `tests/providers/gemini/cassette/hook_stress.rs`,
@@ -116,38 +71,24 @@ const CANCELLED_STREAM_PROMPT: &str =
 const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
      subtract tool. Report the final number.";
 
-const DEFAULT: Program = Program {
-    fixture: "",
-    owner: "golden",
-    preamble: "",
-    prompt: "",
-    temperature: None,
-    default_max_turns: None,
-    max_turns: None,
-    tool_concurrency: None,
-    streamed: false,
-    conversation: None,
-    retry_unknown_tool: false,
-    invalid_retries: 0,
-    cancel_after_first_delta: false,
-};
+const DEFAULT: Program = Program::DEFAULT;
 
 const COMPLETION_SMOKE: Program = Program {
     fixture: "anthropic_completion_smoke",
-    preamble: BASIC_PREAMBLE,
+    preamble: Some(BASIC_PREAMBLE),
     prompt: BASIC_PROMPT,
     ..DEFAULT
 };
 const MEMORY_CONVERSATION: Program = Program {
     fixture: "anthropic_memory_conversation",
-    preamble: BASIC_PREAMBLE,
+    preamble: Some(BASIC_PREAMBLE),
     prompt: BASIC_PROMPT,
     conversation: Some("golden-conversation"),
     ..DEFAULT
 };
 const STREAMING_WITH_EVENTS: Program = Program {
     fixture: "anthropic_streaming_with_events",
-    preamble: STREAMING_TOOLS_PREAMBLE,
+    preamble: Some(STREAMING_TOOLS_PREAMBLE),
     prompt: STREAMING_TOOLS_PROMPT,
     default_max_turns: Some(2),
     max_turns: Some(2),
@@ -156,7 +97,7 @@ const STREAMING_WITH_EVENTS: Program = Program {
 };
 const CONCURRENT_TOOLS_SERIAL: Program = Program {
     fixture: "anthropic_concurrent_tools_serial",
-    preamble: TWO_TOOL_STREAM_PREAMBLE,
+    preamble: Some(TWO_TOOL_STREAM_PREAMBLE),
     prompt: TWO_TOOL_STREAM_PROMPT,
     max_turns: Some(8),
     tool_concurrency: Some(2),
@@ -166,7 +107,7 @@ const CONCURRENT_TOOLS_SERIAL: Program = Program {
 const TOOL_CALL_TURNS: Program = Program {
     fixture: "gemini_tool_call_turns",
     owner: "stress-agent",
-    preamble: CHAIN_PREAMBLE,
+    preamble: Some(CHAIN_PREAMBLE),
     prompt: CHAIN_PROMPT,
     temperature: Some(0.0),
     max_turns: Some(6),
@@ -175,17 +116,16 @@ const TOOL_CALL_TURNS: Program = Program {
 };
 const INVALID_TOOL_CALL_RECOVERY: Program = Program {
     fixture: "mock_invalid_tool_call_recovery",
-    preamble: "Use the add tool.",
+    preamble: Some("Use the add tool."),
     prompt: "What is 2 + 3?",
     max_turns: Some(4),
-    retry_unknown_tool: true,
+    hooks: &[Hook::RetryUnknownTool],
     invalid_retries: 1,
     ..DEFAULT
 };
-
 const ANTHROPIC_TOOL_CALL_TURN: Program = Program {
     fixture: "anthropic_tool_call_turn",
-    preamble: TOOLS_PREAMBLE,
+    preamble: Some(TOOLS_PREAMBLE),
     prompt: TOOL_CALL_TURN_PROMPT,
     temperature: Some(0.0),
     max_turns: Some(3),
@@ -193,7 +133,7 @@ const ANTHROPIC_TOOL_CALL_TURN: Program = Program {
 };
 const ANTHROPIC_CANCELLED_STREAM: Program = Program {
     fixture: "anthropic_cancelled_stream",
-    preamble: CANCELLED_STREAM_PREAMBLE,
+    preamble: Some(CANCELLED_STREAM_PREAMBLE),
     prompt: CANCELLED_STREAM_PROMPT,
     temperature: Some(0.0),
     streamed: true,
@@ -202,7 +142,7 @@ const ANTHROPIC_CANCELLED_STREAM: Program = Program {
 };
 const OPENAI_STREAMING_WITH_EVENTS: Program = Program {
     fixture: "openai_streaming_with_events",
-    preamble: STREAMING_TOOLS_PREAMBLE,
+    preamble: Some(STREAMING_TOOLS_PREAMBLE),
     prompt: STREAMING_TOOLS_PROMPT,
     temperature: Some(0.0),
     max_turns: Some(3),
@@ -211,559 +151,22 @@ const OPENAI_STREAMING_WITH_EVENTS: Program = Program {
 };
 const OPENAI_TOOL_CALL_TURNS: Program = Program {
     fixture: "openai_tool_call_turns",
-    preamble: CHAIN_PREAMBLE,
+    preamble: Some(CHAIN_PREAMBLE),
     prompt: CHAIN_PROMPT,
     temperature: Some(0.0),
     max_turns: Some(6),
     ..DEFAULT
 };
 
-/// The producer's hook, verbatim (`tests/core/golden_recovery.rs`): the
-/// header names it by type name, so the replay's hook is the same type.
-struct RetryUnknownTool;
-
-impl AgentHook for RetryUnknownTool {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        context: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        Some(retry_feedback(&context.tool_name))
-    }
-}
-
-fn retry_feedback(tool_name: &str) -> InvalidToolCallAction {
-    InvalidToolCallAction::Retry {
-        feedback: format!("there is no tool named {tool_name}; use add"),
-    }
-}
-
-async fn within<T>(future: impl Future<Output = T>) -> T {
-    tokio::time::timeout(Duration::from_secs(5), future)
-        .await
-        .expect("a replay never hangs")
-}
-
-fn golden(fixture: &str) -> EffectLog {
-    let path = format!(
-        "{}/fixtures/{fixture}.effects.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).expect("the golden fixture is committed");
-    serde_json::from_str(&text).expect("the golden fixture loads")
-}
-
-/// A record as data: its kind, its outcome and its events, if any.
-fn as_data(record: &EffectRecord) -> serde_json::Value {
-    serde_json::json!({
-        "key": record.key,
-        "kind": record.kind,
-        "outcome": record.outcome,
-        "events": record.events,
-    })
-}
-
-fn assert_same_records(replayed: &EffectLog, log: &EffectLog, interpreter: &str) {
-    let replayed: Vec<_> = replayed.iter().map(as_data).collect();
-    let recorded: Vec<_> = log.iter().map(as_data).collect();
-    for (position, (got, want)) in replayed.iter().zip(&recorded).enumerate() {
-        assert_eq!(
-            got, want,
-            "{interpreter}: record {position} differs from the golden"
-        );
-    }
-    assert_eq!(
-        replayed.len(),
-        recorded.len(),
-        "{interpreter}: the golden has {} records, the replay {}",
-        recorded.len(),
-        replayed.len()
-    );
-}
-
-fn keeps_events(log: &EffectLog) -> bool {
-    log.iter().any(|record| record.events.is_some())
-}
-
-fn golden_answer(log: &EffectLog) -> String {
-    log.iter()
-        .rev()
-        .find_map(|record| match &record.outcome {
-            Ok(rig_core::effect::Outcome::Completion(response)) => Some(
-                response
-                    .choice
-                    .iter()
-                    .filter_map(|content| match content {
-                        rig_core::message::AssistantContent::Text(text) => Some(text.text.clone()),
-                        _ => None,
-                    })
-                    .collect::<String>(),
-            ),
-            _ => None,
-        })
-        .expect("the golden ends in a completion")
-}
-
-/// The bus, with the golden's policy, the model replayer registered and a
-/// recorder attached; the tool replayers in a server the agent advertises
-/// from (the required row's tools, dispatched or not).
-struct Replay {
-    log: EffectLog,
-    dispatcher: Dispatcher,
-    registrar: rig_bus::Registrar,
-    recorder: EffectLogRecorder,
-    driver: tokio::task::JoinHandle<()>,
-    model_key: HandlerKey,
-    memory_key: HandlerKey,
-}
-
-impl Replay {
-    fn open(program: &Program) -> Self {
-        let log = golden(program.fixture);
-        EffectLogReplayer::check_header(&log).expect("a current format");
-        let bus = log.header.bus.expect("the header names the bus policy");
-        let (dispatcher, registrar, mut driver) = Bus::channel_with(bus);
-        let model_key = HandlerKey::from(format!("{}/model:default", program.owner));
-        let memory_key = HandlerKey::from(format!("{}/memory", program.owner));
-        let model = EffectLogReplayer::for_key(&log, &model_key).expect("the model's records");
-        driver
-            .register_erased(
-                model_key.clone(),
-                rig_core::serve::ErasedHandler::new(model),
-            )
-            .expect("a fresh key");
-        let recorder = if keeps_events(&log) {
-            EffectLogRecorder::keeping_stream_events()
-        } else {
-            EffectLogRecorder::new()
-        };
-        driver.record_to(recorder.clone());
-        let driver = tokio::spawn(driver);
-        Self {
-            log,
-            dispatcher,
-            registrar,
-            recorder,
-            driver,
-            model_key,
-            memory_key,
-        }
-    }
-
-    fn tool_keys(&self) -> Vec<HandlerKey> {
-        self.log
-            .header
-            .required
-            .iter()
-            .filter(|(_, family)| **family == EffectFamily::Tool)
-            .map(|(key, _)| key.clone())
-            .collect()
-    }
-
-    fn tool_server(&self) -> rig_agent::tool::server::ToolServerHandle {
-        let server = ToolServer::new().run();
-        for key in self.tool_keys() {
-            let replayer =
-                EffectLogReplayer::for_key(&self.log, &key).expect("a required tool is described");
-            server.add_registered_tool(
-                RegisteredTool::from_handler(replayer).expect("a tool-family replayer"),
-            );
-        }
-        server
-    }
-
-    async fn close(self) -> EffectLog {
-        drop((self.dispatcher, self.registrar));
-        within(self.driver).await.expect("driver task");
-        self.recorder.take()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// The bus engine.
-
-async fn bus_engine_reproduces(program: &Program) {
-    let replay = Replay::open(program);
-    let server = replay.tool_server();
-    let mut builder = AgentBuilder::over_bus(
-        replay.dispatcher.clone(),
-        replay.registrar.clone(),
-        program.owner,
-        replay.model_key.clone(),
-    )
-    .name(program.owner)
-    .preamble(program.preamble)
-    .tool_server_handle(server);
-    if let Some(temperature) = program.temperature {
-        builder = builder.temperature(temperature);
-    }
-    if let Some(default_max_turns) = program.default_max_turns {
-        builder = builder.default_max_turns(default_max_turns);
-    }
-    if program.retry_unknown_tool {
-        builder = builder.add_hook(RetryUnknownTool);
-    }
-    if let Some(conversation) = program.conversation {
-        let memory = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
-            .expect("the conversation's records");
-        builder = builder.memory_handler(memory).conversation(conversation);
-    }
-    let agent = builder.build();
-    agent
-        .check_replayable(&replay.log)
-        .expect("the same program as the one recorded");
-
-    let output = if program.streamed {
-        let mut runner = agent.stream_prompt(program.prompt);
-        if let Some(max_turns) = program.max_turns {
-            runner = runner.max_turns(max_turns);
-        }
-        if let Some(concurrency) = program.tool_concurrency {
-            runner = runner.tool_concurrency(concurrency);
-        }
-        let mut stream = runner.stream().await;
-        let mut output = None;
-        while let Some(item) = within(stream.next()).await {
-            match item {
-                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    output = Some(response.output);
-                }
-                Err(StreamingError::Report(report))
-                    if program.cancel_after_first_delta
-                        && report.kind == rig_core::error::ErrorKind::Cancelled =>
-                {
-                    break;
-                }
-                Err(error) => {
-                    panic!("the replayer answered every request it recognised: {error:?}")
-                }
-                Ok(_) => {}
-            }
-        }
-        drop(stream);
-        if program.cancel_after_first_delta {
-            // The driver resolves the cancelled dispatch on its own task.
-            for _ in 0..64 {
-                tokio::task::yield_now().await;
-            }
-            None
-        } else {
-            Some(output.expect("the stream yields a final response"))
-        }
-    } else {
-        let mut runner = agent.prompt(program.prompt);
-        if let Some(max_turns) = program.max_turns {
-            runner = runner.max_turns(max_turns);
-        }
-        runner = runner.max_invalid_tool_call_retries(program.invalid_retries);
-        Some(
-            within(runner.run())
-                .await
-                .expect("the replayer answered every request it recognised")
-                .output,
-        )
-    };
-    if let Some(output) = output {
-        assert_eq!(output, golden_answer(&replay.log));
-    }
-    drop(agent);
-    let log = replay.log.clone();
-    let replayed = replay.close().await;
-    assert_same_records(&replayed, &log, "bus engine");
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_completion_smoke() {
-    bus_engine_reproduces(&COMPLETION_SMOKE).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_memory_conversation() {
-    bus_engine_reproduces(&MEMORY_CONVERSATION).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_streaming_with_events() {
-    bus_engine_reproduces(&STREAMING_WITH_EVENTS).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_concurrent_tools_serial() {
-    bus_engine_reproduces(&CONCURRENT_TOOLS_SERIAL).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_tool_call_turns() {
-    bus_engine_reproduces(&TOOL_CALL_TURNS).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_invalid_tool_call_recovery() {
-    bus_engine_reproduces(&INVALID_TOOL_CALL_RECOVERY).await;
-}
-
-// ---------------------------------------------------------------------------
-// The hand driver: `AgentRun` stepped by this test, every step dispatched
-// over the bus handles the engine would use.
-
-/// The tool handles the program advertises, by tool name.
-fn tool_handles(replay: &Replay) -> Vec<(String, ToolHandle)> {
-    replay
-        .tool_keys()
-        .into_iter()
-        .map(|key| {
-            let handle: ToolHandle = replay.dispatcher.handle(&key).expect("a tool handle");
-            (handle.name(), handle)
-        })
-        .collect()
-}
-
-async fn call_tools(
-    calls: Vec<PendingToolCall>,
-    tools: &[(String, ToolHandle)],
-    concurrency: usize,
-) -> Vec<UserContent> {
-    let dispatch = |call: PendingToolCall| async move {
-        if let Some(preresolved) = call.preresolved_result {
-            return preresolved;
-        }
-        let name = call.tool_call.function.name.clone();
-        let (_, handle) = tools
-            .iter()
-            .find(|(tool, _)| *tool == name)
-            .unwrap_or_else(|| panic!("the program advertises `{name}`"));
-        let args = call.tool_call.function.arguments.to_string();
-        let answer = within(handle.call(name.clone(), args, ToolContext::new()))
-            .await
-            .expect("the replayer answered the recorded call");
-        let output = answer
-            .result
-            .into_result()
-            .expect("every tool in the corpus succeeded");
-        // The engine's own shaping of a result (`rig_core::transcript`).
-        tool_result_output(
-            call.tool_call.id.clone(),
-            call.tool_call.provider.clone(),
-            name,
-            output,
-        )
-    };
-    futures::stream::iter(calls)
-        .map(dispatch)
-        .buffered(concurrency.max(1))
-        .collect()
-        .await
-}
-
-async fn hand_driver_reproduces(program: &Program) {
-    let replay = Replay::open(program);
-    let server = replay.tool_server();
-    server.attach(&replay.registrar);
-    let tools = tool_handles(&replay);
-    let model: ModelHandle = replay
-        .dispatcher
-        .handle(&replay.model_key)
-        .expect("the model");
-    let memory: Option<(MemoryHandle, ConversationId)> = program.conversation.map(|id| {
-        let replayer = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
-            .expect("the conversation's records");
-        replay
-            .registrar
-            .register_erased(
-                replay.memory_key.clone(),
-                rig_core::serve::ErasedHandler::new(replayer),
-            )
-            .expect("a fresh key");
-        let handle: MemoryHandle = replay
-            .dispatcher
-            .handle(&replay.memory_key)
-            .expect("the memory");
-        (handle, ConversationId::from(id))
-    });
-    let spec = RunSpec {
-        preamble: Some(program.preamble.to_owned()),
-        temperature: program.temperature,
-        max_turns: program.max_turns,
-        max_invalid_tool_call_retries: program.invalid_retries,
-        ..RunSpec::new()
-    };
-    let history = match &memory {
-        Some((handle, id)) => Some(
-            within(handle.load(id.clone()))
-                .await
-                .expect("the replayer answered the load"),
-        ),
-        None => None,
-    };
-    let definitions = server.static_tool_defs();
-    let mut run = AgentRun::from_spec(&spec, program.prompt, history);
-    let response = loop {
-        match run.next_step().expect("a step") {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
-                let prepared = prepare_request(
-                    &spec,
-                    &model.capabilities(),
-                    &history,
-                    definitions.clone(),
-                    run.output_tool_name(),
-                    None,
-                )
-                .expect("prepared");
-                run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
-                    .build();
-                let turn = if program.streamed {
-                    let mut stream = model.stream(request);
-                    let mut assembler = StreamedTurnAssembler::new(executable, allowed);
-                    while let Some(event) = within(stream.next()).await {
-                        let event = match event {
-                            Ok(event) => event,
-                            Err(report)
-                                if program.cancel_after_first_delta
-                                    && report.kind == rig_core::error::ErrorKind::Cancelled =>
-                            {
-                                break;
-                            }
-                            Err(report) => {
-                                panic!("the replayer re-emitted the recorded stream: {report:?}")
-                            }
-                        };
-                        assembler.ingest(&event).expect("a well-formed stream");
-                    }
-                    if program.cancel_after_first_delta {
-                        drop(stream);
-                        for _ in 0..64 {
-                            tokio::task::yield_now().await;
-                        }
-                        break None;
-                    }
-                    let usage = stream.usage();
-                    let snapshot = stream.snapshot();
-                    let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
-                    ModelTurn::new(
-                        streamed.message_id,
-                        streamed.choice,
-                        usage,
-                        streamed.executable_tool_names,
-                        streamed.allowed_tool_names,
-                    )
-                } else {
-                    let response = within(model.complete(request))
-                        .await
-                        .expect("the replayer recognised the request");
-                    ModelTurn::from_response_parts(&response, executable, allowed)
-                };
-                let mut outcome = run.model_response(turn).expect("a model turn");
-                while let ModelTurnOutcome::NeedsResolution(invalid) = outcome {
-                    assert!(
-                        program.retry_unknown_tool,
-                        "only the recovery program sees an invalid call"
-                    );
-                    outcome = run
-                        .resolve_invalid_tool_call(retry_feedback(&invalid.tool_name))
-                        .expect("the retry is resolved");
-                }
-            }
-            AgentRunStep::CallTools { calls } => {
-                let results =
-                    call_tools(calls, &tools, program.tool_concurrency.unwrap_or(1)).await;
-                run.tool_results(results).expect("results for every call");
-            }
-            AgentRunStep::Done(response) => break Some(response),
-        }
-    };
-    let Some(response) = response else {
-        drop((model, tools, memory));
-        let log = replay.log.clone();
-        let replayed = replay.close().await;
-        assert_same_records(&replayed, &log, "hand driver");
-        return;
-    };
-    if let Some((handle, id)) = &memory {
-        within(handle.append(id.clone(), response.messages.clone().unwrap_or_default()))
-            .await
-            .expect("the replayer answered the append");
-    }
-    assert_eq!(response.output, golden_answer(&replay.log));
-    drop((model, tools, memory));
-    let log = replay.log.clone();
-    let replayed = replay.close().await;
-    assert_same_records(&replayed, &log, "hand driver");
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_completion_smoke() {
-    hand_driver_reproduces(&COMPLETION_SMOKE).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_memory_conversation() {
-    hand_driver_reproduces(&MEMORY_CONVERSATION).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_streaming_with_events() {
-    hand_driver_reproduces(&STREAMING_WITH_EVENTS).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_concurrent_tools_serial() {
-    hand_driver_reproduces(&CONCURRENT_TOOLS_SERIAL).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_tool_call_turns() {
-    hand_driver_reproduces(&TOOL_CALL_TURNS).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_invalid_tool_call_recovery() {
-    hand_driver_reproduces(&INVALID_TOOL_CALL_RECOVERY).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_anthropic_tool_call_turn() {
-    bus_engine_reproduces(&ANTHROPIC_TOOL_CALL_TURN).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_anthropic_cancelled_stream() {
-    bus_engine_reproduces(&ANTHROPIC_CANCELLED_STREAM).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_openai_streaming_with_events() {
-    bus_engine_reproduces(&OPENAI_STREAMING_WITH_EVENTS).await;
-}
-
-#[tokio::test]
-async fn the_bus_engine_reproduces_openai_tool_call_turns() {
-    bus_engine_reproduces(&OPENAI_TOOL_CALL_TURNS).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_anthropic_tool_call_turn() {
-    hand_driver_reproduces(&ANTHROPIC_TOOL_CALL_TURN).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_anthropic_cancelled_stream() {
-    hand_driver_reproduces(&ANTHROPIC_CANCELLED_STREAM).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_openai_streaming_with_events() {
-    hand_driver_reproduces(&OPENAI_STREAMING_WITH_EVENTS).await;
-}
-
-#[tokio::test]
-async fn the_hand_driver_reproduces_openai_tool_call_turns() {
-    hand_driver_reproduces(&OPENAI_TOOL_CALL_TURNS).await;
+both_interpreters! {
+    reproduces_completion_smoke: COMPLETION_SMOKE,
+    reproduces_memory_conversation: MEMORY_CONVERSATION,
+    reproduces_streaming_with_events: STREAMING_WITH_EVENTS,
+    reproduces_concurrent_tools_serial: CONCURRENT_TOOLS_SERIAL,
+    reproduces_tool_call_turns: TOOL_CALL_TURNS,
+    reproduces_invalid_tool_call_recovery: INVALID_TOOL_CALL_RECOVERY,
+    reproduces_anthropic_tool_call_turn: ANTHROPIC_TOOL_CALL_TURN,
+    reproduces_anthropic_cancelled_stream: ANTHROPIC_CANCELLED_STREAM,
+    reproduces_openai_streaming_with_events: OPENAI_STREAMING_WITH_EVENTS,
+    reproduces_openai_tool_call_turns: OPENAI_TOOL_CALL_TURNS,
 }

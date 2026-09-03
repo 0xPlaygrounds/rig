@@ -334,6 +334,18 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
+/// The effect corpus's retrieval matrix (Matrix A):
+/// `tests/cassettes/gemini/corpus_retrieval/`.
+pub(super) async fn with_gemini_corpus_retrieval_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(gemini::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_gemini_cassette(spec, test_body).await;
+}
+
 pub(super) async fn with_gemini_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(gemini::Client) -> Fut,

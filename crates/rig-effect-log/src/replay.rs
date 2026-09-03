@@ -239,33 +239,51 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
     }
 }
 
-/// The descriptor a replayer advertises under `key`. A tool's definition is
-/// taken from the recorded completion requests that advertised it, so a
-/// replayed run builds byte-identical requests — the replayer must look to
-/// the model exactly like the tool it stands in for, or the next completion
-/// dispatch diverges.
-/// The descriptor of a required key the log never dispatched. Only a tool
-/// can be described without a record: its definition is in the requests
-/// that advertised it. Any other family has nothing to describe it by.
+/// The descriptor a replayer advertises for a required key the log never
+/// dispatched to: the one the header's handler table recorded for it when
+/// it was installed — a retrievable tool the index never named, a route
+/// the hook never selected — else, for a log with no handler table, a tool
+/// from the definition the recorded requests hold, or a model, memory or
+/// retrieval index by its family alone. The replayer answers any dispatch
+/// to it with a divergence.
 fn describe_required(
     key: &HandlerKey,
     family: EffectFamily,
     log: &EffectLog,
 ) -> Option<FamilyDescriptor> {
-    if family != EffectFamily::Tool {
-        return None;
+    if let Some(installed) = log
+        .header
+        .handlers
+        .iter()
+        .find(|descriptor| &descriptor.key == key && descriptor.family.family() == family)
+    {
+        return Some(installed.family.clone());
     }
-    let name = key
-        .as_str()
-        .rsplit_once("tool:")
-        .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))?;
-    let advertised = advertised_tool(name, log)?;
-    Some(FamilyDescriptor::Tool {
-        name: advertised.name,
-        description: advertised.description,
-        parameters: advertised.parameters,
-        embedding: None,
-    })
+    match family {
+        EffectFamily::Tool => {
+            let name = key
+                .as_str()
+                .rsplit_once("tool:")
+                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))?;
+            let advertised = advertised_tool(name, log)?;
+            Some(FamilyDescriptor::Tool {
+                name: advertised.name,
+                description: advertised.description,
+                parameters: advertised.parameters,
+                embedding: None,
+            })
+        }
+        EffectFamily::Completion => Some(FamilyDescriptor::Completion {
+            model: ModelRef::new(format!("replay:{key}")),
+            capabilities: ProviderCapabilities::default(),
+        }),
+        EffectFamily::Memory => Some(FamilyDescriptor::Memory {}),
+        EffectFamily::Retrieve => Some(FamilyDescriptor::Retrieve {}),
+        // An embedding or rerank descriptor names a modality or a document
+        // cap the row does not carry; a custom kind its label. None of
+        // them is in an agent's required row.
+        EffectFamily::Embed | EffectFamily::Rerank | EffectFamily::Custom => None,
+    }
 }
 
 /// The definition of the tool `name` as some completion request in `log`
@@ -358,13 +376,20 @@ impl Serve for EffectLogReplayer {
                     None => {
                         // A stream recorded verbatim replays verbatim: the
                         // consumer sees the original delta boundaries, not
-                        // the fold re-emitted.
+                        // the fold re-emitted. A stream that ended in an
+                        // error — the consumer's cancel, the provider's
+                        // refusal — has its events and then the error, which
+                        // is the record's outcome; a success has its
+                        // terminal among its events.
                         if let (Some(events), true) = (record.events, sink.is_stream()) {
                             let mut sink = sink;
                             for event in events {
                                 if sink.send(Ok(event)).await.is_err() {
                                     return;
                                 }
+                            }
+                            if record.outcome.is_err() {
+                                sink.resolve(record.outcome).await;
                             }
                             return;
                         }

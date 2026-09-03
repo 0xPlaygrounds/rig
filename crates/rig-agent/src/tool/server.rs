@@ -322,6 +322,27 @@ impl ToolServer {
         self
     }
 
+    /// Add retrievable tools chosen per request by `handler` — any
+    /// retrieval-family handler answering `TopNIds`, such as a replayer
+    /// answering a recorded index from an effect log — under the same key
+    /// [`retrieved_tools`](Self::retrieved_tools) would give an index.
+    pub fn retrieved_tools_handler(
+        mut self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> Self {
+        let n = self.next_index;
+        self.next_index += 1;
+        self.retrieval_indexes.push(PendingRetrievalIndex {
+            samples: sample,
+            index: n,
+            handler: rig_core::serve::ErasedHandler::new(handler),
+        });
+        self.toolset.add_retrievable_tools(toolset);
+        self
+    }
+
     /// Start the registry.
     pub fn run(self) -> ToolServerHandle {
         let owner = self

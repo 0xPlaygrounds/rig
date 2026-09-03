@@ -8,7 +8,39 @@
 //! and its golden. rig-verify replays every golden with no provider at
 //! all. Goldens are re-recorded by their producer, never edited by hand.
 
+use rig::effect::EffectFamily;
+use rig::message::Message;
 use rig_effect_log::EffectLog;
+
+/// The families of a log's records, in order: the shape a producer asserts.
+#[allow(dead_code)] // not every target records
+pub(crate) fn families(log: &EffectLog) -> Vec<EffectFamily> {
+    log.records
+        .iter()
+        .map(|record| record.kind.family())
+        .collect()
+}
+
+/// The output schema the request-shape matrix constrains an answer to,
+/// as one literal both the producer and the rig-verify replay build the
+/// program from (`crates/rig-verify/tests/corpus_request_shape.rs`).
+#[allow(dead_code)]
+pub(crate) const EVENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"]}"#;
+
+#[allow(dead_code)]
+pub(crate) fn event_schema() -> schemars::Schema {
+    serde_json::from_str(EVENT_SCHEMA).expect("the schema literal is a schema")
+}
+
+/// The prior history the request-shape matrix's history cell runs with;
+/// the replay builds the same two turns.
+#[allow(dead_code)]
+pub(crate) fn prior_history() -> Vec<Message> {
+    vec![
+        Message::user("My name is Ada."),
+        Message::assistant("Nice to meet you, Ada."),
+    ]
+}
 
 /// The committed golden's path.
 pub(crate) fn golden_path(name: &str) -> std::path::PathBuf {
@@ -20,16 +52,24 @@ pub(crate) fn golden_path(name: &str) -> std::path::PathBuf {
 /// Write `log` as the golden `name` under `RIG_REGENERATE_GOLDEN=1`, else
 /// assert it equals the committed golden byte for byte (the header is part
 /// of the oracle: a program that changed refuses before it diverges).
+///
+/// In record mode this is a no-op: a golden is generated from the
+/// *replayed* cassette, never from a live recording, because the cassette
+/// is written with placeholders for provider ids (`msg_REDACTED_1`,
+/// `toolu_REDACTED_1`, …) and the golden must hold the same, or the first
+/// replay diverges on an id the record never held. A panic here would
+/// also discard the cassette the run just recorded (the wrapper writes a
+/// cassette only when the test body returns), so the loop is: record on
+/// the producer's filter, then regenerate the golden in replay mode.
 pub(crate) fn golden_effects(name: &str, log: &EffectLog) {
-    // A golden is generated from the *replayed* cassette, never from a live
-    // recording: the cassette is written with placeholders for provider ids
-    // (`msg_REDACTED_1`, `toolu_REDACTED_1`, …) and the golden must hold the
-    // same, or the first replay diverges on an id the record never held.
-    assert!(
-        !std::env::var("RIG_PROVIDER_TEST_MODE")
-            .is_ok_and(|mode| mode.eq_ignore_ascii_case("record")),
-        "golden `{name}`: record the cassette first, then regenerate the golden in replay mode"
-    );
+    if std::env::var("RIG_PROVIDER_TEST_MODE").is_ok_and(|mode| mode.eq_ignore_ascii_case("record"))
+    {
+        assert!(
+            std::env::var_os("RIG_REGENERATE_GOLDEN").is_none(),
+            "golden `{name}`: record the cassette first, then regenerate the golden in replay mode"
+        );
+        return;
+    }
     let rendered = serde_json::to_string_pretty(log).expect("the log serializes");
     let path = golden_path(name);
     if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
@@ -67,4 +107,438 @@ impl rig::agent::AgentHook for RetryUnknownTool {
             feedback: format!("there is no tool named {}; use add", context.tool_name),
         })
     }
+}
+
+// ---------------------------------------------------------------------------
+// The hook matrix's hooks (Matrix B, `tests/providers/anthropic/cassette/
+// corpus_hooks.rs`, `crates/rig-verify/tests/corpus_hooks.rs`). Hooks are
+// program: the header names each by type, and the rig-verify replay
+// defines a type of the same name making the same decision. Every hook is
+// stateless, so its decision is a function of the event alone (the
+// header cannot tell two hooks of one type with different state apart).
+
+#[allow(dead_code)]
+pub(crate) const PIRATE_PREAMBLE: &str = "You are a pirate. Answer in one short sentence.";
+#[allow(dead_code)]
+pub(crate) const DENY_REASON: &str = "add is disabled for this run";
+#[allow(dead_code)]
+pub(crate) const REPLACED_RESULT: &str = "99";
+#[allow(dead_code)]
+pub(crate) const REPLACED_ANSWER: &str = "REPLACED";
+#[allow(dead_code)]
+pub(crate) const DONE_FEEDBACK: &str = "End your answer with the word DONE.";
+#[allow(dead_code)]
+pub(crate) const LOOKUP_ARGS: &str = r#"{"x":1,"y":2}"#;
+#[allow(dead_code)]
+pub(crate) const LOOKUP_KEY: &str = "golden/tool:add#0";
+
+/// Opts into observing every dispatch family; decides nothing.
+#[allow(dead_code)]
+pub(crate) struct ObserveEverything;
+
+impl rig::agent::AgentHook for ObserveEverything {
+    fn observes(&self, _kind: rig::agent::StepEventKind) -> bool {
+        true
+    }
+}
+
+/// `on_dispatch` → `Patch`: `add` runs with `{"x":40,"y":2}` whatever the
+/// model asked (the record holds the patched call; history keeps the
+/// model's).
+#[allow(dead_code)]
+pub(crate) struct PatchAddArgs;
+
+impl rig::agent::AgentHook for PatchAddArgs {
+    async fn on_dispatch(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::DispatchEvent<'_>,
+    ) -> rig::agent::DispatchAction {
+        if event.tool_name() == Some("add") {
+            rig::agent::DispatchAction::rewrite_tool_args(
+                event.kind,
+                serde_json::json!({"x": 40, "y": 2}),
+            )
+        } else {
+            rig::agent::DispatchAction::proceed()
+        }
+    }
+}
+
+/// `on_dispatch` → `Deny` (a skip): `add` never reaches the bus; the model
+/// sees the reason as the tool's result.
+#[allow(dead_code)]
+pub(crate) struct DenyAdd;
+
+impl rig::agent::AgentHook for DenyAdd {
+    async fn on_dispatch(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::DispatchEvent<'_>,
+    ) -> rig::agent::DispatchAction {
+        if event.tool_name() == Some("add") {
+            rig::agent::DispatchAction::skip(DENY_REASON)
+        } else {
+            rig::agent::DispatchAction::proceed()
+        }
+    }
+}
+
+/// `on_outcome` → `Replace`: the model sees `99` for `add`, the record
+/// holds what the tool answered.
+#[allow(dead_code)]
+pub(crate) struct ReplaceAddResult;
+
+impl rig::agent::AgentHook for ReplaceAddResult {
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        if event.tool_name() == Some("add") && event.tool_result().is_some() {
+            rig::agent::OutcomeAction::rewrite_tool_result(&event, REPLACED_RESULT)
+        } else {
+            rig::agent::OutcomeAction::proceed()
+        }
+    }
+}
+
+/// `on_outcome` → `Replace` on a completion: a text answer is replaced by
+/// `REPLACED`; the record holds the model's.
+#[allow(dead_code)]
+pub(crate) struct ReplaceAnswer;
+
+impl rig::agent::AgentHook for ReplaceAnswer {
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        let Some(response) = event.completion() else {
+            return rig::agent::OutcomeAction::proceed();
+        };
+        if response
+            .choice
+            .iter()
+            .any(|content| matches!(content, rig::message::AssistantContent::ToolCall(_)))
+        {
+            return rig::agent::OutcomeAction::proceed();
+        }
+        let mut replacement = response.clone();
+        replacement.choice = vec![rig::message::AssistantContent::text(REPLACED_ANSWER)];
+        rig::agent::OutcomeAction::replace(Ok(rig::effect::Outcome::Completion(replacement)))
+    }
+}
+
+/// `on_completion_call` → a request patch overriding the preamble: the
+/// request holds the pirate preamble, the spec holds the base.
+#[allow(dead_code)]
+pub(crate) struct PreambleOverride;
+
+impl rig::agent::AgentHook for PreambleOverride {
+    async fn on_completion_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionCallAction {
+        rig::agent::CompletionCallAction::patch(
+            rig::agent::RequestPatch::new().preamble(PIRATE_PREAMBLE),
+        )
+    }
+}
+
+/// `on_model_turn_finished` → `Retry` with feedback until the answer holds
+/// `DONE`: a second completion is a record, the decision is program.
+#[allow(dead_code)]
+pub(crate) struct DemandDone;
+
+impl rig::agent::AgentHook for DemandDone {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        let text: String = event
+            .content
+            .iter()
+            .filter_map(|content| match content {
+                rig::message::AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect();
+        if text.contains("DONE") {
+            rig::agent::ModelTurnAction::continue_run()
+        } else {
+            rig::agent::ModelTurnAction::retry_with_feedback(DONE_FEEDBACK)
+        }
+    }
+}
+
+/// `on_run_start` dispatches `add(1, 2)` through the run's bus: a hook's
+/// own effect is a record under the tool's key, before the first
+/// completion.
+#[allow(dead_code)]
+pub(crate) struct LookupBeforeRun;
+
+impl rig::agent::AgentHook for LookupBeforeRun {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let tool = ctx
+            .tool(&rig::effect::HandlerKey::from(LOOKUP_KEY))
+            .expect("the run's bus serves add");
+        let answer = tool
+            .dispatch(rig::effect::ToolCallRequest {
+                name: "add".to_owned(),
+                args: LOOKUP_ARGS.to_owned(),
+                context: rig::tool::ToolContext::new(),
+            })
+            .await
+            .expect("add answers");
+        assert_eq!(answer.result.output().render(), "3");
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_model_select` → `Select("fast")` on every turn after the first:
+/// the route answers once the default model has been asked once.
+#[allow(dead_code)]
+pub(crate) struct RouteAfterFirstTurn;
+
+impl rig::agent::AgentHook for RouteAfterFirstTurn {
+    fn on_model_select(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelSelection<'_>,
+    ) -> rig::agent::ModelSelectionAction {
+        if event.previous_model.is_some() {
+            rig::agent::ModelSelectionAction::select("fast")
+        } else {
+            rig::agent::ModelSelectionAction::continue_run()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The outcome matrix's tool (Matrix D).
+
+#[allow(dead_code)]
+pub(crate) const BROKEN_ADD: &str = "the adder is broken";
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct FailingAddArgs {
+    pub(crate) x: i64,
+    pub(crate) y: i64,
+}
+
+/// An `add` that fails every call: the tool record's outcome is a failed
+/// result, which the model sees and answers around.
+#[allow(dead_code)]
+pub(crate) struct FailingAdd;
+
+impl rig::tool::Tool for FailingAdd {
+    const NAME: &'static str = "add";
+    type Args = FailingAddArgs;
+    type Output = i64;
+    type Error = rig::tool::ToolExecutionError;
+
+    fn description(&self) -> String {
+        "adds two integers".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: FailingAddArgs,
+    ) -> Result<i64, Self::Error> {
+        Err(rig::tool::ToolExecutionError::other(BROKEN_ADD))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The outcome matrix's long-argument tool: a call whose arguments stream
+// for long enough that a consumer's drop lands mid-call.
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct NoteArgs {
+    pub(crate) title: String,
+    pub(crate) body: String,
+}
+
+/// Writes a note; its `body` is what the model streams at length.
+#[allow(dead_code)]
+pub(crate) struct WriteNote;
+
+impl rig::tool::Tool for WriteNote {
+    const NAME: &'static str = "write_note";
+    type Args = NoteArgs;
+    type Output = String;
+    type Error = rig::tool::ToolExecutionError;
+
+    fn description(&self) -> String {
+        "writes a note with a title and a body".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {"title": {"type": "string"}, "body": {"type": "string"}}, "required": ["title", "body"]})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: NoteArgs,
+    ) -> Result<String, Self::Error> {
+        Ok(format!("saved {} ({} chars)", args.title, args.body.len()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The retrieval matrix (Matrix A): an index of facts for `dynamic_context`
+// and a toolset of retrievable tools for `retrieved_tools`, each embedded
+// by the provider under test.
+
+#[allow(dead_code)]
+pub(crate) const FACTS: [&str; 3] = [
+    "A flurbo is a green alien that lives on cold planets.",
+    "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+    "A linglingdong is a term used by inhabitants of the far side of the moon to describe humans.",
+];
+#[allow(dead_code)]
+pub(crate) const FACT_PROMPT: &str = "What is a glarb-glarb? Answer in one sentence.";
+#[allow(dead_code)]
+pub(crate) const RETRIEVED_TOOLS_PREAMBLE: &str =
+    "You are a calculator. You must use the provided tools for every arithmetic operation.";
+#[allow(dead_code)]
+pub(crate) const SUBTRACT_PROMPT: &str =
+    "Subtract 8 from 50 with the subtract tool, then reply with just the number.";
+#[allow(dead_code)]
+pub(crate) const ADD_THEN_SUBTRACT_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number.";
+
+/// The facts, embedded by `model`, as an in-memory index (ids `doc0`..).
+#[allow(dead_code)]
+pub(crate) async fn facts_index<M: rig::embeddings::EmbeddingModel + Clone>(
+    model: M,
+    facts: &[&str],
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<String, M> {
+    let store = if facts.is_empty() {
+        rig::vector_store::in_memory_store::InMemoryVectorStore::<String>::default()
+    } else {
+        let embeddings = rig::embeddings::EmbeddingsBuilder::new(model.clone())
+            .documents(facts.iter().map(|fact| (*fact).to_owned()))
+            .expect("documents should be added")
+            .build()
+            .await
+            .expect("fact embeddings should succeed");
+        rig::vector_store::in_memory_store::InMemoryVectorStore::from_documents(embeddings)
+    };
+    store.index(model)
+}
+
+/// The toolset's embeddable schemas, embedded by `model`, as an index keyed
+/// by tool name.
+#[allow(dead_code)]
+pub(crate) async fn tool_index<M: rig::embeddings::EmbeddingModel + Clone>(
+    model: M,
+    toolset: &rig::tool::ToolSet,
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<rig::embeddings::ToolSchema, M> {
+    let embeddings = rig::embeddings::EmbeddingsBuilder::new(model.clone())
+        .documents(toolset.schemas().expect("tool schemas should build"))
+        .expect("documents should be added")
+        .build()
+        .await
+        .expect("tool schema embeddings should succeed");
+    rig::vector_store::in_memory_store::InMemoryVectorStore::from_documents_with_id_f(
+        embeddings,
+        |tool| tool.name.clone(),
+    )
+    .index(model)
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("init error")]
+#[allow(dead_code)]
+pub(crate) struct NoInit;
+
+macro_rules! retrievable_operation {
+    ($name:ident, $tool_name:literal, $description:literal, $embedding_doc:literal, $op:expr) => {
+        #[derive(Clone, Default, serde::Deserialize, serde::Serialize)]
+        #[allow(dead_code)]
+        pub(crate) struct $name;
+
+        impl rig::tool::Tool for $name {
+            const NAME: &'static str = $tool_name;
+            type Error = rig::tool::ToolExecutionError;
+            type Args = crate::goldens::FailingAddArgs;
+            type Output = i64;
+
+            fn description(&self) -> String {
+                $description.to_string()
+            }
+
+            fn parameters(&self) -> serde_json::Value {
+                serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}, "required": ["x", "y"]})
+            }
+
+            async fn call(
+                &self,
+                _context: &mut rig::tool::ToolContext,
+                args: Self::Args,
+            ) -> Result<Self::Output, Self::Error> {
+                let op: fn(i64, i64) -> i64 = $op;
+                Ok(op(args.x, args.y))
+            }
+        }
+
+        impl rig::tool::ToolEmbedding for $name {
+            type InitError = NoInit;
+            type Context = ();
+            type State = ();
+
+            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
+                Ok(Self)
+            }
+
+            fn embedding_docs(&self) -> Vec<String> {
+                vec![$embedding_doc.into()]
+            }
+
+            fn context(&self) -> Self::Context {}
+        }
+    };
+}
+
+retrievable_operation!(
+    EmbedAdd,
+    "add",
+    "Add x and y together",
+    "Add two numbers together to get their sum",
+    |x, y| x + y
+);
+retrievable_operation!(
+    EmbedSubtract,
+    "subtract",
+    "Subtract y from x",
+    "Subtract one number from another to get their difference",
+    |x, y| x - y
+);
+
+/// The retrievable toolset: `add` and `subtract`, in that order.
+#[allow(dead_code)]
+pub(crate) fn retrievable_toolset() -> rig::tool::ToolSet {
+    let mut toolset = rig::tool::ToolSet::default();
+    toolset
+        .add_retrieved_tool(EmbedAdd)
+        .expect("the tool context serializes");
+    toolset
+        .add_retrieved_tool(EmbedSubtract)
+        .expect("the tool context serializes");
+    toolset
 }

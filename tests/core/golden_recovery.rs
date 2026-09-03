@@ -16,12 +16,12 @@ use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Deserialize)]
-struct AddArgs {
+pub(crate) struct AddArgs {
     x: i64,
     y: i64,
 }
 
-struct Add;
+pub(crate) struct Add;
 
 impl Tool for Add {
     const NAME: &'static str = "add";
