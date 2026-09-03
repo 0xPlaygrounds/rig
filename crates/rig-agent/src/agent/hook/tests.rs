@@ -250,6 +250,13 @@ struct ResultRewriter {
     replacement: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+struct RequestMetadata(String);
+
+impl rig_core::tool::ContextValue for RequestMetadata {
+    const KEY: &'static str = "test.request_metadata";
+}
+
 impl AgentHook for ResultRewriter {
     async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         let Some(result) = event.tool_result() else {
@@ -258,7 +265,13 @@ impl AgentHook for ResultRewriter {
         self.seen.lock().unwrap().push((
             result.output().render(),
             result.error().unwrap().kind(),
-            event.tool_context().unwrap().result::<String>().unwrap(),
+            event
+                .tool_context()
+                .unwrap()
+                .result::<RequestMetadata>()
+                .unwrap()
+                .unwrap()
+                .0,
         ));
         OutcomeAction::rewrite_tool_result(&event, self.replacement.clone())
     }
@@ -278,7 +291,7 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
     let raw = ToolResult::failed(ToolExecutionError::timeout("raw failure"));
     let mut context = ToolContext::new();
     context
-        .insert_result("request-metadata".to_string())
+        .insert_result(RequestMetadata("request-metadata".to_string()))
         .unwrap();
 
     let kind = tool_call_kind();
@@ -314,7 +327,11 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
     );
     assert_eq!(raw.output().as_text(), Some("raw failure"));
     assert_eq!(
-        context.result::<String>().as_deref(),
+        context
+            .result::<RequestMetadata>()
+            .unwrap()
+            .map(|m| m.0)
+            .as_deref(),
         Some("request-metadata")
     );
 }

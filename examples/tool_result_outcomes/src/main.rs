@@ -63,7 +63,8 @@ struct ProbeArgs {
     operation: Operation,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, rig::ContextValue)]
+#[context(key = "example.failure_site")]
 struct FailureSite {
     operation: Operation,
     resource: String,
@@ -192,7 +193,8 @@ fn failure_record(
     result: &ToolResult,
     tool_context: &ToolContext,
 ) -> Option<FailureRecord> {
-    let (Some(error), Some(site)) = (result.error(), tool_context.result::<FailureSite>()) else {
+    let (Some(error), Ok(Some(site))) = (result.error(), tool_context.result::<FailureSite>())
+    else {
         return None;
     };
 
@@ -394,7 +396,7 @@ mod tests {
         assert_eq!(error.code(), Some("ENETUNREACH"));
         assert_eq!(result.output().as_text(), error.model_feedback());
         assert_eq!(
-            context.result::<FailureSite>(),
+            context.result::<FailureSite>().expect("decodes"),
             Some(FailureSite {
                 operation: Operation::ConnectNetwork,
                 resource: "backup.example.net".to_string(),

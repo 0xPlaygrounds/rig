@@ -2295,8 +2295,10 @@ mod structured_tool_results {
                 if let (Some(result), Some(tool_context)) =
                     (event.tool_result(), event.tool_context())
                 {
-                    *self.seen.lock().expect("seen") =
-                        tool_context.result::<MockRequestId>().map(|id| id.0);
+                    *self.seen.lock().expect("seen") = tool_context
+                        .result::<MockRequestId>()
+                        .expect("request id decodes")
+                        .map(|id| id.0);
                     *self.model_output.lock().expect("model_output") =
                         Some(result.output().render());
                 }

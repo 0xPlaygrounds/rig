@@ -21,6 +21,24 @@ struct SnapshotValue {
     value: usize,
 }
 
+impl rig_core::tool::ContextValue for SnapshotValue {
+    const KEY: &'static str = "test.snapshot_value";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SnapshotResult(usize);
+
+impl rig_core::tool::ContextValue for SnapshotResult {
+    const KEY: &'static str = "test.snapshot_result";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ResultMetadata(String);
+
+impl rig_core::tool::ContextValue for ResultMetadata {
+    const KEY: &'static str = "test.result_metadata";
+}
+
 #[derive(Clone, Default)]
 struct SnapshotMutatingTool(Arc<Mutex<Vec<usize>>>);
 
@@ -47,7 +65,7 @@ impl Tool for SnapshotMutatingTool {
         self.0.lock().expect("observed values").push(initial);
         let updated = initial + 1;
         context.insert(SnapshotValue { value: updated })?;
-        context.insert_result(updated)?;
+        context.insert_result(SnapshotResult(updated))?;
         Ok(updated.to_string())
     }
 }
@@ -62,8 +80,9 @@ impl AgentHook for SnapshotResults {
         };
         self.0.lock().expect("result values").push(
             context
-                .require_result::<usize>()
-                .expect("per-dispatch result metadata"),
+                .require_result::<SnapshotResult>()
+                .expect("per-dispatch result metadata")
+                .0,
         );
         OutcomeAction::proceed()
     }
@@ -88,7 +107,7 @@ impl Tool for MetadataFailingTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result("shared-result-metadata".to_string())?;
+        context.insert_result(ResultMetadata("shared-result-metadata".to_string()))?;
         Err(ToolExecutionError::timeout("raw timeout failure"))
     }
 }
@@ -108,9 +127,10 @@ impl AgentHook for Results {
                 event
                     .tool_context()
                     .expect("tool outcome carries its context")
-                    .result::<String>()
+                    .result::<ResultMetadata>()
+                    .expect("tool result metadata decodes")
                     .expect("tool result metadata")
-                    .clone(),
+                    .0,
             ));
         }
         OutcomeAction::rewrite_tool_result(&event, "rewritten for model")

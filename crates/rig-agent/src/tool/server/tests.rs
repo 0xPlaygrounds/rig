@@ -599,8 +599,30 @@ pub async fn test_toolserver_parallel_retrieval() {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct SessionId(String);
 
+impl rig_core::tool::ContextValue for SessionId {
+    const KEY: &'static str = "test.server_session_id";
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Counter(usize);
+
+impl rig_core::tool::ContextValue for Counter {
+    const KEY: &'static str = "test.counter";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CounterResult(usize);
+
+impl rig_core::tool::ContextValue for CounterResult {
+    const KEY: &'static str = "test.counter_result";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Note(String);
+
+impl rig_core::tool::ContextValue for Note {
+    const KEY: &'static str = "test.note";
+}
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct ContextReader;
@@ -624,11 +646,11 @@ impl crate::tool::Tool for ContextReader {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        if let Some(Counter(value)) = context.get::<Counter>() {
+        if let Some(Counter(value)) = context.get::<Counter>()? {
             context.insert(Counter(value + 1))?;
-            context.insert_result(value + 1)?;
+            context.insert_result(CounterResult(value + 1))?;
         }
-        Ok(context.get::<SessionId>().map_or_else(
+        Ok(context.get::<SessionId>()?.map_or_else(
             || "no session".to_string(),
             |session| format!("session:{}", session.0),
         ))
@@ -658,11 +680,14 @@ async fn server_dispatch_snapshot_isolates_and_only_publishes_result_metadata() 
 
     assert_eq!(result, "no session");
     assert_eq!(
-        context.get::<Counter>().map(|value| value.0),
+        context.get::<Counter>().unwrap().map(|value| value.0),
         Some(0),
         "tool-local inbound mutations must not change the caller's context"
     );
-    assert_eq!(context.result::<usize>(), Some(1));
+    assert_eq!(
+        context.result::<CounterResult>().unwrap().map(|v| v.0),
+        Some(1)
+    );
 }
 
 struct PendingTool(Arc<AtomicBool>);
@@ -686,7 +711,7 @@ impl Tool for PendingTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result("unpublished".to_string())?;
+        context.insert_result(Note("unpublished".to_string()))?;
         self.0.store(true, Ordering::SeqCst);
         pending().await
     }
@@ -697,7 +722,7 @@ async fn cancelled_server_dispatch_does_not_retain_stale_result_metadata() {
     let started = Arc::new(AtomicBool::new(false));
     let handle = ToolServer::new().tool(PendingTool(started.clone())).run();
     let mut context = ToolContext::new();
-    context.insert_result("stale".to_string()).unwrap();
+    context.insert_result(Note("stale".to_string())).unwrap();
 
     let mut execution = Box::pin(handle.execute(PendingTool::NAME, "null", &mut context));
     tokio::time::timeout(
@@ -717,7 +742,7 @@ async fn cancelled_server_dispatch_does_not_retain_stale_result_metadata() {
     .expect("pending tool did not start");
     drop(execution);
 
-    assert!(context.result::<String>().is_none());
+    assert!(context.result::<Note>().unwrap().is_none());
 }
 
 #[tokio::test]

@@ -7,7 +7,7 @@
 //! and companion adapters (e.g. MCP `_meta` passthrough in `rig-rmcp`) all
 //! share this one type, so the same values flow regardless of runtime.
 
-use std::any::{Any, TypeId, type_name};
+use std::any::{Any, TypeId};
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasherDefault, Hasher};
 
@@ -172,42 +172,60 @@ pub struct ToolContext {
     result: BTreeMap<String, serde_json::Value>,
 }
 
-fn slot_key<T: 'static>() -> &'static str {
-    type_name::<T>()
+/// A value that may be stored in a [`ToolContext`]: serde data under a key
+/// the type declares. The key is what survives a refactor, a persisted
+/// [`EffectLog`](crate::effect::EffectLog), or a different toolchain —
+/// unlike `std::any::type_name`, which changes with a rename or a module
+/// move and is not stable across compiler versions.
+///
+/// Derive it (`#[derive(ContextValue)]`, key defaults to the type's name;
+/// `#[context(key = "…")]` overrides) or write the one-line impl. Two
+/// value types must not share a key.
+pub trait ContextValue: Serialize + DeserializeOwned + 'static {
+    /// The slot this value lives under.
+    const KEY: &'static str;
 }
 
-fn encode<T: Serialize + 'static>(value: &T) -> Result<serde_json::Value, ToolContextError> {
+fn encode<T: ContextValue>(value: &T) -> Result<serde_json::Value, ToolContextError> {
     serde_json::to_value(value).map_err(|error| ToolContextError::Encode {
-        key: slot_key::<T>(),
+        key: T::KEY,
         message: error.to_string(),
     })
 }
 
-fn decode<T: DeserializeOwned + 'static>(value: &serde_json::Value) -> Result<T, ToolContextError> {
+fn decode<T: ContextValue>(value: &serde_json::Value) -> Result<T, ToolContextError> {
     serde_json::from_value(value.clone()).map_err(|error| ToolContextError::Decode {
-        key: slot_key::<T>(),
+        key: T::KEY,
         message: error.to_string(),
     })
 }
 
-fn insert_slot<T: Serialize + DeserializeOwned + 'static>(
+/// Store `value`; the value it displaced when that decodes as `T`. A slot
+/// holding something that does not decode as `T` is simply replaced: the
+/// write succeeded, and a shape mismatch is a defect at the writer, not a
+/// reason to unwind the caller after the fact.
+fn insert_slot<T: ContextValue>(
     map: &mut BTreeMap<String, serde_json::Value>,
     value: T,
 ) -> Result<Option<T>, ToolContextError> {
     let encoded = encode(&value)?;
-    match map.insert(slot_key::<T>().to_string(), encoded) {
-        Some(previous) => decode(&previous).map(Some),
-        None => Ok(None),
-    }
+    Ok(map
+        .insert(T::KEY.to_owned(), encoded)
+        .and_then(|previous| decode(&previous).ok()))
 }
 
-fn require_slot<T: DeserializeOwned + 'static>(
+/// `Ok(None)` when the slot is empty, `Err(Decode)` when it holds something
+/// that is not a `T`: absence and a shape mismatch are different facts.
+fn get_slot<T: ContextValue>(
+    map: &BTreeMap<String, serde_json::Value>,
+) -> Result<Option<T>, ToolContextError> {
+    map.get(T::KEY).map(decode).transpose()
+}
+
+fn require_slot<T: ContextValue>(
     map: &BTreeMap<String, serde_json::Value>,
 ) -> Result<T, ToolContextError> {
-    let key = slot_key::<T>();
-    map.get(key)
-        .ok_or(ToolContextError::Missing(key))
-        .and_then(decode)
+    get_slot(map)?.ok_or(ToolContextError::Missing(T::KEY))
 }
 
 impl ToolContext {
@@ -223,69 +241,49 @@ impl ToolContext {
     ///
     /// Fails only when `value` cannot be represented as JSON (a map with
     /// non-string keys, a float `NaN`).
-    pub fn insert<T>(&mut self, value: T) -> Result<Option<T>, ToolContextError>
-    where
-        T: Serialize + DeserializeOwned + 'static,
-    {
+    pub fn insert<T: ContextValue>(&mut self, value: T) -> Result<Option<T>, ToolContextError> {
         insert_slot(&mut self.inbound, value)
     }
 
     /// Read an inbound typed value. `None` when absent or not decodable as `T`.
-    pub fn get<T>(&self) -> Option<T>
-    where
-        T: DeserializeOwned + 'static,
-    {
-        require_slot(&self.inbound).ok()
+    pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
+        get_slot(&self.inbound)
     }
 
     /// Require an inbound typed value.
-    pub fn require<T>(&self) -> Result<T, ToolContextError>
-    where
-        T: DeserializeOwned + 'static,
-    {
+    pub fn require<T: ContextValue>(&self) -> Result<T, ToolContextError> {
         require_slot(&self.inbound)
     }
 
     /// Remove an inbound typed value.
-    pub fn remove<T>(&mut self) -> Option<T>
-    where
-        T: DeserializeOwned + 'static,
-    {
+    pub fn remove<T: ContextValue>(&mut self) -> Result<Option<T>, ToolContextError> {
         self.inbound
-            .remove(slot_key::<T>())
-            .and_then(|value| decode(&value).ok())
+            .remove(T::KEY)
+            .map(|value| decode(&value))
+            .transpose()
     }
 
     /// Attach host-only metadata to this execution's result.
-    pub fn insert_result<T>(&mut self, value: T) -> Result<Option<T>, ToolContextError>
-    where
-        T: Serialize + DeserializeOwned + 'static,
-    {
+    pub fn insert_result<T: ContextValue>(
+        &mut self,
+        value: T,
+    ) -> Result<Option<T>, ToolContextError> {
         insert_slot(&mut self.result, value)
     }
 
     /// Read host-only result metadata.
-    pub fn result<T>(&self) -> Option<T>
-    where
-        T: DeserializeOwned + 'static,
-    {
-        require_slot(&self.result).ok()
+    pub fn result<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
+        get_slot(&self.result)
     }
 
     /// Require host-only result metadata.
-    pub fn require_result<T>(&self) -> Result<T, ToolContextError>
-    where
-        T: DeserializeOwned + 'static,
-    {
+    pub fn require_result<T: ContextValue>(&self) -> Result<T, ToolContextError> {
         require_slot(&self.result)
     }
 
     /// Whether this context contains the inbound type `T`.
-    pub fn contains<T>(&self) -> bool
-    where
-        T: 'static,
-    {
-        self.inbound.contains_key(slot_key::<T>())
+    pub fn contains<T: ContextValue>(&self) -> bool {
+        self.inbound.contains_key(T::KEY)
     }
 
     /// Whether both maps are empty.
@@ -328,10 +326,10 @@ impl std::fmt::Debug for ToolContext {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ToolContextError {
     /// A required typed value was absent.
-    #[error("required tool context value of type `{0}` was not found")]
+    #[error("required tool context value `{0}` was not found")]
     Missing(&'static str),
     /// A value could not be represented as JSON.
-    #[error("tool context value of type `{key}` could not be encoded: {message}")]
+    #[error("tool context value `{key}` could not be encoded: {message}")]
     Encode {
         /// The slot's type name.
         key: &'static str,
@@ -339,7 +337,7 @@ pub enum ToolContextError {
         message: String,
     },
     /// A stored value could not be decoded as the requested type.
-    #[error("tool context value of type `{key}` could not be decoded: {message}")]
+    #[error("tool context value `{key}` could not be decoded: {message}")]
     Decode {
         /// The slot's type name.
         key: &'static str,
