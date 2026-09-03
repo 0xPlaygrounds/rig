@@ -1677,3 +1677,73 @@ fn a_host_key_that_serves_another_family_is_reported_at_the_hosts_line() {
         "the report names the host's line, not the builder's: {logged}"
     );
 }
+
+/// Binds a run-scoped view inside the hook body and dispatches through it
+/// (the `dynamic_context` shape): the view lives for the hook call only.
+struct AsksTheModel {
+    key: rig_core::bus::Key<rig_core::effect::family::Completion>,
+    seen: Arc<Mutex<Vec<String>>>,
+}
+
+impl AgentHook for AsksTheModel {
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        let model = ctx.bind(&self.key).expect("bound for this run");
+        let request = rig_core::completion::CompletionRequest {
+            model: None,
+            chat_history: vec![rig_core::message::Message::user("side question")],
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+        let answer = model
+            .complete(request)
+            .await
+            .expect("the side model answers");
+        self.seen.lock().expect("lock").push(
+            answer
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    rig_core::message::AssistantContent::Text(text) => Some(text.text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+        );
+        CompletionCallAction::continue_run()
+    }
+}
+
+#[tokio::test]
+async fn a_hook_binds_a_run_scoped_view_and_dispatches_through_it() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let agent = AgentBuilder::new(MockCompletionModel::text("main answer"))
+        .model_route("side", MockCompletionModel::text("side answer"))
+        .build();
+    let key = rig_core::bus::Key::new_unchecked(HandlerKey::from(format!(
+        "{}/model:side",
+        agent.owner()
+    )));
+    let response = within(
+        agent
+            .runner("hello")
+            .add_hook(AsksTheModel {
+                key,
+                seen: seen.clone(),
+            })
+            .run(),
+    )
+    .await
+    .expect("run");
+    assert_eq!(response.output, "main answer");
+    assert_eq!(*seen.lock().expect("lock"), vec!["side answer".to_string()]);
+}

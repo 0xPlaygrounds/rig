@@ -126,8 +126,8 @@ pub use hook::{
     AgentHook, CompletionCallAction, HookContext, HookStack, InvalidToolCallAction,
     InvalidToolCallContext, ModelSelection, ModelSelectionAction, ModelTurnAction,
     ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch, RetryRequest, RunEntry,
-    RunId, RunSettled, RunStart, RunStartAction, Scratchpad, SettledOutcome, StepEventKind,
-    TextDelta, ToolCallDelta,
+    RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad, SettledOutcome,
+    StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::bus::ModelHandle;
