@@ -21,8 +21,9 @@
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+    task::Poll,
     time::{Duration, Instant},
 };
 
@@ -44,13 +45,48 @@ use rig_core::{
 
 const GUARD: Duration = Duration::from_secs(10);
 
-/// A mock completion handler: answers unary dispatches with a fixed text,
-/// streams one text delta per poll until the consumer goes away, and counts
-/// how often it observed cancellation.
+/// What one proof's mock observed: its own counters, so no proof's traffic
+/// leaks into another's assertions (the stream cap below is per proof too).
+#[derive(Default)]
+struct Counters {
+    /// Unary dispatches the handler entered.
+    unary_started: AtomicUsize,
+    /// Unary dispatches the handler answered.
+    unary_served: AtomicUsize,
+    stream_cancelled: AtomicUsize,
+    stream_sends: AtomicUsize,
+    /// While set, a unary dispatch stays in flight inside the handler (it
+    /// yields to the executor instead of answering) — proof 4 despawns the
+    /// driver while a dispatch is genuinely being served.
+    hold: AtomicBool,
+}
+
+/// Cap on the deltas one proof's stream emits before its terminal record.
+const STREAM_CAP: usize = 1_000;
+
+/// A mock completion handler: answers unary dispatches with a fixed text
+/// (once the hold is released), streams one text delta per poll until the
+/// consumer goes away, and counts what it observed.
 struct MockModel {
-    unary_served: Arc<AtomicUsize>,
-    stream_cancelled: Arc<AtomicUsize>,
-    stream_sends: Arc<AtomicUsize>,
+    counters: Arc<Counters>,
+}
+
+/// Yield to the executor once (a `Pending` that wakes itself), so a held
+/// handler stays cancellable rather than spinning.
+struct YieldNow(bool);
+
+impl Future for YieldNow {
+    type Output = ();
+
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<()> {
+        if self.0 {
+            Poll::Ready(())
+        } else {
+            self.0 = true;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    }
 }
 
 impl Handler for MockModel {
@@ -68,7 +104,11 @@ impl Handler for MockModel {
         Box::pin(async move {
             match kind {
                 EffectKind::Completion { stream: false, .. } => {
-                    self.unary_served.fetch_add(1, Ordering::SeqCst);
+                    self.counters.unary_started.fetch_add(1, Ordering::SeqCst);
+                    while self.counters.hold.load(Ordering::SeqCst) {
+                        YieldNow(false).await;
+                    }
+                    self.counters.unary_served.fetch_add(1, Ordering::SeqCst);
                     let response = CompletionResponse::new(
                         vec![AssistantContent::text("hello from the world")],
                         Usage::new(),
@@ -81,11 +121,13 @@ impl Handler for MockModel {
                     loop {
                         let event = StreamEvent::text(id.clone(), "tick ");
                         if sink.send(Ok(event)).await.is_err() {
-                            self.stream_cancelled.fetch_add(1, Ordering::SeqCst);
+                            self.counters
+                                .stream_cancelled
+                                .fetch_add(1, Ordering::SeqCst);
                             return;
                         }
-                        self.stream_sends.fetch_add(1, Ordering::SeqCst);
-                        if self.stream_sends.load(Ordering::SeqCst) >= 1_000 {
+                        let sent = self.counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
+                        if sent >= STREAM_CAP {
                             let _ = sink
                                 .send(Ok(StreamEvent::Final(StreamFinal::new(
                                     "mock",
@@ -198,19 +240,19 @@ fn guarded<T>(label: &str, mut step: impl FnMut() -> Option<T>) -> T {
 
 fn main() {
     let pool = TaskPool::new();
-    let served = Arc::new(AtomicUsize::new(0));
-    let stream_cancelled = Arc::new(AtomicUsize::new(0));
-    let stream_sends = Arc::new(AtomicUsize::new(0));
-    let model = || MockModel {
-        unary_served: served.clone(),
-        stream_cancelled: stream_cancelled.clone(),
-        stream_sends: stream_sends.clone(),
-    };
 
     // ---- proofs 1, 2, 3 ----
     {
+        let counters = Arc::new(Counters::default());
         let (dispatcher, mut driver) = Bus::channel();
-        driver.register("model", model()).expect("register");
+        driver
+            .register(
+                "model",
+                MockModel {
+                    counters: counters.clone(),
+                },
+            )
+            .expect("register");
         let mut world = World::new();
         world.insert_resource(BusRes(dispatcher.clone()));
         world.insert_resource(Ticks::default());
@@ -245,14 +287,20 @@ fn main() {
             }
             other => panic!("proof 3: expected a completion, got {other:?}"),
         }
-        assert_eq!(served.load(Ordering::SeqCst), 1);
+        assert_eq!(counters.unary_served.load(Ordering::SeqCst), 1);
         let ticks = world.resource::<Ticks>().0;
-        assert!(ticks >= 1, "proof 3: at least one tick");
+        // The first tick performs the send; the outcome is seen by a later
+        // tick at the earliest — a same-tick resolution would mean the
+        // dispatch blocked the system.
+        assert!(ticks >= 2, "proof 3: resolved within one tick ({ticks})");
         println!("proof 3: resolved after {ticks} tick(s)");
 
         // ---- proof 4: despawn cancels ----
-        // Start a dispatch, then despawn the entity holding the driver task
-        // (Task cancels on drop) before the pool has served it.
+        // Hold the handler so the dispatch is genuinely in flight — entered,
+        // not answered — then despawn the entity holding the driver task
+        // (Task cancels on drop). The in-flight `Pending` resolves with
+        // `BusClosed`; an answer is impossible, so `Ok` is a failure.
+        counters.hold.store(true, Ordering::SeqCst);
         let mut pending = dispatcher.dispatch(
             &HandlerKey::from("model"),
             EffectKind::Completion {
@@ -260,31 +308,26 @@ fn main() {
                 stream: false,
             },
         );
+        guarded("proof 4", || {
+            // One poll performs the send; the pool serves it into the hold.
+            let _ = block_on(poll_once(&mut pending));
+            (counters.unary_started.load(Ordering::SeqCst) == 2).then_some(())
+        });
         world.despawn(driver_entity);
         let report = guarded("proof 4", || match block_on(poll_once(&mut pending)) {
             Some(Err(report)) => Some(report),
             Some(Ok(outcome)) => {
-                // The pool may have served it before the despawn landed; the
-                // proof is that the *next* dispatch answers closed.
-                let _ = outcome;
-                let mut next = dispatcher.dispatch(
-                    &HandlerKey::from("model"),
-                    EffectKind::Completion {
-                        request: request(),
-                        stream: false,
-                    },
-                );
-                loop {
-                    if let Some(result) = block_on(poll_once(&mut next)) {
-                        return Some(result.expect_err("the driver is gone"));
-                    }
-                    std::thread::sleep(Duration::from_millis(1));
-                }
+                panic!("proof 4: a held handler answered after the despawn: {outcome:?}")
             }
             None => None,
         });
         assert_eq!(report.kind, ErrorKind::BusClosed, "proof 4: {report:?}");
-        println!("proof 4: BusClosed after despawn");
+        assert_eq!(
+            counters.unary_served.load(Ordering::SeqCst),
+            1,
+            "proof 4: the held dispatch was never answered"
+        );
+        println!("proof 4: BusClosed after despawn of an in-flight dispatch");
     }
 
     // ---- proof 5: dispatch never blocks a system ----
@@ -327,11 +370,19 @@ fn main() {
 
     // ---- proof 6: a stream consumed across ticks, dropped mid-stream ----
     {
+        let counters = Arc::new(Counters::default());
         let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
             stream_capacity: 4,
             ..BusConfig::default()
         });
-        driver.register("model", model()).expect("register");
+        driver
+            .register(
+                "model",
+                MockModel {
+                    counters: counters.clone(),
+                },
+            )
+            .expect("register");
         let _driver_task = pool.spawn(driver);
         let mut stream: EffectStream = dispatcher.dispatch_stream(
             &HandlerKey::from("model"),
@@ -355,8 +406,12 @@ fn main() {
         });
         drop(stream);
         guarded("proof 6", || {
-            (stream_cancelled.load(Ordering::SeqCst) == 1).then_some(())
+            (counters.stream_cancelled.load(Ordering::SeqCst) == 1).then_some(())
         });
+        assert!(
+            counters.stream_sends.load(Ordering::SeqCst) < STREAM_CAP,
+            "proof 6: the stream was cancelled, not capped"
+        );
         println!("proof 6: handler observed cancellation after {received} events");
     }
 
