@@ -157,7 +157,8 @@
 //!
 //! # Record and replay
 //!
-//! [`BusDriver::record_to`] takes any [`Recorder`]; `rig_effect_log`'s
+//! [`BusDriver::record_to`] takes any [`Recorder`](rig_core::serve::Recorder)
+//! — a handler-side seam, so a recorder needs no runtime crate; `rig_effect_log`'s
 //! `EffectLogRecorder` is the one that folds every served dispatch into an
 //! effect log as it resolves, and its `EffectLogReplayer` is the handler
 //! that answers the same dispatches from the record instead of a provider.
@@ -169,7 +170,7 @@ mod registrar;
 mod sync;
 
 pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
-pub use driver::{BusConfig, BusDriver, Recorder};
+pub use driver::{BusConfig, BusDriver};
 pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
     Retrieval, ToolCall, ToolHandle, Typed, wrap_stream,

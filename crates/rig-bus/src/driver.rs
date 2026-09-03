@@ -17,9 +17,9 @@ use tracing::Instrument;
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    serve::{OnEvent, OnOutcome, OutcomeSink},
+    serve::{OnEvent, OnOutcome, OutcomeSink, Recorder},
     streaming::StreamEvent,
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::WasmBoxedFuture,
 };
 
 use rig_core::serve::{ErasedHandler, Serve};
@@ -69,28 +69,6 @@ impl Default for BusConfig {
 
 type InFlight = WasmBoxedFuture<'static, HandlerKey>;
 type InFlightServing = Pin<Box<Serving>>;
-
-/// What a driver tells about the dispatches it serves: the seam a log
-/// recorder implements. The driver calls [`handlers`](Self::handlers) once
-/// at [`BusDriver::record_to`], [`begin`](Self::begin) as each dispatch is
-/// handed to its handler, [`event`](Self::event) for every streamed event
-/// when [`keep_events`](Self::keep_events) says so, and
-/// [`resolve`](Self::resolve) when the outcome is known. A recorder is
-/// shared between the driver and its owner, so every method takes `&self`;
-/// it rides in the sink's taps, which are `Send + Sync` on every target, so
-/// a recorder is too.
-pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
-    /// The handlers registered when recording started.
-    fn handlers(&self, handlers: Vec<HandlerDescriptor>);
-    /// A dispatch is about to be served.
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind);
-    /// Whether streamed events are wanted verbatim ([`Self::event`]).
-    fn keep_events(&self) -> bool;
-    /// One streamed event of `id`.
-    fn event(&self, id: EffectId, event: &StreamEvent);
-    /// The outcome of `id`.
-    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>);
-}
 
 /// The driver's hold on a recorder: closures, like the sink's taps, so the
 /// driver names no recorder type.
@@ -258,8 +236,9 @@ impl BusDriver {
         }
     }
 
-    /// Record every served dispatch into `recorder`; the handlers registered
-    /// now are handed to it first ([`Recorder::handlers`]).
+    /// Record every served dispatch into `recorder` (a
+    /// [`rig_core::serve::Recorder`]); the handlers registered now are
+    /// handed to it first ([`Recorder::handlers`]).
     pub fn record_to<R: Recorder + Clone + Send + Sync>(&mut self, recorder: R) {
         recorder.handlers(
             self.handlers

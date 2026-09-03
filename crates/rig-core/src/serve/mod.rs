@@ -18,10 +18,12 @@
 
 pub mod adapters;
 mod handler;
+mod recorder;
 mod writer;
 
 pub use handler::{
     DetachedSink, ErasedHandler, HandlerFuture, OnEvent, OnOutcome, OutcomeSink, Serve, SinkClosed,
     StreamTap, cancelled, events_from_response, finish_unary, serve_inline, stream_truncated,
 };
+pub use recorder::Recorder;
 pub use writer::StreamWriter;

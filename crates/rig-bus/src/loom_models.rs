@@ -315,7 +315,7 @@ struct Begun {
     failed: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
-impl super::Recorder for Begun {
+impl rig_core::serve::Recorder for Begun {
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
     fn begin(&self, _id: EffectId, _key: HandlerKey, _kind: EffectKind) {
         self.begun.fetch_add(1, StdOrdering::SeqCst);

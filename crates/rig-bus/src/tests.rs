@@ -1826,7 +1826,7 @@ struct Counting {
     resolved: Arc<AtomicUsize>,
 }
 
-impl super::Recorder for Counting {
+impl rig_core::serve::Recorder for Counting {
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
     fn begin(&self, _id: rig_core::effect::EffectId, _key: HandlerKey, _kind: EffectKind) {
         self.begun.fetch_add(1, Ordering::SeqCst);

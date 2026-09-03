@@ -70,6 +70,43 @@ fn rig_bus_is_runtime_free_and_below_rig_core() {
     assert_absent("rig-bus", &[], &["rig-effect-log"]);
 }
 
+/// The recorder is a handler-side seam (`rig_core::serve::Recorder`), so
+/// rig-effect-log's only use of the bus runtime is the replayer's
+/// `register_all(&mut BusDriver)`: every other file of the crate compiles
+/// against rig-core alone. Checked at the source level, on code lines (doc
+/// comments may name the driver).
+#[test]
+fn rig_effect_log_needs_rig_bus_only_for_replay() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-effect-log/src");
+    let mut offenders = Vec::new();
+    for entry in std::fs::read_dir(&root).expect("rig-effect-log sources") {
+        let path = entry.expect("entry").path();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_owned();
+        if !name.ends_with(".rs") || name.ends_with("tests.rs") || name == "replay.rs" {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).expect("source");
+        for (number, line) in text.lines().enumerate() {
+            let code = line.trim_start();
+            if code.starts_with("//") {
+                continue;
+            }
+            if code.contains("rig_bus") {
+                offenders.push(format!("{name}:{}: {}", number + 1, line.trim()));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "rig-effect-log reaches the bus runtime outside replay.rs:\n{}",
+        offenders.join("\n")
+    );
+}
+
 /// With default features on, and — the shape a host that steps `AgentRun`
 /// itself depends on — with them off: rig-agent is a runtime-free crate.
 #[test]
