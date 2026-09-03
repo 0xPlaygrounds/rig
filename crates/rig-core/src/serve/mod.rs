@@ -22,6 +22,6 @@ mod writer;
 
 pub use handler::{
     ErasedHandler, HandlerFuture, OnEvent, OnOutcome, OutcomeSink, Serve, SinkClosed, StreamTap,
-    events_from_response, finish_unary, serve_inline, stream_truncated,
+    cancelled, events_from_response, finish_unary, serve_inline, stream_truncated,
 };
 pub use writer::StreamWriter;

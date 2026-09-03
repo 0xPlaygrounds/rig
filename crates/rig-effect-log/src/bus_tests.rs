@@ -612,3 +612,76 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
         "the fold re-emits its own boundaries, not the original deltas"
     );
 }
+
+/// Holds its dispatch open until dropped.
+struct Held;
+
+impl Serve for Held {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("held"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:held".into(),
+            },
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        let _sink = sink;
+        futures::future::pending::<()>().await;
+    }
+}
+
+#[tokio::test]
+async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_such() {
+    use futures::FutureExt;
+    let recorder = EffectLogRecorder::new();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver.register("held", Held).expect("register");
+    driver.record_to(recorder.clone());
+    let waker = futures::task::noop_waker_ref();
+    let mut cx = std::task::Context::from_waker(waker);
+    let kind = EffectKind::Custom {
+        kind: Arc::from("test:held"),
+        payload: json!({"n": 1}),
+    };
+    // Unary: in flight, then the consumer drops its `Pending`.
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("held"), kind.clone());
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 1);
+    drop(pending);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 0);
+    // Stream: the same, through an `EffectStream`.
+    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("held"), completion_kind(true));
+    assert!(stream.poll_next_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 1);
+    drop(stream);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 0);
+
+    let log = recorder.take();
+    assert_eq!(log.len(), 2);
+    for record in log.iter() {
+        let report = record
+            .outcome
+            .as_ref()
+            .expect_err("a cancelled dispatch is recorded as a failure");
+        assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
+        assert!(!report.retryable);
+    }
+
+    // A replay answers the cancel as the cancel it was, not as a handler
+    // or provider failure.
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
+    let _task = spawn(driver);
+    let report = within(dispatcher.dispatch(&HandlerKey::from("held"), kind))
+        .await
+        .expect_err("replayed as the recorded failure");
+    assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
+}
