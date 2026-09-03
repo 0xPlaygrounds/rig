@@ -5,15 +5,13 @@ use std::collections::BTreeSet;
 
 use indexmap::IndexMap;
 
-use crate::{
+use rig_core::{
     completion::ToolDefinition,
     effect::{Key, family},
+    tool::{ToolContext, ToolResult},
 };
 
-use super::{
-    ToolContext, ToolResult,
-    contextual::{RegisteredTool, ToolDispatch, dispatch_tool},
-};
+use super::registry::{RegisteredTool, ToolDispatch, dispatch_tool};
 
 /// An opaque token a catalog keeps alive for as long as it exists: a
 /// registry that retires replaced generations lazily hands one per pinned

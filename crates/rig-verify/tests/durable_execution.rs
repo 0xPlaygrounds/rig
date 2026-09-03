@@ -302,7 +302,7 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
             .tool_server_handle({
                 let server = rig_agent::tool::server::ToolServer::new().run();
                 server.add_registered_tool(
-                    rig_core::tool::RegisteredTool::from_handler(tool_replayer)
+                    rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
                         .expect("a tool-family replayer"),
                 );
                 server
@@ -465,7 +465,7 @@ async fn a_hooks_decision_is_program_not_record() {
                     .tool_server_handle({
                         let server = rig_agent::tool::server::ToolServer::new().run();
                         server.add_registered_tool(
-                            rig_core::tool::RegisteredTool::from_handler(tool_replayer)
+                            rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
                                 .expect("tool"),
                         );
                         server

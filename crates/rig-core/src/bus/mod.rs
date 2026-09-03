@@ -3,7 +3,7 @@
 //!
 //! The bus is rig-core's **only** erasure. Every other place that used to
 //! hold a `dyn CompletionModel`/`Tool`/`EmbeddingModel`/`ConversationMemory`/
-//! `VectorStoreIndex` behind a vtable now holds a [`HandlerKey`] and talks to
+//! `VectorStoreIndex` behind a vtable now holds a [`HandlerKey`](crate::effect::HandlerKey) and talks to
 //! the bus; the one stored `dyn` is the handler table inside the driver.
 //!
 //! # Three roles, three types
@@ -41,7 +41,7 @@
 //! dispatches narrowed. A [`Key<F>`](crate::effect::Key) is a handler key that carries its
 //! family: what rig mints for what it registers, bound with
 //! [`Dispatcher::bind`] on an existence check alone; an explicit or
-//! replayed key is a plain [`HandlerKey`] and binds through
+//! replayed key is a plain [`HandlerKey`](crate::effect::HandlerKey) and binds through
 //! [`Dispatcher::handle`], which checks the family. On the wire both are
 //! the same string. A host's own effect implements
 //! [`CustomEffect`](crate::effect::CustomEffect) — a declared kind label

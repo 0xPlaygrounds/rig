@@ -228,9 +228,6 @@ const _: fn() = || {
     assert_send_sync_static::<bus::ModelHandle>();
     assert_send_sync_static::<bus::Dispatcher>();
     assert_send_sync_static::<completion::ModelRef>();
-    // The erased tool set a driver forks and the per-turn catalog it pins.
-    assert_send_sync_static::<tool::ToolSet>();
-    assert_send_sync_static::<tool::ToolCatalog>();
     assert_send_sync_static::<tool::DynamicTool>();
     // One erased transport shared by every provider client a host builds.
     assert_send_sync_static::<http_client::BoxedHttpClient>();

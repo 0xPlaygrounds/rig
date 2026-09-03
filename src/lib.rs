@@ -206,10 +206,17 @@ pub mod tool {
     pub use rig_core::tool::{
         PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
     };
-    // Contextual authoring and the erased tool set — rig-core, always available.
+    // Contextual authoring and the erased tool — rig-core, always available.
     pub use rig_core::tool::{
-        DynamicTool, ErasedTool, RegisteredTool, Tool, ToolCatalog, ToolContext, ToolContextError,
-        ToolDispatch, ToolEmbedding, ToolSet, dispatch_tool, tool_definition,
+        DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
+        tool_definition,
+    };
+    // The registry — a registration, the ordered set, the per-turn catalog,
+    // dispatch by name — is the driver's: rig-agent, under `agent`.
+    #[cfg(feature = "agent")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+    pub use rig_agent::tool::{
+        RegisteredTool, ToolCatalog, ToolDispatch, ToolLease, ToolSet, dispatch_tool,
     };
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;

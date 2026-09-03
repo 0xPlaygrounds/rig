@@ -19,6 +19,7 @@ use std::{
 };
 
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
+use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_core::bus::{Bus, BusDriver, ModelHandle, adapters::CompletionAdapter};
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest,
@@ -27,7 +28,7 @@ use rig_core::completion::{
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
 use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::tool::{PortableDynamicTool, ToolCatalog, ToolContext, ToolOutput, ToolSet};
+use rig_core::tool::{PortableDynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;
 use rig_core::wasm_compat::WasmCompatSend;
 

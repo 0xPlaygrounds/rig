@@ -1302,7 +1302,7 @@ async fn registering_an_explicit_key_that_is_live_keeps_it_served() {
     let server = rig_agent::tool::server::ToolServer::new().run();
     server.attach(&registrar);
     let registration = || {
-        rig_core::tool::RegisteredTool::from_tool(Slow::default()).with_key(
+        rig_agent::tool::RegisteredTool::from_tool(Slow::default()).with_key(
             rig_core::effect::Key::new_unchecked(HandlerKey::from("host/tool:slow")),
         )
     };

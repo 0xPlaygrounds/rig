@@ -127,7 +127,7 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
                 // key: the catalog advertises the tool, the bus answers from the
                 // log, and no `Slow` exists on this side at all.
                 server.add_registered_tool(
-                    rig_core::tool::RegisteredTool::from_handler(tool_replayer)
+                    rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
                         .expect("a tool-family replayer"),
                 );
                 server
