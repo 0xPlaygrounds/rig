@@ -248,14 +248,25 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
 /// can be described without a record: its definition is in the requests
 /// that advertised it. Any other family has nothing to describe it by.
 /// The descriptor a replayer advertises for a required key the log never
-/// dispatched to: a tool from the definition the recorded requests hold,
-/// a model or a memory or retrieval index by its family alone, since the
-/// replayer answers any dispatch to it with a divergence.
+/// dispatched to: the one the header's handler table recorded for it when
+/// it was installed — a retrievable tool the index never named, a route
+/// the hook never selected — else, for a log with no handler table, a tool
+/// from the definition the recorded requests hold, or a model, memory or
+/// retrieval index by its family alone. The replayer answers any dispatch
+/// to it with a divergence.
 fn describe_required(
     key: &HandlerKey,
     family: EffectFamily,
     log: &EffectLog,
 ) -> Option<FamilyDescriptor> {
+    if let Some(installed) = log
+        .header
+        .handlers
+        .iter()
+        .find(|descriptor| &descriptor.key == key && descriptor.family.family() == family)
+    {
+        return Some(installed.family.clone());
+    }
     match family {
         EffectFamily::Tool => {
             let name = key
