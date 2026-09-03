@@ -1021,7 +1021,11 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
     let context = &contexts[0];
     assert_eq!(context.tool_name, "default_api");
     assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
-    assert_eq!(context.block_id, None);
+    // A buffered turn's call is keyed by its durable id, like its pending call.
+    assert_eq!(
+        context.block_id,
+        Some(rig_core::streaming::BlockId::wire("tool_call_1"))
+    );
     assert!(!context.is_streaming);
 }
 

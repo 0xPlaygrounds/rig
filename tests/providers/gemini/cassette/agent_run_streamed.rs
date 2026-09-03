@@ -215,10 +215,15 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
-                            assert!(
-                                call.block_id.is_some(),
-                                "streamed turns persist internal call ids: {call:?}"
-                            );
+                            // A streamed turn's call carries the block id it
+                            // arrived under: the wire id when the provider
+                            // issued one, else the id the adapter minted.
+                            match &call.block_id {
+                                rig::streaming::BlockId::Wire(id) => {
+                                    assert_eq!(id, call.tool_call.id.as_str(), "{call:?}");
+                                }
+                                rig::streaming::BlockId::Minted { .. } => {}
+                            }
                         }
                         run.tool_results(execute_pending_calls(&calls))
                             .expect("tool results should be accepted");

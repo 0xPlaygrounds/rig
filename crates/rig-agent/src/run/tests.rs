@@ -1,5 +1,6 @@
 use super::*;
 use rig_core::message::{ToolFunction, ToolResultContent};
+use rig_core::streaming::BlockId;
 use serde_json::json;
 
 #[test]
@@ -981,14 +982,15 @@ fn agent_run_deserializes_suspended_state() {
     // A suspended run persisted mid-`ExecutingTools` restores and resumes:
     // the recorded call's usage loads, the pending tool call is re-issued,
     // and the run advances to the next model call after results arrive.
-    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":null}]}}"#;
+    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":"wire:call_1"}]}}"#;
 
     let mut restored: AgentRun =
-        serde_json::from_str(fixture).expect("old-format suspended run should deserialize");
+        serde_json::from_str(fixture).expect("suspended run should deserialize");
     assert_eq!(restored.completion_calls()[0].usage, Usage::new());
 
     let calls = expect_call_tools(&mut restored);
     assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].block_id, BlockId::wire("call_1"));
     restored
         .tool_results(vec![tool_result("call_1", "2")])
         .expect("tool_results should succeed");
@@ -1049,6 +1051,13 @@ fn serde_round_trip_mid_run_resumes_identically() {
 
     let suspended = drive_to_pending_tools();
     let serialized = serde_json::to_string(&suspended).expect("mid-run state should serialize");
+    // The pending call's block id is part of the persisted state, not a
+    // default a decoder fills in: a resumed process keeps the id its
+    // consumers already saw.
+    assert!(
+        serialized.contains("\"block_id\""),
+        "the pending call persists its block id: {serialized}"
+    );
     let restored: AgentRun =
         serde_json::from_str(&serialized).expect("mid-run state should deserialize");
     let resumed = finish(restored);
@@ -1081,6 +1090,10 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
         restored_context.chat_history.len(),
         context.chat_history.len()
     );
+    // A buffered turn's call is keyed by its durable id, live and resumed
+    // alike — the same key its pending call would carry.
+    assert_eq!(context.block_id, Some(BlockId::wire("call_1")));
+    assert_eq!(restored_context.block_id, context.block_id);
 }
 
 /// A turn calling `name`, advertising it as an allowed-but-not-executable
