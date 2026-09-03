@@ -9,9 +9,7 @@
 //! the corpus that is. It still holds the corpus contract: recorded once by
 //! this producer, replayed by rig-verify with nothing behind the keys.
 
-use rig::agent::{
-    AgentBuilder, AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext,
-};
+use rig::agent::AgentBuilder;
 use rig::test_utils::{MockCompletionModel, MockTurn};
 use rig::tool::{Tool, ToolContext, ToolExecutionError};
 use serde::Deserialize;
@@ -44,23 +42,6 @@ impl Tool for Add {
     }
 }
 
-/// The program's recovery policy: an unknown tool is retried once with
-/// feedback. A hook is program, not record — the golden's replay carries
-/// the same hook and the header names it.
-struct RetryUnknownTool;
-
-impl AgentHook for RetryUnknownTool {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        context: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        Some(InvalidToolCallAction::Retry {
-            feedback: format!("there is no tool named {}; use add", context.tool_name),
-        })
-    }
-}
-
 pub(crate) fn script() -> MockCompletionModel {
     MockCompletionModel::from_turns([
         MockTurn::tool_call("call-1", "multiply", json!({"x": 2, "y": 3})),
@@ -75,7 +56,7 @@ async fn invalid_tool_call_recovery_effect_log_is_the_golden_fixture() {
         .name("golden")
         .preamble("Use the add tool.")
         .tool(Add)
-        .add_hook(RetryUnknownTool)
+        .add_hook(crate::goldens::RetryUnknownTool)
         .record_effects()
         .build();
     let response = agent
