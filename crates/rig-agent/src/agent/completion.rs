@@ -251,6 +251,10 @@ pub(crate) struct AgentConfig {
     /// The models registered as routes at build (`model_route`), part of
     /// the required row: a program that can select them needs them served.
     pub(crate) route_keys: Vec<Key<family::Completion>>,
+    /// The dynamic-context indexes registered at build
+    /// (`dynamic_context`), part of the required row: every model call
+    /// queries them.
+    pub(crate) context_keys: Vec<Key<family::Retrieve>>,
     /// Optional conversation id used when none is set per-request.
     pub(crate) conversation_id: Option<ConversationId>,
     /// The anonymous model this value selected ([`Agent::set_model`],
@@ -277,6 +281,7 @@ impl AgentConfig {
             max_turns: 1,
             hooks: HookStack::new(),
             route_keys: Vec::new(),
+            context_keys: Vec::new(),
             output_schema: None,
             output_mode: OutputMode::default(),
             memory_key: None,
@@ -562,6 +567,9 @@ impl Agent {
         }
         for key in self.tool_server_handle.retrieval_keys() {
             row.insert(key, EffectFamily::Retrieve);
+        }
+        for context in &self.config.context_keys {
+            row.insert(context.raw().clone(), EffectFamily::Retrieve);
         }
         row
     }

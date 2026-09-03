@@ -221,6 +221,26 @@ impl<ToolState> AgentBuilder<ToolState> {
         self.add_hook(DynamicContext { samples, key })
     }
 
+    /// Retrieve `samples` documents for every prompt from `handler` — any
+    /// retrieval-family handler, such as a replayer answering a recorded
+    /// index from an effect log — registered under the agent's next
+    /// context key, as [`dynamic_context`](Self::dynamic_context) would
+    /// register an index.
+    pub fn dynamic_context_handler(
+        mut self,
+        samples: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+    ) -> Self {
+        let n = self.retrieval_indexes;
+        self.retrieval_indexes += 1;
+        let suffix = format!("retrieve:context#{n}");
+        let key = Arc::new(OnceLock::new());
+        self.pending
+            .push((suffix.clone(), ErasedHandler::new(handler)));
+        self.dynamic_contexts.push((suffix, key.clone()));
+        self.add_hook(DynamicContext { samples, key })
+    }
+
     /// Set the tool choice.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.config.tool_choice = Some(tool_choice);
@@ -498,7 +518,9 @@ impl<ToolState> AgentBuilder<ToolState> {
         }
         for (suffix, slot) in dynamic_contexts {
             // The slot is this builder's own, filled exactly once.
-            let _ = slot.set(config.bus.key(&suffix));
+            let key = config.bus.key(&suffix);
+            config.context_keys.push(key.clone());
+            let _ = slot.set(key);
         }
         config.route_keys = routes
             .iter()
@@ -657,6 +679,19 @@ impl AgentBuilder<NoToolConfig> {
         self.into_tool_builder()
             .retrieved_tools(sample, index, toolset)
     }
+
+    /// Add retrievable tools chosen per request by `handler`, a
+    /// retrieval-family handler such as a replayer answering a recorded
+    /// index; see [`ToolServer::retrieved_tools_handler`].
+    pub fn retrieved_tools_handler(
+        self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder()
+            .retrieved_tools_handler(sample, handler, toolset)
+    }
 }
 
 impl AgentBuilder<WithToolServerHandle> {
@@ -728,6 +763,18 @@ impl AgentBuilder<WithBuilderTools> {
         F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
     {
         self.map_server(|server| server.retrieved_tools(sample, index, toolset))
+    }
+
+    /// Add retrievable tools chosen per request by `handler`, a
+    /// retrieval-family handler such as a replayer answering a recorded
+    /// index; see [`ToolServer::retrieved_tools_handler`].
+    pub fn retrieved_tools_handler(
+        self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> Self {
+        self.map_server(|server| server.retrieved_tools_handler(sample, handler, toolset))
     }
 
     /// Build the agent with the builder's tools.
