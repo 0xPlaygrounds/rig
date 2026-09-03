@@ -6,16 +6,18 @@
 //! 2. The driver is spawned on a `TaskPool` (the `IoTaskPool` shape) and its
 //!    `Task` held in a component — `BusDriver: Send` at the real call site.
 //! 3. A system dispatches and stores the `Pending` in a component; a second
-//!    system polls it across ticks with `block_on(poll_once(&mut pending))`
-//!    — `Unpin` and executor-neutrality in the canonical Bevy pattern.
+//!    system probes it across ticks with `Pending::poll_outcome` — no
+//!    executor, no waker minted per frame. (Proof 7 keeps the older
+//!    `block_on(poll_once(&mut pending))` spelling, which stays legal.)
 //! 4. Despawn cancels: despawning the entity holding the driver task mid
 //!    dispatch resolves the in-flight `Pending` with `BusClosed`; and a
 //!    `Pending` dropped after its send but before the driver ran is never
 //!    served — its handler is not entered.
 //! 5. Non-blocking dispatch: with the command channel full, `dispatch` from
 //!    a system returns immediately; the pressure lands on the `Pending`.
-//! 6. A `dispatch_stream` consumed across ticks then dropped mid-stream is
-//!    observed as a cancellation by the handler.
+//! 6. A `dispatch_stream` held in a component, probed across ticks with
+//!    `EffectStream::poll_item`, then dropped mid-stream is observed as a
+//!    cancellation by the handler.
 //! 7. Registration from a system: the `Registrar` is a `NonSend` resource —
 //!    the same spelling natively and in the browser — and a system installs
 //!    a handler while the driver task is running; the next tick dispatches
@@ -241,6 +243,11 @@ struct InFlight(Pending);
 #[derive(Component)]
 struct Answered(Result<Outcome, rig_core::error::ErrorReport>);
 
+// ---- proof 6: a stream in a component, probed per tick ----
+
+#[derive(Component)]
+struct InFlightStream(EffectStream);
+
 #[derive(Resource, Default)]
 struct Ticks(usize);
 
@@ -268,8 +275,8 @@ fn poll_system(
 ) {
     ticks.0 += 1;
     for (entity, mut pending) in &mut in_flight {
-        // The canonical Bevy pattern: poll once per tick, no executor of ours.
-        if let Some(outcome) = block_on(poll_once(&mut pending.0)) {
+        // Once per tick, no executor: the probe.
+        if let Some(outcome) = pending.0.poll_outcome() {
             commands
                 .entity(entity)
                 .remove::<InFlight>()
@@ -503,17 +510,21 @@ fn main() {
             )
             .expect("register");
         let _driver_task = pool.spawn(driver);
-        let mut stream: EffectStream = dispatcher.dispatch_stream(
+        // The stream lives in a component — `EffectStream: Send` on every
+        // target — and a system probes it once per tick.
+        let mut world = World::new();
+        let stream: EffectStream = dispatcher.dispatch_stream(
             &HandlerKey::from("model"),
             EffectKind::Completion {
                 request: request(),
                 stream: true,
             },
         );
+        let entity = world.spawn(InFlightStream(stream)).id();
         let mut received = 0;
         guarded("proof 6", || {
-            use futures_lite_poll::next_item;
-            match next_item(&mut stream) {
+            let mut stream = world.get_mut::<InFlightStream>(entity).expect("the stream");
+            match stream.0.poll_item() {
                 Some(Some(Ok(_))) => {
                     received += 1;
                     (received >= 3).then_some(())
@@ -523,7 +534,8 @@ fn main() {
                 None => None,
             }
         });
-        drop(stream);
+        // Despawn = drop = cancel.
+        world.despawn(entity);
         guarded("proof 6", || {
             (counters.stream_cancelled.load(Ordering::SeqCst) == 1).then_some(())
         });
@@ -582,18 +594,4 @@ fn main() {
     }
 
     println!("bevy-bus-host: ok");
-}
-
-/// `poll_once` for a stream: one poll of `next()` without an executor.
-mod futures_lite_poll {
-    use bevy_tasks::{block_on, futures_lite::future::poll_once};
-    use rig_bus::EffectStream;
-
-    pub fn next_item(
-        stream: &mut EffectStream,
-    ) -> Option<Option<Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>>>
-    {
-        use bevy_tasks::futures_lite::StreamExt;
-        block_on(poll_once(stream.next()))
-    }
 }
