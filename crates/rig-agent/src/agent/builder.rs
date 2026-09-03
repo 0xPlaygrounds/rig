@@ -127,7 +127,8 @@ enum BusSource {
 /// key of one already registered on a host's bus.
 enum DefaultModel {
     Labelled(ModelRef, ErasedHandler),
-    Key(HandlerKey),
+    /// An explicit key and the host's line that asserted it.
+    Key(HandlerKey, &'static std::panic::Location<'static>),
 }
 
 /// Builds an [`Agent`].
@@ -404,9 +405,10 @@ impl<ToolState> AgentBuilder<ToolState> {
                 pending.insert(0, (suffix, handler));
                 config.bus.model_key(label.as_str())
             }
-            DefaultModel::Key(key) => {
+            DefaultModel::Key(key, caller) => {
                 // A host's key is asserted, not minted: check what it serves
-                // now, and say so at build rather than at the first run.
+                // now, and say so at build — at the host's line — rather
+                // than at the first run.
                 if let Some(descriptor) = config.bus.dispatcher().descriptor(&key)
                     && descriptor.family.family()
                         != <family::Completion as rig_core::effect::Family>::FAMILY
@@ -414,6 +416,7 @@ impl<ToolState> AgentBuilder<ToolState> {
                     tracing::error!(
                         key = %key,
                         family = %descriptor.family.family(),
+                        %caller,
                         "the model key handed to `over_bus` does not serve a completion model"
                     );
                 }
@@ -481,6 +484,7 @@ impl AgentBuilder<NoToolConfig> {
     /// and the host drives it. Everything else the builder registers
     /// (memory, routes, tools) goes through `registrar`, keyed under
     /// `owner`.
+    #[track_caller]
     pub fn over_bus(
         dispatcher: Dispatcher,
         registrar: Registrar,
@@ -490,7 +494,7 @@ impl AgentBuilder<NoToolConfig> {
         Self::start(
             BusSource::Host(dispatcher, registrar),
             Some(owner.into()),
-            DefaultModel::Key(model),
+            DefaultModel::Key(model, std::panic::Location::caller()),
         )
     }
 
@@ -500,7 +504,7 @@ impl AgentBuilder<NoToolConfig> {
         let (placeholder, placeholder_registrar, _driver) = Bus::channel_with(BusConfig::default());
         let key = Key::new_unchecked(match &model {
             DefaultModel::Labelled(label, _) => HandlerKey::from(label.as_str()),
-            DefaultModel::Key(key) => key.clone(),
+            DefaultModel::Key(key, _) => key.clone(),
         });
         Self {
             config: AgentConfig::new(

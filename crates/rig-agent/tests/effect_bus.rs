@@ -1617,3 +1617,63 @@ async fn a_model_registered_through_the_parts_registrar_serves_the_next_run() {
     drop((agent, dispatcher, registrar));
     within(task).await.expect("driver task");
 }
+
+/// A `MakeWriter` that keeps what the subscriber wrote.
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("lock").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+    type Writer = Captured;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+#[test]
+fn a_host_key_that_serves_another_family_is_reported_at_the_hosts_line() {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    driver
+        .register(
+            "not-a-model",
+            rig_core::bus::adapters::ToolAdapter::new(Slow::default()),
+        )
+        .expect("register");
+    let captured = Captured::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(captured.clone())
+        .with_ansi(false)
+        .with_max_level(tracing::Level::ERROR)
+        .finish();
+    let expected_line = line!() + 2;
+    let _agent = tracing::subscriber::with_default(subscriber, || {
+        AgentBuilder::over_bus(
+            dispatcher,
+            registrar,
+            "guest",
+            HandlerKey::from("not-a-model"),
+        )
+        .build()
+    });
+    drop(driver);
+    let logged = String::from_utf8(captured.0.lock().expect("lock").clone()).expect("utf8");
+    assert!(
+        logged.contains("does not serve a completion model"),
+        "the build reported the key: {logged}"
+    );
+    assert!(
+        logged.contains(&format!("effect_bus.rs:{expected_line}")),
+        "the report names the host's line, not the builder's: {logged}"
+    );
+}

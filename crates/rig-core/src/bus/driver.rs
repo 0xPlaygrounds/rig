@@ -551,7 +551,7 @@ impl StreamTap {
 }
 
 #[cfg(not(target_family = "wasm"))]
-const _: fn() = || {
-    fn assert_send<T: Send + 'static>() {}
+const _: () = {
+    const fn assert_send<T: Send + 'static>() {}
     assert_send::<BusDriver>();
 };

@@ -247,6 +247,9 @@ pub trait Served: sealed::Sealed + 'static {
     const SERVED: Option<EffectFamily>;
 }
 
+// `Served` is sealed; a handler's family is a `Family` marker or `Dynamic`,
+// and an error about it should say so rather than suggest this impl.
+#[diagnostic::do_not_recommend]
 impl<F: Family> Served for F {
     const SERVED: Option<EffectFamily> = Some(F::FAMILY);
 }

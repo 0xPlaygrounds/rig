@@ -295,10 +295,19 @@ impl AgentBus {
 /// the key's family — the one thing `Dispatcher::register` refuses. The
 /// refusal is therefore unreachable here; it is asserted in debug builds
 /// and logged, never swallowed silently, in release.
+#[track_caller]
 pub(crate) fn register_generated(registered: Result<(), rig_core::error::ErrorReport>) {
     if let Err(report) = registered {
-        debug_assert!(false, "a generated key changed family: {report}");
-        tracing::error!(%report, "a generated bus key changed family; the registration was refused");
+        let caller = std::panic::Location::caller();
+        debug_assert!(
+            false,
+            "a generated key changed family at {caller}: {report}"
+        );
+        tracing::error!(
+            %report,
+            %caller,
+            "a generated bus key changed family; the registration was refused"
+        );
     }
 }
 
