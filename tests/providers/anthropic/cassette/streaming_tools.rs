@@ -647,3 +647,86 @@ fn content_items(message: &Value) -> impl Iterator<Item = &Value> {
         .into_iter()
         .flatten()
 }
+
+/// Golden `anthropic_streaming_with_events`: a streamed tool turn recorded
+/// with its stream events kept, so the corpus pins the event sequence, not
+/// only the folded completion.
+#[tokio::test]
+async fn streaming_tools_effect_log_is_the_golden_fixture() {
+    with_anthropic_cassette(
+        "streaming_tools/streaming_tools_smoke",
+        |client| async move {
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .name("golden")
+                .preamble(STREAMING_TOOLS_PREAMBLE)
+                .tool(Adder)
+                .tool(Subtract)
+                .default_max_turns(2)
+                .record_effects_with_events()
+                .build();
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming tool prompt should succeed");
+            assert_mentions_expected_number(&response, -3);
+            let log = agent.take_effect_log().expect("recording");
+            assert!(
+                log.records.iter().any(|record| record
+                    .events
+                    .as_ref()
+                    .is_some_and(|events| !events.is_empty())),
+                "a streamed completion keeps its events"
+            );
+            crate::goldens::golden_effects("anthropic_streaming_with_events", &log);
+        },
+    )
+    .await;
+}
+
+/// Golden `anthropic_concurrent_tools_serial`: two tool calls in one turn
+/// dispatched concurrently by the runner and served one at a time per key
+/// (`serial_per_handler: true`) — the cassette-ordered property, recorded.
+#[tokio::test]
+async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
+    with_anthropic_cassette(
+        "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
+        |client| async move {
+            let order = OutOfOrderSignalOrder::default();
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .name("golden")
+                .configure_bus(rig_bus::BusConfig {
+                    serial_per_handler: true,
+                    ..rig_bus::BusConfig::default()
+                })
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tool(OutOfOrderAlphaSignal(order.clone()))
+                .tool(OutOfOrderBetaSignal(order))
+                .record_effects()
+                .build();
+            let mut stream = agent
+                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .max_turns(8)
+                .tool_concurrency(2)
+                .stream()
+                .await;
+            let observation = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                collect_concurrent_tool_observation(&mut stream),
+            )
+            .await
+            .expect("serial serving is per key; two tools never wait on each other");
+            assert!(observation.errors.is_empty(), "{:?}", observation.errors);
+            assert!(observation.got_final_response);
+            let log = agent.take_effect_log().expect("recording");
+            assert_eq!(
+                log.header.bus.map(|bus| bus.serial_per_handler),
+                Some(true),
+                "the header says how it was served"
+            );
+            crate::goldens::golden_effects("anthropic_concurrent_tools_serial", &log);
+        },
+    )
+    .await;
+}

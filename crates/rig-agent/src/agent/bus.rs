@@ -27,7 +27,7 @@ use super::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
-use rig_bus::{BusDriver, Dispatcher, Registrar};
+use rig_bus::{BusConfig, BusDriver, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
@@ -84,6 +84,8 @@ pub(crate) struct AgentBus {
     wakers: Arc<WakerSet>,
     recorder: Option<EffectLogRecorder>,
     anonymous_models: Arc<AtomicUsize>,
+    /// The policy the owned bus was created with; `None` over a host's bus.
+    config: Option<BusConfig>,
 }
 
 impl std::fmt::Debug for AgentBus {
@@ -102,6 +104,7 @@ impl AgentBus {
         registrar: Registrar,
         driver: BusDriver,
         owner: String,
+        config: BusConfig,
     ) -> Self {
         Self {
             dispatcher,
@@ -111,14 +114,20 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
+            config: Some(config),
         }
+    }
+
+    /// The policy the owned bus runs under; `None` over a host's bus.
+    pub(crate) fn config(&self) -> Option<BusConfig> {
+        self.config
     }
 
     /// Install a recorder on the owned driver. Called at build, when the
     /// builder is the driver's only holder; a bus this agent does not own
     /// (or one another agent value already shares) cannot record, and says
     /// so.
-    pub(crate) fn enable_recording(&mut self) -> Result<(), ErrorReport> {
+    pub(crate) fn enable_recording(&mut self, keep_events: bool) -> Result<(), ErrorReport> {
         let Some(driver) = self.driver.as_mut() else {
             return Err(ErrorReport::new(
                 rig_core::error::ErrorKind::Internal,
@@ -131,7 +140,11 @@ impl AgentBus {
                 "recording is enabled at build, before a clone shares the driver",
             ));
         };
-        let recorder = EffectLogRecorder::new();
+        let recorder = if keep_events {
+            EffectLogRecorder::keeping_stream_events()
+        } else {
+            EffectLogRecorder::new()
+        };
         driver
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -149,6 +162,7 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
+            config: None,
         }
     }
 
@@ -165,6 +179,7 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             recorder: self.recorder.clone(),
             anonymous_models: self.anonymous_models.clone(),
+            config: self.config,
         }
     }
 

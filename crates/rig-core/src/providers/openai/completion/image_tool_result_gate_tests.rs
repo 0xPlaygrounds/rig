@@ -26,7 +26,7 @@ fn params(
             model: None,
             chat_history: vec![message::Message::User {
                 content: vec![message::UserContent::ToolResult(message::ToolResult {
-                    call: message::ToolCallId::new_or_mint("call_1"),
+                    call: message::ToolCallId::new_or_minted("call_1", 0),
                     provider: message::ProviderCallId::new("call_1"),
                     name: "view_file".to_string(),
                     content,

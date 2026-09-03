@@ -1,0 +1,137 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Write a 600-word essay on the history of the Rust programming language.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_1
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":35,"output_tokens":5,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"# The History of the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Rust Programming Language","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\nRust is a systems programming language that has grown from a personal side project into one of the most admired and widely discussed programming languages in the software development world","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":". Its history is a story of careful design, community collaboration, and a determined effort to solve some of the most persistent","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" problems in low-level programming.\n\n## Origins: A Personal Project\n\nRust began in 2006 as a personal project by Graydon Hoare, a software developer","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" working at Mozilla. Hoare was frustrated by a broken elevator in his apartment building — a malfunction he","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" attributed to software bugs — and began thinking seriously about how programming languages could be designed to prevent the kinds of memory","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" errors that cause such failures. He started developing Rust in his spare time, aiming to create a language that offered the performance","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" of C and C++ while eliminating entire categories of bugs related to memory safety and concurrency.\n\nMozilla took notice of Hoare's work","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" and began officially sponsoring the project in 2009. The company had a practical motivation: it","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" wanted a safer, more reliable language for building components of its Firefox browser, particularly","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" a new experimental browser engine called Servo. With institutional support, Rust's development accelerated significantly.\n\n## Early","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" Development and the Road to 1.0\n\nThe early years of Rust's development were marked by significant experimentation. The language went","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" through numerous design changes, and many features that existed in early versions were later removed or fundamentally altered. Concepts like garbage","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" collection, which appeared in early iterations, were eventually abandoned in favor of Rust's now-signature ownership system. This system allows","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the compiler to manage memory automatically without a runtime garbage collector, enforcing strict rules about how data is","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" accessed and shared.\n\nRust's first public release came in 2010, and the language attracted a small but enthusiastic community of","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" early adopters. The development process was notably open, with discussions happening publicly and community feedback playing","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" a genuine role in shaping the language's direction. In 2012, the first pre-alpha release was made available, and the language continued","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" to evolve rapidly through the following years.\n\nAfter years of iteration and refinement, Rust 1.0 was officially released on May 15, 2015. This milestone was","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" significant because it marked the language's first stable release, meaning developers could write code with confidence that future versions would not break their programs. The release was celebrated widely in","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the programming community and signaled that Rust was ready for serious use.\n\n## Growth and Community\n\nFollowing the 1.0 release, Rust's","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" popularity grew steadily. Mozilla established the Rust Core Team to guide the language's development, and a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" formal governance structure helped manage contributions from an expanding global community. The language introduced a regular six","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"-week release cycle, ensuring consistent progress without sacrificing stability.\n\nOne of the most remarkable aspects of Rust's rise has been its reception among","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" developers. Since 2016, Rust has consistently ranked as the most loved programming language in Stack Overflow's annual developer survey, a","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" streak that has continued for nearly a decade. Developers praise its performance, reliability, and the confidence that comes from writing","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" code that the compiler rigorously checks.\n\n## Recent Milestones\n\nIn 2021, the Mozilla-","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"independent Rust Foundation was established, with major technology companies including Google, Microsoft, Amazon, and Huawei among its founding members. This transition","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" ensured that Rust's future would not depend on any single organization. In 2022, Rust became the second","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" programming language, after C and C++, to be supported in the Linux kernel — a landmark achievement that underscored its credibility as a serious systems","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" programming language.\n\nFrom a frustrated developer's side project to a cornerstone of modern systems programming, Rust's history reflects both vis","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ionary design and the power of open-source collaboration.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":35,"output_tokens":820}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

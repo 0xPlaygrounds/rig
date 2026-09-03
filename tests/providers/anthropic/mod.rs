@@ -5,6 +5,7 @@ mod cassette {
     mod boxed_transport;
     mod default_max_turns;
     mod document_file_id;
+    mod effect_corpus;
     mod empty_end_turn;
     mod empty_stop_sequence_matrix;
     mod error_envelope;

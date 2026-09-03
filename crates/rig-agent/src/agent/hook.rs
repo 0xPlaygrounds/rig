@@ -1534,6 +1534,9 @@ where
 #[derive(Clone, Default)]
 pub struct HookStack {
     hooks: Vec<Arc<dyn DynAgentHook>>,
+    /// The type name of every hook, in registration order, nested stacks
+    /// flattened: what an effect log's header records as the program.
+    names: Vec<&'static str>,
 }
 
 impl std::fmt::Debug for HookStack {
@@ -1541,6 +1544,18 @@ impl std::fmt::Debug for HookStack {
         f.debug_struct("HookStack")
             .field("len", &self.hooks.len())
             .finish()
+    }
+}
+
+/// `H`'s type name without its module path (generic arguments kept), the
+/// name a [`HookStack`] records for it.
+fn short_type_name<H>() -> &'static str {
+    let full = std::any::type_name::<H>();
+    let generics = full.find('<').unwrap_or(full.len());
+    let path = &full[..generics];
+    match path.rfind("::") {
+        Some(at) => &full[at + 2..],
+        None => full,
     }
 }
 
@@ -1558,8 +1573,26 @@ impl HookStack {
     }
 
     /// Appends a hook to the end of the stack's registration order.
+    ///
+    /// The stack names the hook by its type's last path segment (`Tagger`,
+    /// not `my_crate::hooks::Tagger`): the name is the program identity an
+    /// effect log records, and the same program compiled into another
+    /// crate — a test suite replaying a golden its producer recorded — must
+    /// name the same hooks.
     pub fn push<H: AgentHook + 'static>(&mut self, hook: H) {
+        // A nested stack contributes its members' names, flattened in
+        // order, so two stacks that run the same hooks name the same program.
+        match (&hook as &dyn std::any::Any).downcast_ref::<HookStack>() {
+            Some(nested) => self.names.extend(nested.names.iter().copied()),
+            None => self.names.push(short_type_name::<H>()),
+        }
         self.hooks.push(Arc::new(hook));
+    }
+
+    /// The type names of the hooks in registration order (nested stacks
+    /// flattened) — the program identity an effect log records.
+    pub fn names(&self) -> Vec<String> {
+        self.names.iter().map(|name| (*name).to_owned()).collect()
     }
 
     /// Returns `true` when the stack contains no hooks.

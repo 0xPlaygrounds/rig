@@ -2,12 +2,14 @@
 //! into an [`EffectLog`].
 
 use std::{
+    collections::BTreeMap,
     fmt,
     sync::{Arc, Mutex, PoisonError},
 };
 
 use rig_core::serve::Recorder;
 use rig_core::{
+    effect::EffectFamily,
     effect::{EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
@@ -89,11 +91,35 @@ impl EffectLogRecorder {
             .run_spec = Some(hash);
     }
 
+    /// Stamp what names the program into the header: its hook stack, its
+    /// required effect row, and the bus policy it runs under.
+    pub fn set_program(
+        &self,
+        hooks: Vec<String>,
+        required: BTreeMap<HandlerKey, EffectFamily>,
+        bus: Option<rig_bus::BusConfig>,
+    ) {
+        let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
+        header.hooks = hooks;
+        header.required = required;
+        header.bus = bus;
+    }
+
+    /// Describe handlers: a key already described is re-described in place,
+    /// a new one appended, so the header lists every handler the driver
+    /// served during the recording, in installation order.
     fn set_handlers(&self, handlers: Vec<HandlerDescriptor>) {
-        self.header
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .handlers = handlers;
+        let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
+        for handler in handlers {
+            match header
+                .handlers
+                .iter_mut()
+                .find(|known| known.key == handler.key)
+            {
+                Some(known) => *known = handler,
+                None => header.handlers.push(handler),
+            }
+        }
     }
 
     /// A copy of every resolved dispatch so far, in dispatch order, under

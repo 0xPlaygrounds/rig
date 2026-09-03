@@ -672,13 +672,29 @@ pub fn events_from_response(
                 Err(error) => out.error(crate::completion::CompletionError::JsonError(error)),
             },
             AssistantContent::ToolCall(call) => {
-                let id = BlockId::wire(call.id.as_str());
+                // The call's ids travel verbatim, so the accumulator publishes
+                // the same durable id and the same `provider` the folded
+                // response held: a provider's single id as the wire's tool
+                // id, a dual (call id, item id) as both, and a minted
+                // `tool-<n>` as the minted block it names — no wire id at
+                // all, so no provider id is derived from it.
                 let mut end =
                     ToolCallEnd::whole(call.function.name.clone(), call.function.arguments.clone())
-                        .with_tool_id(call.id.as_str());
-                if let Some(provider) = &call.provider {
-                    end = end.with_call_id(provider.call_id.clone());
-                }
+                        .with_signature(call.signature.clone())
+                        .with_additional_params(call.additional_params.clone());
+                let id = match &call.provider {
+                    Some(provider) => {
+                        end = match &provider.item_id {
+                            Some(item_id) => end
+                                .with_call_id(provider.call_id.clone())
+                                .with_tool_id(item_id.clone()),
+                            None => end.with_tool_id(provider.call_id.clone()),
+                        };
+                        BlockId::wire(call.id.as_str())
+                    }
+                    None => BlockId::from_minted_name(call.id.as_str())
+                        .unwrap_or_else(|| BlockId::wire(call.id.as_str())),
+                };
                 out.tool_call(id, end);
             }
         }

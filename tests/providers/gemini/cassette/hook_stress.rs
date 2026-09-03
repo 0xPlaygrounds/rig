@@ -784,3 +784,63 @@ fn assert_hook_impls() {
         marker: "",
     });
 }
+
+/// Golden `gemini_tool_call_turns`: two tool turns on a wire that carries
+/// no tool-call ids. Every id in the log is minted from the block that
+/// assembled the call, so the record is the same on every run — the proof
+/// that nothing the engine mints is random.
+#[tokio::test]
+async fn tool_call_turns_effect_log_is_the_golden_fixture() {
+    let add = CountingAdd::default();
+    let subtract = CountingSubtract::default();
+    with_gemini_cassette(
+        "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .name("stress-agent")
+                .preamble(CHAIN_PREAMBLE)
+                .temperature(0.0)
+                .tool(add)
+                .tool(subtract)
+                .record_effects()
+                .build();
+            let mut stream = agent
+                .stream_prompt(
+                    "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
+                     subtract tool. Report the final number.",
+                )
+                .max_turns(6)
+                .stream()
+                .await;
+            let mut saw_final = false;
+            while let Some(item) = stream.next().await {
+                if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
+                    saw_final = true;
+                }
+            }
+            assert!(saw_final, "the stream must yield a FinalResponse");
+            let log = agent.take_effect_log().expect("recording");
+            let tool_ids: Vec<String> = log
+                .records
+                .iter()
+                .filter_map(|record| match &record.outcome {
+                    Ok(rig::effect::Outcome::Completion(response)) => Some(response),
+                    _ => None,
+                })
+                .flat_map(|response| response.choice.iter())
+                .filter_map(|content| match content {
+                    rig::message::AssistantContent::ToolCall(call) => Some(call.id.to_string()),
+                    _ => None,
+                })
+                .collect();
+            assert!(!tool_ids.is_empty(), "the program calls tools");
+            assert!(
+                tool_ids.iter().all(|id| id.starts_with("tool-")),
+                "every id-less wire call is named by its block: {tool_ids:?}"
+            );
+            crate::goldens::golden_effects("gemini_tool_call_turns", &log);
+        },
+    )
+    .await;
+}

@@ -521,7 +521,36 @@ impl Agent {
 
     fn stamp(&self, mut log: EffectLog) -> EffectLog {
         log.header.run_spec = Some(self.run_spec_hash());
+        log.header.hooks = self.config.hooks.names();
+        log.header.required = self.required_row();
+        log.header.bus = self.config.bus.config();
         log
+    }
+
+    /// The effect row this program can dispatch to: its model, every tool
+    /// the registry serves, its memory backend and its retrieval indexes,
+    /// each with the family it needs — from the registry, not from what a
+    /// run happened to dispatch.
+    pub fn required_row(
+        &self,
+    ) -> std::collections::BTreeMap<rig_core::effect::HandlerKey, rig_core::effect::EffectFamily>
+    {
+        use rig_core::effect::EffectFamily;
+        let mut row = std::collections::BTreeMap::new();
+        row.insert(
+            self.config.model_key.raw().clone(),
+            EffectFamily::Completion,
+        );
+        if let Some(memory) = &self.config.memory_key {
+            row.insert(memory.raw().clone(), EffectFamily::Memory);
+        }
+        for (_, tool) in self.tool_server_handle.toolset().iter() {
+            row.insert(tool.key().raw().clone(), EffectFamily::Tool);
+        }
+        for key in self.tool_server_handle.retrieval_keys() {
+            row.insert(key, EffectFamily::Retrieve);
+        }
+        row
     }
 
     /// Whether `log` can be replayed by this agent: the log's format is this
@@ -541,6 +570,29 @@ impl Agent {
                     ),
                 ));
             }
+        }
+        // Hooks are program: a different stack re-makes different decisions.
+        let mine = self.config.hooks.names();
+        if log.header.hooks != mine {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                format!(
+                    "replay refused: the log was recorded under the hook stack {:?}, this agent runs under {mine:?}",
+                    log.header.hooks
+                ),
+            ));
+        }
+        // The serving policy: dispatch order is the same under either, but
+        // a log states the one it ran under and the agent must match it.
+        if let (Some(recorded), Some(mine)) = (log.header.bus, self.config.bus.config())
+            && recorded != mine
+        {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                format!(
+                    "replay refused: the log was recorded under bus policy {recorded:?}, this agent runs under {mine:?}"
+                ),
+            ));
         }
         for (key, family) in &log.header.signature {
             match self.config.bus.dispatcher().descriptor(key) {
@@ -562,7 +614,54 @@ impl Agent {
                 }
             }
         }
+        // The program's required row must be served by the log's handlers.
+        let served: std::collections::BTreeMap<_, _> = log
+            .header
+            .handlers
+            .iter()
+            .map(|descriptor| (descriptor.key.clone(), descriptor.family.family()))
+            .collect();
+        for (key, family) in self.required_row() {
+            match served.get(&key) {
+                Some(recorded) if *recorded == family => {}
+                Some(recorded) => {
+                    return Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!(
+                            "replay refused: this agent needs `{key}` as {family}, the log served it as {recorded}"
+                        ),
+                    ));
+                }
+                None => {
+                    return Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!(
+                            "replay refused: this agent needs `{key}` ({family}), which the log never served"
+                        ),
+                    ));
+                }
+            }
+        }
+        // And the row itself is program identity: a program that needs a
+        // key the recorded one did not (or the reverse) advertises a
+        // different tool set, memory or retrieval than the record's
+        // requests hold.
+        let mine = self.required_row();
+        if log.header.required != mine {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::HandlerUnavailable,
+                format!(
+                    "replay refused: the log was recorded by a program requiring {:?}, this agent requires {mine:?}",
+                    log.header.required
+                ),
+            ));
+        }
         Ok(())
+    }
+
+    /// The policy this agent's own bus runs under; `None` over a host's bus.
+    pub fn bus_config(&self) -> Option<rig_bus::BusConfig> {
+        self.config.bus.config()
     }
 
     /// Whether this agent owns and drives its own bus driver.
