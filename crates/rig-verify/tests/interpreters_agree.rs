@@ -2,10 +2,11 @@
 //! interpreters of one syntax tree must). The bus-driven engine
 //! (`Agent::runner`) and a hand driver of `AgentRun::next_step` (the shape
 //! of `tests/fixtures/agent_run_stepper`) run the same scripted model and
-//! the same tools, and produce the same sequence of effects — families and
-//! tool names, in order — and the same answer. Stated as a proptest property
-//! over generated scripts, tool concurrency and serial serving; shrinking
-//! yields the smallest disagreeing script, and there is none.
+//! the same tools **over the same bus keys**, and produce the same sequence
+//! of effects — every request and every outcome as data, in order, not
+//! only families and names — and the same answer. Stated as a proptest
+//! property over generated scripts, tool concurrency and serial serving;
+//! shrinking yields the smallest disagreeing script, and there is none.
 //!
 //! Strategy size: one to four turns, each either text or one to three tool
 //! calls from a fixed set of two tools, always ending in text; 256 cases by
@@ -19,15 +20,16 @@ use proptest::prelude::*;
 use rig_agent::{
     AgentBuilder,
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
-    tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
+    tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_bus::BusConfig;
+use rig_bus::{BusConfig, ModelHandle, ToolHandle};
 use rig_core::{
-    completion::{CompletionModel, CompletionRequestBuilder},
-    effect::EffectKind,
+    completion::CompletionRequestBuilder,
+    effect::{EffectKind, EffectRecord},
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
 };
+use rig_effect_log::EffectLogRecorder;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -126,9 +128,25 @@ fn model_for(case: &Case) -> MockCompletionModel {
     }))
 }
 
-/// What one interpreter did: `completion` per model call, `tool:<name>` per
-/// tool call, in the order the interpreter performed them.
-type Trace = Vec<String>;
+/// What one interpreter did: every effect it performed — the request as
+/// data, with the tool context stripped (it is the one field the two
+/// interpreters legitimately fill differently) — and what it got back, in
+/// the order it performed them.
+type Trace = Vec<(serde_json::Value, serde_json::Value)>;
+
+fn trace_of<'a>(records: impl IntoIterator<Item = &'a EffectRecord>) -> Trace {
+    records
+        .into_iter()
+        .map(|record| {
+            let mut kind = serde_json::to_value(&record.kind).expect("a kind serializes");
+            if let Some(object) = kind.as_object_mut() {
+                object.remove("context");
+            }
+            let outcome = serde_json::to_value(&record.outcome).expect("an outcome serializes");
+            (kind, outcome)
+        })
+        .collect()
+}
 
 async fn bus_interpreter(case: &Case) -> (String, Trace) {
     let agent = AgentBuilder::with_bus_config(
@@ -154,32 +172,61 @@ async fn bus_interpreter(case: &Case) -> (String, Trace) {
     .await
     .expect("never hangs")
     .expect("the bus-driven run");
-    let trace = agent
-        .take_effect_log()
-        .expect("recording")
-        .iter()
-        .map(|record| match &record.kind {
-            EffectKind::Completion { .. } => "completion".to_owned(),
-            EffectKind::ToolCall { name, .. } => format!("tool:{name}"),
-            other => format!("other:{}", other.name()),
-        })
-        .collect();
-    (response.output, trace)
+    let log = agent.take_effect_log().expect("recording");
+    assert!(
+        log.iter().all(|record| matches!(
+            record.kind,
+            EffectKind::Completion { .. } | EffectKind::ToolCall { .. }
+        )),
+        "only completions and tool calls in this program"
+    );
+    (response.output, trace_of(log.iter()))
 }
 
 async fn hand_interpreter(case: &Case) -> (String, Trace) {
-    let model = model_for(case);
-    let mut tools = ToolSet::default();
-    tools.add_tool(Alpha);
-    tools.add_tool(Beta);
-    let catalog = tools.catalog();
+    // The same program's bus — the same keys, the same handlers — driven
+    // by hand: the model and the tools are reached through typed views,
+    // never called directly, so the record is the bus's, as the engine's is.
+    let agent = AgentBuilder::with_bus_config(
+        BusConfig {
+            serial_per_handler: case.serial_per_handler,
+            ..BusConfig::default()
+        },
+        "default",
+        model_for(case),
+    )
+    .tool(Alpha)
+    .tool(Beta)
+    .build();
+    let model_key = agent.model_key().clone();
+    let parts = agent
+        .into_parts()
+        .unwrap_or_else(|_| panic!("the only clone"));
+    let rig_agent::agent::AgentParts {
+        dispatcher,
+        registrar: _,
+        mut driver,
+        agent,
+    } = parts;
+    let recorder = EffectLogRecorder::new();
+    driver.record_to(recorder.clone());
+    let driver_task = tokio::spawn(driver);
+    let model: ModelHandle = dispatcher.bind(&model_key).expect("the model");
+    let catalog = agent.tool_server_handle().snapshot();
+    let tool_handle = |name: &str| -> ToolHandle {
+        let key = dispatcher
+            .keys()
+            .into_iter()
+            .find(|key| key.as_str().contains(&format!("/tool:{name}#")))
+            .expect("the tool is published");
+        dispatcher.handle(&key).expect("a tool")
+    };
     let spec = RunSpec {
         max_turns: Some(case.turns.len()),
         ..RunSpec::new()
     };
     let mut run = AgentRun::from_spec(&spec, "go", None);
-    let mut trace = Vec::new();
-    loop {
+    let output = loop {
         match run.next_step().expect("a step") {
             AgentRunStep::CallModel {
                 prompt,
@@ -201,8 +248,11 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 let request = prepared
                     .apply(CompletionRequestBuilder::unbound(prompt))
                     .build();
-                trace.push("completion".to_owned());
-                let response = model.completion(request).await.expect("the model");
+                let response =
+                    tokio::time::timeout(Duration::from_secs(5), model.complete(request))
+                        .await
+                        .expect("never hangs")
+                        .expect("the model");
                 run.model_response(ModelTurn::new(
                     None,
                     response.choice,
@@ -216,26 +266,36 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 let mut results = Vec::with_capacity(calls.len());
                 for call in calls {
                     let name = call.tool_call.function.name.clone();
-                    trace.push(format!("tool:{name}"));
-                    let result = catalog
-                        .execute(
-                            &name,
-                            &call.tool_call.function.arguments.to_string(),
-                            &mut ToolContext::new(),
-                        )
-                        .await;
+                    let answer = tokio::time::timeout(
+                        Duration::from_secs(5),
+                        tool_handle(&name).call(
+                            name.clone(),
+                            call.tool_call.function.arguments.to_string(),
+                            ToolContext::new(),
+                        ),
+                    )
+                    .await
+                    .expect("never hangs")
+                    .expect("the tool");
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
                         call.tool_call.provider.clone(),
                         name,
-                        result.output().clone(),
+                        answer.result.output().clone(),
                     ));
                 }
                 run.tool_results(results).expect("tool results");
             }
-            AgentRunStep::Done(response) => return (response.output, trace),
+            AgentRunStep::Done(response) => break response.output,
         }
-    }
+    };
+    drop((model, dispatcher, agent));
+    tokio::time::timeout(Duration::from_secs(5), driver_task)
+        .await
+        .expect("never hangs")
+        .expect("driver task");
+    let log = recorder.take();
+    (output, trace_of(log.iter()))
 }
 
 proptest! {
@@ -250,6 +310,14 @@ proptest! {
         let (bus_output, bus_trace) = runtime.block_on(bus_interpreter(&case));
         let (hand_output, hand_trace) = runtime.block_on(hand_interpreter(&case));
         prop_assert_eq!(&bus_output, &hand_output, "the same answer");
-        prop_assert_eq!(&bus_trace, &hand_trace, "the same effects, in order");
+        prop_assert_eq!(
+            bus_trace.len(),
+            hand_trace.len(),
+            "the same number of effects"
+        );
+        for (index, (bus, hand)) in bus_trace.iter().zip(&hand_trace).enumerate() {
+            prop_assert_eq!(&bus.0, &hand.0, "effect {} differs in its request", index);
+            prop_assert_eq!(&bus.1, &hand.1, "effect {} differs in its outcome", index);
+        }
     }
 }

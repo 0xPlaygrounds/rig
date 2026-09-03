@@ -35,6 +35,19 @@ use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use serde::Deserialize;
 use serde_json::json;
 
+/// A record as data, the tool context stripped (the one field a hand
+/// driver and the engine legitimately fill differently).
+fn as_data(record: &rig_core::effect::EffectRecord) -> (serde_json::Value, serde_json::Value) {
+    let mut kind = serde_json::to_value(&record.kind).expect("a kind serializes");
+    if let Some(object) = kind.as_object_mut() {
+        object.remove("context");
+    }
+    (
+        kind,
+        serde_json::to_value(&record.outcome).expect("an outcome serializes"),
+    )
+}
+
 async fn within<T>(future: impl Future<Output = T>) -> T {
     tokio::time::timeout(Duration::from_secs(5), future)
         .await
@@ -272,13 +285,13 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
     assert_eq!(
         partial_log
             .iter()
-            .map(|record| (record.kind.family(), record.key.clone()))
+            .map(|record| (record.key.clone(), as_data(record)))
             .collect::<Vec<_>>(),
         reference_log[..partial_log.len()]
             .iter()
-            .map(|record| (record.kind.family(), record.key.clone()))
+            .map(|record| (record.key.clone(), as_data(record)))
             .collect::<Vec<_>>(),
-        "the hand driver's record is the reference log's head"
+        "the hand driver's record is the reference log's head, request and outcome"
     );
     let continuation: EffectLog = reference_log.tail(partial_log.len());
     let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_bus::BusConfig {
@@ -328,13 +341,13 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
     assert_eq!(
         resumed_log
             .iter()
-            .map(|record| (record.kind.family(), record.key.clone()))
+            .map(|record| (record.key.clone(), as_data(record)))
             .collect::<Vec<_>>(),
         continuation
             .iter()
-            .map(|record| (record.kind.family(), record.key.clone()))
+            .map(|record| (record.key.clone(), as_data(record)))
             .collect::<Vec<_>>(),
-        "the resumed run performed exactly the reference run's remaining effects"
+        "the resumed run performed exactly the reference run's remaining effects, request and outcome"
     );
     drop((resumed_agent, dispatcher, registrar));
     within(replay_task).await.expect("replay driver");
