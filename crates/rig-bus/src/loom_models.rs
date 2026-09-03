@@ -257,3 +257,137 @@ fn loom_registrar_after_close_keeps_nothing() {
         assert!(registrar.is_closed());
     });
 }
+
+/// Counts polls of the handler and records opened by the driver: the two
+/// must agree however a consumer's drop interleaves with the driver's poll.
+#[derive(Clone)]
+struct Counted {
+    polled: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Serve for Counted {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("k"),
+            family: FamilyDescriptor::Custom { kind: "m".into() },
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
+        self.polled.fetch_add(1, StdOrdering::SeqCst);
+        // One yield before answering, the shape of any handler that does IO.
+        let mut yielded = false;
+        futures::future::poll_fn(|cx| {
+            if yielded {
+                std::task::Poll::Ready(())
+            } else {
+                yielded = true;
+                cx.waker().wake_by_ref();
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+        sink.resolve(Ok(rig_core::effect::Outcome::Custom(
+            serde_json::Value::Null,
+        )))
+        .await;
+    }
+}
+
+/// Records opened, and outcomes that were failures.
+#[derive(Clone)]
+struct Begun {
+    begun: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    failed: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl super::Recorder for Begun {
+    fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
+    fn begin(&self, _id: EffectId, _key: HandlerKey, _kind: EffectKind) {
+        self.begun.fetch_add(1, StdOrdering::SeqCst);
+    }
+    fn keep_events(&self) -> bool {
+        false
+    }
+    fn event(&self, _id: EffectId, _event: &rig_core::streaming::StreamEvent) {}
+    fn resolve(
+        &self,
+        _id: EffectId,
+        outcome: Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) {
+        if outcome.is_err() {
+            self.failed.fetch_add(1, StdOrdering::SeqCst);
+        }
+    }
+}
+
+/// A consumer dropping its dispatch racing the driver's poll: whichever
+/// order the model picks, a record is opened only for a dispatch whose
+/// handler was polled, no record ever resolves as the "handler dropped its
+/// sink" failure (before the fix, a cancel that landed before the driver's
+/// poll opened a record and then failed it that way), and the driver ends
+/// with nothing in flight.
+#[test]
+fn loom_cancel_before_serve_never_polls_the_handler() {
+    use futures::FutureExt;
+    loom::model(|| {
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        let polled = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        driver
+            .register(
+                "k",
+                Counted {
+                    polled: polled.clone(),
+                },
+            )
+            .expect("register");
+        let begun = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let failed = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        driver.record_to(Begun {
+            begun: begun.clone(),
+            failed: failed.clone(),
+        });
+        let mut pending = dispatcher.dispatch(
+            &HandlerKey::from("k"),
+            EffectKind::Custom {
+                kind: std::sync::Arc::from("m"),
+                payload: serde_json::Value::Null,
+            },
+        );
+        {
+            let (_flag, waker) = recording();
+            let mut cx = Context::from_waker(&waker);
+            assert!(pending.poll_unpin(&mut cx).is_pending(), "sent");
+        }
+        let consumer = thread::spawn(move || drop(pending));
+        let driving = thread::spawn(move || {
+            let (_flag, waker) = recording();
+            let mut cx = Context::from_waker(&waker);
+            for _ in 0..3 {
+                let _ = driver.poll_unpin(&mut cx);
+                thread::yield_now();
+            }
+            driver
+        });
+        consumer.join().unwrap();
+        let mut driver = driving.join().unwrap();
+        let (_flag, waker) = recording();
+        let mut cx = Context::from_waker(&waker);
+        let _ = driver.poll_unpin(&mut cx);
+        assert_eq!(
+            polled.load(StdOrdering::SeqCst),
+            begun.load(StdOrdering::SeqCst),
+            "a record without a handler poll, or a poll without a record"
+        );
+        assert!(polled.load(StdOrdering::SeqCst) <= 1);
+        assert_eq!(
+            failed.load(StdOrdering::SeqCst),
+            0,
+            "a cancelled dispatch was served and recorded as a handler failure"
+        );
+        assert_eq!(driver.in_flight(), 0);
+        assert_eq!(dispatcher.buffered(), 0);
+    });
+}
