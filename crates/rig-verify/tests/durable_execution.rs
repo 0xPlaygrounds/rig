@@ -24,8 +24,8 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_bus::{Bus, EffectLogReplayer, ModelHandle, ToolHandle};
 use rig_core::{
-    bus::{Bus, EffectLogReplayer, ModelHandle, ToolHandle},
     completion::CompletionRequestBuilder,
     effect::{EffectFamily, EffectLog},
     test_utils::{MockCompletionModel, MockTurn},
@@ -127,9 +127,9 @@ impl Scenario {
 
     fn builder(self) -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
         AgentBuilder::with_bus_config(
-            rig_core::bus::BusConfig {
+            rig_bus::BusConfig {
                 serial_per_handler: self.serial_per_handler,
-                ..rig_core::bus::BusConfig::default()
+                ..rig_bus::BusConfig::default()
             },
             "default",
             self.model(),
@@ -280,12 +280,12 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         "the hand driver's record is the reference log's head"
     );
     let continuation: EffectLog = reference_log.tail(partial_log.len());
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::bus::BusConfig {
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_bus::BusConfig {
         serial_per_handler: scenario.serial_per_handler,
-        ..rig_core::bus::BusConfig::default()
+        ..rig_bus::BusConfig::default()
     });
     EffectLogReplayer::register_all(&continuation, &mut driver).expect("fresh keys");
-    let recorder = rig_core::bus::EffectLogRecorder::new();
+    let recorder = rig_bus::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let replay_task = tokio::spawn(driver);
     let model_key = reference_log[0].key.clone();

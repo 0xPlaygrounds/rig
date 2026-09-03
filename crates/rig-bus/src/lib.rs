@@ -1,10 +1,26 @@
-//! The effect bus: one channel between whoever needs an effect served and
-//! the handlers that serve it.
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(
+    test,
+    allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_used,
+        clippy::unreachable
+    )
+)]
+//! The effect bus runtime: one channel between whoever needs an effect
+//! served and the handlers that serve it.
 //!
-//! The bus is rig-core's **only** erasure. Every other place that used to
-//! hold a `dyn CompletionModel`/`Tool`/`EmbeddingModel`/`ConversationMemory`/
-//! `VectorStoreIndex` behind a vtable now holds a [`HandlerKey`](crate::effect::HandlerKey) and talks to
-//! the bus; the one stored `dyn` is the handler table inside the driver.
+//! The vocabulary (`rig_core::effect`) and what a handler author implements
+//! (`rig_core::serve`: [`Serve`](rig_core::serve::Serve), the adapters, the
+//! one erasure [`ErasedHandler`](rig_core::serve::ErasedHandler)) live in
+//! rig-core; this crate is the runtime that carries them: the dispatcher,
+//! the registrar, the driver, the typed views, the stream writer. Every
+//! place that used to hold a `dyn CompletionModel`/`Tool`/`EmbeddingModel`/
+//! `ConversationMemory`/`VectorStoreIndex` behind a vtable holds a
+//! [`HandlerKey`](rig_core::effect::HandlerKey) and talks to the bus; the
+//! one stored `dyn` is the handler table inside the driver.
 //!
 //! # Three roles, three types
 //!
@@ -36,18 +52,18 @@
 //!
 //! A [`Handle<F>`] is a typed view for one family: [`Handle::dispatch`]
 //! takes the family's request and resolves to its answer — the shapes
-//! come from [`Family`](crate::effect::Family), and the conveniences
+//! come from [`Family`](rig_core::effect::Family), and the conveniences
 //! (`complete`, `call`, `load`, `top_n`, `embed_texts`, …) are those
-//! dispatches narrowed. A [`Key<F>`](crate::effect::Key) is a handler key that carries its
+//! dispatches narrowed. A [`Key<F>`](rig_core::effect::Key) is a handler key that carries its
 //! family: what rig mints for what it registers, bound with
 //! [`Dispatcher::bind`] on an existence check alone; an explicit or
-//! replayed key is a plain [`HandlerKey`](crate::effect::HandlerKey) and binds through
+//! replayed key is a plain [`HandlerKey`](rig_core::effect::HandlerKey) and binds through
 //! [`Dispatcher::handle`], which checks the family. On the wire both are
 //! the same string. A host's own effect implements
-//! [`CustomEffect`](crate::effect::CustomEffect) — a declared kind label
+//! [`CustomEffect`](rig_core::effect::CustomEffect) — a declared kind label
 //! and answer type — and dispatches through
 //! `Handle<family::Custom<E>>` ([`Dispatcher::custom`]); the wire form is
-//! [`EffectKind::Custom`](crate::effect::EffectKind::Custom), unchanged.
+//! [`EffectKind::Custom`](rig_core::effect::EffectKind::Custom), unchanged.
 //!
 //! # The three spawning layers
 //!
@@ -81,8 +97,8 @@
 //!
 //! ```ignore
 //! // Bevy: one call site, one spelling, both targets.
-//! let (dispatcher, registrar, mut driver) = rig_core::bus::Bus::channel();
-//! driver.register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model))?;
+//! let (dispatcher, registrar, mut driver) = rig_bus::Bus::channel();
+//! driver.register("model", rig_core::serve::adapters::CompletionAdapter::new("gpt", model))?;
 //! let task = IoTaskPool::get().spawn(driver);   // BusDriver: Send on native, !Send ok on wasm
 //! world.insert_resource(BusRes(dispatcher));     // Dispatcher: Send + Sync + 'static everywhere
 //! world.insert_non_send(RegistrarRes(registrar)); // Registrar: NonSend — natively too, so the
@@ -93,15 +109,15 @@
 //! }
 //! ```
 //!
-//! A bare wasm host passes its own spawner to [`Bus::new_with`] — rig-core
+//! A bare wasm host passes its own spawner to [`Bus::new_with`] — rig-bus
 //! does not depend on `wasm-bindgen-futures`; the host supplies it.
 //!
 //! ```ignore
-//! let (dispatcher, registrar) = rig_core::bus::Bus::new_with(
-//!     rig_core::bus::BusConfig::default(),
+//! let (dispatcher, registrar) = rig_bus::Bus::new_with(
+//!     rig_bus::BusConfig::default(),
 //!     |driver| {
 //!         driver
-//!             .register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model))
+//!             .register("model", rig_core::serve::adapters::CompletionAdapter::new("gpt", model))
 //!             .expect("a fresh key");
 //!     },
 //!     wasm_bindgen_futures::spawn_local,
@@ -124,7 +140,7 @@
 //!   with the key in the message. The two are distinct on purpose: closed is
 //!   a lifecycle event, unavailable is a wiring event.
 //! - Cancellation is drop: dropping a [`Pending`] or [`EffectStream`]
-//!   closes the handler's [`OutcomeSink`], and the adapters stop.
+//!   closes the handler's [`OutcomeSink`](rig_core::serve::OutcomeSink), and the adapters stop.
 //! - Pause is client-side back-pressure: stop polling an [`EffectStream`]
 //!   and its bounded channel stalls the handler.
 //! - A [`Pending`] and an [`EffectStream`] are small, plain futures; their
@@ -135,42 +151,46 @@
 //! # Writing a handler
 //!
 //! Provider and tool authors keep implementing the impl-side traits exactly
-//! as before; the [`adapters`] wrap them. Implement [`Serve`] (an `async fn`) for
-//! an out-of-tree kind ([`EffectKind::Custom`](crate::effect::EffectKind::Custom))
+//! as before; the adapters ([`rig_core::serve::adapters`]) wrap them. Implement [`Serve`](rig_core::serve::Serve) (an `async fn`) for
+//! an out-of-tree kind ([`EffectKind::Custom`](rig_core::effect::EffectKind::Custom))
 //! or for a replayer ([`EffectLogReplayer`]).
 //!
 //! # Record and replay
 //!
-//! Install an [`EffectLogRecorder`] on the driver and every served dispatch
-//! is appended to its [`EffectLog`](crate::effect::EffectLog) as it
-//! resolves; serialize the log, and later register an
+//! Install an [`EffectLogRecorder`] on the driver ([`BusDriver::record_to`],
+//! which takes any [`Recorder`]) and every served dispatch is appended to
+//! its [`EffectLog`](rig_core::effect::EffectLog) as it resolves; serialize the log, and later register an
 //! [`EffectLogReplayer`] under the same keys to answer the same dispatches
 //! from the record instead of a provider.
 
-pub mod adapters;
 mod dispatcher;
 mod driver;
 mod handle;
-mod handler;
+mod recorder;
 mod registrar;
 mod replay;
 mod sync;
-mod writer;
 
 pub use dispatcher::{Dispatcher, EffectStream, Pending};
-pub use driver::{BusConfig, BusDriver, EffectLogRecorder};
+pub use driver::{BusConfig, BusDriver, Recorder};
 pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
     Retrieval, ToolCall, ToolHandle, Typed, wrap_stream,
 };
-pub use handler::{
-    ErasedHandler, OutcomeSink, Serve, SinkClosed, events_from_response, serve_inline,
-};
+pub use recorder::EffectLogRecorder;
 pub use registrar::Registrar;
 pub use replay::EffectLogReplayer;
-pub use writer::StreamWriter;
 
 use std::sync::Arc;
+
+// The typed views every driver (futures agent, systems runtime, registry)
+// holds cross threads; losing `Send + Sync` is an API break that fails here.
+#[cfg(not(target_family = "wasm"))]
+const _: fn() = || {
+    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+    assert_send_sync_static::<ModelHandle>();
+    assert_send_sync_static::<Dispatcher>();
+};
 
 /// Constructors for a bus.
 #[derive(Debug, Clone, Copy)]
@@ -199,7 +219,7 @@ impl Bus {
 
     /// A bus whose driver is handed to `spawn` after `register` has filled
     /// its handler table. `spawn` is the host's executor entry point
-    /// (`tokio::spawn`, a task pool, `spawn_local`); rig-core supplies none.
+    /// (`tokio::spawn`, a task pool, `spawn_local`); rig-bus supplies none.
     pub fn new_with(
         config: BusConfig,
         register: impl FnOnce(&mut BusDriver),

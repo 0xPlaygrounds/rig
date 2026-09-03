@@ -15,8 +15,8 @@ fn repo() -> PathBuf {
 fn may_mint(relative: &str) -> bool {
     relative.starts_with("crates/rig-core/src/streaming/")
         || relative.starts_with("crates/rig-core/src/providers/")
-        || relative == "crates/rig-core/src/bus/handler.rs"
-        || relative == "crates/rig-core/src/bus/writer.rs"
+        || relative == "crates/rig-core/src/serve/handler.rs"
+        || relative == "crates/rig-core/src/serve/writer.rs"
         || relative.starts_with("crates/rig-candle/src/")
 }
 

@@ -5,7 +5,7 @@ use std::{
     sync::{Mutex, PoisonError},
 };
 
-use crate::{
+use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{
         EffectFamily, EffectKind, EffectLog, EffectRecord, EmbedModality, FamilyDescriptor,
@@ -14,7 +14,7 @@ use crate::{
     error::{ErrorKind, ErrorReport},
 };
 
-use super::{OutcomeSink, Serve};
+use rig_core::serve::{OutcomeSink, Serve};
 
 /// A handler that answers dispatches from a recorded log instead of a
 /// provider: the replay half of record/replay.
@@ -81,7 +81,7 @@ impl EffectLogReplayer {
         Self::check_header(log)?;
         for replayer in Self::for_log(log) {
             let key = replayer.key.clone();
-            driver.register_erased(key, super::ErasedHandler::new(replayer))?;
+            driver.register_erased(key, rig_core::serve::ErasedHandler::new(replayer))?;
         }
         Ok(())
     }
@@ -90,13 +90,13 @@ impl EffectLogReplayer {
     /// this crate's, and every key the signature names is answered by
     /// records of that family.
     pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
-        if log.header.format != crate::effect::EFFECT_LOG_FORMAT {
+        if log.header.format != rig_core::effect::EFFECT_LOG_FORMAT {
             return Err(ErrorReport::new(
                 ErrorKind::Internal,
                 format!(
                     "replay refused: the log is format {}, this rig reads format {}",
                     log.header.format,
-                    crate::effect::EFFECT_LOG_FORMAT
+                    rig_core::effect::EFFECT_LOG_FORMAT
                 ),
             ));
         }
@@ -257,8 +257,8 @@ fn describe(key: &HandlerKey, kind: &EffectKind, log: &EffectLog) -> FamilyDescr
             dims: None,
             max_documents: usize::MAX,
             modality: match inputs {
-                crate::effect::EmbedInputs::Texts(_) => EmbedModality::Text,
-                crate::effect::EmbedInputs::Images(_) => EmbedModality::Image,
+                rig_core::effect::EmbedInputs::Texts(_) => EmbedModality::Text,
+                rig_core::effect::EmbedInputs::Images(_) => EmbedModality::Image,
             },
         },
         EffectKind::Rerank { .. } => FamilyDescriptor::Rerank {
@@ -275,7 +275,7 @@ fn describe(key: &HandlerKey, kind: &EffectKind, log: &EffectLog) -> FamilyDescr
 
 impl Serve for EffectLogReplayer {
     /// A replayer answers whatever its log holds.
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         self.descriptor.clone()

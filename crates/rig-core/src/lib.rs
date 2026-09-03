@@ -147,7 +147,6 @@ extern crate self as rig;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
-pub mod bus;
 pub mod client;
 pub mod completion;
 pub mod effect;
@@ -170,6 +169,7 @@ pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
 pub mod rerank;
+pub mod serve;
 
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
@@ -223,10 +223,7 @@ const _: fn() = || {
     assert_send_sync_static::<tool::PortableDynamicTool>();
     assert_send_sync_static::<tool::ManagedToolToken>();
     assert_send_sync_static::<streaming::StreamEvent>();
-    // The typed views every driver (futures agent, systems runtime, registry)
-    // holds, and the serializable identity they are resolved from.
-    assert_send_sync_static::<bus::ModelHandle>();
-    assert_send_sync_static::<bus::Dispatcher>();
+    // The serializable identity a typed view is resolved from.
     assert_send_sync_static::<completion::ModelRef>();
     assert_send_sync_static::<tool::DynamicTool>();
     // One erased transport shared by every provider client a host builds.

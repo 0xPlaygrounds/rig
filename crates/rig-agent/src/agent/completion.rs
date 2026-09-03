@@ -10,7 +10,7 @@ use crate::{
     run::response::PromptResponse,
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
-use rig_core::bus::{BusDriver, Dispatcher, ModelHandle};
+use rig_bus::{BusDriver, Dispatcher, ModelHandle};
 use rig_core::completion::ModelRef;
 use rig_core::effect::{EffectLog, HandlerDescriptor, Key, family};
 use rig_core::id::ConversationId;
@@ -322,7 +322,7 @@ impl AgentConfig {
     /// Bind the memory handle, when memory is configured.
     pub(crate) fn memory_handle(
         &self,
-    ) -> Option<Result<rig_core::bus::MemoryHandle, rig_core::error::ErrorReport>> {
+    ) -> Option<Result<rig_bus::MemoryHandle, rig_core::error::ErrorReport>> {
         self.memory_key
             .as_ref()
             .map(|key| self.bus.dispatcher().bind(key))
@@ -529,7 +529,7 @@ impl Agent {
     /// recorded family. Refused up front, with both sides in the message,
     /// rather than at the record where the run would have diverged.
     pub fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::ErrorReport> {
-        rig_core::bus::EffectLogReplayer::check_header(log)?;
+        rig_bus::EffectLogReplayer::check_header(log)?;
         if let Some(recorded) = log.header.run_spec {
             let mine = self.run_spec_hash();
             if recorded != mine {
@@ -701,7 +701,7 @@ pub struct AgentParts {
     pub dispatcher: Dispatcher,
     /// The bus's registration handle: register on the bus once the driver
     /// is spawned.
-    pub registrar: rig_core::bus::Registrar,
+    pub registrar: rig_bus::Registrar,
     /// The bus's serving half: spawn it or drive it, or the agent hangs.
     pub driver: BusDriver,
     /// The agent, now over the bus rather than owning it.

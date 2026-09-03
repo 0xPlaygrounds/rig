@@ -22,8 +22,9 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
+use rig_bus::{Bus, BusConfig, BusDriver};
+use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
-    bus::{Bus, BusConfig, BusDriver, adapters::CompletionAdapter},
     effect::{EffectFamily, EffectKind, HandlerKey},
     error::ErrorKind,
     test_utils::{MockCompletionModel, MockTurn},
@@ -157,7 +158,7 @@ async fn into_parts_hands_over_the_driver_with_the_dispatcher() {
     // Spawn the driver ourselves; the dispatcher clone and the agent both
     // resolve through it.
     let task = tokio::spawn(driver);
-    let handle: rig_core::bus::ModelHandle = dispatcher
+    let handle: rig_bus::ModelHandle = dispatcher
         .bind(agent.model_key())
         .expect("the model is registered");
     assert_eq!(handle.model_ref().as_str(), "default");
@@ -1177,7 +1178,7 @@ impl Tool for Tag {
 #[tokio::test]
 async fn two_agents_on_one_host_bus_keep_their_own_keys() {
     let (dispatcher, registrar, mut driver) = Bus::channel();
-    let recorder = rig_core::bus::EffectLogRecorder::new();
+    let recorder = rig_bus::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     for label in ["left-host", "right-host"] {
         driver
@@ -1332,7 +1333,7 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
         agent,
     } = parts;
     let task = tokio::spawn(driver);
-    let anonymous = |dispatcher: &rig_core::bus::Dispatcher| {
+    let anonymous = |dispatcher: &rig_bus::Dispatcher| {
         dispatcher
             .keys()
             .into_iter()
@@ -1471,10 +1472,10 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         agent,
     } = parts;
     let task = tokio::spawn(driver);
-    let model: rig_core::bus::ModelHandle = dispatcher
+    let model: rig_bus::ModelHandle = dispatcher
         .bind(agent.model_key())
         .expect("the model is registered");
-    let streamer: rig_core::bus::ModelHandle = dispatcher
+    let streamer: rig_bus::ModelHandle = dispatcher
         .handle(&HandlerKey::from(format!(
             "{}/model:streamer",
             agent.owner()
@@ -1589,7 +1590,7 @@ fn a_host_key_that_serves_another_family_is_reported_at_the_hosts_line() {
     driver
         .register(
             "not-a-model",
-            rig_core::bus::adapters::ToolAdapter::new(Slow::default()),
+            rig_core::serve::adapters::ToolAdapter::new(Slow::default()),
         )
         .expect("register");
     let captured = Captured::default();

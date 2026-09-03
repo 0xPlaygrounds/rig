@@ -416,7 +416,7 @@ impl StreamingCompletionResponse {
     }
 
     /// A response over events that already speak the wire's error half —
-    /// what the bus hands back ([`crate::bus::wrap_stream`]). No mapping.
+    /// what the bus hands back (`rig_bus::wrap_stream`). No mapping.
     /// `provider` is the name the stream carries until its terminal record
     /// names the provider that produced it; from then on
     /// [`Self::provider`] and [`Self::finish`] report that one, so a

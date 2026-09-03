@@ -27,11 +27,10 @@ use super::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
+use rig_bus::{BusDriver, Dispatcher, EffectLogRecorder, Registrar};
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
-    bus::{
-        BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Registrar,
-        adapters::CompletionAdapter,
-    },
     completion::{CompletionModel, ModelRef},
     effect::{EffectLog, HandlerKey, Key, family},
     error::ErrorReport,

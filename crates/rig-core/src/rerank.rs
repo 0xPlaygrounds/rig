@@ -24,7 +24,7 @@ pub trait RerankModel: WasmCompatSend + WasmCompatSync {
     /// request.
     ///
     /// A method rather than an associated constant so the value survives the
-    /// bus: [`RerankAdapter`](crate::bus::adapters::RerankAdapter) publishes
+    /// bus: [`RerankAdapter`](crate::serve::adapters::RerankAdapter) publishes
     /// it on the handler's descriptor.
     fn max_documents(&self) -> usize;
 

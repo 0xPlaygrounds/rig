@@ -683,6 +683,7 @@ dependencies = [
  "http",
  "indexmap",
  "loom",
+ "rig-bus",
  "rig-core",
  "schemars",
  "serde",
@@ -697,8 +698,21 @@ name = "rig-agent-run-stepper-fixture"
 version = "0.0.0"
 dependencies = [
  "rig-agent",
+ "rig-bus",
  "rig-core",
  "serde_json",
+]
+
+[[package]]
+name = "rig-bus"
+version = "0.42.0"
+dependencies = [
+ "futures",
+ "loom",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -716,7 +730,6 @@ dependencies = [
  "glob",
  "http",
  "indexmap",
- "loom",
  "mime",
  "mime_guess",
  "ordered-float",

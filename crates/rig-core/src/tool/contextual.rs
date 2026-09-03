@@ -122,8 +122,8 @@ use std::future::Future;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bus::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     completion::ToolDefinition,
+    serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 

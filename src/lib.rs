@@ -87,6 +87,13 @@ pub mod core {
     pub use rig_core::*;
 }
 
+/// The effect bus runtime (`rig_bus`): the dispatcher, the registrar, the
+/// driver, the typed views. What a handler implements is
+/// `rig::core::serve`; the vocabulary is `rig::core::effect`.
+pub mod bus {
+    pub use rig_bus::*;
+}
+
 /// The sans-IO run layer of rig-agent (`rig_agent::run`): `AgentRun` and its
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision

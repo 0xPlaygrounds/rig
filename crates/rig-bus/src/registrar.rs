@@ -10,18 +10,20 @@ use std::{
 
 use super::sync::Mutex;
 
-use crate::{
+use rig_core::{
     effect::{Family, HandlerDescriptor, HandlerKey},
     error::{ErrorKind, ErrorReport},
 };
 
-use super::{ErasedHandler, Serve, dispatcher::Shared};
-use crate::effect::Key;
+use rig_core::serve::{ErasedHandler, Serve};
+
+use super::dispatcher::Shared;
+use rig_core::effect::Key;
 
 /// The report for a handler registered under a key of another family.
 pub(super) fn family_proof_failed(
     key: &HandlerKey,
-    wanted: crate::effect::EffectFamily,
+    wanted: rig_core::effect::EffectFamily,
     descriptor: &HandlerDescriptor,
 ) -> ErrorReport {
     ErrorReport::new(
@@ -246,21 +248,27 @@ const _: fn(&Registrar) = |registrar| {
     struct Local(std::rc::Rc<std::cell::Cell<usize>>);
 
     impl Serve for Local {
-        type Family = crate::effect::family::Dynamic;
+        type Family = rig_core::effect::family::Dynamic;
 
         fn descriptor(&self) -> HandlerDescriptor {
             HandlerDescriptor {
                 key: HandlerKey::from("local"),
-                family: crate::effect::FamilyDescriptor::Custom {
+                family: rig_core::effect::FamilyDescriptor::Custom {
                     kind: "local".into(),
                 },
             }
         }
 
-        async fn serve(&self, _kind: crate::effect::EffectKind, sink: super::OutcomeSink) {
+        async fn serve(
+            &self,
+            _kind: rig_core::effect::EffectKind,
+            sink: rig_core::serve::OutcomeSink,
+        ) {
             self.0.set(self.0.get() + 1);
-            sink.resolve(Ok(crate::effect::Outcome::Custom(serde_json::Value::Null)))
-                .await;
+            sink.resolve(Ok(rig_core::effect::Outcome::Custom(
+                serde_json::Value::Null,
+            )))
+            .await;
         }
     }
 

@@ -12,11 +12,14 @@ use serde_json::json;
 
 use super::{
     Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, ModelHandle,
-    OutcomeSink, Registrar, Serve,
+    Registrar,
+};
+use rig_core::effect::{CustomEffect, Key};
+use rig_core::serve::{
+    OutcomeSink, Serve,
     adapters::{CompletionAdapter, MemoryAdapter, RerankAdapter, ToolAdapter, ToolFn},
 };
-use crate::effect::{CustomEffect, Key};
-use crate::{
+use rig_core::{
     completion::{CompletionRequest, Message},
     effect::{
         EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
@@ -96,7 +99,7 @@ impl Echo {
 }
 
 impl Serve for Echo {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -133,7 +136,7 @@ struct Ordered {
 }
 
 impl Serve for Ordered {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -587,7 +590,7 @@ impl SelfCaller {
 }
 
 impl Serve for SelfCaller {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -760,7 +763,7 @@ async fn streaming_completion_flows_through_the_bus_final_terminated() {
         .iter()
         .filter_map(|event| match event {
             StreamEvent::BlockDelta {
-                delta: crate::streaming::Delta::Text { text },
+                delta: rig_core::streaming::Delta::Text { text },
                 ..
             } => Some(text.as_str()),
             _ => None,
@@ -820,7 +823,7 @@ async fn dropping_the_stream_cancels_the_handler() {
         cancelled: Arc<AtomicUsize>,
     }
     impl Serve for Chatty {
-        type Family = crate::effect::family::Dynamic;
+        type Family = rig_core::effect::family::Dynamic;
 
         fn descriptor(&self) -> HandlerDescriptor {
             HandlerDescriptor {
@@ -918,7 +921,7 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
                         Ok(ToolOutput::text(
                             args["text"].as_str().unwrap_or_default().to_uppercase(),
                         ))
-                    }) as crate::wasm_compat::WasmBoxedFuture<'_, _>
+                    }) as rig_core::wasm_compat::WasmBoxedFuture<'_, _>
                 },
             ),
         )
@@ -1054,7 +1057,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     // Serialize, deserialize, replay: the same dispatches get the same answers
     // with no model or tool behind the keys.
     let json = serde_json::to_string(&log).expect("log serializes");
-    let restored: crate::effect::EffectLog = serde_json::from_str(&json).expect("log restores");
+    let restored: rig_core::effect::EffectLog = serde_json::from_str(&json).expect("log restores");
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
     assert_eq!(
@@ -1197,7 +1200,7 @@ impl Drop for DropFlag {
 }
 
 impl Serve for Hanging {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1392,14 +1395,14 @@ fn register_refuses_a_family_change_under_a_live_key() {
 struct CutShort;
 
 impl Serve for CutShort {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("cut"),
             family: FamilyDescriptor::Completion {
-                model: crate::completion::ModelRef::new("cut"),
-                capabilities: crate::completion::ProviderCapabilities::default(),
+                model: rig_core::completion::ModelRef::new("cut"),
+                capabilities: rig_core::completion::ProviderCapabilities::default(),
             },
         }
     }
@@ -1452,14 +1455,14 @@ async fn a_stream_that_ends_without_final_is_reported_and_recorded() {
 struct WrongFamilyAnswer;
 
 impl Serve for WrongFamilyAnswer {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("wrong"),
             family: FamilyDescriptor::Completion {
-                model: crate::completion::ModelRef::new("wrong"),
-                capabilities: crate::completion::ProviderCapabilities::default(),
+                model: rig_core::completion::ModelRef::new("wrong"),
+                capabilities: rig_core::completion::ProviderCapabilities::default(),
             },
         }
     }
@@ -1571,7 +1574,7 @@ struct RegistersOnDrop {
 }
 
 impl Serve for RegistersOnDrop {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1629,7 +1632,7 @@ async fn a_displaced_handler_is_dropped_outside_every_lock() {
 struct DropCounter(Arc<AtomicUsize>);
 
 impl Serve for DropCounter {
-    type Family = crate::effect::family::Dynamic;
+    type Family = rig_core::effect::family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1690,7 +1693,7 @@ struct Reply {
     text: String,
 }
 
-impl crate::effect::CustomEffect for AskUser {
+impl rig_core::effect::CustomEffect for AskUser {
     const KIND: &'static str = "test:ask_user";
     type Answer = Reply;
 }
@@ -1702,7 +1705,7 @@ struct AskUserHandler {
 }
 
 impl Serve for AskUserHandler {
-    type Family = crate::effect::family::Custom<AskUser>;
+    type Family = rig_core::effect::family::Custom<AskUser>;
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
@@ -1735,7 +1738,7 @@ impl Serve for AskUserHandler {
 #[tokio::test]
 async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_family() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let key: Key<crate::effect::family::Completion> = driver
+    let key: Key<rig_core::effect::family::Completion> = driver
         .register_typed(
             "model",
             CompletionAdapter::new(
@@ -1751,7 +1754,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
         json!("model"),
         "on the wire a typed key is the bare string"
     );
-    let back: Key<crate::effect::family::Completion> =
+    let back: Key<rig_core::effect::family::Completion> =
         serde_json::from_value(json!("model")).expect("deserializes");
     assert_eq!(back, key);
     let _task = spawn(driver);
@@ -1767,7 +1770,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
     assert_eq!(response.choice, vec![AssistantContent::text("typed")]);
 
     // A key asserted for the wrong family fails at bind, not silently.
-    let lie: Key<crate::effect::family::Tool> = Key::new_unchecked(HandlerKey::from("model"));
+    let lie: Key<rig_core::effect::family::Tool> = Key::new_unchecked(HandlerKey::from("model"));
     let report = dispatcher
         .bind(&lie)
         .expect_err("a completion is not a tool");
@@ -1778,7 +1781,7 @@ async fn a_typed_key_binds_with_an_existence_check_and_a_handle_dispatches_its_f
 async fn register_typed_refuses_a_handler_of_another_family() {
     let (_dispatcher, registrar, _driver) = Bus::channel();
     let report = registrar
-        .register_typed::<crate::effect::family::Tool>(
+        .register_typed::<rig_core::effect::family::Tool>(
             "model",
             CompletionAdapter::new("mock", MockCompletionModel::text("x")),
         )
@@ -1799,7 +1802,7 @@ async fn register_typed_refuses_a_handler_of_another_family() {
 async fn a_custom_effect_round_trips_through_a_typed_handle() {
     let (dispatcher, registrar, driver) = Bus::channel();
     let key = registrar
-        .register_typed::<crate::effect::family::Custom<AskUser>>(
+        .register_typed::<rig_core::effect::family::Custom<AskUser>>(
             "ask",
             AskUserHandler { misbehave: false },
         )
@@ -1835,7 +1838,7 @@ async fn a_custom_effect_round_trips_through_a_typed_handle() {
     // A different kind under the key is refused at bind.
     #[derive(serde::Serialize, serde::Deserialize)]
     struct Other;
-    impl crate::effect::CustomEffect for Other {
+    impl rig_core::effect::CustomEffect for Other {
         const KIND: &'static str = "test:other";
         type Answer = ();
     }
@@ -1846,7 +1849,7 @@ async fn a_custom_effect_round_trips_through_a_typed_handle() {
     assert!(report.message.contains("test:other"), "{}", report.message);
 }
 
-fn completion_request_value() -> crate::completion::CompletionRequest {
+fn completion_request_value() -> rig_core::completion::CompletionRequest {
     match completion_kind(false) {
         EffectKind::Completion { request, .. } => request,
         other => panic!("a completion kind, got {}", other.name()),
@@ -1867,7 +1870,7 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
     let (_guard, cancel) = oneshot::channel();
     let offered = shared.enqueue(
         Box::new(super::dispatcher::Command {
-            id: crate::effect::EffectId::from_raw(9),
+            id: rig_core::effect::EffectId::from_raw(9),
             key: HandlerKey::from("echo"),
             kind: custom(json!(1)),
             reply: super::dispatcher::Reply::Unary(reply),
@@ -1912,7 +1915,7 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
         .await
         .expect("served");
     let log = recorder.take();
-    assert_eq!(log.header.format, crate::effect::EFFECT_LOG_FORMAT);
+    assert_eq!(log.header.format, rig_core::effect::EFFECT_LOG_FORMAT);
     assert_eq!(log.header.run_spec, None, "a bare-bus record names no spec");
     assert_eq!(
         log.header
@@ -1930,19 +1933,20 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
     );
     let json = serde_json::to_value(&log).expect("serializes");
     assert!(json.get("header").is_some() && json.get("records").is_some());
-    let back: crate::effect::EffectLog = serde_json::from_value(json).expect("restores");
+    let back: rig_core::effect::EffectLog = serde_json::from_value(json).expect("restores");
     assert_eq!(back.header, log.header);
     assert_eq!(back.len(), 1);
 
     // A future format is refused with the version in the message.
     let mut future = back.clone();
-    future.header.format = crate::effect::EFFECT_LOG_FORMAT + 1;
+    future.header.format = rig_core::effect::EFFECT_LOG_FORMAT + 1;
     let (_dispatcher, _registrar, mut driver) = Bus::channel();
     let report = EffectLogReplayer::register_all(&future, &mut driver).expect_err("refused");
     assert!(
-        report
-            .message
-            .contains(&format!("format {}", crate::effect::EFFECT_LOG_FORMAT + 1)),
+        report.message.contains(&format!(
+            "format {}",
+            rig_core::effect::EFFECT_LOG_FORMAT + 1
+        )),
         "{}",
         report.message
     );
@@ -2014,7 +2018,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
 
     // A replay of the kept record re-emits the events, delta boundaries and
     // all; a replay of the folded record re-emits the fold.
-    let replay = |log: crate::effect::EffectLog| async move {
+    let replay = |log: rig_core::effect::EffectLog| async move {
         let (dispatcher, _registrar, mut driver) = Bus::channel();
         EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
         let _task = spawn(driver);
@@ -2043,7 +2047,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
     struct Writes;
 
     impl Serve for Writes {
-        type Family = crate::effect::family::Dynamic;
+        type Family = rig_core::effect::family::Dynamic;
 
         fn descriptor(&self) -> HandlerDescriptor {
             HandlerDescriptor {
@@ -2063,9 +2067,9 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
             let _ = out.tool_call("add", json!({"x": 1})).await;
             let _ = out.text("after").await;
             let _ = out
-                .finish(crate::streaming::StreamFinal::new(
+                .finish(rig_core::streaming::StreamFinal::new(
                     "writer",
-                    crate::completion::Usage::new(),
+                    rig_core::completion::Usage::new(),
                 ))
                 .await;
         }
@@ -2112,7 +2116,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
         assert!(ends.contains(id), "block {id} ends before the terminal");
     }
     assert!(matches!(events.last(), Some(StreamEvent::Final(_))));
-    let mut accumulator = crate::streaming::BlockAccumulator::new();
+    let mut accumulator = rig_core::streaming::BlockAccumulator::new();
     for event in &events {
         accumulator
             .apply(event)

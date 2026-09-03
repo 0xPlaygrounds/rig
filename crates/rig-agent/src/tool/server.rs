@@ -24,8 +24,9 @@ use std::sync::{
 };
 
 use indexmap::IndexMap;
+use rig_bus::Registrar;
+use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
-    bus::{Registrar, adapters::RetrieveAdapter},
     effect::Key,
     effect::{HandlerKey, family},
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
@@ -52,7 +53,7 @@ pub type ToolRegistrySnapshot = ToolCatalog;
 struct RetrievalIndex {
     samples: usize,
     key: HandlerKey,
-    handler: rig_core::bus::ErasedHandler,
+    handler: rig_core::serve::ErasedHandler,
 }
 
 /// A retrieval index added to a [`ToolServer`], keyed once the registry
@@ -60,7 +61,7 @@ struct RetrievalIndex {
 struct PendingRetrievalIndex {
     samples: usize,
     index: usize,
-    handler: rig_core::bus::ErasedHandler,
+    handler: rig_core::serve::ErasedHandler,
 }
 
 /// The lease a live registration hands to every snapshot that pins it.
@@ -315,7 +316,7 @@ impl ToolServer {
         self.retrieval_indexes.push(PendingRetrievalIndex {
             samples: sample,
             index: n,
-            handler: rig_core::bus::ErasedHandler::new(RetrieveAdapter::new(index)),
+            handler: rig_core::serve::ErasedHandler::new(RetrieveAdapter::new(index)),
         });
         self.toolset.add_retrievable_tools(toolset);
         self
@@ -645,7 +646,7 @@ impl ToolServerHandle {
                         .build();
                     // Retrieval for advertisement runs inline on the registry's
                     // own handler: it is a registry read, not a run effect.
-                    let outcome = rig_core::bus::serve_inline(
+                    let outcome = rig_core::serve::serve_inline(
                         &handler,
                         rig_core::effect::EffectKind::Retrieve {
                             query: rig_core::effect::RetrieveQuery::TopNIds {

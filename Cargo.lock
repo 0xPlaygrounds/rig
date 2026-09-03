@@ -9808,6 +9808,7 @@ dependencies = [
  "reqwest-retry",
  "rig-agent",
  "rig-bedrock",
+ "rig-bus",
  "rig-candle",
  "rig-core",
  "rig-derive",
@@ -9863,6 +9864,7 @@ dependencies = [
  "http 1.4.2",
  "indexmap 2.14.0",
  "loom",
+ "rig-bus",
  "rig-core",
  "rig-derive",
  "rig-reqwest",
@@ -9903,6 +9905,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-bus"
+version = "0.42.0"
+dependencies = [
+ "futures",
+ "loom",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "rig-candle"
 version = "0.42.0"
 dependencies = [
@@ -9939,7 +9954,6 @@ dependencies = [
  "glob",
  "http 1.4.2",
  "indexmap 2.14.0",
- "loom",
  "lopdf",
  "mime",
  "mime_guess",
@@ -9979,6 +9993,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rig-agent",
+ "rig-bus",
  "rig-core",
  "rig-reqwest",
  "schemars 1.2.1",
@@ -10311,6 +10326,7 @@ dependencies = [
  "futures",
  "proptest",
  "rig-agent",
+ "rig-bus",
  "rig-core",
  "serde",
  "serde_json",

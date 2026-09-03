@@ -132,7 +132,7 @@ jobs:
       # independent wasm breaks behind an extra CI round-trip.
       fail-fast: false
       matrix:
-        package: [rig-core, rig-reqwest, rig-agent, rig, rig-candle, candle_wasm_chat]
+        package: [rig-core, rig-bus, rig-reqwest, rig-agent, rig, rig-candle, candle_wasm_chat]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -394,7 +394,7 @@ jobs:
   # own feature configuration (see the comments below), which serializes
   # poorly behind the default-feature sweep above.
   # The bus's wait/wake protocols under the loom model checker: every
-  # interleaving of the small models in rig-core's `bus/loom_models.rs`
+  # interleaving of the small models in rig-bus's `loom_models.rs`
   # and rig-agent's `agent/bus/loom_models.rs`. Stable toolchain;
   # `--cfg rig_loom` selects the sync shims. A failing model is a
   # protocol bug.
@@ -413,7 +413,7 @@ jobs:
         uses: ./.github/actions/rust-setup
 
       - name: Run the loom models
-        run: cargo test --locked -p rig-core -p rig-agent --lib --release loom_
+        run: cargo test --locked -p rig-bus -p rig-agent --lib --release loom_
 
   test-guards:
     name: stable / test guards

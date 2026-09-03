@@ -19,13 +19,13 @@ use futures::{
     channel::{mpsc, oneshot},
 };
 
-use crate::{
+use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::StreamEvent,
 };
 
-use super::OutcomeSink;
+use rig_core::serve::OutcomeSink;
 
 /// State shared between every `Dispatcher` clone, every `Registrar` and the
 /// driver. Holds only `Send + Sync` data — serde descriptors, the command
@@ -531,10 +531,7 @@ fn reentrant(key: &HandlerKey) -> ErrorReport {
 /// mid-stream (the provider stream ended early, or the handler failed
 /// without reporting).
 pub(super) fn stream_truncated() -> ErrorReport {
-    ErrorReport::new(
-        ErrorKind::Response,
-        "the stream ended before its terminal record",
-    )
+    rig_core::serve::stream_truncated()
 }
 
 pub(super) fn handler_unavailable(key: &HandlerKey) -> ErrorReport {

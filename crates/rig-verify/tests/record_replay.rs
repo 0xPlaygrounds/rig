@@ -13,8 +13,8 @@ use rig_agent::{
     AgentBuilder,
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_bus::{Bus, EffectLogReplayer};
 use rig_core::{
-    bus::{Bus, EffectLogReplayer},
     effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
 };

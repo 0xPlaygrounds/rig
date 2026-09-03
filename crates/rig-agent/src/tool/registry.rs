@@ -10,8 +10,9 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
+use rig_core::serve::adapters::ToolAdapter;
+use rig_core::serve::{ErasedHandler, Serve, serve_inline};
 use rig_core::{
-    bus::{ErasedHandler, Serve, adapters::ToolAdapter, serve_inline},
     completion::{Document, ToolDefinition},
     effect::{
         EffectKind, FamilyDescriptor, Key, Outcome, ToolEmbeddingDescriptor, family, tool_key,

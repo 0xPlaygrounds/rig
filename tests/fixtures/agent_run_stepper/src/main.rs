@@ -20,13 +20,14 @@ use std::{
 
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
-use rig_core::bus::{Bus, BusDriver, ModelHandle, adapters::CompletionAdapter};
+use rig_bus::{Bus, BusDriver, ModelHandle};
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest,
     CompletionRequestBuilder, CompletionResponse, ModelRef, Usage,
 };
 use rig_core::effect::HandlerKey;
 use rig_core::message::{Message, ToolCall, ToolFunction};
+use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::tool::{PortableDynamicTool, ToolContext, ToolOutput};
 use rig_core::transcript;

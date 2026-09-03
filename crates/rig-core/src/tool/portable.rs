@@ -9,9 +9,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bus::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     completion::ToolDefinition,
     effect::{EffectKind, Outcome},
+    serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -203,7 +203,7 @@ impl PortableDynamicTool {
         context: &mut ToolContext,
         arguments: serde_json::Value,
     ) -> Result<ToolOutput, ToolExecutionError> {
-        let outcome = crate::bus::serve_inline(
+        let outcome = crate::serve::serve_inline(
             &self.handler,
             EffectKind::ToolCall {
                 name: self.definition.name.clone(),

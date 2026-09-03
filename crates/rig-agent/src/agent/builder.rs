@@ -3,7 +3,7 @@
 //! `AgentBuilder::new(model)` creates the agent's bus and registers the
 //! model on it; every tool, memory backend and retrieval index added to the
 //! builder is registered as a handler under a generated key, and the agent
-//! keeps the [`BusDriver`](rig_core::bus::BusDriver) and drives it inline
+//! keeps the [`BusDriver`](rig_bus::BusDriver) and drives it inline
 //! while a run is awaited. `AgentBuilder::over_bus` builds an agent over a
 //! host's bus instead: the host drives.
 //!
@@ -16,11 +16,10 @@
 
 use std::sync::{Arc, OnceLock};
 
+use rig_bus::{Bus, BusConfig, Dispatcher, Registrar};
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
 use rig_core::{
-    bus::{
-        Bus, BusConfig, Dispatcher, ErasedHandler, Registrar,
-        adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter},
-    },
     completion::{CompletionModel, Document, ModelRef},
     effect::{HandlerKey, Key, family},
     memory::ConversationMemory,

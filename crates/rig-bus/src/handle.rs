@@ -16,14 +16,14 @@
 //! inherent methods below, which are dispatches.
 //!
 //! ```compile_fail
-//! use rig_core::bus::ModelHandle;
+//! use rig_bus::ModelHandle;
 //!
 //! fn requires_serialize<T: serde::Serialize>() {}
 //! requires_serialize::<ModelHandle>();
 //! ```
 //!
 //! ```compile_fail
-//! use rig_core::bus::ToolHandle;
+//! use rig_bus::ToolHandle;
 //!
 //! fn requires_deserialize<T: for<'de> serde::Deserialize<'de>>() {}
 //! requires_deserialize::<ToolHandle>();
@@ -38,7 +38,7 @@ use std::{
 
 use serde::de::DeserializeOwned;
 
-use crate::{
+use rig_core::{
     completion::{CompletionRequest, ProviderCapabilities},
     effect::{
         CustomEffect, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, Family,
@@ -55,7 +55,7 @@ use crate::{
 };
 
 use super::{Dispatcher, EffectStream, Pending};
-use crate::effect::Key;
+use rig_core::effect::Key;
 
 /// A typed view over the bus for the family `F`.
 #[derive(Clone)]
@@ -119,7 +119,7 @@ impl<F: Family> Handle<F> {
 
 fn family_mismatch(
     key: &HandlerKey,
-    wanted: crate::effect::EffectFamily,
+    wanted: rig_core::effect::EffectFamily,
     found: &FamilyDescriptor,
 ) -> ErrorReport {
     ErrorReport::new(
@@ -177,7 +177,7 @@ impl Dispatcher {
     }
 }
 
-const F_CUSTOM: crate::effect::EffectFamily = crate::effect::EffectFamily::Custom;
+const F_CUSTOM: rig_core::effect::EffectFamily = rig_core::effect::EffectFamily::Custom;
 
 /// A unary dispatch of the family `F`, mapped to its typed answer:
 /// `Unpin`, executor-neutral, cancelled by drop — the same value as
@@ -240,7 +240,7 @@ impl<F: Family> Handle<F> {
     }
 }
 
-fn wrong_shape(expected: &'static str, family: crate::effect::EffectFamily) -> ErrorReport {
+fn wrong_shape(expected: &'static str, family: rig_core::effect::EffectFamily) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Internal,
         format!("expected {expected}, the {family} handler answered another shape"),
@@ -262,7 +262,7 @@ impl ModelHandle {
     }
 
     /// The model's label as the handler advertises it now.
-    pub fn model_ref(&self) -> crate::completion::ModelRef {
+    pub fn model_ref(&self) -> rig_core::completion::ModelRef {
         match self.descriptor().family {
             FamilyDescriptor::Completion { model, .. } => model,
             FamilyDescriptor::Tool { .. }
@@ -271,7 +271,7 @@ impl ModelHandle {
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => {
-                crate::completion::ModelRef::new(self.key().as_str())
+                rig_core::completion::ModelRef::new(self.key().as_str())
             }
         }
     }
