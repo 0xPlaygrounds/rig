@@ -2312,12 +2312,14 @@ pub(crate) async fn dispatch_tool_call(
         Err(report) if report.kind == ErrorKind::Cancelled => {
             return Err(ToolDispatchAbort::Cancelled(report.message));
         }
-        // The bus could not serve the call: the run fails with the report
-        // rather than telling the model its tool failed.
+        // The bus could not serve the call, or a replayer refused it as a
+        // divergence: the run fails with the report rather than telling the
+        // model its tool failed — a replay that continues on an answer the
+        // record never gave is a passed test with a different trace.
         Err(report)
             if matches!(
                 report.kind,
-                ErrorKind::BusClosed | ErrorKind::HandlerUnavailable
+                ErrorKind::BusClosed | ErrorKind::HandlerUnavailable | ErrorKind::Divergence
             ) =>
         {
             return Err(ToolDispatchAbort::Failed(report));

@@ -710,7 +710,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                 model
                     .completion_request(Message::User {
                         content: vec![UserContent::ToolResult(ToolResult {
-                            call: ToolCallId::new_or_mint("call_text"),
+                            call: ToolCallId::new_or_minted("call_text", 0),
                             provider: ProviderCallId::new("call_text"),
                             name: "lookup".to_string(),
                             content: vec![ToolResultContent::text("the codeword is heliotrope")],
@@ -772,7 +772,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                 model
                     .completion_request(Message::User {
                         content: vec![UserContent::ToolResult(ToolResult {
-                            call: ToolCallId::new_or_mint("call_json"),
+                            call: ToolCallId::new_or_minted("call_json", 0),
                             provider: ProviderCallId::new("call_json"),
                             name: "lookup".to_string(),
                             content: vec![ToolResultContent::text(

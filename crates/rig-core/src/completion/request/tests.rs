@@ -94,7 +94,7 @@ mod message_content_validation {
             Message::user("hello"),
             Message::User {
                 content: vec![UserContent::ToolResult(ToolResult {
-                    call: ToolCallId::new_or_mint("call_1"),
+                    call: ToolCallId::new_or_minted("call_1", 0),
                     provider: None,
                     name: "lookup".to_owned(),
                     content: Vec::<ToolResultContent>::new(),
@@ -119,7 +119,7 @@ mod message_content_validation {
         // pass cannot collapse it.
         let request = request(vec![Message::User {
             content: vec![UserContent::ToolResult(ToolResult {
-                call: ToolCallId::new_or_mint("call_1"),
+                call: ToolCallId::new_or_minted("call_1", 0),
                 provider: None,
                 name: "lookup".to_owned(),
                 content: vec![ToolResultContent::text("")],

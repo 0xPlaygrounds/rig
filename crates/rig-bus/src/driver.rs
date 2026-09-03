@@ -30,7 +30,7 @@ use super::{
 };
 
 /// Bus sizing and serving policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BusConfig {
     /// Commands the bus buffers, **bus-wide**, before a `Pending`/
     /// `EffectStream` parks at its send stage (its poll stays `Pending`
@@ -73,12 +73,15 @@ type InFlightServing = Pin<Box<Serving>>;
 /// The driver's hold on a recorder: closures, like the sink's taps, so the
 /// driver names no recorder type.
 struct Recording {
+    handlers: Box<dyn Fn(Vec<HandlerDescriptor>) + Send + Sync>,
     begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind) + Send + Sync>,
     tap: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
 }
 
 impl Recording {
     fn new<R: Recorder + Clone + Send + Sync>(recorder: R) -> Self {
+        let for_handlers = recorder.clone();
+        let handlers = Box::new(move |described| for_handlers.handlers(described));
         let for_begin = recorder.clone();
         let begin = Box::new(move |id, key, kind| for_begin.begin(id, key, kind));
         let tap = Box::new(move |sink: OutcomeSink, id: EffectId| {
@@ -92,7 +95,11 @@ impl Recording {
             });
             sink.with_tap(on_outcome, on_event)
         });
-        Self { begin, tap }
+        Self {
+            handlers,
+            begin,
+            tap,
+        }
     }
 }
 
@@ -219,6 +226,12 @@ impl BusDriver {
     /// Put `handler` in the table. The displaced handler, if any, is dropped
     /// here, with no lock held — its `Drop` may touch this bus.
     fn install(&mut self, key: HandlerKey, handler: ErasedHandler) {
+        if let Some(recording) = &self.recorder {
+            (recording.handlers)(vec![HandlerDescriptor {
+                key: key.clone(),
+                family: handler.descriptor().family,
+            }]);
+        }
         let displaced = self.handlers.insert(key, handler);
         drop(displaced);
     }
@@ -238,7 +251,8 @@ impl BusDriver {
 
     /// Record every served dispatch into `recorder` (a
     /// [`rig_core::serve::Recorder`]); the handlers registered now are
-    /// handed to it first ([`Recorder::handlers`]).
+    /// handed to it first ([`Recorder::handlers`]), and each one installed
+    /// later as it is installed.
     pub fn record_to<R: Recorder + Clone + Send + Sync>(&mut self, recorder: R) {
         recorder.handlers(
             self.handlers

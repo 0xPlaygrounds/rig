@@ -21,7 +21,10 @@ use crate::{
 /// it rides in the sink's taps, which are `Send + Sync` on every target, so
 /// a recorder is too.
 pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
-    /// The handlers registered when recording started.
+    /// Handlers the driver serves: those registered when recording started,
+    /// then each one installed later, as it is installed. A key described
+    /// again is the same handler re-registered; the latest description
+    /// stands.
     fn handlers(&self, handlers: Vec<HandlerDescriptor>);
     /// A dispatch is about to be served.
     fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind);

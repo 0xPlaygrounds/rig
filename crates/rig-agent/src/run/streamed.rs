@@ -773,7 +773,7 @@ impl StreamedTurnAssembler {
                                 .map(|state| state.buffered_arguments.join(""))
                                 .unwrap_or_default();
                             let tool_call =
-                                self.name_delta_diagnostic_tool_call(name, &buffered_args);
+                                self.name_delta_diagnostic_tool_call(&key, name, &buffered_args);
                             return Ok(self.surface_invalid_call(
                                 tool_call,
                                 block_id.clone(),
@@ -967,19 +967,25 @@ impl StreamedTurnAssembler {
         vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]
     }
 
-    fn name_delta_diagnostic_tool_call(&self, name: &str, buffered_args: &str) -> ToolCall {
+    fn name_delta_diagnostic_tool_call(
+        &self,
+        key: &BlockId,
+        name: &str,
+        buffered_args: &str,
+    ) -> ToolCall {
         let diagnostic_args = if buffered_args.trim().is_empty() {
             serde_json::Value::Null
         } else {
             serde_json::from_str(buffered_args).unwrap_or(serde_json::Value::Null)
         };
         // Diagnostic only: the durable provider id is unknown at delta
-        // time, and no stream-internal key may surface — so the call mints
-        // its correlation handle and `provider` stays `None` (hooks
-        // faithfully observe that no provider id exists). The same minted
-        // id correlates the retry transcript pair in `rollback_messages`.
+        // time — so the call takes the block's name as its correlation
+        // handle (deterministic: a re-run of the same wire yields the same
+        // id) and `provider` stays `None` (hooks faithfully observe that no
+        // provider id exists). The same id correlates the retry transcript
+        // pair in `rollback_messages`.
         ToolCall::new(
-            rig_core::message::ToolCallId::mint(),
+            rig_core::message::ToolCallId::from_block(key),
             ToolFunction::new(name.to_string(), diagnostic_args),
         )
     }

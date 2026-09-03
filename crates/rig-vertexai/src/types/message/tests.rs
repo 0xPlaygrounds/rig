@@ -116,7 +116,7 @@ fn test_assistant_tool_call_message_conversion() {
     // Vertex issues no call ids, so decoded calls carry a minted id and
     // no provider id; neither reaches the outbound wire.
     let tool_call = ToolCall::new(
-        ToolCallId::mint(),
+        ToolCallId::minted(0),
         ToolFunction::new(
             "add".to_string(),
             serde_json::json!({
@@ -150,7 +150,7 @@ fn test_assistant_tool_call_echoes_thought_signature() {
     use rig_core::message::{ToolCall, ToolFunction};
     let raw = b"\x00\x01\x02thinking-sig\xff";
     let tool_call = ToolCall::new(
-        ToolCallId::mint(),
+        ToolCallId::minted(0),
         ToolFunction::new("add".to_string(), serde_json::json!({"x": 5})),
     )
     .with_signature(Some(BASE64.encode(raw)));
@@ -168,7 +168,7 @@ fn test_assistant_tool_call_malformed_signature_is_dropped_not_fatal() {
     // A malformed signature must not abort the whole turn — it is dropped with a warning.
     use rig_core::message::{ToolCall, ToolFunction};
     let tool_call = ToolCall::new(
-        ToolCallId::mint(),
+        ToolCallId::minted(0),
         ToolFunction::new("add".to_string(), serde_json::json!({"x": 5})),
     )
     .with_signature(Some("!!! not base64 !!!".to_string()));
@@ -230,7 +230,7 @@ fn test_user_tool_result_message_conversion() {
     // handle, no provider id, and the required executed-tool name that
     // becomes `functionResponse.name`.
     let tool_result = ToolResult {
-        call: ToolCallId::mint(),
+        call: ToolCallId::minted(0),
         provider: None,
         name: "add".to_string(),
         content: vec![ToolResultContent::Text(Text::new("8".to_string()))],
@@ -266,7 +266,7 @@ fn structured_tool_result_stays_structured_at_the_vertex_boundary() {
     let value = serde_json::json!({ "answer": 8 });
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
-            call: ToolCallId::mint(),
+            call: ToolCallId::minted(0),
             provider: None,
             name: "lookup".to_string(),
             content: vec![ToolResultContent::json(value.clone())],
@@ -293,7 +293,7 @@ fn image_tool_result_maps_to_native_function_response_part() {
     let raw = vec![0, 1, 2, 255];
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
-            call: ToolCallId::mint(),
+            call: ToolCallId::minted(0),
             provider: None,
             name: "inspect".to_string(),
             content: vec![ToolResultContent::image_base64(
@@ -334,7 +334,7 @@ fn mixed_tool_result_preserves_structured_and_media_order() {
     ];
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
-            call: ToolCallId::mint(),
+            call: ToolCallId::minted(0),
             provider: None,
             name: "inspect".to_string(),
             content,
@@ -401,7 +401,7 @@ fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
     ];
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
-            call: ToolCallId::mint(),
+            call: ToolCallId::minted(0),
             provider: None,
             name: "inspect".to_string(),
             content,
@@ -437,7 +437,7 @@ fn tool_result_image_refs_avoid_names_reserved_by_structured_json() {
 fn unsupported_tool_result_image_media_type_is_rejected_locally() {
     let message = Message::User {
         content: vec![rig_core::message::UserContent::ToolResult(ToolResult {
-            call: ToolCallId::mint(),
+            call: ToolCallId::minted(0),
             provider: None,
             name: "inspect".to_string(),
             content: vec![ToolResultContent::image_raw(

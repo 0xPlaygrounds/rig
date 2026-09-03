@@ -249,7 +249,7 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     };
     let result = |wire_id: &str, name: &str| message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new_or_mint(wire_id),
+            call: ToolCallId::new_or_minted(wire_id, 0),
             provider: ProviderCallId::new(wire_id),
             name: name.to_owned(),
             content: vec![ToolResultContent::text("out")],

@@ -1060,7 +1060,7 @@ fn test_tool_result_with_image_content() {
 
     // Create a tool result with both text and image content
     let tool_result = ToolResult {
-        call: message::ToolCallId::new_or_mint("call-123"),
+        call: message::ToolCallId::new_or_minted("call-123", 0),
         provider: message::ProviderCallId::new("call-123"),
         name: "test_tool".to_string(),
         content: vec![
@@ -1125,7 +1125,7 @@ fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "ordered_tool".to_string(),
             content: vec![
@@ -1167,7 +1167,7 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "ordered_tool".to_string(),
             content: vec![
@@ -1202,7 +1202,7 @@ fn mixed_url_image_and_response_value_is_rejected() {
 
     let tool_result = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "url_tool".to_string(),
             content: vec![
@@ -1239,7 +1239,7 @@ fn tool_result_rejects_unsupported_image_media_types() {
     ] {
         let message = message::Message::User {
             content: vec![message::UserContent::ToolResult(ToolResult {
-                call: message::ToolCallId::mint(),
+                call: message::ToolCallId::minted(0),
                 provider: None,
                 name: "image_tool".to_string(),
                 content: vec![ToolResultContent::image_base64(
@@ -1267,7 +1267,7 @@ fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "collision_tool".to_string(),
             content: vec![
@@ -1325,7 +1325,7 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
     for (tool_content, expected) in cases {
         let message = message::Message::User {
             content: vec![message::UserContent::ToolResult(ToolResult {
-                call: message::ToolCallId::mint(),
+                call: message::ToolCallId::minted(0),
                 provider: None,
                 name: "test_tool".to_string(),
                 content: vec![tool_content],
@@ -1350,7 +1350,7 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
 
     // An id-less wire minted the handle (Gemini REST issued no id).
     let call = ToolCall::new(
-        ToolCallId::mint(),
+        ToolCallId::minted(0),
         ToolFunction {
             name: "lookup".to_string(),
             arguments: json!({}),
@@ -1514,7 +1514,7 @@ fn test_tool_result_with_url_image_is_rejected() {
     };
 
     let tool_result = ToolResult {
-        call: message::ToolCallId::mint(),
+        call: message::ToolCallId::minted(0),
         provider: None,
         name: "screenshot_tool".to_string(),
         content: vec![ToolResultContent::Image(Image {

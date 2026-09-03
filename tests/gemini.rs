@@ -14,6 +14,8 @@ mod cache_prefix;
 mod cassette_safety;
 #[path = "common/cassettes.rs"]
 mod cassettes;
+#[path = "common/goldens.rs"]
+mod goldens;
 #[path = "common/reasoning.rs"]
 mod reasoning;
 #[path = "common/support.rs"]

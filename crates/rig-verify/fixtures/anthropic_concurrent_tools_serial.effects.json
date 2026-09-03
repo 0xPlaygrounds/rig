@@ -1,0 +1,391 @@
+{
+  "header": {
+    "format": 2,
+    "run_spec": 12674369809691066455,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:lookup_harbor_label#0",
+        "family": {
+          "family": "tool",
+          "name": "lookup_harbor_label",
+          "description": "Return the alpha signal marker.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "key": "golden/tool:lookup_orchard_label#1",
+        "family": {
+          "family": "tool",
+          "name": "lookup_orchard_label",
+          "description": "Return the beta signal marker.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:lookup_harbor_label#0": "tool",
+      "golden/tool:lookup_orchard_label#1": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:lookup_harbor_label#0": "tool",
+      "golden/tool:lookup_orchard_label#1": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": true
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup_harbor_label",
+              "description": "Return the alpha signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "lookup_orchard_label",
+              "description": "Return the beta signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "I'll call both tools simultaneously right away!"
+            },
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_1",
+              "provider": {
+                "call_id": "toolu_REDACTED_1"
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_2",
+              "provider": {
+                "call_id": "toolu_REDACTED_2"
+              },
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 700,
+            "output_tokens": 70,
+            "total_tokens": 770,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "usage": {
+              "output_tokens": 70,
+              "input_tokens": 700,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "tool_use",
+            "message_id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6"
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "key": "golden/tool:lookup_harbor_label#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "lookup_harbor_label",
+        "args": "{}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "crimson-harbor"
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "key": "golden/tool:lookup_orchard_label#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "lookup_orchard_label",
+        "args": "{}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "silver-orchard"
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 4,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_REDACTED_1",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll call both tools simultaneously right away!"
+                },
+                {
+                  "type": "toolcall",
+                  "id": "toolu_REDACTED_1",
+                  "provider": {
+                    "call_id": "toolu_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "lookup_harbor_label",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": "toolu_REDACTED_2",
+                  "provider": {
+                    "call_id": "toolu_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "lookup_orchard_label",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "toolu_REDACTED_1",
+                  "provider": {
+                    "call_id": "toolu_REDACTED_1"
+                  },
+                  "name": "lookup_harbor_label",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "crimson-harbor"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": "toolu_REDACTED_2",
+                  "provider": {
+                    "call_id": "toolu_REDACTED_2"
+                  },
+                  "name": "lookup_orchard_label",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "silver-orchard"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup_harbor_label",
+              "description": "Return the alpha signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "lookup_orchard_label",
+              "description": "Return the beta signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**."
+            }
+          ],
+          "usage": {
+            "input_tokens": 846,
+            "output_tokens": 26,
+            "total_tokens": 872,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_2",
+          "response_id": null,
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "usage": {
+              "output_tokens": 26,
+              "input_tokens": 846,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "end_turn",
+            "message_id": "msg_REDACTED_2",
+            "model": "claude-sonnet-4-6"
+          }
+        }
+      }
+    }
+  ]
+}

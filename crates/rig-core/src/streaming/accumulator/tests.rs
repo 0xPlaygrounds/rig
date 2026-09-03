@@ -1,7 +1,7 @@
 use super::*;
 use crate::error::ErrorReport;
 use crate::message::AdditionalParams;
-use crate::streaming::non_empty_id;
+use crate::streaming::{MintKind, non_empty_id};
 
 /// Test-side key syntax: legacy minted renderings decode to minted
 /// keys; anything else is wire-derived.
@@ -1425,4 +1425,55 @@ fn snapshot_omits_open_calls_and_keeps_open_reasoning() {
     let snapshot = accumulator.snapshot();
     assert_eq!(snapshot.len(), 1, "got {snapshot:?}");
     assert_eq!(reasoning_texts(&snapshot), vec!["thinking"]);
+}
+
+/// A wire that carries no tool id names the call after the block that
+/// assembled it — the same handle on every run of the same wire.
+#[test]
+fn an_id_less_tool_call_is_named_by_its_block_deterministically() {
+    fn finalize() -> String {
+        let mut accumulator = BlockAccumulator::new();
+        let id = BlockId::minted(MintKind::Tool, 3);
+        accumulator
+            .apply(&StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: BlockKind::ToolCall,
+            })
+            .expect("start");
+        accumulator
+            .apply(&StreamEvent::BlockDelta {
+                id: id.clone(),
+                delta: Delta::ToolName { name: "add".into() },
+            })
+            .expect("name");
+        accumulator
+            .apply(&StreamEvent::BlockDelta {
+                id: id.clone(),
+                delta: Delta::ToolArguments {
+                    arguments: "{}".into(),
+                },
+            })
+            .expect("arguments");
+        let finalized = accumulator
+            .apply(&StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
+                block: None,
+            })
+            .expect("end")
+            .expect("a completed call");
+        match finalized.1 {
+            AssistantContent::ToolCall(call) => {
+                assert!(call.provider.is_none(), "no provider id existed");
+                call.id.to_string()
+            }
+            other => panic!("expected a tool call, got {other:?}"),
+        }
+    }
+    assert_eq!(finalize(), "tool-3");
+    assert_eq!(
+        finalize(),
+        finalize(),
+        "the same wire mints the same handle"
+    );
 }

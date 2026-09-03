@@ -200,10 +200,21 @@ fn text_turn(text: &str) -> ModelTurn {
 
 fn tool_call(id: &str, name: &str) -> AssistantContent {
     // The provider-boundary shape: a non-empty wire id becomes both the
-    // durable id and the provider correlator; an empty wire id mints a
-    // fresh unique handle (`provider` records the absence).
+    // durable id and the provider correlator; an empty wire id takes the
+    // deterministic `tool-0` handle (`provider` records the absence).
     AssistantContent::ToolCall(ToolCall::from_wire(
         id,
+        ToolFunction::new(name.to_string(), json!({"x": 1})),
+    ))
+}
+
+/// The `index`-th id-less call of one response: an adapter that meets a
+/// wire without ids names calls by position, so two such calls in one
+/// turn stay distinct (`tool-0`, `tool-1`).
+fn id_less_call(index: u64, name: &str) -> AssistantContent {
+    AssistantContent::ToolCall(ToolCall::from_wire_indexed(
+        "",
+        index,
         ToolFunction::new(name.to_string(), json!({"x": 1})),
     ))
 }
@@ -752,7 +763,7 @@ fn id_less_calls_keep_distinct_skip_results() {
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
         None,
-        vec![tool_call("", "unknown"), tool_call("", "add")],
+        vec![id_less_call(0, "unknown"), id_less_call(1, "add")],
         Usage::new(),
         tool_names(&["add"]),
         tool_names(&["add"]),

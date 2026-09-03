@@ -7,6 +7,22 @@
 //! dev-dependencies, and one place a reviewer looks for "what does the bus
 //! promise, and which test proves it".
 //!
+//! The effect corpus (`fixtures/*.effects.json`, `tests/golden_replay.rs`)
+//! is the loop this crate exists for. Write or edit a program; run it once
+//! against the cassette transport with `record_effects()` (the root suite's
+//! producer, under `RIG_REGENERATE_GOLDEN=1`); commit the golden; replay it
+//! here with no provider behind any key. A new scenario is recorded on the
+//! producer's exact test filter with `RIG_PROVIDER_TEST_MODE=record`, and its
+//! golden is then generated in replay mode (`RIG_REGENERATE_GOLDEN=1`), so it
+//! holds the cassette's placeholders, not live ids. A change in what the program asks
+//! (a kind), what it was answered (an outcome) or how a stream was delivered
+//! (its events) fails the replay naming the record and the JSON pointer of
+//! the difference — fix forward, and re-record live when the change is
+//! intended, never by hand-editing a golden. Hooks are program (the header
+//! names them; a different stack is refused before the first dispatch);
+//! tools are record (a replayer answers them); nothing the engine mints is
+//! random, so the same program produces the same log twice.
+//!
 //! What lives where:
 //! - here: behaviour of the bus and the agent over it (record and replay,
 //!   durable execution, the two interpreters agreeing);

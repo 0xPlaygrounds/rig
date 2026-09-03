@@ -9,9 +9,13 @@ mod bevy_bus_host;
 mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;
+mod fixtures_hold_no_key;
+mod golden_pairing;
+mod golden_recovery;
 mod loaders;
 mod name_keyed_serializers;
 mod nightly_paths_registry;
+mod no_random_ids;
 mod one_erasure;
 mod prompt_response_messages;
 mod provider_layout;

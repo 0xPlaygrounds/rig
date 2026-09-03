@@ -35,8 +35,12 @@ pub struct EffectLogReplayer {
 
 impl EffectLogReplayer {
     /// A replayer for `key`, holding that key's records from `log` in
-    /// order. `None` when the log has no record for the key — there is
-    /// nothing to describe the handler by.
+    /// order. A key the header's required row names but the log never
+    /// dispatched — a tool the program advertised and the model never
+    /// called — is served too, from its advertised definition, and answers
+    /// any dispatch with a divergence. `None` when neither the records nor
+    /// the required row know the key — there is nothing to describe the
+    /// handler by.
     pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Option<Self> {
         // Dispatch order, whatever order the log was assembled in: ids are
         // minted at dispatch and strictly increasing.
@@ -47,11 +51,16 @@ impl EffectLogReplayer {
             .collect();
         records.sort_by_key(|record| record.id);
         let records: VecDeque<EffectRecord> = records.into();
-        let first = records.front()?;
-        let family = first.kind.family();
+        let (family, described) = match records.front() {
+            Some(first) => (first.kind.family(), describe(key, &first.kind, log)),
+            None => {
+                let family = *log.header.required.get(key)?;
+                (family, describe_required(key, family, log)?)
+            }
+        };
         let descriptor = HandlerDescriptor {
             key: key.clone(),
-            family: describe(key, &first.kind, log),
+            family: described,
         };
         Some(Self {
             key: key.clone(),
@@ -61,13 +70,19 @@ impl EffectLogReplayer {
         })
     }
 
-    /// Every key the log mentions, in first-appearance order, each with its
+    /// Every key the log mentions, in first-appearance order, then every
+    /// key the required row names that no record does, each with its
     /// replayer.
     pub fn for_log(log: &EffectLog) -> Vec<Self> {
         let mut keys: Vec<HandlerKey> = Vec::new();
         for record in log {
             if !keys.contains(&record.key) {
                 keys.push(record.key.clone());
+            }
+        }
+        for key in log.header.required.keys() {
+            if !keys.contains(key) {
+                keys.push(key.clone());
             }
         }
         keys.iter()
@@ -170,7 +185,10 @@ fn divergence(recorded: &EffectKind, got: &EffectKind) -> Option<String> {
                 "arguments differ for `{name}`: recorded `{recorded_args}`, arrived `{args}`"
             ));
         }
-        return None;
+        // Name and args are the readable fast path; the dispatch context is
+        // part of the effect too (a tool answers differently under a
+        // different context), so it is compared as data like every other
+        // family's payload.
     }
     let (Ok(recorded), Ok(got)) = (serde_json::to_value(recorded), serde_json::to_value(got))
     else {
@@ -226,36 +244,61 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
 /// replayed run builds byte-identical requests — the replayer must look to
 /// the model exactly like the tool it stands in for, or the next completion
 /// dispatch diverges.
+/// The descriptor of a required key the log never dispatched. Only a tool
+/// can be described without a record: its definition is in the requests
+/// that advertised it. Any other family has nothing to describe it by.
+fn describe_required(
+    key: &HandlerKey,
+    family: EffectFamily,
+    log: &EffectLog,
+) -> Option<FamilyDescriptor> {
+    if family != EffectFamily::Tool {
+        return None;
+    }
+    let name = key
+        .as_str()
+        .rsplit_once("tool:")
+        .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))?;
+    let advertised = advertised_tool(name, log)?;
+    Some(FamilyDescriptor::Tool {
+        name: advertised.name,
+        description: advertised.description,
+        parameters: advertised.parameters,
+        embedding: None,
+    })
+}
+
+/// The definition of the tool `name` as some completion request in `log`
+/// advertised it.
+fn advertised_tool(name: &str, log: &EffectLog) -> Option<rig_core::completion::ToolDefinition> {
+    log.iter().find_map(|record| match &record.kind {
+        EffectKind::Completion { request, .. } => {
+            request.tools.iter().find(|tool| tool.name == name).cloned()
+        }
+        _ => None,
+    })
+}
+
 fn describe(key: &HandlerKey, kind: &EffectKind, log: &EffectLog) -> FamilyDescriptor {
     match kind {
         EffectKind::Completion { .. } => FamilyDescriptor::Completion {
             model: ModelRef::new(format!("replay:{key}")),
             capabilities: ProviderCapabilities::default(),
         },
-        EffectKind::ToolCall { name, .. } => {
-            let advertised = log.iter().find_map(|record| match &record.kind {
-                EffectKind::Completion { request, .. } => request
-                    .tools
-                    .iter()
-                    .find(|tool| &tool.name == name)
-                    .cloned(),
-                _ => None,
-            });
-            match advertised {
-                Some(tool) => FamilyDescriptor::Tool {
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: tool.parameters,
-                    embedding: None,
-                },
-                None => FamilyDescriptor::Tool {
-                    name: name.clone(),
-                    description: format!("replayed from the effect log under `{key}`"),
-                    parameters: serde_json::json!({"type": "object"}),
-                    embedding: None,
-                },
-            }
-        }
+        EffectKind::ToolCall { name, .. } => match advertised_tool(name, log) {
+            Some(tool) => FamilyDescriptor::Tool {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+                embedding: None,
+            },
+            None => FamilyDescriptor::Tool {
+                name: name.clone(),
+                description: format!("replayed from the effect log under `{key}`"),
+                parameters: serde_json::json!({"type": "object"}),
+                embedding: None,
+            },
+        },
         EffectKind::Embed { inputs } => FamilyDescriptor::Embed {
             model: format!("replay:{key}"),
             dims: None,
@@ -294,7 +337,7 @@ impl Serve for EffectLogReplayer {
         {
             let outcome = match next {
                 None => Err(ErrorReport::new(
-                    ErrorKind::Internal,
+                    ErrorKind::Divergence,
                     format!(
                         "replay divergence: `{}` received a `{}` dispatch after its log ran out",
                         self.key,
@@ -303,7 +346,7 @@ impl Serve for EffectLogReplayer {
                 )),
                 Some(record) => match divergence(&record.kind, &kind) {
                     Some(what) => Err(ErrorReport::new(
-                        ErrorKind::Internal,
+                        ErrorKind::Divergence,
                         format!(
                             "replay divergence: `{}` recorded {} ({}) but received {}: {what}",
                             self.key,

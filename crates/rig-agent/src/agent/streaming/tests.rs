@@ -201,7 +201,7 @@ fn tool_result_output_preserves_multimodal_tool_output() {
         None,
     ));
     let user_content = tool_result_output(
-        rig_core::message::ToolCallId::new_or_mint("tool_call_1"),
+        rig_core::message::ToolCallId::new_or_minted("tool_call_1", 0),
         rig_core::message::ProviderCallId::new("call_1"),
         "render_reference_image".to_string(),
         crate::tool::ToolOutput::content(content).expect("fixture content is non-empty"),
@@ -624,7 +624,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         None,
         vec![AssistantContent::ToolCall(
             rig_core::message::ToolCall::new(
-                rig_core::message::ToolCallId::new_or_mint("expected_call"),
+                rig_core::message::ToolCallId::new_or_minted("expected_call", 0),
                 rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
             ),
         )],
@@ -644,7 +644,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     };
     // Corrupt only the driver's copy so execution settles successfully but
     // `AgentRun` rejects the result before any commit-labelled item escapes.
-    calls[0].tool_call.id = rig_core::message::ToolCallId::new_or_mint("mismatched_call");
+    calls[0].tool_call.id = rig_core::message::ToolCallId::new_or_minted("mismatched_call", 0);
 
     let hook_context = HookContext::new(true, None, None);
     hook_context.set_turn(1);

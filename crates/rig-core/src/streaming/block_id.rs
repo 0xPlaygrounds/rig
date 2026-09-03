@@ -144,6 +144,16 @@ impl BlockId {
     /// Whether this key was minted at a stream boundary (stream-internal
     /// lifecycle bookkeeping: minted-key reasoning items close on
     /// interleaving output).
+    /// The minted block a minted id names: `tool-3` is the third tool
+    /// block, the inverse of [`Display`](fmt::Display) for a minted id.
+    /// `None` for anything else — a provider's id is a wire id.
+    pub fn from_minted_name(id: &str) -> Option<Self> {
+        let (kind, index) = id.rsplit_once('-')?;
+        let kind = MintKind::parse_name(kind)?;
+        let index = index.parse().ok()?;
+        Some(Self::Minted { kind, index })
+    }
+
     pub const fn is_minted(&self) -> bool {
         matches!(self, Self::Minted { .. })
     }

@@ -95,7 +95,7 @@ fn test_document(id: &str, text: &str) -> crate::completion::Document {
 
 fn request_with_multi_block_tool_result() -> CoreCompletionRequest {
     let tool_result = message::ToolResult {
-        call: message::ToolCallId::new_or_mint("call-id"),
+        call: message::ToolCallId::new_or_minted("call-id", 0),
         provider: message::ProviderCallId::new("call-id"),
         name: "tool".to_string(),
         content: vec![
@@ -331,7 +331,7 @@ fn tool_result_string_content_flattens_multiple_text_blocks() {
 #[test]
 fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
     let result = message::ToolResult {
-        call: message::ToolCallId::new_or_mint("call-id"),
+        call: message::ToolCallId::new_or_minted("call-id", 0),
         name: "tool".to_string(),
         provider: message::ProviderCallId::new("call-id"),
         content: vec![

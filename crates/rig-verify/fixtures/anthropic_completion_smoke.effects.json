@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 1,
+    "format": 2,
     "run_spec": 10419100958996159953,
     "handlers": [
       {
@@ -16,6 +16,15 @@
     ],
     "signature": {
       "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
     }
   },
   "records": [

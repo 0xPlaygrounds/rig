@@ -72,10 +72,14 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
     results
 }
 
+/// The result answering `call`: the first result after the call's message
+/// with its id. Gemini's calls carry no wire id, so each turn's calls are
+/// named `tool-<index>` per response and two turns' first calls share an
+/// id — a result is only the answer to the call it follows.
 fn result_index_for_call(results: &[ToolEvent], call: &ToolEvent) -> usize {
     results
         .iter()
-        .find(|result| result.call_id == call.call_id)
+        .find(|result| result.message_index > call.message_index && result.call_id == call.call_id)
         .unwrap_or_else(|| {
             panic!(
                 "chat history is missing the tool result answering call {:?} (call_id {:?})",

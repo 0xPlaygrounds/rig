@@ -609,6 +609,7 @@ pub(crate) fn memory_error_from_report(
         | rig_core::error::ErrorKind::Timeout
         | rig_core::error::ErrorKind::BusClosed
         | rig_core::error::ErrorKind::HandlerUnavailable
+        | rig_core::error::ErrorKind::Divergence
         | rig_core::error::ErrorKind::Other => {
             rig_core::memory::MemoryError::Internal(report.to_string())
         }

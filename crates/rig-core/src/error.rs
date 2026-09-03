@@ -69,6 +69,11 @@ pub enum ErrorKind {
     /// typed view asked for. A wiring or liveness event; the key is in the
     /// message.
     HandlerUnavailable,
+    /// A replay divergence: the program asked for something the record
+    /// does not hold — a different effect at this position, or an effect
+    /// after the log ran out. Never retryable; the run that meets it fails
+    /// rather than continuing on an answer the record never gave.
+    Divergence,
     /// Anything else.
     Other,
 }
@@ -460,6 +465,7 @@ impl From<&EmbeddingError> for ErrorReport {
             | ErrorKind::Timeout
             | ErrorKind::BusClosed
             | ErrorKind::HandlerUnavailable
+            | ErrorKind::Divergence
             | ErrorKind::Other => false,
         };
         ErrorReport {
@@ -514,6 +520,7 @@ impl From<&RerankError> for ErrorReport {
             | ErrorKind::Timeout
             | ErrorKind::BusClosed
             | ErrorKind::HandlerUnavailable
+            | ErrorKind::Divergence
             | ErrorKind::Other => false,
         };
         ErrorReport {

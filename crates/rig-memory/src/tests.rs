@@ -17,7 +17,7 @@ fn tool_call_msg() -> Message {
     Message::Assistant {
         id: None,
         content: vec![AssistantContent::ToolCall(ToolCall::new(
-            ToolCallId::new_or_mint("call_1"),
+            ToolCallId::new_or_minted("call_1", 0),
             ToolFunction::new("t".into(), serde_json::json!({})),
         ))],
     }
@@ -26,7 +26,7 @@ fn tool_call_msg() -> Message {
 fn tool_result_msg() -> Message {
     Message::User {
         content: vec![UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new_or_mint("call_1"),
+            call: ToolCallId::new_or_minted("call_1", 0),
             provider: None,
             name: "t".into(),
             content: vec![ToolResultContent::text("ok")],

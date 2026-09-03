@@ -150,7 +150,7 @@ fn weather_tool_definition() -> completion::ToolDefinition {
 fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
     message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-id"),
+            call: message::ToolCallId::new_or_minted("call-id", 0),
             provider: message::ProviderCallId::new("call-id")
                 .map(|provider| provider.with_item_id("result-id")),
             name: "tool".to_string(),
@@ -364,7 +364,7 @@ fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
 
     let input = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-id"),
+            call: message::ToolCallId::new_or_minted("call-id", 0),
             provider: message::ProviderCallId::new("call-id")
                 .map(|provider| provider.with_item_id("result-id")),
             name: "tool".to_string(),
@@ -459,7 +459,7 @@ fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
     ];
     let input = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-id"),
+            call: message::ToolCallId::new_or_minted("call-id", 0),
             provider: message::ProviderCallId::new("call-id")
                 .map(|provider| provider.with_item_id("result-id")),
             name: "tool".to_string(),

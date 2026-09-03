@@ -326,7 +326,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     let report = within(dispatcher.dispatch(&HandlerKey::from("add"), custom(json!(1))))
         .await
         .expect_err("ran out");
-    assert_eq!(report.kind, ErrorKind::Internal);
+    assert_eq!(report.kind, ErrorKind::Divergence);
     assert!(report.message.contains("replay divergence"));
 }
 
@@ -409,7 +409,7 @@ async fn replaying_a_changed_payload_is_a_divergence_not_a_guess() {
     let report = within(replay_dispatcher.dispatch(&key, custom(json!("different"))))
         .await
         .expect_err("a different payload does not replay the recorded answer");
-    assert_eq!(report.kind, ErrorKind::Internal);
+    assert_eq!(report.kind, ErrorKind::Divergence);
     assert!(report.message.contains("replay divergence"), "{report:?}");
     assert!(report.message.contains("differs"), "{report:?}");
 }
@@ -684,4 +684,61 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
         .await
         .expect_err("replayed as the recorded failure");
     assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
+}
+
+/// A tool call's dispatch context is part of the effect: the same name and
+/// arguments under a different context is a divergence, named by path.
+#[tokio::test]
+async fn a_tool_call_under_a_different_context_is_a_divergence() {
+    use super::LogHeader;
+    use rig_core::{
+        effect::{EffectId, EffectRecord},
+        tool::{ContextValue, ToolOutput, ToolResult},
+    };
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Tag(String);
+    impl ContextValue for Tag {
+        const KEY: &'static str = "tag";
+    }
+    let key = HandlerKey::from("tool:echo");
+    let mut recorded_context = ToolContext::new();
+    recorded_context
+        .insert(Tag("recorded".into()))
+        .expect("context value");
+    let log: EffectLog = EffectLog {
+        header: LogHeader::default(),
+        records: vec![EffectRecord {
+            id: EffectId::from_raw(1),
+            key: key.clone(),
+            kind: EffectKind::ToolCall {
+                name: "echo".into(),
+                args: "{}".into(),
+                context: recorded_context,
+            },
+            outcome: Ok(Outcome::ToolResult {
+                result: ToolResult::success(ToolOutput::text("ok")),
+                context: ToolContext::new(),
+            }),
+            events: None,
+        }],
+    };
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
+    let _task = spawn(driver);
+    let mut other_context = ToolContext::new();
+    other_context
+        .insert(Tag("arrived".into()))
+        .expect("context value");
+    let report = within(dispatcher.dispatch(
+        &key,
+        EffectKind::ToolCall {
+            name: "echo".into(),
+            args: "{}".into(),
+            context: other_context,
+        },
+    ))
+    .await
+    .expect_err("a different context is a different effect");
+    assert_eq!(report.kind, ErrorKind::Divergence);
+    assert!(report.message.contains("context"), "{report:?}");
 }

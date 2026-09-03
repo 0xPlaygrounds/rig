@@ -170,7 +170,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
     // A call id is always available now: the wire gets the
     // provider-issued id when one exists, else rig's minted handle —
     // the old "Tool results require call_id" error is unrepresentable.
-    let call = message::ToolCallId::mint();
+    let call = message::ToolCallId::minted(0);
     let content = message::UserContent::ToolResult(message::ToolResult {
         call: call.clone(),
         provider: None,
@@ -189,7 +189,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
 #[test]
 fn test_tool_result_preserves_text_and_json_types() {
     let content = message::UserContent::ToolResult(message::ToolResult {
-        call: message::ToolCallId::new_or_mint("call-123"),
+        call: message::ToolCallId::new_or_minted("call-123", 0),
         provider: message::ProviderCallId::new("call-123"),
         name: "get_weather".to_string(),
         content: vec![
@@ -244,7 +244,7 @@ fn test_tool_result_text_and_json_singletons_remain_scalar() {
 
     for (tool_content, expected) in cases {
         let content = message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-123"),
+            call: message::ToolCallId::new_or_minted("call-123", 0),
             provider: message::ProviderCallId::new("call-123"),
             name: "get_weather".to_string(),
             content: vec![tool_content],
@@ -285,7 +285,7 @@ fn test_tool_result_rich_singletons_use_tagged_content() {
 
     for (tool_content, expected) in cases {
         let content = message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-123"),
+            call: message::ToolCallId::new_or_minted("call-123", 0),
             provider: message::ProviderCallId::new("call-123"),
             name: "get_weather".to_string(),
             content: vec![tool_content],
@@ -303,7 +303,7 @@ fn test_tool_result_rich_singletons_use_tagged_content() {
 #[test]
 fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     let tool_result = message::UserContent::ToolResult(message::ToolResult {
-        call: message::ToolCallId::new_or_mint("call-image"),
+        call: message::ToolCallId::new_or_minted("call-image", 0),
         provider: message::ProviderCallId::new("call-image"),
         name: "render".to_string(),
         content: vec![
