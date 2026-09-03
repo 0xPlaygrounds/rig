@@ -324,6 +324,18 @@ pub(super) async fn with_anthropic_corpus_hooks_cassette<F, Fut>(
     with_anthropic_cassette(spec, test_body).await;
 }
 
+/// The effect corpus's serving matrix (Matrix C):
+/// `tests/cassettes/anthropic/corpus_serving/`.
+pub(super) async fn with_anthropic_corpus_serving_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
 /// The `request-id` response header each interaction of an Anthropic cassette
 /// recorded, in wire order — one entry per interaction, `None` for an
 /// interaction whose response carried no such header.

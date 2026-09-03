@@ -301,3 +301,22 @@ impl rig::agent::AgentHook for LookupBeforeRun {
         rig::agent::RunStartAction::continue_run()
     }
 }
+
+/// `on_model_select` → `Select("fast")` on every turn after the first:
+/// the route answers once the default model has been asked once.
+#[allow(dead_code)]
+pub(crate) struct RouteAfterFirstTurn;
+
+impl rig::agent::AgentHook for RouteAfterFirstTurn {
+    fn on_model_select(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelSelection<'_>,
+    ) -> rig::agent::ModelSelectionAction {
+        if event.previous_model.is_some() {
+            rig::agent::ModelSelectionAction::select("fast")
+        } else {
+            rig::agent::ModelSelectionAction::continue_run()
+        }
+    }
+}

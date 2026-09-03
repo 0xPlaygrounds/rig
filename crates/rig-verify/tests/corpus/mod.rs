@@ -46,6 +46,7 @@
 use std::time::Duration;
 
 use futures::StreamExt;
+use rig_agent::agent::{ModelSelection, ModelSelectionAction};
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
     agent::{
@@ -95,6 +96,8 @@ pub enum Hook {
     DemandDone,
     /// `on_run_start` dispatches `add(1, 2)` through the run's bus.
     LookupBeforeRun,
+    /// `on_model_select` → `Select(fast)` on every turn after the first.
+    RouteAfterFirstTurn,
 }
 
 pub const PIRATE_PREAMBLE: &str = "You are a pirate. Answer in one short sentence.";
@@ -105,6 +108,7 @@ pub const DONE_FEEDBACK: &str = "End your answer with the word DONE.";
 pub const LOOKUP_ARGS: &str = r#"{"x":1,"y":2}"#;
 pub const LOOKUP_KEY: &str = "golden/tool:add#0";
 pub const PATCHED_ARGS: &str = r#"{"x":40,"y":2}"#;
+pub const ROUTE: &str = "fast";
 
 /// How the producer's run ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -179,6 +183,8 @@ pub struct Program {
     /// The run's output when a hook replaced it; else the golden's last
     /// completion text.
     pub expected_output: Option<&'static str>,
+    /// A second model registered as a route under this label.
+    pub route: Option<&'static str>,
 }
 
 impl Program {
@@ -205,6 +211,7 @@ impl Program {
         cancel_after_first_delta: false,
         ending: Ending::Answer,
         expected_output: None,
+        route: None,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -365,6 +372,22 @@ impl AgentHook for LookupBeforeRun {
     }
 }
 
+struct RouteAfterFirstTurn;
+
+impl AgentHook for RouteAfterFirstTurn {
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        if event.previous_model.is_some() {
+            ModelSelectionAction::select(ROUTE)
+        } else {
+            ModelSelectionAction::continue_run()
+        }
+    }
+}
+
 fn answer_text(content: &[AssistantContent]) -> String {
     content
         .iter()
@@ -392,6 +415,7 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::PreambleOverride => builder.add_hook(PreambleOverride),
             Hook::DemandDone => builder.add_hook(DemandDone),
             Hook::LookupBeforeRun => builder.add_hook(LookupBeforeRun),
+            Hook::RouteAfterFirstTurn => builder.add_hook(RouteAfterFirstTurn),
         };
     }
     builder
@@ -483,7 +507,9 @@ impl Replay {
     pub fn open(program: &Program) -> Self {
         let log = golden(program.fixture);
         EffectLogReplayer::check_header(&log).expect("a current format");
-        let bus = log.header.bus.expect("the header names the bus policy");
+        // A golden recorded over a host's bus names no policy: the host
+        // sized its bus. The replay's host uses the default.
+        let bus = log.header.bus.unwrap_or_default();
         let (dispatcher, registrar, mut driver) = Bus::channel_with(bus);
         let model_key = HandlerKey::from(format!("{}/model:default", program.owner));
         let memory_key = HandlerKey::from(format!("{}/memory", program.owner));
@@ -494,6 +520,9 @@ impl Replay {
                 rig_core::serve::ErasedHandler::new(model),
             )
             .expect("a fresh key");
+        // A route is the agent's to register (`model_route_handler`), as
+        // the producer's `model_route` was; the host bus serves only the
+        // default model, as the producer's client did.
         let recorder = if keeps_events(&log) {
             EffectLogRecorder::keeping_stream_events()
         } else {
@@ -510,6 +539,18 @@ impl Replay {
             model_key,
             memory_key,
         }
+    }
+
+    pub fn route_key(&self, label: &str) -> HandlerKey {
+        HandlerKey::from(format!("{}/model:{label}", self.log_owner()))
+    }
+
+    fn log_owner(&self) -> String {
+        self.model_key
+            .as_str()
+            .rsplit_once("/model:")
+            .map(|(owner, _)| owner.to_owned())
+            .expect("the model key names its owner")
     }
 
     pub fn tool_keys(&self) -> Vec<HandlerKey> {
@@ -590,6 +631,11 @@ pub async fn bus_engine_reproduces(program: &Program) {
         let memory = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
             .expect("the conversation's records");
         builder = builder.memory_handler(memory).conversation(conversation);
+    }
+    if let Some(label) = program.route {
+        let route = EffectLogReplayer::for_key(&replay.log, &replay.route_key(label))
+            .expect("the route is in the required row");
+        builder = builder.model_route_handler(label, route);
     }
     let agent = builder.build();
     agent
@@ -784,6 +830,18 @@ pub async fn hand_driver_reproduces(program: &Program) {
         .dispatcher
         .handle(&replay.model_key)
         .expect("the model");
+    // The route, registered by the driver as the agent would register it,
+    // selected on every turn after the first when the program's hook does.
+    let route: Option<ModelHandle> = program.route.map(|label| {
+        let key = replay.route_key(label);
+        let replayer = EffectLogReplayer::for_key(&replay.log, &key)
+            .expect("the route is in the required row");
+        replay
+            .registrar
+            .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(replayer))
+            .expect("a fresh key");
+        replay.dispatcher.handle(&key).expect("the route")
+    });
     let memory: Option<(MemoryHandle, ConversationId)> = program.conversation.map(|id| {
         let replayer = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
             .expect("the conversation's records");
@@ -828,6 +886,9 @@ pub async fn hand_driver_reproduces(program: &Program) {
         .contains(&Hook::PreambleOverride)
         .then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE));
     let mut run = AgentRun::from_spec(&spec, program.prompt, history);
+    // The routing hook selects the route once a model has been asked
+    // (`previous_model` is set): the first call goes to the default.
+    let mut asked_before = false;
     let response = loop {
         let step = match (run.next_step(), program.ending) {
             (Ok(step), _) => step,
@@ -840,6 +901,11 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 history,
                 turn,
             } => {
+                let model = match (&route, program.hooks.contains(&Hook::RouteAfterFirstTurn)) {
+                    (Some(route), true) if asked_before => route,
+                    _ => &model,
+                };
+                asked_before = true;
                 let prepared = prepare_request(
                     &spec,
                     &model.capabilities(),
@@ -939,7 +1005,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
         }
     };
     let Some(response) = response else {
-        drop((model, tools, memory));
+        drop((model, route, tools, memory));
         let log = replay.log.clone();
         let replayed = replay.close().await;
         assert_same_records(&replayed, &log, "hand driver");
@@ -956,7 +1022,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)
     );
-    drop((model, tools, memory));
+    drop((model, route, tools, memory));
     let log = replay.log.clone();
     let replayed = replay.close().await;
     assert_same_records(&replayed, &log, "hand driver");

@@ -13,6 +13,7 @@ mod cassette {
     mod cached_content_matrix;
     mod chat_history;
     mod code_execution_matrix;
+    mod corpus_serving;
     mod document_ordering;
     mod dynamic_tools;
     mod embedding_matrix;

@@ -1,0 +1,628 @@
+{
+  "header": {
+    "format": 2,
+    "run_spec": 13512054446980575785,
+    "handlers": [
+      {
+        "key": "stress-agent/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "stress-agent/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first operand"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second operand"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      },
+      {
+        "key": "stress-agent/tool:subtract#1",
+        "family": {
+          "family": "tool",
+          "name": "subtract",
+          "description": "Subtract y from x (i.e. x - y)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first operand"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second operand"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "stress-agent/model:default": "completion",
+      "stress-agent/tool:add#0": "tool",
+      "stress-agent/tool:subtract#1": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "stress-agent/model:default": "completion",
+      "stress-agent/tool:add#0": "tool",
+      "stress-agent/tool:subtract#1": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": true
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "stress-agent/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "subtract",
+              "description": "Subtract y from x (i.e. x - y)",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 20,
+                  "y": 5
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 199,
+            "output_tokens": 19,
+            "total_tokens": 300,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 82
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 199,
+              "candidatesTokenCount": 19,
+              "totalTokenCount": 300,
+              "thoughtsTokenCount": 82,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 199
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "key": "stress-agent/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":20,\"y\":5}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 25
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "key": "stress-agent/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 20,
+                      "y": 5
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 25
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "subtract",
+              "description": "Subtract y from x (i.e. x - y)",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "subtract",
+                "arguments": {
+                  "x": 25,
+                  "y": 4
+                }
+              },
+              "signature": "signature_REDACTED_2",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 314,
+            "output_tokens": 19,
+            "total_tokens": 388,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 55
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 314,
+              "candidatesTokenCount": 19,
+              "totalTokenCount": 388,
+              "thoughtsTokenCount": 55,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 314
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_2"
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "key": "stress-agent/tool:subtract#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "subtract",
+        "args": "{\"x\":25,\"y\":4}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 21
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 5,
+      "key": "stress-agent/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Perform the steps in order, using the result of each step as an input to the next. Once you have the final tool result, reply with the final numeric answer in plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the subtract tool. Report the final number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 20,
+                      "y": 5
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 25
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "subtract",
+                    "arguments": {
+                      "x": 25,
+                      "y": 4
+                    }
+                  },
+                  "signature": "signature_REDACTED_2",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "subtract",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 21
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            },
+            {
+              "name": "subtract",
+              "description": "Subtract y from x (i.e. x - y)",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first operand"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second operand"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_3"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "21"
+            }
+          ],
+          "usage": {
+            "input_tokens": 402,
+            "output_tokens": 2,
+            "total_tokens": 418,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 14
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_3",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 402,
+              "candidatesTokenCount": 2,
+              "totalTokenCount": 418,
+              "thoughtsTokenCount": 14,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 402
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_3"
+          }
+        }
+      }
+    }
+  ]
+}
