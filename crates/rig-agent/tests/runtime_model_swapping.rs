@@ -1951,7 +1951,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
         agent,
     } = parts;
     let task = tokio::spawn(driver);
-    let handle: rig_core::bus::ModelHandle = dispatcher
+    let handle: rig_bus::ModelHandle = dispatcher
         .bind(agent.model_key())
         .expect("bound before the swap");
     let before = handle.descriptor();

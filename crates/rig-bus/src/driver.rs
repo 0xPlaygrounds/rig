@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     pin::Pin,
-    sync::{Arc, Mutex, PoisonError},
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -14,15 +14,17 @@ use futures::{
 };
 use tracing::Instrument;
 
-use crate::{
-    effect::{EffectId, EffectKind, EffectLog, EffectRecord, HandlerKey, LogHeader, Outcome},
+use rig_core::{
+    effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    streaming::{BlockAccumulator, StreamEvent},
-    wasm_compat::WasmBoxedFuture,
+    serve::{OnEvent, OnOutcome, OutcomeSink},
+    streaming::StreamEvent,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
+use rig_core::serve::{ErasedHandler, Serve};
+
 use super::{
-    ErasedHandler, OutcomeSink, Serve,
     dispatcher::{Command, Shared, handler_unavailable},
     registrar::{Mailbox, Registrar, Registration},
 };
@@ -54,184 +56,56 @@ impl Default for BusConfig {
     }
 }
 
-/// A bus tap: every dispatch the driver serves is recorded, as an
-/// [`EffectRecord`], **in dispatch order** — the slot is opened when the
-/// driver takes the command and filled when the dispatch resolves, so two
-/// concurrent dispatches to one key are logged in the order they were
-/// served, not the order they happened to finish. Cloning shares the log; a
-/// streaming dispatch is recorded as the aggregated completion its events
-/// fold to.
-#[derive(Clone, Default)]
-pub struct EffectLogRecorder {
-    slots: Arc<Mutex<Vec<RecordSlot>>>,
-    header: Arc<Mutex<LogHeader>>,
-    /// Keep a streamed dispatch's events verbatim (see
-    /// [`Self::keeping_stream_events`]).
-    keep_events: bool,
-}
-
-/// One dispatch the recorder has seen: opened at serve time, filled at
-/// resolution.
-struct RecordSlot {
-    id: EffectId,
-    key: HandlerKey,
-    kind: EffectKind,
-    outcome: Option<Result<Outcome, ErrorReport>>,
-    events: Option<Vec<StreamEvent>>,
-}
-
-impl RecordSlot {
-    fn record(&self) -> Option<EffectRecord> {
-        self.outcome.as_ref().map(|outcome| EffectRecord {
-            id: self.id,
-            key: self.key.clone(),
-            kind: self.kind.clone(),
-            outcome: outcome.clone(),
-            events: self.events.clone(),
-        })
-    }
-}
-
-impl EffectLogRecorder {
-    /// An empty recorder: streams are recorded as their folded completion.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// A recorder that keeps a streamed dispatch's events verbatim in its
-    /// record (`EffectRecord::events`), so a replay re-emits the original
-    /// delta boundaries. Costs the events' size per streamed dispatch; the
-    /// fold is the default.
-    pub fn keeping_stream_events() -> Self {
-        Self {
-            keep_events: true,
-            ..Self::default()
-        }
-    }
-
-    /// The header the log will carry: set by the driver at
-    /// [`BusDriver::record_to`] (the registered handlers) and by an agent
-    /// (the run spec hash); the signature accumulates as dispatches are
-    /// served.
-    pub fn header(&self) -> LogHeader {
-        self.header
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Stamp the run spec hash into the header.
-    pub fn set_run_spec(&self, hash: u64) {
-        self.header
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .run_spec = Some(hash);
-    }
-
-    pub(super) fn set_handlers(&self, handlers: Vec<crate::effect::HandlerDescriptor>) {
-        self.header
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .handlers = handlers;
-    }
-
-    /// A copy of every resolved dispatch so far, in dispatch order, under
-    /// the header. A dispatch still in flight is not in the log yet; it
-    /// takes its place (ahead of everything served after it) when it
-    /// resolves.
-    pub fn log(&self) -> EffectLog {
-        let records = self
-            .slots
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter_map(RecordSlot::record)
-            .collect();
-        EffectLog {
-            header: self.header(),
-            records,
-        }
-    }
-
-    /// Take the resolved dispatches, leaving the recorder holding only the
-    /// ones still in flight; the header stays (the signature keeps growing).
-    pub fn take(&self) -> EffectLog {
-        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        let mut taken = Vec::new();
-        slots.retain(|slot| match slot.record() {
-            Some(record) => {
-                taken.push(record);
-                false
-            }
-            None => true,
-        });
-        drop(slots);
-        EffectLog {
-            header: self.header(),
-            records: taken,
-        }
-    }
-
-    /// Dispatches recorded and not yet resolved.
-    pub fn in_flight(&self) -> usize {
-        self.slots
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter(|slot| slot.outcome.is_none())
-            .count()
-    }
-
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind) {
-        self.header
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .signature
-            .entry(key.clone())
-            .or_insert_with(|| kind.family());
-        let events = (self.keep_events && kind.streams()).then(Vec::new);
-        self.slots
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(RecordSlot {
-                id,
-                key,
-                kind,
-                outcome: None,
-                events,
-            });
-    }
-
-    fn event(&self, id: EffectId, event: &StreamEvent) {
-        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id)
-            && let Some(events) = slot.events.as_mut()
-        {
-            events.push(event.clone());
-        }
-    }
-
-    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
-        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id) {
-            slot.outcome = Some(outcome);
-        }
-    }
-}
-
-impl fmt::Debug for EffectLogRecorder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        let resolved = slots.iter().filter(|slot| slot.outcome.is_some()).count();
-        f.debug_struct("EffectLogRecorder")
-            .field("records", &resolved)
-            .field("in_flight", &(slots.len() - resolved))
-            .finish()
-    }
-}
-
 type InFlight = WasmBoxedFuture<'static, HandlerKey>;
 type InFlightServing = Pin<Box<Serving>>;
+
+/// What a driver tells about the dispatches it serves: the seam a log
+/// recorder implements. The driver calls [`handlers`](Self::handlers) once
+/// at [`BusDriver::record_to`], [`begin`](Self::begin) as each dispatch is
+/// handed to its handler, [`event`](Self::event) for every streamed event
+/// when [`keep_events`](Self::keep_events) says so, and
+/// [`resolve`](Self::resolve) when the outcome is known. A recorder is
+/// shared between the driver and its owner, so every method takes `&self`;
+/// it rides in the sink's taps, which are `Send + Sync` on every target, so
+/// a recorder is too.
+pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
+    /// The handlers registered when recording started.
+    fn handlers(&self, handlers: Vec<HandlerDescriptor>);
+    /// A dispatch is about to be served.
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind);
+    /// Whether streamed events are wanted verbatim ([`Self::event`]).
+    fn keep_events(&self) -> bool;
+    /// One streamed event of `id`.
+    fn event(&self, id: EffectId, event: &StreamEvent);
+    /// The outcome of `id`.
+    fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>);
+}
+
+/// The driver's hold on a recorder: closures, like the sink's taps, so the
+/// driver names no recorder type.
+struct Recording {
+    begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind) + Send + Sync>,
+    tap: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
+}
+
+impl Recording {
+    fn new<R: Recorder + Clone + Send + Sync>(recorder: R) -> Self {
+        let for_begin = recorder.clone();
+        let begin = Box::new(move |id, key, kind| for_begin.begin(id, key, kind));
+        let tap = Box::new(move |sink: OutcomeSink, id: EffectId| {
+            let on_event: Option<OnEvent> = recorder.keep_events().then(|| {
+                let recorder = recorder.clone();
+                Box::new(move |event: &StreamEvent| recorder.event(id, event)) as OnEvent
+            });
+            let recorder = recorder.clone();
+            let on_outcome: OnOutcome = Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
+                recorder.resolve(id, outcome.clone());
+            });
+            sink.with_tap(on_outcome, on_event)
+        });
+        Self { begin, tap }
+    }
+}
 
 /// The serving half of the bus: a plain future that owns the **only**
 /// handler table and runs handlers as commands arrive. Handlers reach it
@@ -258,7 +132,7 @@ pub struct BusDriver {
     in_flight: FuturesUnordered<InFlightServing>,
     queued: BTreeMap<HandlerKey, VecDeque<Command>>,
     busy: BTreeSet<HandlerKey>,
-    recorder: Option<EffectLogRecorder>,
+    recorder: Option<Recording>,
     commands_closed: bool,
 }
 
@@ -316,13 +190,13 @@ impl BusDriver {
         Ok(())
     }
 
-    /// [`register`](Self::register), returning a [`Key`](super::Key) that carries the
+    /// [`register`](Self::register), returning a [`Key`](rig_core::effect::Key) that carries the
     /// family the handler proved by its descriptor.
-    pub fn register_typed<F: crate::effect::Family>(
+    pub fn register_typed<F: rig_core::effect::Family>(
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Serve + 'static,
-    ) -> Result<super::Key<F>, ErrorReport> {
+    ) -> Result<rig_core::effect::Key<F>, ErrorReport> {
         let key = key.into();
         let handler = ErasedHandler::new(handler);
         let descriptor = handler.descriptor();
@@ -334,7 +208,7 @@ impl BusDriver {
             ));
         }
         self.register_erased(key.clone(), handler)?;
-        Ok(super::Key::new_unchecked(key))
+        Ok(rig_core::effect::Key::new_unchecked(key))
     }
 
     /// Remove the handler serving `key`. Returns whether one was registered.
@@ -373,18 +247,18 @@ impl BusDriver {
     }
 
     /// Record every served dispatch into `recorder`; the handlers registered
-    /// now are stamped into the log's header.
-    pub fn record_to(&mut self, recorder: EffectLogRecorder) {
-        recorder.set_handlers(
+    /// now are handed to it first ([`Recorder::handlers`]).
+    pub fn record_to<R: Recorder + Clone + Send + Sync>(&mut self, recorder: R) {
+        recorder.handlers(
             self.handlers
                 .iter()
-                .map(|(key, handler)| crate::effect::HandlerDescriptor {
+                .map(|(key, handler)| HandlerDescriptor {
                     key: key.clone(),
                     family: handler.descriptor().family,
                 })
                 .collect(),
         );
-        self.recorder = Some(recorder);
+        self.recorder = Some(Recording::new(recorder));
     }
 
     /// The serving policy.
@@ -421,8 +295,8 @@ impl BusDriver {
             Some(recorder) => {
                 // The record's place in the log is its place in the serve
                 // order; the outcome fills it in when the dispatch resolves.
-                recorder.begin(id, key.clone(), kind.clone());
-                tap(sink, recorder.clone(), id)
+                (recorder.begin)(id, key.clone(), kind.clone());
+                (recorder.tap)(sink, id)
             }
             None => sink,
         };
@@ -584,65 +458,6 @@ impl Drop for BusDriver {
         // and handlers posted but never installed go with the driver.
         self.shared.mark_closed();
         self.mailbox.clear();
-    }
-}
-
-// A handler wrapper that fills the dispatch's record when it resolves, and
-// keeps its events when the recorder asked for them.
-fn tap(sink: OutcomeSink, recorder: EffectLogRecorder, id: EffectId) -> OutcomeSink {
-    let on_event: Option<super::handler::OnEvent> = recorder.keep_events.then(|| {
-        let recorder = recorder.clone();
-        Box::new(move |event: &StreamEvent| recorder.event(id, event)) as super::handler::OnEvent
-    });
-    sink.with_tap(
-        Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
-            recorder.resolve(id, outcome.clone());
-        }),
-        on_event,
-    )
-}
-
-/// Folds a tapped stream into the completion the record stores.
-pub(super) struct StreamTap {
-    accumulator: BlockAccumulator,
-    message_id: Option<String>,
-}
-
-impl StreamTap {
-    pub(super) fn new() -> Self {
-        Self {
-            accumulator: BlockAccumulator::new(),
-            message_id: None,
-        }
-    }
-
-    /// Fold one event; returns the recorded outcome at the terminal.
-    pub(super) fn observe(
-        &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-    ) -> Option<Result<Outcome, ErrorReport>> {
-        match item {
-            Err(report) => Some(Err(report.clone())),
-            Ok(StreamEvent::Final(terminal)) => Some(super::handler::finish_unary(
-                &mut self.accumulator,
-                self.message_id.take(),
-                terminal.clone(),
-            )),
-            Ok(event) => {
-                if let StreamEvent::BlockStart {
-                    id,
-                    kind: crate::streaming::BlockKind::Message,
-                } = event
-                    && let Some(wire) = id.wire_str()
-                {
-                    self.message_id = Some(wire.to_owned());
-                }
-                if let Err(report) = self.accumulator.apply(event) {
-                    return Some(Err(report));
-                }
-                None
-            }
-        }
     }
 }
 

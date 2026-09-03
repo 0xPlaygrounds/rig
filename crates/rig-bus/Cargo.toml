@@ -1,0 +1,30 @@
+[package]
+name = "rig-bus"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+description = "The effect bus runtime for rig: the dispatcher, the registrar, the driver and the typed views over rig-core's effect vocabulary."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+futures = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+# The model checker's shims, only under `RUSTFLAGS=--cfg rig_loom` (the
+# pattern tokio uses): nothing is added to the default graph.
+[target.'cfg(rig_loom)'.dependencies]
+loom = "0.7"
+
+[dev-dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
+tokio = { workspace = true, features = ["full"] }

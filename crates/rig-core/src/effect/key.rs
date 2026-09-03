@@ -1,23 +1,24 @@
-//! A family-typed handler key.
+//! A family-typed handler key: vocabulary, not runtime. A `Key<F>` is a
+//! [`HandlerKey`] plus a proof, at the type level, of the family the
+//! handler under it serves; it holds no reference to a dispatcher.
 
 use std::{fmt, hash::Hash, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
 
-use crate::effect::{Family, HandlerKey};
+use super::{Family, HandlerKey};
 
 /// A [`HandlerKey`] that carries the family it serves in its type: what rig
 /// mints for the registrations it makes (an agent's model, memory and
-/// retrieval keys, a registry's tool generations) and what
-/// [`Registrar::register_typed`](super::Registrar::register_typed) returns.
-/// [`Dispatcher::bind`](super::Dispatcher::bind) binds one with an
-/// existence check only — the family was proven when the key was minted.
+/// retrieval keys, a registry's tool generations) and what a typed
+/// registration on the bus returns. A dispatcher binds one with an existence
+/// check only — the family was proven when the key was minted.
 ///
 /// On the wire a `Key<F>` is the bare string (`serde(transparent)`), so a
 /// log, a scene and a cassette hold exactly what they held before; an
-/// explicit or replayed key stays a [`HandlerKey`] and binds through
-/// [`Dispatcher::handle`](super::Dispatcher::handle), which checks the
-/// family. `Send + Sync` for every `F`.
+/// explicit or replayed key stays a [`HandlerKey`] and binds through the
+/// dispatcher's checked path, which verifies the family. `Send + Sync` for
+/// every `F`.
 #[derive(Serialize, Deserialize)]
 #[serde(transparent, bound = "")]
 pub struct Key<F: Family> {
@@ -108,9 +109,9 @@ impl<F: Family> fmt::Display for Key<F> {
 // The phantom is `fn() -> F`, so the key crosses threads for every `F`.
 const _: () = {
     const fn assert_send_sync<T: Send + Sync + 'static>() {}
-    assert_send_sync::<Key<crate::effect::family::Completion>>();
+    assert_send_sync::<Key<super::family::Completion>>();
     assert!(
-        size_of::<Key<crate::effect::family::Completion>>() <= 32,
+        size_of::<Key<super::family::Completion>>() <= 32,
         "Key<F> budget: 32 bytes (measured 16 natively): a key is its string, nothing more"
     );
 };

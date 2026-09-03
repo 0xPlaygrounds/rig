@@ -10,7 +10,7 @@ use futures::Stream;
 // (`Rc`→`Arc`, `RefCell`→`Mutex`, and a thread-safe wasm HTTP client), not
 // a change here. Nothing in the crate asserts `Send` by hand on the
 // strength of this premise; the bus carries `!Send` handlers only through
-// values that are themselves `!Send` there (`bus::Registrar`).
+// values that are themselves `!Send` there (`rig_bus::Registrar`).
 #[cfg(all(
     target_arch = "wasm32",
     target_os = "unknown",
@@ -26,7 +26,7 @@ compile_error!(
 ///
 /// ```compile_fail
 /// use std::rc::Rc;
-/// use rig_core::{bus::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_core::{serve::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
 ///
 /// struct Local(Rc<u8>);
 /// impl Serve for Local {
@@ -85,7 +85,7 @@ where
 ///
 /// ```compile_fail
 /// use std::cell::Cell;
-/// use rig_core::{bus::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_core::{serve::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
 ///
 /// struct Local(Cell<u8>);
 /// impl Serve for Local {

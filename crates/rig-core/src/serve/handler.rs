@@ -22,13 +22,13 @@ use crate::{
 /// what makes `BusDriver: Send`. Authors never see it: they implement
 /// [`Serve`] with an `async fn`, and the one `Box::pin` is in the blanket
 /// impl below.
-pub(crate) type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
+pub type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
 
 /// Something registered on the bus that serves effects — the trait
 /// handler authors implement, with an `async fn`.
 ///
 /// Provider and tool authors do not implement this directly: the adapters
-/// in [`crate::bus::adapters`] wrap the impl-side traits (`CompletionModel`,
+/// in [`crate::serve::adapters`] wrap the impl-side traits (`CompletionModel`,
 /// `Tool`, `EmbeddingModel`, `ConversationMemory`, `VectorStoreIndex`). A
 /// host implements it for out-of-tree kinds ([`EffectKind::Custom`], typed
 /// through [`crate::effect::CustomEffect`]) or for a replayer.
@@ -55,7 +55,7 @@ pub(crate) type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
 /// The returned future must be `Send` natively (it runs inside the driver's
 /// task; the bound is the crate's `WasmCompatSend` marker, a no-op on
 /// browser wasm). `Self::Family` is what a typed key can be proven against
-/// ([`crate::bus::Registrar::register_typed`]); a handler with no one
+/// (a typed registration on the bus); a handler with no one
 /// family names [`crate::effect::family::Dynamic`].
 pub trait Serve: WasmCompatSend + WasmCompatSync {
     /// The family this handler serves, or `Dynamic`.
@@ -110,7 +110,7 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 }
 
 /// A handler behind the bus's one erasure: what a registry stages until a
-/// bus takes it, what a [`Registrar`](super::Registrar) carries to the
+/// bus takes it, what a registrar carries to the
 /// driver, what the driver's handler table holds.
 ///
 /// On native this is `Arc<dyn Handler + Send + Sync>` (every handler is,
@@ -118,7 +118,7 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 /// 'static`. On browser wasm the supertraits are no-op markers — a provider
 /// client there is `!Send` — and so is this: `Arc<dyn Handler>`, `!Send`,
 /// honestly. Nothing that must be `Send + Sync` on every target (the
-/// [`Dispatcher`](super::Dispatcher), the typed views) holds one.
+/// dispatcher, the typed views) holds one.
 #[derive(Clone)]
 pub struct ErasedHandler(ErasedInner);
 
@@ -139,7 +139,7 @@ impl ErasedHandler {
     }
 
     /// Serve one effect: the driver's call, straight to the boxed handler.
-    pub(crate) fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+    pub fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
         self.0.handle(kind, sink)
     }
 
@@ -190,8 +190,8 @@ pub async fn serve_inline(
     }
 }
 
-/// The consumer dropped its [`Pending`](super::Pending) or
-/// [`EffectStream`](super::EffectStream): nobody is listening. A streaming
+/// The consumer dropped its pending dispatch or its effect stream: nobody
+/// is listening. A streaming
 /// handler stops on it — that is how cancellation reaches a provider stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SinkClosed;
@@ -212,16 +212,16 @@ pub struct OutcomeSink {
 }
 
 /// What a bus tap observes: the outcome, as it resolves.
-pub(super) type OnOutcome = Box<dyn Fn(&Result<Outcome, ErrorReport>) + Send + Sync>;
+pub type OnOutcome = Box<dyn Fn(&Result<Outcome, ErrorReport>) + Send + Sync>;
 /// What a bus tap observes of a stream: each event, as it is sent.
-pub(super) type OnEvent = Box<dyn Fn(&StreamEvent) + Send + Sync>;
+pub type OnEvent = Box<dyn Fn(&StreamEvent) + Send + Sync>;
 
 /// A bus tap installed by the driver: observes the outcome as it resolves,
 /// and each streamed event when asked to.
 struct Tap {
     on_outcome: OnOutcome,
     on_event: Option<OnEvent>,
-    stream: super::driver::StreamTap,
+    stream: StreamTap,
     fired: bool,
 }
 
@@ -262,7 +262,7 @@ impl Drop for OutcomeSink {
                     ErrorKind::Internal,
                     "the handler dropped its outcome sink without answering",
                 ),
-                SinkInner::Stream { .. } => super::dispatcher::stream_truncated(),
+                SinkInner::Stream { .. } => stream_truncated(),
             };
             self.tap_outcome(&Err(report));
         }
@@ -291,10 +291,7 @@ enum SinkInner {
 }
 
 impl OutcomeSink {
-    pub(super) fn unary(
-        id: EffectId,
-        reply: oneshot::Sender<Result<Outcome, ErrorReport>>,
-    ) -> Self {
+    pub fn unary(id: EffectId, reply: oneshot::Sender<Result<Outcome, ErrorReport>>) -> Self {
         Self {
             id,
             inner: SinkInner::Unary {
@@ -306,10 +303,7 @@ impl OutcomeSink {
         }
     }
 
-    pub(super) fn stream(
-        id: EffectId,
-        events: mpsc::Sender<Result<StreamEvent, ErrorReport>>,
-    ) -> Self {
+    pub fn stream(id: EffectId, events: mpsc::Sender<Result<StreamEvent, ErrorReport>>) -> Self {
         Self {
             id,
             inner: SinkInner::Stream {
@@ -320,11 +314,11 @@ impl OutcomeSink {
         }
     }
 
-    pub(super) fn with_tap(mut self, on_outcome: OnOutcome, on_event: Option<OnEvent>) -> Self {
+    pub fn with_tap(mut self, on_outcome: OnOutcome, on_event: Option<OnEvent>) -> Self {
         self.tap = Some(Tap {
             on_outcome,
             on_event,
-            stream: super::driver::StreamTap::new(),
+            stream: StreamTap::new(),
             fired: false,
         });
         self
@@ -498,7 +492,7 @@ impl OutcomeSink {
     }
 }
 
-pub(super) fn finish_unary(
+pub fn finish_unary(
     accumulator: &mut BlockAccumulator,
     message_id: Option<String>,
     terminal: StreamFinal,
@@ -579,4 +573,55 @@ pub fn events_from_response(
     out.drain()
         .map(|item| item.map_err(|error| ErrorReport::from(&error)))
         .collect()
+}
+
+/// Folds a tapped stream into the completion the record stores.
+#[derive(Default)]
+pub struct StreamTap {
+    accumulator: BlockAccumulator,
+    message_id: Option<String>,
+}
+
+impl StreamTap {
+    /// An empty fold.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Fold one event; returns the recorded outcome at the terminal.
+    pub fn observe(
+        &mut self,
+        item: &Result<StreamEvent, ErrorReport>,
+    ) -> Option<Result<Outcome, ErrorReport>> {
+        match item {
+            Err(report) => Some(Err(report.clone())),
+            Ok(StreamEvent::Final(terminal)) => Some(finish_unary(
+                &mut self.accumulator,
+                self.message_id.take(),
+                terminal.clone(),
+            )),
+            Ok(event) => {
+                if let StreamEvent::BlockStart {
+                    id,
+                    kind: crate::streaming::BlockKind::Message,
+                } = event
+                    && let Some(wire) = id.wire_str()
+                {
+                    self.message_id = Some(wire.to_owned());
+                }
+                if let Err(report) = self.accumulator.apply(event) {
+                    return Some(Err(report));
+                }
+                None
+            }
+        }
+    }
+}
+
+/// The report a stream that ended before its terminal record resolves to.
+pub fn stream_truncated() -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Response,
+        "the stream ended before its terminal record",
+    )
 }

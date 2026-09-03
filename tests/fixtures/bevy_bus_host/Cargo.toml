@@ -6,13 +6,14 @@ publish = false
 
 [workspace]
 
-# A Bevy-shaped host over the effect bus: rig-core (default features off) on
-# the rig side, `bevy_ecs` + `bevy_tasks` only on the host side — never the
+# A Bevy-shaped host over the effect bus: rig-core (default features off) and
+# rig-bus on the rig side, `bevy_ecs` + `bevy_tasks` only on the host side — never the
 # `bevy` facade, no tokio, no reqwest. `tests/core/bevy_bus_host.rs` runs this
 # binary and checks its dependency graph. Bevy is pinned by git revision: a
 # `0.20.0-dev` version string moves; the rev is what the proofs ran against.
 [dependencies]
 rig-core = { path = "../../../crates/rig-core", default-features = false }
+rig-bus = { path = "../../../crates/rig-bus" }
 bevy_ecs = { git = "https://github.com/bevyengine/bevy", rev = "823bcc935", default-features = false }
 bevy_tasks = { git = "https://github.com/bevyengine/bevy", rev = "823bcc935", default-features = false, features = ["multi_threaded"] }
 serde_json = "1.0.150"

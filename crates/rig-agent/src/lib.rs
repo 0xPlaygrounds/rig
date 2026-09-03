@@ -101,4 +101,7 @@ const _: fn() = || {
     assert_send_sync_static::<agent::RunEvents>();
     assert_send_sync_static::<agent::PromptResponse>();
     assert_send_sync_static::<tool::server::ToolServerHandle>();
+    // The erased tool set a driver forks and the per-turn catalog it pins.
+    assert_send_sync_static::<tool::ToolSet>();
+    assert_send_sync_static::<tool::ToolCatalog>();
 };

@@ -1,7 +1,7 @@
 //! The Bevy host fixture: the bound claims proven in a running Bevy world.
 //!
 //! `tests/fixtures/bevy_bus_host` is its own workspace (bevy stays out of the
-//! main lock file) depending on rig-core only on the rig side and on
+//! main lock file) depending on rig-core and rig-bus only on the rig side and on
 //! `bevy_ecs` + `bevy_tasks` only on the host side, pinned by git revision.
 //! This test runs the fixture binary and checks that graph.
 
@@ -157,7 +157,7 @@ fn bevy_host_fixture_graph_is_rig_core_and_bevy_ecs_tasks_only()
         .iter()
         .filter_map(|package| package["name"].as_str())
         .collect();
-    for required in ["rig-core", "bevy_ecs", "bevy_tasks"] {
+    for required in ["rig-core", "rig-bus", "bevy_ecs", "bevy_tasks"] {
         if !names.contains(&required) {
             return Err(format!("fixture graph should contain `{required}`").into());
         }
@@ -175,16 +175,19 @@ fn bevy_host_fixture_graph_is_rig_core_and_bevy_ecs_tasks_only()
             return Err(format!("`{forbidden}` reached the bevy bus host fixture's graph").into());
         }
     }
-    // The rig side of the graph is rig-core alone.
+    // The rig side of the graph is the vocabulary and the runtime, nothing else.
     let rig_side: Vec<&str> = names
         .iter()
         .copied()
         .filter(|name| name.starts_with("rig") && *name != "rig-bevy-bus-host-fixture")
         .collect();
-    if rig_side != ["rig-core"] {
-        return Err(
-            format!("rig-side dependencies must be rig-core only, got {rig_side:?}").into(),
-        );
+    let mut rig_side = rig_side;
+    rig_side.sort_unstable();
+    if rig_side != ["rig-bus", "rig-core"] {
+        return Err(format!(
+            "rig-side dependencies must be rig-core and rig-bus only, got {rig_side:?}"
+        )
+        .into());
     }
     // Bevy is pinned by revision, not version: every `bevy_*` dependency
     // in the manifest — inline table or `[dependencies.bevy_*]` table —

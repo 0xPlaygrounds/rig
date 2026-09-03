@@ -352,48 +352,6 @@ fn tool_output_rejects_an_empty_wire_list() {
 }
 
 #[test]
-fn effect_record_and_log_round_trip() {
-    let log: EffectLog = EffectLog::from_records(vec![
-        EffectRecord {
-            id: EffectId::from_raw(1),
-            key: HandlerKey::from("model"),
-            kind: EffectKind::Completion {
-                request: request(),
-                stream: false,
-            },
-            outcome: Ok(Outcome::Completion(CompletionResponse::new(
-                vec![AssistantContent::text("hi")],
-                Usage::new(),
-                "mock",
-            ))),
-            events: None,
-        },
-        EffectRecord {
-            id: EffectId::from_raw(2),
-            key: HandlerKey::from("tool:add"),
-            kind: EffectKind::ToolCall {
-                name: "add".into(),
-                args: "{}".into(),
-                context: ToolContext::new(),
-            },
-            outcome: Err(ErrorReport::new(ErrorKind::Timeout, "slow")),
-            events: None,
-        },
-    ]);
-    let json = serde_json::to_string(&log).expect("serializes");
-    let back: EffectLog = serde_json::from_str(&json).expect("deserializes");
-    assert_eq!(
-        serde_json::to_string(&back).expect("serializes"),
-        json,
-        "log round trip"
-    );
-    assert_eq!(back.len(), 2);
-    assert_eq!(back[0].id, EffectId::from_raw(1));
-    assert_eq!(back[1].key.as_str(), "tool:add");
-    assert!(matches!(&back[1].outcome, Err(report) if report.kind == ErrorKind::Timeout));
-}
-
-#[test]
 fn custom_kind_label_is_a_plain_string_on_the_wire() {
     let kind = EffectKind::Custom {
         kind: Arc::from("host:tick"),

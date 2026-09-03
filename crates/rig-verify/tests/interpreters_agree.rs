@@ -21,8 +21,8 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
+use rig_bus::BusConfig;
 use rig_core::{
-    bus::BusConfig,
     completion::{CompletionModel, CompletionRequestBuilder},
     effect::EffectKind,
     test_utils::{MockCompletionModel, MockTurn},

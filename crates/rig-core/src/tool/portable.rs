@@ -9,9 +9,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    bus::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     completion::ToolDefinition,
     effect::{EffectKind, Outcome},
+    serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -72,10 +72,10 @@ pub trait PortableToolEmbedding: PortableTool {
 /// transport closes. A dispatch that reaches the tool in that window fails
 /// at the transport, as the tool's own error, not as `HandlerUnavailable`.
 #[cfg(not(target_family = "wasm"))]
-pub(crate) type LivenessFn = Arc<dyn Fn() -> bool + Send + Sync>;
+pub type LivenessFn = Arc<dyn Fn() -> bool + Send + Sync>;
 /// A liveness probe (browser wasm: no `Send + Sync`, no threads).
 #[cfg(target_family = "wasm")]
-pub(crate) type LivenessFn = Arc<dyn Fn() -> bool>;
+pub type LivenessFn = Arc<dyn Fn() -> bool>;
 
 /// A tool defined at runtime by a callback, portable across hosts: the
 /// definition plus the erased handler (the callback is the handler). An
@@ -182,7 +182,9 @@ impl PortableDynamicTool {
         &self.handler
     }
 
-    pub(crate) fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
+    /// The definition, the handler and the liveness probe, by value — what
+    /// a registry stages from a portable tool.
+    pub fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
         (self.definition, self.handler, self.liveness)
     }
 
@@ -201,7 +203,7 @@ impl PortableDynamicTool {
         context: &mut ToolContext,
         arguments: serde_json::Value,
     ) -> Result<ToolOutput, ToolExecutionError> {
-        let outcome = crate::bus::serve_inline(
+        let outcome = crate::serve::serve_inline(
             &self.handler,
             EffectKind::ToolCall {
                 name: self.definition.name.clone(),

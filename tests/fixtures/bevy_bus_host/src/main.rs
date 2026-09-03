@@ -34,11 +34,9 @@ use std::{
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::{Task, TaskPool, block_on, futures_lite::future::poll_once};
+use rig_bus::{Bus, BusConfig, Dispatcher, EffectStream, ModelHandle, Pending, Registrar};
+use rig_core::serve::{OutcomeSink, Serve};
 use rig_core::{
-    bus::{
-        Bus, BusConfig, Dispatcher, EffectStream, ModelHandle, OutcomeSink, Pending, Registrar,
-        Serve,
-    },
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
     },
@@ -540,7 +538,7 @@ fn main() {
 /// `poll_once` for a stream: one poll of `next()` without an executor.
 mod futures_lite_poll {
     use bevy_tasks::{block_on, futures_lite::future::poll_once};
-    use rig_core::bus::EffectStream;
+    use rig_bus::EffectStream;
 
     pub fn next_item(
         stream: &mut EffectStream,

@@ -121,9 +121,9 @@ async fn serial_serving_reproduces_the_recorded_request_order() {
             let order = OutOfOrderSignalOrder::default();
             let agent = client
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .configure_bus(rig_core::bus::BusConfig {
+                .configure_bus(rig_bus::BusConfig {
                     serial_per_handler: true,
-                    ..rig_core::bus::BusConfig::default()
+                    ..rig_bus::BusConfig::default()
                 })
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(OutOfOrderAlphaSignal(order.clone()))

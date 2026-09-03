@@ -68,7 +68,7 @@ where
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: super::model_key(self.label.as_str()),
+            key: crate::effect::model_key(self.label.as_str()),
             family: FamilyDescriptor::Completion {
                 model: self.label.clone(),
                 capabilities: self.model.capabilities(),
@@ -167,7 +167,7 @@ where
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: super::tool_key(T::NAME),
+            key: crate::effect::tool_key(T::NAME),
             family: FamilyDescriptor::Tool {
                 name: T::NAME.to_owned(),
                 description: self.tool.description(),
@@ -264,7 +264,7 @@ where
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: super::tool_key(&self.name),
+            key: crate::effect::tool_key(&self.name),
             family: FamilyDescriptor::Tool {
                 name: self.name.clone(),
                 description: self.description.clone(),

@@ -55,6 +55,21 @@ fn rig_core_is_runtime_and_transport_free() {
     assert_absent("rig-core", &["--all-features"], &["tokio", "reqwest"]);
 }
 
+/// The bus runtime carries no runtime or transport either, and the
+/// dependency runs one way: rig-core knows nothing of the crate that
+/// drives its handlers.
+#[test]
+fn rig_bus_is_runtime_free_and_below_rig_core() {
+    assert_absent("rig-bus", &[], &["tokio", "reqwest"]);
+    assert_absent("rig-effect-log", &[], &["tokio", "reqwest"]);
+    assert_absent(
+        "rig-core",
+        &["--all-features"],
+        &["rig-bus", "rig-effect-log"],
+    );
+    assert_absent("rig-bus", &[], &["rig-effect-log"]);
+}
+
 /// With default features on, and — the shape a host that steps `AgentRun`
 /// itself depends on — with them off: rig-agent is a runtime-free crate.
 #[test]

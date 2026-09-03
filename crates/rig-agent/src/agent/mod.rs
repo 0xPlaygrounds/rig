@@ -131,7 +131,7 @@ pub use hook::{
     StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
-pub use rig_core::bus::ModelHandle;
+pub use rig_bus::ModelHandle;
 pub use rig_core::completion::ModelRef;
 /// The provider-neutral identity carrier, re-exported from rig-core so agent
 /// callers name one type across core responses, stream terminals, completion
