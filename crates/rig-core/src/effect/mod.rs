@@ -15,12 +15,13 @@
 //!
 //! # Vocabulary
 //!
-//! The in-tree kinds are *transcriptions* of the five impl-side traits —
+//! The in-tree kinds are *transcriptions* of the six impl-side traits —
 //! [`CompletionModel`](crate::completion::CompletionModel),
 //! [`Tool`](crate::tool::Tool), [`EmbeddingModel`](crate::embeddings::EmbeddingModel)
 //! (and its image twin), [`ConversationMemory`](crate::memory::ConversationMemory),
-//! [`VectorStoreIndex`](crate::vector_store::VectorStoreIndex) — one arm per
-//! method, with the rules:
+//! [`VectorStoreIndex`](crate::vector_store::VectorStoreIndex),
+//! [`RerankModel`](crate::rerank::RerankModel) — one arm per method, with
+//! the rules:
 //!
 //! - a generic result type parameter does not cross the wire:
 //!   `VectorStoreIndex::top_n<T>` becomes [`RetrieveQuery::TopN`] answering
@@ -44,6 +45,7 @@ use crate::{
     embeddings::{EmbeddingResponse, ImageEmbeddingResponse},
     error::ErrorReport,
     id::ConversationId,
+    rerank::RerankResponse,
     streaming::StreamEvent,
     tool::{ToolContext, ToolResult},
     vector_store::request::{Filter, VectorSearchRequest},
@@ -175,6 +177,8 @@ pub enum EffectFamily {
     Tool,
     /// A text or image embedding request.
     Embed,
+    /// A reranking request.
+    Rerank,
     /// A conversation-memory operation.
     Memory,
     /// A vector-store retrieval.
@@ -190,6 +194,7 @@ impl EffectFamily {
             Self::Completion => "completion",
             Self::Tool => "tool_call",
             Self::Embed => "embed",
+            Self::Rerank => "rerank",
             Self::Memory => "memory",
             Self::Retrieve => "retrieve",
             Self::Custom => "custom",
@@ -209,7 +214,7 @@ impl fmt::Display for EffectFamily {
 /// [`EffectKind`] and [`Outcome`]. Implemented by the unit types in
 /// [`family`] and by [`family::Custom<E>`] for a host's [`CustomEffect`];
 /// sealed — hosts define custom *effects*, never new families (the
-/// transcription rule keeps the vocabulary to the five impl-side traits).
+/// transcription rule keeps the vocabulary to the six impl-side traits).
 pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     /// The family this marker names.
     const FAMILY: EffectFamily;
@@ -294,12 +299,13 @@ pub mod family {
 
     use super::{
         CustomEffect, EffectFamily, EffectKind, EmbedInputs, EmbedOutputs, Family, MemoryOp,
-        MemoryOutcome, Outcome, RetrieveQuery, RetrievedDocuments, ToolAnswer, ToolCallRequest,
-        sealed::Sealed,
+        MemoryOutcome, Outcome, RerankRequest, RetrieveQuery, RetrievedDocuments, ToolAnswer,
+        ToolCallRequest, sealed::Sealed,
     };
     use crate::{
         completion::{CompletionRequest, CompletionResponse},
         error::{ErrorKind, ErrorReport},
+        rerank::RerankResponse,
     };
 
     macro_rules! marker {
@@ -350,6 +356,13 @@ pub mod family {
             |outcome| match outcome {
                 Outcome::Embeddings(outputs) => Ok(outputs),
                 other => Err(Embed::mismatch(&other)),
+            };
+        /// The reranking family.
+        Rerank => Rerank, RerankRequest, RerankResponse,
+            |request| EffectKind::Rerank { request },
+            |outcome| match outcome {
+                Outcome::Reranked(response) => Ok(response),
+                other => Err(Rerank::mismatch(&other)),
             };
         /// The conversation-memory family.
         Memory => Memory, MemoryOp, MemoryOutcome,
@@ -505,6 +518,13 @@ pub enum FamilyDescriptor {
         /// Whether the model embeds text or images.
         modality: EmbedModality,
     },
+    /// A reranking model.
+    Rerank {
+        /// The model's label.
+        model: String,
+        /// The largest batch the model accepts.
+        max_documents: usize,
+    },
     /// A conversation-memory backend.
     Memory {},
     /// A vector-store index.
@@ -523,6 +543,7 @@ impl FamilyDescriptor {
             Self::Completion { .. } => EffectFamily::Completion,
             Self::Tool { .. } => EffectFamily::Tool,
             Self::Embed { .. } => EffectFamily::Embed,
+            Self::Rerank { .. } => EffectFamily::Rerank,
             Self::Memory {} => EffectFamily::Memory,
             Self::Retrieve {} => EffectFamily::Retrieve,
             Self::Custom { .. } => EffectFamily::Custom,
@@ -579,6 +600,11 @@ pub enum EffectKind {
         /// The inputs to embed.
         inputs: EmbedInputs,
     },
+    /// A reranking request.
+    Rerank {
+        /// The query and the documents.
+        request: RerankRequest,
+    },
     /// A conversation-memory operation.
     Memory {
         /// The operation.
@@ -606,6 +632,7 @@ impl EffectKind {
             Self::Completion { .. } => EffectFamily::Completion,
             Self::ToolCall { .. } => EffectFamily::Tool,
             Self::Embed { .. } => EffectFamily::Embed,
+            Self::Rerank { .. } => EffectFamily::Rerank,
             Self::Memory { .. } => EffectFamily::Memory,
             Self::Retrieve { .. } => EffectFamily::Retrieve,
             Self::Custom { .. } => EffectFamily::Custom,
@@ -620,6 +647,7 @@ impl EffectKind {
             Self::Completion { .. }
             | Self::ToolCall { .. }
             | Self::Embed { .. }
+            | Self::Rerank { .. }
             | Self::Memory { .. }
             | Self::Retrieve { .. } => self.family().name(),
         }
@@ -632,6 +660,7 @@ impl EffectKind {
             Self::Completion { stream, .. } => *stream,
             Self::ToolCall { .. }
             | Self::Embed { .. }
+            | Self::Rerank { .. }
             | Self::Memory { .. }
             | Self::Retrieve { .. }
             | Self::Custom { .. } => false,
@@ -648,6 +677,16 @@ pub enum EmbedInputs {
     Texts(Vec<String>),
     /// Image bytes.
     Images(Vec<Vec<u8>>),
+}
+
+/// A reranking request: the transcription of
+/// [`RerankModel::rerank`](crate::rerank::RerankModel::rerank).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RerankRequest {
+    /// The query the documents are ranked against.
+    pub query: String,
+    /// The documents, in input order.
+    pub documents: Vec<String>,
 }
 
 /// A conversation-memory operation: the transcription of
@@ -712,6 +751,8 @@ pub enum Outcome {
     },
     /// Embeddings.
     Embeddings(EmbedOutputs),
+    /// A reranking.
+    Reranked(RerankResponse),
     /// A memory operation's answer.
     Memory(MemoryOutcome),
     /// Retrieved documents.
@@ -727,6 +768,7 @@ impl Outcome {
             Self::Completion(_) => EffectFamily::Completion,
             Self::ToolResult { .. } => EffectFamily::Tool,
             Self::Embeddings(_) => EffectFamily::Embed,
+            Self::Reranked(_) => EffectFamily::Rerank,
             Self::Memory(_) => EffectFamily::Memory,
             Self::Documents(_) => EffectFamily::Retrieve,
             Self::Custom(_) => EffectFamily::Custom,
@@ -923,6 +965,7 @@ const _: fn() = || {
     assert_wire::<EmbedModality>();
     assert_wire::<EffectKind>();
     assert_wire::<EmbedInputs>();
+    assert_wire::<RerankRequest>();
     assert_wire::<MemoryOp>();
     assert_wire::<RetrieveQuery>();
     assert_wire::<Outcome>();

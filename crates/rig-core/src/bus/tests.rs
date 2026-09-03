@@ -13,7 +13,7 @@ use serde_json::json;
 use super::{
     Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, Key, ModelHandle,
     OutcomeSink, Registrar, Serve,
-    adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter, ToolFn},
+    adapters::{CompletionAdapter, MemoryAdapter, RerankAdapter, ToolAdapter, ToolFn},
 };
 use crate::effect::CustomEffect;
 use crate::{
@@ -26,6 +26,7 @@ use crate::{
     id::ConversationId,
     memory::InMemoryConversationMemory,
     message::AssistantContent,
+    rerank::{RerankError, RerankModel, RerankResponse, RerankResult},
     streaming::StreamEvent,
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolExecutionError, ToolOutput},
@@ -2123,4 +2124,129 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
         4,
         "reasoning, text, tool call, text as content: {choice:?}"
     );
+}
+
+/// A rerank model that counts its clones.
+struct CloneCountingRerank {
+    clones: Arc<AtomicUsize>,
+}
+
+impl Clone for CloneCountingRerank {
+    fn clone(&self) -> Self {
+        self.clones.fetch_add(1, Ordering::SeqCst);
+        Self {
+            clones: Arc::clone(&self.clones),
+        }
+    }
+}
+
+impl RerankModel for CloneCountingRerank {
+    fn max_documents(&self) -> usize {
+        7
+    }
+
+    async fn rerank(
+        &self,
+        _query: &str,
+        documents: Vec<String>,
+    ) -> Result<RerankResponse, RerankError> {
+        Ok(RerankResponse::new(
+            documents
+                .into_iter()
+                .enumerate()
+                .map(|(index, document)| RerankResult {
+                    index,
+                    document: Some(document),
+                    relevance_score: 1.0,
+                })
+                .collect(),
+            "probe",
+        ))
+    }
+}
+
+/// The adapter owns the model by value: no dispatch, through however many
+/// clones of the handle, ever clones it; `max_documents` and the label ride
+/// on the descriptor.
+#[tokio::test]
+async fn a_rerank_adapter_never_clones_the_model_and_publishes_its_batch_size() {
+    let clones = Arc::new(AtomicUsize::new(0));
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver
+        .register(
+            "rerank:probe",
+            RerankAdapter::new(
+                "probe",
+                CloneCountingRerank {
+                    clones: Arc::clone(&clones),
+                },
+            ),
+        )
+        .expect("register");
+    let task = spawn(driver);
+
+    let handle: super::RerankHandle = dispatcher
+        .handle(&HandlerKey::from("rerank:probe"))
+        .expect("a rerank handler");
+    for _ in 0..3 {
+        let response = within(handle.rerank("q", vec!["a".to_owned(), "b".to_owned()]))
+            .await
+            .expect("rerank");
+        assert_eq!(response.results.len(), 2);
+        assert_eq!(response.provider, "probe");
+        let via_clone = within(handle.clone().rerank("q", vec!["c".to_owned()]))
+            .await
+            .expect("rerank via clone");
+        assert_eq!(via_clone.results[0].document.as_deref(), Some("c"));
+    }
+    assert_eq!(clones.load(Ordering::SeqCst), 0);
+    assert_eq!(handle.max_documents(), Some(7));
+    assert_eq!(handle.model_label(), "probe");
+    assert_eq!(
+        handle.descriptor().family,
+        FamilyDescriptor::Rerank {
+            model: "probe".to_owned(),
+            max_documents: 7,
+        }
+    );
+
+    drop((handle, dispatcher));
+    within(task).await.expect("driver task");
+}
+
+struct NonCloneRerank;
+
+impl RerankModel for NonCloneRerank {
+    fn max_documents(&self) -> usize {
+        1
+    }
+
+    async fn rerank(
+        &self,
+        _query: &str,
+        _documents: Vec<String>,
+    ) -> Result<RerankResponse, RerankError> {
+        Err(RerankError::ResponseError("probe".to_owned()))
+    }
+}
+
+/// A model that is not `Clone` registers, and its error crosses the bus as
+/// a classified report.
+#[tokio::test]
+async fn a_non_clone_rerank_model_registers_and_its_error_is_a_report() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver
+        .register("rerank:once", RerankAdapter::new("once", NonCloneRerank))
+        .expect("register");
+    let task = spawn(driver);
+    let handle: super::RerankHandle = dispatcher
+        .handle(&HandlerKey::from("rerank:once"))
+        .expect("a rerank handler");
+    let report = within(handle.rerank("q", vec![]))
+        .await
+        .expect_err("the model fails");
+    assert_eq!(report.kind, ErrorKind::Response);
+    assert!(report.message.contains("probe"), "{}", report.message);
+    drop((handle, dispatcher));
+    within(task).await.expect("driver task");
 }

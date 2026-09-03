@@ -18,6 +18,7 @@ use crate::{
     embeddings::{EmbeddingModel, ImageEmbeddingModel},
     error::{ErrorKind, ErrorReport},
     memory::ConversationMemory,
+    rerank::RerankModel,
     tool::{ErasedTool, Tool, ToolEmbedding},
     vector_store::{VectorStoreError, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -112,6 +113,7 @@ where
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Completion, &other)))
                     .await;
@@ -187,6 +189,7 @@ where
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
                     .await;
@@ -285,6 +288,7 @@ where
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
                     .await;
@@ -358,8 +362,70 @@ where
             | EffectKind::ToolCall { .. }
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
+                    .await;
+            }
+        }
+    }
+}
+
+/// A [`RerankModel`] as a handler.
+pub struct RerankAdapter<M> {
+    label: String,
+    model: M,
+}
+
+impl<M> RerankAdapter<M> {
+    /// Wrap `model` under `label`.
+    pub fn new(label: impl Into<String>, model: M) -> Self {
+        Self {
+            label: label.into(),
+            model,
+        }
+    }
+
+    /// The wrapped model.
+    pub fn model(&self) -> &M {
+        &self.model
+    }
+}
+
+impl<M> Serve for RerankAdapter<M>
+where
+    M: RerankModel + 'static,
+{
+    type Family = family::Rerank;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from(format!("rerank:{}", self.label)),
+            family: FamilyDescriptor::Rerank {
+                model: self.label.clone(),
+                max_documents: self.model.max_documents(),
+            },
+        }
+    }
+
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::Rerank { request } => {
+                let outcome = self
+                    .model
+                    .rerank(&request.query, request.documents)
+                    .await
+                    .map(Outcome::Reranked)
+                    .map_err(ErrorReport::from);
+                sink.resolve(outcome).await;
+            }
+            other @ (EffectKind::Completion { .. }
+            | EffectKind::ToolCall { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. }) => {
+                sink.resolve(Err(wrong_family(EffectFamily::Rerank, &other)))
                     .await;
             }
         }
@@ -431,6 +497,7 @@ where
             | EffectKind::ToolCall { .. }
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
                     .await;
@@ -498,6 +565,7 @@ where
             | EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
             | EffectKind::Retrieve { .. }
+            | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Memory, &other)))
                     .await;
@@ -581,6 +649,7 @@ where
             | EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
+            | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Retrieve, &other)))
                     .await;

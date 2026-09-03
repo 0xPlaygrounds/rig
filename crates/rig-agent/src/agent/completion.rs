@@ -302,6 +302,7 @@ impl AgentConfig {
             | Some(rig_core::effect::FamilyDescriptor::Embed { .. })
             | Some(rig_core::effect::FamilyDescriptor::Memory {})
             | Some(rig_core::effect::FamilyDescriptor::Retrieve {})
+            | Some(rig_core::effect::FamilyDescriptor::Rerank { .. })
             | Some(rig_core::effect::FamilyDescriptor::Custom { .. })
             | None => ModelRef::new(
                 self.bus
@@ -443,6 +444,7 @@ impl Agent {
                 | rig_core::effect::FamilyDescriptor::Embed { .. }
                 | rig_core::effect::FamilyDescriptor::Memory {}
                 | rig_core::effect::FamilyDescriptor::Retrieve {}
+                | rig_core::effect::FamilyDescriptor::Rerank { .. }
                 | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
             })
     }

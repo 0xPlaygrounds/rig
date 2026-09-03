@@ -42,8 +42,8 @@ use crate::{
     completion::{CompletionRequest, ProviderCapabilities},
     effect::{
         CustomEffect, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, Family,
-        FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, RetrieveQuery,
-        RetrievedDocuments, ToolCallRequest, family,
+        FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, RerankRequest,
+        RetrieveQuery, RetrievedDocuments, ToolCallRequest, family,
     },
     embeddings::{Embedding, EmbeddingResponse, ImageEmbeddingResponse},
     error::{ErrorKind, ErrorReport},
@@ -74,6 +74,8 @@ pub type MemoryHandle = Handle<family::Memory>;
 pub type IndexHandle = Handle<family::Retrieve>;
 /// An embedding model; the modality is on the descriptor, not the type.
 pub type EmbedHandle = Handle<family::Embed>;
+/// A reranking model: `rerank`.
+pub type RerankHandle = Handle<family::Rerank>;
 
 impl<F: Family> fmt::Debug for Handle<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -253,6 +255,7 @@ impl ModelHandle {
             | FamilyDescriptor::Embed { .. }
             | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => ProviderCapabilities::default(),
         }
     }
@@ -265,6 +268,7 @@ impl ModelHandle {
             | FamilyDescriptor::Embed { .. }
             | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => {
                 crate::completion::ModelRef::new(self.key().as_str())
             }
@@ -304,6 +308,7 @@ impl ToolHandle {
             | FamilyDescriptor::Embed { .. }
             | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => self.key().to_string(),
         }
     }
@@ -433,6 +438,7 @@ impl EmbedHandle {
             | FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => None,
         }
     }
@@ -445,6 +451,7 @@ impl EmbedHandle {
             | FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => None,
         }
     }
@@ -457,6 +464,7 @@ impl EmbedHandle {
             | FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => None,
         }
     }
@@ -505,6 +513,46 @@ impl EmbedHandle {
                 }
             },
         )
+    }
+}
+
+impl RerankHandle {
+    /// The model's label as the handler advertises it now.
+    pub fn model_label(&self) -> String {
+        match self.descriptor().family {
+            FamilyDescriptor::Rerank { model, .. } => model,
+            FamilyDescriptor::Completion { .. }
+            | FamilyDescriptor::Tool { .. }
+            | FamilyDescriptor::Embed { .. }
+            | FamilyDescriptor::Memory {}
+            | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Custom { .. } => self.key().to_string(),
+        }
+    }
+
+    /// The largest batch the handler advertises now.
+    pub fn max_documents(&self) -> Option<usize> {
+        match self.descriptor().family {
+            FamilyDescriptor::Rerank { max_documents, .. } => Some(max_documents),
+            FamilyDescriptor::Completion { .. }
+            | FamilyDescriptor::Tool { .. }
+            | FamilyDescriptor::Embed { .. }
+            | FamilyDescriptor::Memory {}
+            | FamilyDescriptor::Retrieve {}
+            | FamilyDescriptor::Custom { .. } => None,
+        }
+    }
+
+    /// Rerank `documents` against `query`.
+    pub fn rerank(
+        &self,
+        query: impl Into<String>,
+        documents: Vec<String>,
+    ) -> Typed<family::Rerank> {
+        self.dispatch(RerankRequest {
+            query: query.into(),
+            documents,
+        })
     }
 }
 

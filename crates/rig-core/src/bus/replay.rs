@@ -261,6 +261,10 @@ fn describe(key: &HandlerKey, kind: &EffectKind, log: &EffectLog) -> FamilyDescr
                 crate::effect::EmbedInputs::Images(_) => EmbedModality::Image,
             },
         },
+        EffectKind::Rerank { .. } => FamilyDescriptor::Rerank {
+            model: format!("replay:{key}"),
+            max_documents: usize::MAX,
+        },
         EffectKind::Memory { .. } => FamilyDescriptor::Memory {},
         EffectKind::Retrieve { .. } => FamilyDescriptor::Retrieve {},
         EffectKind::Custom { .. } => FamilyDescriptor::Custom {

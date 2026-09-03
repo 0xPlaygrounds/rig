@@ -3,8 +3,9 @@
 //! After the bus, the only `dyn` over a behaviour trait stored anywhere in
 //! rig-core or rig-agent is the handler table inside `bus/`. This guard
 //! scans both crates' non-test sources for `Arc<dyn …>` / `Box<dyn …>` over
-//! the five impl-side traits — `CompletionModel`, `EmbeddingModel`, `Tool`,
-//! `ConversationMemory`, `VectorStoreIndex` — or over any `Erased*` /
+//! the six impl-side traits — `CompletionModel`, `EmbeddingModel`, `Tool`,
+//! `ConversationMemory`, `VectorStoreIndex`, `RerankModel` — or over any
+//! `Erased*` /
 //! `*Callback` trait, and for `dyn Handler` outside the newtype that holds it
 //! (`bus/handler.rs`). `dyn Fn`, `dyn Error`, `dyn Future`, `dyn Iterator`/
 //! `dyn Stream` boxes and the named non-behaviour erasures below are exempt;
@@ -101,7 +102,7 @@ const EXEMPT_DYN: [&str; 8] = [
 /// behaviour trait. Each must still occur somewhere in the scanned sources
 /// (`named_exemptions_are_live`), so a rename fails here rather than
 /// widening the guard.
-const NAMED_EXEMPT: [(&str, &str); 6] = [
+const NAMED_EXEMPT: [(&str, &str); 5] = [
     // `InMemoryConversationMemory`'s message filter: a predicate, not a
     // behaviour.
     ("MessageFilter", "a predicate over messages"),
@@ -111,10 +112,6 @@ const NAMED_EXEMPT: [(&str, &str); 6] = [
     ("WasmCompatSendStream", "the wasm-compatible boxed stream"),
     // rig-agent's hook stack: hooks are observers, not a family.
     ("DynAgentHook", "the agent's hook-stack entry"),
-    // Rerank is not one of the five families and has no effect kind (the
-    // transcription rule keeps the vocabulary to the five traits), so its
-    // vtable handle stays — the recorded follow-up is a `Rerank` family.
-    ("ErasedRerankModel", "the rerank vtable handle"),
     // The one erasure: the handler table's entry type.
     ("Handler", "the bus's handler newtype"),
 ];

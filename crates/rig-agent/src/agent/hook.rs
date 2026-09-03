@@ -23,7 +23,7 @@
 //! (rewritten arguments), skipped, or stopped *before* it runs and its result
 //! replaced or the run stopped *after*; a completion is patched or denied
 //! before and observed or replaced after, on either medium. The internal
-//! families (`Memory`, `Retrieve`, `Embed`, `Custom`) are observe-only until
+//! families (`Memory`, `Retrieve`, `Embed`, `Rerank`, `Custom`) are observe-only until
 //! a hook opts in through [`AgentHook::observes`]. Register observe-only
 //! hooks before steering hooks when every observation is required: a
 //! steering stop intentionally prevents later observers from running. A
@@ -874,6 +874,9 @@ pub enum StepEventKind {
     /// `on_dispatch`/`on_outcome` for an embedding effect (observe-only by
     /// default: opt in through `observes`).
     EmbedDispatch,
+    /// `on_dispatch`/`on_outcome` for a reranking effect (observe-only by
+    /// default).
+    RerankDispatch,
     /// `on_dispatch`/`on_outcome` for a conversation-memory effect
     /// (observe-only by default).
     MemoryDispatch,
@@ -892,6 +895,7 @@ impl StepEventKind {
             EffectFamily::Completion => Self::CompletionDispatch,
             EffectFamily::Tool => Self::ToolDispatch,
             EffectFamily::Embed => Self::EmbedDispatch,
+            EffectFamily::Rerank => Self::RerankDispatch,
             EffectFamily::Memory => Self::MemoryDispatch,
             EffectFamily::Retrieve => Self::RetrieveDispatch,
             EffectFamily::Custom => Self::CustomDispatch,
@@ -1328,7 +1332,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     }
 
     /// An effect is about to be dispatched on the agent's bus. Runs for
-    /// every family; `Memory`, `Retrieve`, `Embed` and `Custom` dispatches
+    /// every family; `Memory`, `Retrieve`, `Embed`, `Rerank` and `Custom` dispatches
     /// are observe-only unless the hook opts in through
     /// [`AgentHook::observes`] for their [`StepEventKind`].
     fn on_dispatch(
@@ -1349,13 +1353,14 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     }
 
     /// Observation interest hint, primarily for high-frequency deltas. The
-    /// internal `Memory`/`Retrieve`/`Embed`/`Custom` dispatch events are
+    /// internal `Memory`/`Retrieve`/`Embed`/`Rerank`/`Custom` dispatch events are
     /// off by default: no hook saw those calls before the bus, so a hook
     /// that wants to gate them opts in here.
     fn observes(&self, kind: StepEventKind) -> bool {
         !matches!(
             kind,
             StepEventKind::EmbedDispatch
+                | StepEventKind::RerankDispatch
                 | StepEventKind::MemoryDispatch
                 | StepEventKind::RetrieveDispatch
                 | StepEventKind::CustomDispatch

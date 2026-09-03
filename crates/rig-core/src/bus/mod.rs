@@ -161,8 +161,8 @@ mod writer;
 pub use dispatcher::{Dispatcher, EffectStream, Pending};
 pub use driver::{BusConfig, BusDriver, EffectLogRecorder};
 pub use handle::{
-    Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, Retrieval, ToolCall,
-    ToolHandle, Typed, wrap_stream,
+    Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
+    Retrieval, ToolCall, ToolHandle, Typed, wrap_stream,
 };
 pub use handler::{
     ErasedHandler, OutcomeSink, Serve, SinkClosed, events_from_response, serve_inline,

@@ -1036,6 +1036,7 @@ fn unit_hook_observes_no_event_kind() {
         StepEventKind::CompletionDispatch,
         StepEventKind::ToolDispatch,
         StepEventKind::EmbedDispatch,
+        StepEventKind::RerankDispatch,
         StepEventKind::MemoryDispatch,
         StepEventKind::RetrieveDispatch,
         StepEventKind::CustomDispatch,
