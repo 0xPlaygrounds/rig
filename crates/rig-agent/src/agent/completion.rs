@@ -642,6 +642,20 @@ impl Agent {
                 }
             }
         }
+        // And the row itself is program identity: a program that needs a
+        // key the recorded one did not (or the reverse) advertises a
+        // different tool set, memory or retrieval than the record's
+        // requests hold.
+        let mine = self.required_row();
+        if log.header.required != mine {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::HandlerUnavailable,
+                format!(
+                    "replay refused: the log was recorded by a program requiring {:?}, this agent requires {mine:?}",
+                    log.header.required
+                ),
+            ));
+        }
         Ok(())
     }
 
