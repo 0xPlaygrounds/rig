@@ -220,6 +220,12 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ),
     ("rig-derive", Exempt("proc-macro crate — no runtime wire")),
     (
+        "rig-verify",
+        Exempt(
+            "the bus's behavioural verification suite — tests over rig-core and rig-agent's public API, no provider, no wire",
+        ),
+    ),
+    (
         "rig-fastembed",
         Exempt("local embedding models only — no completion model, no streaming wire"),
     ),
