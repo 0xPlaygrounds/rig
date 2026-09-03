@@ -60,7 +60,14 @@ type ErasedInner = std::sync::Arc<dyn Handler>;
 
 // SAFETY: `wasm32-unknown-unknown` is single-threaded; there is no thread to
 // send to or share with, which is the premise of `WasmCompatSend` and
-// `WasmCompatSync` being no-op markers on this target.
+// `WasmCompatSync` being no-op markers on this target. `wasm_compat.rs`
+// refuses threaded wasm (`+atomics`) at compile time, so the premise holds
+// wherever this compiles. This is the bus's one `unsafe`, and it cannot be
+// removed by moving the handler table to the driver: `Dispatcher` must be
+// `Send + Sync` on wasm (a Bevy `Resource`), so whatever carries a `!Send`
+// handler from `Dispatcher::register` to the driver — a table, a command
+// queue, a channel — needs this same assertion, or a thread-local side
+// channel, which is global state the bus does not have.
 #[cfg(target_family = "wasm")]
 unsafe impl Send for ErasedHandler {}
 #[cfg(target_family = "wasm")]

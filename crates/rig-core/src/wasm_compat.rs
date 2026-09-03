@@ -3,6 +3,23 @@ use std::pin::Pin;
 
 use futures::Stream;
 
+// The markers below are no-ops on browser wasm because that target has no
+// threads: a value that is `!Send` there can never reach a thread that does
+// not exist, which is also what lets the bus hold a `!Send` handler behind a
+// `Send + Sync` cell (`bus::ErasedHandler`). Threaded wasm (`+atomics`)
+// breaks the premise and is not supported: reaching it needs a
+// provider-side `Send + Sync` rewrite (`Rc`→`Arc`, `RefCell`→`Mutex`, and a
+// thread-safe wasm HTTP client), not a change here.
+#[cfg(all(
+    target_arch = "wasm32",
+    target_os = "unknown",
+    target_feature = "atomics"
+))]
+compile_error!(
+    "rig-core does not support threaded wasm (`+atomics`): its wasm-compat markers and \
+     the bus's handler cell assume a single-threaded target"
+);
+
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// `Send` on native targets, a no-op marker on browser wasm.
 pub trait WasmCompatSend: Send {}
