@@ -1946,6 +1946,7 @@ async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
         .expect("into_parts");
     let rig_agent::agent::AgentParts {
         dispatcher,
+        registrar: _,
         driver,
         agent,
     } = parts;

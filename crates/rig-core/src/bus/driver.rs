@@ -24,6 +24,7 @@ use crate::{
 use super::{
     ErasedHandler, Handler, OutcomeSink,
     dispatcher::{Command, Shared, handler_unavailable},
+    registrar::{Mailbox, Registrar, Registration},
 };
 
 /// Bus sizing and serving policy.
@@ -162,8 +163,11 @@ impl fmt::Debug for EffectLogRecorder {
 type InFlight = WasmBoxedFuture<'static, HandlerKey>;
 type InFlightServing = Pin<Box<Serving>>;
 
-/// The serving half of the bus: a plain future that owns the handler table
-/// and runs handlers as commands arrive.
+/// The serving half of the bus: a plain future that owns the **only**
+/// handler table and runs handlers as commands arrive. Handlers reach it
+/// by value before it is spawned ([`BusDriver::register`]) or through a
+/// [`Registrar`] afterwards; the shared half of the bus carries their
+/// descriptors, never the handlers themselves.
 ///
 /// `Send` on native (asserted), so `IoTaskPool::get().spawn(driver)` — or
 /// any `Send + 'static` spawn — takes it; `!Send` is allowed on browser
@@ -178,6 +182,8 @@ type InFlightServing = Pin<Box<Serving>>;
 /// over together with the dispatcher.
 pub struct BusDriver {
     shared: Arc<Shared>,
+    mailbox: Arc<Mailbox>,
+    handlers: BTreeMap<HandlerKey, ErasedHandler>,
     config: BusConfig,
     in_flight: FuturesUnordered<InFlightServing>,
     queued: BTreeMap<HandlerKey, VecDeque<Command>>,
@@ -195,15 +201,17 @@ impl fmt::Debug for BusDriver {
                 "queued",
                 &self.queued.values().map(VecDeque::len).sum::<usize>(),
             )
-            .field("handlers", &self.shared.keys())
+            .field("handlers", &self.handlers.keys().collect::<Vec<_>>())
             .finish_non_exhaustive()
     }
 }
 
 impl BusDriver {
-    pub(super) fn new(shared: Arc<Shared>, config: BusConfig) -> Self {
+    pub(super) fn new(shared: Arc<Shared>, mailbox: Arc<Mailbox>, config: BusConfig) -> Self {
         Self {
             shared,
+            mailbox,
+            handlers: BTreeMap::new(),
             config,
             in_flight: FuturesUnordered::new(),
             queued: BTreeMap::new(),
@@ -213,16 +221,16 @@ impl BusDriver {
         }
     }
 
-    /// Register (or replace) the handler serving `key` before the driver is
-    /// spawned. The same table [`Dispatcher::register`](super::Dispatcher::register)
-    /// writes at runtime.
+    /// Register (or replace) the handler serving `key` while the driver is
+    /// in hand — before it is spawned, or between polls when the owner
+    /// drives it inline. Installed at once; the same descriptor
+    /// [`Registrar::register`] publishes.
     pub fn register(
         &mut self,
         key: impl Into<HandlerKey>,
         handler: impl Handler + 'static,
     ) -> Result<(), ErrorReport> {
-        self.shared
-            .register(key.into(), ErasedHandler::new(handler))
+        self.register_erased(key, ErasedHandler::new(handler))
     }
 
     /// Register an already-erased handler.
@@ -231,12 +239,46 @@ impl BusDriver {
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
     ) -> Result<(), ErrorReport> {
-        self.shared.register(key.into(), handler)
+        let key = key.into();
+        self.shared
+            .publish_descriptor(key.clone(), handler.descriptor())?;
+        self.install(key, handler);
+        Ok(())
     }
 
     /// Remove the handler serving `key`. Returns whether one was registered.
     pub fn deregister(&mut self, key: &HandlerKey) -> bool {
-        self.shared.deregister(key)
+        let published = self.shared.retract_descriptor(key);
+        self.handlers.remove(key).is_some() || published
+    }
+
+    /// A handle for registering on this bus once the driver is out of hand
+    /// (spawned): see [`Registrar`].
+    pub fn registrar(&self) -> Registrar {
+        Registrar {
+            shared: Arc::clone(&self.shared),
+            mailbox: Arc::clone(&self.mailbox),
+        }
+    }
+
+    /// Put `handler` in the table. The displaced handler, if any, is dropped
+    /// here, with no lock held — its `Drop` may touch this bus.
+    fn install(&mut self, key: HandlerKey, handler: ErasedHandler) {
+        let displaced = self.handlers.insert(key, handler);
+        drop(displaced);
+    }
+
+    /// Apply what the registrars posted since the last poll.
+    fn apply_registrations(&mut self, cx: &Context<'_>) {
+        for registration in self.mailbox.drain(cx) {
+            match registration {
+                Registration::Install { key, handler } => self.install(key, handler),
+                Registration::Remove { key } => {
+                    let removed = self.handlers.remove(&key);
+                    drop(removed);
+                }
+            }
+        }
     }
 
     /// Record every served dispatch into `recorder`.
@@ -266,7 +308,7 @@ impl BusDriver {
             span,
             cancel,
         } = command;
-        let Some(handler) = self.shared.handler(&key) else {
+        let Some(handler) = self.handlers.get(&key).cloned() else {
             reply.fail(handler_unavailable(&key));
             return false;
         };
@@ -345,7 +387,7 @@ impl BusDriver {
         let orphaned: Vec<HandlerKey> = self
             .queued
             .keys()
-            .filter(|key| self.shared.handler(key).is_none())
+            .filter(|key| !self.handlers.contains_key(*key))
             .cloned()
             .collect();
         for key in orphaned {
@@ -388,6 +430,9 @@ impl Future for BusDriver {
             // a queued one. Draining registers this poll's waker for the
             // next enqueue and releases any dispatch parked on the bound.
             if !this.commands_closed {
+                // Registrations first: a handler registered before a
+                // dispatch is installed before that dispatch is served.
+                this.apply_registrations(cx);
                 for command in this.shared.drain(cx) {
                     this.accept(*command);
                 }
@@ -426,8 +471,10 @@ impl Future for BusDriver {
 
 impl Drop for BusDriver {
     fn drop(&mut self) {
-        // The guard: after this every reply the channel loses is `BusClosed`.
+        // The guard: after this every reply the channel loses is `BusClosed`,
+        // and handlers posted but never installed go with the driver.
         self.shared.mark_closed();
+        self.mailbox.clear();
     }
 }
 

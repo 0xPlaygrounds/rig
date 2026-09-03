@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::{
     Bus, BusConfig, BusDriver, Dispatcher, EffectLogRecorder, EffectLogReplayer, Handler,
-    HandlerFuture, OutcomeSink,
+    HandlerFuture, ModelHandle, OutcomeSink, Registrar,
     adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter, ToolFn},
 };
 use crate::{
@@ -187,7 +187,7 @@ fn spawn(driver: BusDriver) -> tokio::task::JoinHandle<()> {
 
 #[tokio::test]
 async fn unary_dispatch_round_trips_through_a_spawned_driver() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
     let task = spawn(driver);
@@ -219,7 +219,7 @@ async fn unary_dispatch_round_trips_through_a_spawned_driver() {
 #[tokio::test]
 async fn a_dropped_driver_answers_bus_closed_before_and_after_the_send() {
     // Never spawned: dropped before any dispatch.
-    let (dispatcher, driver) = Bus::channel();
+    let (dispatcher, _registrar, driver) = Bus::channel();
     drop(driver);
     let report = within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1))))
         .await
@@ -229,7 +229,7 @@ async fn a_dropped_driver_answers_bus_closed_before_and_after_the_send() {
     assert!(dispatcher.is_closed());
 
     // `new_with` whose spawner drops the driver: the same answer.
-    let dispatcher = Bus::new_with(BusConfig::default(), |_| {}, drop);
+    let (dispatcher, _registrar) = Bus::new_with(BusConfig::default(), |_| {}, drop);
     let report = within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1))))
         .await
         .expect_err("closed");
@@ -244,7 +244,7 @@ async fn a_dropped_driver_answers_bus_closed_before_and_after_the_send() {
 
 #[tokio::test]
 async fn dropping_the_driver_mid_flight_fails_the_dispatch_with_bus_closed() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, _gate_never_opened) = Echo::gated();
     driver.register("echo", echo).expect("register");
 
@@ -263,7 +263,7 @@ async fn dropping_the_driver_mid_flight_fails_the_dispatch_with_bus_closed() {
 
 #[tokio::test]
 async fn unknown_and_deregistered_keys_answer_handler_unavailable_with_the_key() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     let (echo, _) = Echo::new();
     driver.register("echo", echo).expect("register");
     let _task = spawn(driver);
@@ -275,8 +275,8 @@ async fn unknown_and_deregistered_keys_answer_handler_unavailable_with_the_key()
     assert!(report.message.contains("`missing`"), "{}", report.message);
     assert!(!report.retryable);
 
-    assert!(dispatcher.deregister(&HandlerKey::from("echo")));
-    assert!(!dispatcher.deregister(&HandlerKey::from("echo")));
+    assert!(registrar.deregister(&HandlerKey::from("echo")));
+    assert!(!registrar.deregister(&HandlerKey::from("echo")));
     let report = within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1))))
         .await
         .expect_err("deregistered");
@@ -285,7 +285,7 @@ async fn unknown_and_deregistered_keys_answer_handler_unavailable_with_the_key()
 
     // Runtime registration on the live bus brings the key back.
     let (echo, served) = Echo::new();
-    dispatcher.register("echo", echo).expect("register");
+    registrar.register("echo", echo).expect("register");
     within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1))))
         .await
         .expect("re-registered");
@@ -294,7 +294,7 @@ async fn unknown_and_deregistered_keys_answer_handler_unavailable_with_the_key()
 
 #[tokio::test]
 async fn clones_share_the_bus_and_the_driver_outlives_the_original() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
     let task = spawn(driver);
@@ -313,7 +313,7 @@ async fn clones_share_the_bus_and_the_driver_outlives_the_original() {
 
 #[tokio::test]
 async fn descriptor_is_a_snapshot_that_needs_no_driver() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, _) = Echo::new();
     driver.register("echo", echo).expect("register");
     driver
@@ -340,7 +340,7 @@ async fn descriptor_is_a_snapshot_that_needs_no_driver() {
 async fn serial_per_handler_serves_in_arrival_order_and_concurrent_may_not() {
     async fn run(serial: bool) -> Vec<u64> {
         let served = Arc::new(Mutex::new(Vec::new()));
-        let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
             serial_per_handler: serial,
             ..BusConfig::default()
         });
@@ -380,7 +380,7 @@ async fn serial_per_handler_serves_in_arrival_order_and_concurrent_may_not() {
 
 #[tokio::test]
 async fn concurrent_serving_across_keys_is_the_default() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (blocked, open) = Echo::gated();
     let (free, served) = Echo::new();
     driver.register("blocked", blocked).expect("register");
@@ -401,7 +401,7 @@ async fn concurrent_serving_across_keys_is_the_default() {
 
 #[test]
 fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
-    let (dispatcher, driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, driver) = Bus::channel_with(BusConfig {
         command_capacity: 1,
         ..BusConfig::default()
     });
@@ -439,7 +439,7 @@ fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
 
 #[test]
 fn a_dispatch_parked_on_the_bound_is_sent_once_the_driver_drains() {
-    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
         command_capacity: 1,
         ..BusConfig::default()
     });
@@ -478,7 +478,7 @@ fn a_dispatch_parked_on_the_bound_is_sent_once_the_driver_drains() {
 fn a_buffered_dispatch_answers_bus_closed_when_the_driver_drops_before_taking_it() {
     // The buffer lives on the shared half, not in the driver: dropping the
     // driver must fail what it never took, or the pending waits forever.
-    let (dispatcher, driver) = Bus::channel();
+    let (dispatcher, _registrar, driver) = Bus::channel();
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
     let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
@@ -494,7 +494,7 @@ fn a_buffered_dispatch_answers_bus_closed_when_the_driver_drops_before_taking_it
 
 #[test]
 fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
-    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
         command_capacity: 1,
         ..BusConfig::default()
     });
@@ -521,7 +521,7 @@ fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
 
 #[test]
 fn deregistering_a_serial_key_drains_its_queue_with_handler_unavailable() {
-    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(BusConfig {
         serial_per_handler: true,
         ..BusConfig::default()
     });
@@ -540,7 +540,7 @@ fn deregistering_a_serial_key_drains_its_queue_with_handler_unavailable() {
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(driver.in_flight(), 1);
     // The handler goes away with a non-empty queue: nothing waits on A.
-    assert!(dispatcher.deregister(&key));
+    assert!(registrar.deregister(&key));
     let _ = driver.poll_unpin(&mut cx);
     for (pending, name) in [(&mut b, "b"), (&mut c, "c")] {
         match pending.poll_unpin(&mut cx) {
@@ -556,7 +556,7 @@ fn deregistering_a_serial_key_drains_its_queue_with_handler_unavailable() {
     let _ = driver.poll_unpin(&mut cx);
     assert!(a.poll_unpin(&mut cx).is_ready());
     let (echo, served) = Echo::new();
-    dispatcher.register("echo", echo).expect("register");
+    registrar.register("echo", echo).expect("register");
     let mut d = dispatcher.dispatch(&key, custom(json!("d")));
     assert!(d.poll_unpin(&mut cx).is_pending());
     let _ = driver.poll_unpin(&mut cx);
@@ -622,7 +622,7 @@ impl Handler for SelfCaller {
 
 #[test]
 fn a_reentrant_dispatch_to_the_in_flight_key_under_serial_serving_is_refused() {
-    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
         serial_per_handler: true,
         ..BusConfig::default()
     });
@@ -660,7 +660,7 @@ fn a_reentrant_dispatch_to_the_in_flight_key_under_serial_serving_is_refused() {
 fn concurrent_serving_lets_a_handler_dispatch_to_its_own_key() {
     // Without serial serving a nested dispatch to the same key is served
     // alongside — the refusal is a serial-mode rule only.
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let key = HandlerKey::from("self");
     driver
         .register("self", SelfCaller::new(dispatcher.clone(), key.clone()))
@@ -686,7 +686,7 @@ fn concurrent_serving_lets_a_handler_dispatch_to_its_own_key() {
 
 #[test]
 fn pending_and_stream_poll_cleanly_without_any_runtime() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, _) = Echo::new();
     driver.register("echo", echo).expect("register");
     let waker = noop_waker_ref();
@@ -709,7 +709,7 @@ fn pending_and_stream_poll_cleanly_without_any_runtime() {
 
 #[tokio::test]
 async fn stream_dispatch_of_a_unary_kind_is_an_invalid_dispatch() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
     let _task = spawn(driver);
@@ -733,7 +733,7 @@ async fn stream_dispatch_of_a_unary_kind_is_an_invalid_dispatch() {
 
 #[tokio::test]
 async fn streaming_completion_flows_through_the_bus_final_terminated() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("hel"),
         MockStreamEvent::text("lo"),
@@ -766,7 +766,7 @@ async fn streaming_completion_flows_through_the_bus_final_terminated() {
 
 #[tokio::test]
 async fn a_unary_dispatch_of_a_streaming_completion_folds_to_the_response() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("fold"),
         MockStreamEvent::text("ed"),
@@ -789,7 +789,7 @@ async fn a_unary_dispatch_of_a_streaming_completion_folds_to_the_response() {
 
 #[tokio::test]
 async fn a_unary_dispatch_of_a_unary_script_resolves_the_completion() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let model = MockCompletionModel::from_turns([MockTurn::text("whole")]);
     driver
         .register("model", CompletionAdapter::new("mock", model))
@@ -842,7 +842,7 @@ async fn dropping_the_stream_cancels_the_handler() {
     }
     let sends = Arc::new(AtomicUsize::new(0));
     let cancelled = Arc::new(AtomicUsize::new(0));
-    let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
         stream_capacity: 4,
         ..BusConfig::default()
     });
@@ -894,7 +894,7 @@ async fn dropping_the_stream_cancels_the_handler() {
 
 #[tokio::test]
 async fn tool_memory_and_fn_adapters_serve_their_families() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver
         .register("add", ToolAdapter::new(Add))
         .expect("register");
@@ -1000,7 +1000,7 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
 async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     let recorder = EffectLogRecorder::new();
     let log = {
-        let (dispatcher, mut driver) = Bus::channel();
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
         driver
             .register("add", ToolAdapter::new(Add))
             .expect("register");
@@ -1053,7 +1053,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
     // with no model or tool behind the keys.
     let json = serde_json::to_string(&log).expect("log serializes");
     let restored: crate::effect::EffectLog = serde_json::from_str(&json).expect("log restores");
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
     assert_eq!(
         dispatcher
@@ -1104,7 +1104,7 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
 
 #[tokio::test]
 async fn driver_completes_when_dispatchers_drop_and_in_flight_work_finishes() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, open) = Echo::gated();
     driver.register("echo", echo).expect("register");
     let task = spawn(driver);
@@ -1132,7 +1132,7 @@ const _: fn() = || {
 /// measured value).
 #[test]
 fn unary_dispatch_median_is_under_fifty_microseconds() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, _) = Echo::new();
     driver.register("echo", echo).expect("register");
     let key = HandlerKey::from("echo");
@@ -1216,7 +1216,7 @@ impl Handler for Hanging {
 
 #[test]
 fn dropping_a_pending_cancels_its_unary_handler() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let dropped = Arc::new(AtomicBool::new(false));
     driver
         .register(
@@ -1244,7 +1244,7 @@ fn dropping_a_pending_cancels_its_unary_handler() {
 
 #[test]
 fn an_effect_stream_polls_cleanly_without_any_runtime() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("manual "),
         MockStreamEvent::text("stream"),
@@ -1281,7 +1281,7 @@ fn an_effect_stream_polls_cleanly_without_any_runtime() {
 #[tokio::test]
 async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver
         .register(
             "ordered",
@@ -1316,7 +1316,7 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
     assert!(log[0].id < log[1].id);
 
     // Replay hands each dispatch its own recorded outcome.
-    let (replay_dispatcher, mut replay_driver) = Bus::channel();
+    let (replay_dispatcher, _registrar, mut replay_driver) = Bus::channel();
     EffectLogReplayer::register_all(&log, &mut replay_driver).expect("fresh keys");
     let _replay = spawn(replay_driver);
     let first =
@@ -1340,7 +1340,7 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
 #[tokio::test]
 async fn replaying_a_changed_payload_is_a_divergence_not_a_guess() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, _) = Echo::new();
     driver.register("echo", echo).expect("register");
     driver.record_to(recorder.clone());
@@ -1351,7 +1351,7 @@ async fn replaying_a_changed_payload_is_a_divergence_not_a_guess() {
         .expect("served");
     let log = recorder.take();
 
-    let (replay_dispatcher, mut replay_driver) = Bus::channel();
+    let (replay_dispatcher, _registrar, mut replay_driver) = Bus::channel();
     EffectLogReplayer::register_all(&log, &mut replay_driver).expect("fresh keys");
     let _replay = spawn(replay_driver);
     let report = within(replay_dispatcher.dispatch(&key, custom(json!("different"))))
@@ -1364,10 +1364,10 @@ async fn replaying_a_changed_payload_is_a_divergence_not_a_guess() {
 
 #[test]
 fn register_refuses_a_family_change_under_a_live_key() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     let (echo, served) = Echo::new();
     driver.register("k", echo).expect("register");
-    let refused = dispatcher
+    let refused = registrar
         .register(
             "k",
             CompletionAdapter::new("mock", MockCompletionModel::text("x")),
@@ -1384,7 +1384,7 @@ fn register_refuses_a_family_change_under_a_live_key() {
     assert!(pending.poll_unpin(&mut cx).is_ready());
     assert_eq!(served.load(Ordering::SeqCst), 1);
     let (replacement, _) = Echo::new();
-    dispatcher.register("k", replacement).expect("same family");
+    registrar.register("k", replacement).expect("same family");
 }
 
 /// Sends one text event and drops its sink before the terminal.
@@ -1419,7 +1419,7 @@ impl Handler for CutShort {
 #[tokio::test]
 async fn a_stream_that_ends_without_final_is_reported_and_recorded() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver.register("cut", CutShort).expect("register");
     driver.record_to(recorder.clone());
     let _task = spawn(driver);
@@ -1478,7 +1478,7 @@ impl Handler for WrongFamilyAnswer {
 #[tokio::test]
 async fn the_tap_records_what_the_consumer_receives() {
     let recorder = EffectLogRecorder::new();
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver
         .register("wrong", WrongFamilyAnswer)
         .expect("register");
@@ -1499,4 +1499,186 @@ async fn the_tap_records_what_the_consumer_receives() {
         .expect_err("recorded as the same error");
     assert_eq!(recorded.kind, ErrorKind::Internal);
     assert_eq!(recorded.message, report.message);
+}
+
+// ---- the registrar: descriptors now, handlers on the driver's next poll ----
+
+#[tokio::test]
+async fn a_dispatch_right_after_a_runtime_registration_is_served_by_the_new_handler() {
+    // No driver poll between the registration and the dispatch: the driver's
+    // first poll installs the handler before it serves the command.
+    let (dispatcher, registrar, driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    registrar.register("echo", echo).expect("fresh key");
+    let pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    let _task = spawn(driver);
+    within(pending).await.expect("served by the new handler");
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_typed_view_binds_synchronously_after_a_runtime_registration() {
+    let (dispatcher, registrar, _driver) = Bus::channel();
+    registrar
+        .register(
+            "model",
+            CompletionAdapter::new("mock", MockCompletionModel::text("hi")),
+        )
+        .expect("fresh key");
+    // Nobody has polled the driver: the descriptor is there, the bind works.
+    let model: ModelHandle = dispatcher
+        .handle(&HandlerKey::from("model"))
+        .expect("bound from the descriptor table");
+    assert_eq!(model.model_ref().as_str(), "mock");
+    assert_eq!(
+        dispatcher
+            .descriptor(&HandlerKey::from("model"))
+            .expect("published")
+            .family
+            .family(),
+        EffectFamily::Completion
+    );
+    // A family change under the live key is refused here, synchronously.
+    let (echo, _) = Echo::new();
+    let report = registrar
+        .register("model", echo)
+        .expect_err("a custom handler cannot replace a completion");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    assert_eq!(
+        dispatcher
+            .descriptor(&HandlerKey::from("model"))
+            .expect("still published")
+            .family
+            .family(),
+        EffectFamily::Completion
+    );
+}
+
+#[tokio::test]
+async fn a_dispatch_after_a_deregistration_is_unavailable_before_the_driver_served_it() {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    assert!(registrar.deregister(&HandlerKey::from("echo")));
+    assert!(dispatcher.descriptor(&HandlerKey::from("echo")).is_none());
+    // The driver has not served the removal; the dispatch still fails —
+    // the removal is applied before the command is served.
+    let pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    let _task = spawn(driver);
+    let report = within(pending).await.expect_err("deregistered");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    assert_eq!(served.load(Ordering::SeqCst), 0);
+}
+
+/// A handler whose drop registers another handler on the same bus.
+struct RegistersOnDrop {
+    registrar: Registrar,
+}
+
+impl Handler for RegistersOnDrop {
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("echo"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:echo".into(),
+            },
+        }
+    }
+
+    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+        Box::pin(async move {
+            sink.resolve(Ok(Outcome::Custom(json!("never")))).await;
+        })
+    }
+}
+
+impl Drop for RegistersOnDrop {
+    fn drop(&mut self) {
+        let (echo, _) = Echo::new();
+        self.registrar
+            .register("from-drop", echo)
+            .expect("a fresh key from inside a drop");
+    }
+}
+
+#[tokio::test]
+async fn a_displaced_handler_is_dropped_outside_every_lock() {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    driver
+        .register(
+            "echo",
+            RegistersOnDrop {
+                registrar: registrar.clone(),
+            },
+        )
+        .expect("register");
+    let (echo, served) = Echo::new();
+    registrar.register("echo", echo).expect("same family");
+    let _task = spawn(driver);
+    // The replacement is applied on the driver's poll; the displaced
+    // handler's drop registers `from-drop` through the registrar without
+    // deadlocking on the mailbox or the descriptor table.
+    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1))))
+        .await
+        .expect("served by the replacement");
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert!(
+        dispatcher
+            .descriptor(&HandlerKey::from("from-drop"))
+            .is_some(),
+        "the displaced handler's drop ran and registered"
+    );
+}
+
+/// A handler that reports its drop.
+struct DropCounter(Arc<AtomicUsize>);
+
+impl Handler for DropCounter {
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("flag"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:flag".into(),
+            },
+        }
+    }
+
+    fn handle(&self, _kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
+        Box::pin(async move {
+            sink.resolve(Ok(Outcome::Custom(json!(null)))).await;
+        })
+    }
+}
+
+impl Drop for DropCounter {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[tokio::test]
+async fn a_dropped_driver_drops_the_registrations_it_never_installed() {
+    let (dispatcher, registrar, driver) = Bus::channel();
+    let dropped = Arc::new(AtomicUsize::new(0));
+    registrar
+        .register("flag", DropCounter(dropped.clone()))
+        .expect("fresh key");
+    assert_eq!(dropped.load(Ordering::SeqCst), 0);
+    drop(driver);
+    assert_eq!(
+        dropped.load(Ordering::SeqCst),
+        1,
+        "the handler posted and never installed went with the driver"
+    );
+    // A registration on the closed bus still publishes its descriptor; the
+    // dispatch answers closed, not unavailable.
+    registrar
+        .register("late", DropCounter(dropped.clone()))
+        .expect("the descriptor table outlives the driver");
+    assert!(dispatcher.descriptor(&HandlerKey::from("late")).is_some());
+    assert!(registrar.is_closed());
+    let report = within(dispatcher.dispatch(&HandlerKey::from("late"), custom(json!(1))))
+        .await
+        .expect_err("closed");
+    assert_eq!(report.kind, ErrorKind::BusClosed);
 }

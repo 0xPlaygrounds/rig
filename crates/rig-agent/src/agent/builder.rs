@@ -18,7 +18,7 @@ use std::sync::{Arc, OnceLock};
 
 use rig_core::{
     bus::{
-        Bus, BusConfig, Dispatcher, ErasedHandler,
+        Bus, BusConfig, Dispatcher, ErasedHandler, Registrar,
         adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter},
     },
     completion::{CompletionModel, Document, ModelRef},
@@ -118,8 +118,9 @@ pub struct WithBuilderTools(ToolServer);
 enum BusSource {
     /// The agent's own bus, created at build with this sizing.
     Owned(BusConfig),
-    /// A host's bus; the host drives it.
-    Host(Dispatcher),
+    /// A host's bus; the host drives it. The agent registers on it through
+    /// the host's registrar.
+    Host(Dispatcher, Registrar),
 }
 
 /// The default model: a model the builder registers under a label, or the
@@ -333,7 +334,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     pub fn bus_config(&self) -> BusConfig {
         match &self.bus {
             BusSource::Owned(config) => *config,
-            BusSource::Host(_) => BusConfig::default(),
+            BusSource::Host(..) => BusConfig::default(),
         }
     }
 
@@ -392,10 +393,10 @@ impl<ToolState> AgentBuilder<ToolState> {
         let owner = owner.unwrap_or_else(crate::agent::bus::default_owner);
         config.bus = match bus {
             BusSource::Owned(bus_config) => {
-                let (dispatcher, driver) = Bus::channel_with(bus_config);
-                AgentBus::owned(dispatcher, driver, owner)
+                let (dispatcher, registrar, driver) = Bus::channel_with(bus_config);
+                AgentBus::owned(dispatcher, registrar, driver, owner)
             }
-            BusSource::Host(dispatcher) => AgentBus::over(dispatcher, owner),
+            BusSource::Host(dispatcher, registrar) => AgentBus::over(dispatcher, registrar, owner),
         };
         config.model_key = match model {
             DefaultModel::Labelled(label, handler) => {
@@ -420,7 +421,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             crate::agent::bus::register_generated(config.bus.enable_recording());
         }
         let tool_server_handle = handle(tool_state);
-        tool_server_handle.attach(config.bus.dispatcher());
+        tool_server_handle.attach(config.bus.registrar());
         Agent {
             tool_server_handle,
             config,
@@ -462,12 +463,18 @@ impl AgentBuilder<NoToolConfig> {
     }
 
     /// An agent over a host's bus, named `owner` on it: the model under
-    /// `model` must be registered on `dispatcher` (the key is used as
-    /// given), and the host drives the bus. Everything else the builder
-    /// registers is keyed under `owner`.
-    pub fn over_bus(dispatcher: Dispatcher, owner: impl Into<String>, model: HandlerKey) -> Self {
+    /// `model` must be registered on the bus (the key is used as given),
+    /// and the host drives it. Everything else the builder registers
+    /// (memory, routes, tools) goes through `registrar`, keyed under
+    /// `owner`.
+    pub fn over_bus(
+        dispatcher: Dispatcher,
+        registrar: Registrar,
+        owner: impl Into<String>,
+        model: HandlerKey,
+    ) -> Self {
         Self::start(
-            BusSource::Host(dispatcher),
+            BusSource::Host(dispatcher, registrar),
             Some(owner.into()),
             DefaultModel::Key(model),
         )
@@ -476,13 +483,16 @@ impl AgentBuilder<NoToolConfig> {
     fn start(bus: BusSource, owner: Option<String>, model: DefaultModel) -> Self {
         // The config's bus and model key are placeholders until build mints
         // the real ones under the owner.
-        let (placeholder, _driver) = Bus::channel_with(BusConfig::default());
+        let (placeholder, placeholder_registrar, _driver) = Bus::channel_with(BusConfig::default());
         let key = match &model {
             DefaultModel::Labelled(label, _) => HandlerKey::from(label.as_str()),
             DefaultModel::Key(key) => key.clone(),
         };
         Self {
-            config: AgentConfig::new(AgentBus::over(placeholder, String::new()), key),
+            config: AgentConfig::new(
+                AgentBus::over(placeholder, placeholder_registrar, String::new()),
+                key,
+            ),
             tool_state: NoToolConfig,
             bus,
             owner,

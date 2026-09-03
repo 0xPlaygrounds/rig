@@ -23,7 +23,10 @@ use std::{
 
 use futures::{Stream, lock::Mutex};
 use rig_core::{
-    bus::{BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, adapters::CompletionAdapter},
+    bus::{
+        BusDriver, Dispatcher, EffectLogRecorder, ErasedHandler, Registrar,
+        adapters::CompletionAdapter,
+    },
     completion::{CompletionModel, ModelRef},
     effect::{EffectLog, HandlerKey},
     error::ErrorReport,
@@ -42,7 +45,7 @@ pub(crate) fn default_owner() -> String {
 /// values that selected it: the last clone dropping deregisters the key.
 pub(crate) struct AnonymousModel {
     key: HandlerKey,
-    dispatcher: Dispatcher,
+    registrar: Registrar,
 }
 
 impl AnonymousModel {
@@ -53,7 +56,7 @@ impl AnonymousModel {
 
 impl Drop for AnonymousModel {
     fn drop(&mut self) {
-        self.dispatcher.deregister(&self.key);
+        self.registrar.deregister(&self.key);
     }
 }
 
@@ -61,6 +64,10 @@ impl Drop for AnonymousModel {
 #[derive(Clone)]
 pub(crate) struct AgentBus {
     dispatcher: Dispatcher,
+    /// The registration handle for the same bus: what the agent's own
+    /// registrations (models, memory, tools) go through once the driver is
+    /// out of hand.
+    registrar: Registrar,
     /// The owner segment of every key this agent mints
     /// (`<owner>/model:<label>`, `<owner>/memory`, ...).
     owner: Arc<str>,
@@ -85,9 +92,15 @@ impl std::fmt::Debug for AgentBus {
 }
 
 impl AgentBus {
-    pub(crate) fn owned(dispatcher: Dispatcher, driver: BusDriver, owner: String) -> Self {
+    pub(crate) fn owned(
+        dispatcher: Dispatcher,
+        registrar: Registrar,
+        driver: BusDriver,
+        owner: String,
+    ) -> Self {
         Self {
             dispatcher,
+            registrar,
             owner: Arc::from(owner),
             driver: Some(Arc::new(Mutex::new(driver))),
             wakers: Arc::new(WakerSet::default()),
@@ -119,9 +132,10 @@ impl AgentBus {
         Ok(())
     }
 
-    pub(crate) fn over(dispatcher: Dispatcher, owner: String) -> Self {
+    pub(crate) fn over(dispatcher: Dispatcher, registrar: Registrar, owner: String) -> Self {
         Self {
             dispatcher,
+            registrar,
             owner: Arc::from(owner),
             driver: None,
             wakers: Arc::new(WakerSet::default()),
@@ -137,6 +151,7 @@ impl AgentBus {
     pub(crate) fn detached(&self) -> Self {
         Self {
             dispatcher: self.dispatcher.clone(),
+            registrar: self.registrar.clone(),
             owner: self.owner.clone(),
             driver: None,
             wakers: Arc::new(WakerSet::default()),
@@ -147,6 +162,10 @@ impl AgentBus {
 
     pub(crate) fn dispatcher(&self) -> &Dispatcher {
         &self.dispatcher
+    }
+
+    pub(crate) fn registrar(&self) -> &Registrar {
+        &self.registrar
     }
 
     /// The owner segment of the keys this agent mints.
@@ -172,9 +191,9 @@ impl AgentBus {
             .and_then(|rest| rest.strip_prefix("/model:"))
     }
 
-    /// Register `handler` under `key` before the first run: straight onto
-    /// the driver while this value is its only holder (the builder's
-    /// case), through the dispatcher otherwise.
+    /// Register `handler` under `key`: straight onto the driver while this
+    /// value is its only holder (the builder's case), through the registrar
+    /// otherwise.
     pub(crate) fn register_erased(
         &mut self,
         key: HandlerKey,
@@ -182,7 +201,7 @@ impl AgentBus {
     ) -> Result<(), ErrorReport> {
         match self.driver.as_mut().and_then(Arc::get_mut) {
             Some(driver) => driver.get_mut().register_erased(key, handler),
-            None => self.dispatcher.register_erased(key, handler),
+            None => self.registrar.register_erased(key, handler),
         }
     }
 
@@ -208,7 +227,7 @@ impl AgentBus {
     {
         let key = self.model_key(label.as_str());
         register_generated(
-            self.dispatcher
+            self.registrar
                 .register(key.clone(), CompletionAdapter::new(label.clone(), model)),
         );
         key
@@ -225,7 +244,7 @@ impl AgentBus {
         let key = self.register_model(&ModelRef::new(format!("anonymous#{n}")), model);
         Arc::new(AnonymousModel {
             key,
-            dispatcher: self.dispatcher.clone(),
+            registrar: self.registrar.clone(),
         })
     }
 

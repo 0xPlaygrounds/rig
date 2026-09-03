@@ -14,6 +14,11 @@
 //!    a system returns immediately; the pressure lands on the `Pending`.
 //! 6. A `dispatch_stream` consumed across ticks then dropped mid-stream is
 //!    observed as a cancellation by the handler.
+//! 7. Registration from a system: the `Registrar` is a `NonSend` resource —
+//!    the same spelling natively and in the browser — and a system installs
+//!    a handler while the driver task is running; the next tick dispatches
+//!    to it; a later system removes it and a dispatch answers
+//!    `HandlerUnavailable`. The `Dispatcher` stays a plain `Resource`.
 //!
 //! Every proof runs under a wall-clock guard; a hang is a failure, never a
 //! wait.
@@ -32,7 +37,7 @@ use bevy_tasks::{Task, TaskPool, block_on, futures_lite::future::poll_once};
 use rig_core::{
     bus::{
         Bus, BusConfig, Dispatcher, EffectStream, Handler, HandlerFuture, ModelHandle, OutcomeSink,
-        Pending,
+        Pending, Registrar,
     },
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
@@ -178,6 +183,62 @@ struct BusRes(Dispatcher);
 #[derive(Component)]
 struct DriverTask(#[allow(dead_code)] Task<()>);
 
+// ---- proof 7: registration from a system, through a NonSend registrar ----
+
+/// The registrar is `NonSend` on every target: one spelling, both targets.
+struct RegistrarRes(Registrar);
+
+#[derive(Resource)]
+struct RuntimeModel {
+    key: HandlerKey,
+    counters: Arc<Counters>,
+    in_flight: Option<Pending>,
+    answered: Option<Result<Outcome, rig_core::error::ErrorReport>>,
+}
+
+fn register_runtime_model(registrar: NonSendMut<RegistrarRes>, model: Res<RuntimeModel>) {
+    registrar
+        .0
+        .register(
+            model.key.clone(),
+            MockModel {
+                counters: model.counters.clone(),
+            },
+        )
+        .expect("a fresh key");
+}
+
+fn dispatch_runtime_model(bus: Res<BusRes>, mut model: ResMut<RuntimeModel>) {
+    if model.in_flight.is_none() && model.answered.is_none() {
+        let pending = bus.0.dispatch(
+            &model.key,
+            EffectKind::Completion {
+                request: request(),
+                stream: false,
+            },
+        );
+        model.in_flight = Some(pending);
+    }
+}
+
+fn poll_runtime_model(mut model: ResMut<RuntimeModel>) {
+    let outcome = model
+        .in_flight
+        .as_mut()
+        .and_then(|pending| block_on(poll_once(pending)));
+    if let Some(outcome) = outcome {
+        model.in_flight = None;
+        model.answered = Some(outcome);
+    }
+}
+
+fn deregister_runtime_model(registrar: NonSendMut<RegistrarRes>, model: Res<RuntimeModel>) {
+    assert!(
+        registrar.0.deregister(&model.key),
+        "proof 7: was registered"
+    );
+}
+
 // ---- proof 3: a dispatch in flight, polled across ticks ----
 
 #[derive(Component)]
@@ -241,10 +302,10 @@ fn guarded<T>(label: &str, mut step: impl FnMut() -> Option<T>) -> T {
 fn main() {
     let pool = TaskPool::new();
 
-    // ---- proofs 1, 2, 3 ----
+    // ---- proofs 1, 2, 3, 7 ----
     {
         let counters = Arc::new(Counters::default());
-        let (dispatcher, mut driver) = Bus::channel();
+        let (dispatcher, registrar, mut driver) = Bus::channel();
         driver
             .register(
                 "model",
@@ -295,6 +356,70 @@ fn main() {
         assert!(ticks >= 2, "proof 3: resolved within one tick ({ticks})");
         println!("proof 3: resolved after {ticks} tick(s)");
 
+        // ---- proof 7: a system registers, the next tick dispatches ----
+        // The registrar is a `NonSend` resource — the same two lines on
+        // native and wasm — and the driver task is still running.
+        world.insert_non_send(RegistrarRes(registrar));
+        let runtime_counters = Arc::new(Counters::default());
+        world.insert_resource(RuntimeModel {
+            key: HandlerKey::from("runtime"),
+            counters: runtime_counters.clone(),
+            in_flight: None,
+            answered: None,
+        });
+        let mut register = Schedule::default();
+        register.add_systems(register_runtime_model);
+        register.run(&mut world);
+        assert!(
+            dispatcher
+                .descriptor(&HandlerKey::from("runtime"))
+                .is_some(),
+            "proof 7: the descriptor is visible the moment the system registered"
+        );
+        let mut serve = Schedule::default();
+        serve.add_systems((dispatch_runtime_model, poll_runtime_model).chain());
+        let outcome = guarded("proof 7", || {
+            serve.run(&mut world);
+            world.resource::<RuntimeModel>().answered.clone()
+        });
+        match outcome {
+            Ok(Outcome::Completion(response)) => {
+                assert_eq!(
+                    response.choice,
+                    vec![AssistantContent::text("hello from the world")]
+                );
+            }
+            other => panic!("proof 7: expected a completion, got {other:?}"),
+        }
+        assert_eq!(runtime_counters.unary_served.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            counters.unary_served.load(Ordering::SeqCst),
+            1,
+            "proof 7: the runtime handler served it, not the pre-spawn one"
+        );
+        let mut remove = Schedule::default();
+        remove.add_systems(deregister_runtime_model);
+        remove.run(&mut world);
+        assert!(
+            dispatcher
+                .descriptor(&HandlerKey::from("runtime"))
+                .is_none()
+        );
+        world.resource_mut::<RuntimeModel>().answered = None;
+        let outcome = guarded("proof 7", || {
+            serve.run(&mut world);
+            world.resource::<RuntimeModel>().answered.clone()
+        });
+        let report = outcome.expect_err("proof 7: deregistered");
+        assert_eq!(
+            report.kind,
+            ErrorKind::HandlerUnavailable,
+            "proof 7: {report:?}"
+        );
+        println!(
+            "proof 7: a system registered and removed a handler through the NonSend registrar"
+        );
+
         // ---- proof 4: despawn cancels ----
         // Hold the handler so the dispatch is genuinely in flight — entered,
         // not answered — then despawn the entity holding the driver task
@@ -332,7 +457,7 @@ fn main() {
 
     // ---- proof 5: dispatch never blocks a system ----
     {
-        let (dispatcher, driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, driver) = Bus::channel_with(BusConfig {
             command_capacity: 1,
             ..BusConfig::default()
         });
@@ -371,7 +496,7 @@ fn main() {
     // ---- proof 6: a stream consumed across ticks, dropped mid-stream ----
     {
         let counters = Arc::new(Counters::default());
-        let (dispatcher, mut driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
             stream_capacity: 4,
             ..BusConfig::default()
         });

@@ -25,7 +25,7 @@ use std::sync::{
 
 use indexmap::IndexMap;
 use rig_core::{
-    bus::{Dispatcher, adapters::RetrieveAdapter},
+    bus::{Registrar, adapters::RetrieveAdapter},
     effect::HandlerKey,
     vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -101,8 +101,8 @@ struct ToolServerState {
     leases: HashMap<String, Arc<LeaseToken>>,
     retired: Vec<RetiredGeneration>,
     managed_generations: HashMap<String, ManagedToolToken>,
-    /// The buses this registry publishes onto.
-    buses: Vec<Dispatcher>,
+    /// The buses this registry publishes onto, by their registrars.
+    buses: Vec<Registrar>,
     next_generation: u64,
 }
 
@@ -220,7 +220,7 @@ impl ToolServerState {
         self.sweep_retired();
     }
 
-    fn attach(&mut self, bus: &Dispatcher) {
+    fn attach(&mut self, bus: &Registrar) {
         for (_, tool) in self.toolset.iter() {
             crate::agent::bus::register_generated(
                 bus.register_erased(tool.key().clone(), tool.handler().clone()),
@@ -377,7 +377,7 @@ impl ToolServerHandle {
     }
 
     /// Publish every registration onto `bus`, now and as they change.
-    pub fn attach(&self, bus: &Dispatcher) {
+    pub fn attach(&self, bus: &Registrar) {
         self.state_mut().attach(bus);
     }
 
