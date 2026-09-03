@@ -205,10 +205,93 @@ impl std::fmt::Display for SinkClosed {
 impl std::error::Error for SinkClosed {}
 
 /// The reply half of one dispatch, handed to the handler by the driver.
+///
+/// `Send + Sync + 'static` on every target (asserted below): it holds the
+/// reply channel, the fold state and the driver's taps, never the handler.
+/// A handler may therefore hand it out of its own future — see
+/// [`OutcomeSink::detach`] — and answer from somewhere else: a Bevy system
+/// with `World` access, a human at a console, a queue.
 pub struct OutcomeSink {
     id: EffectId,
     inner: SinkInner,
     tap: Option<Tap>,
+    /// Held until the sink answers or is dropped, whichever first; the
+    /// driver's receiver resolves then. This is what keeps a detached
+    /// sink's dispatch in flight — its serial slot, its `in_flight` count
+    /// — after the handler future that detached it has returned.
+    done: Option<oneshot::Sender<()>>,
+}
+
+/// An [`OutcomeSink`] that has left its handler: the external-resolver seam.
+///
+/// A [`Serve`] impl that cannot answer inside its own future — the answer
+/// needs `&mut World`, a person, another schedule — calls
+/// [`OutcomeSink::detach`], hands the result to whoever will answer, and
+/// returns. The driver keeps the dispatch in flight (serial slot, in-flight
+/// count, recorder slot) until the detached sink answers or is dropped, so
+/// a serial key is not served twice concurrently and the log's order is
+/// the serve order. Cancellation reaches the resolver through
+/// [`DetachedSink::is_closed`]: the consumer dropped its `Pending`, and an
+/// answer will go nowhere.
+///
+/// ```ignore
+/// impl Serve for WorldTool {
+///     type Family = family::Tool;
+///     fn descriptor(&self) -> HandlerDescriptor { self.descriptor.clone() }
+///     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+///         // Not answered here: a system with `Query` access answers next tick.
+///         self.mailbox.lock().push((kind, sink.detach()));
+///     }
+/// }
+/// ```
+pub struct DetachedSink(OutcomeSink);
+
+impl std::fmt::Debug for DetachedSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DetachedSink")
+            .field("id", &self.0.id)
+            .field("stream", &self.0.is_stream())
+            .field("closed", &self.0.is_closed())
+            .finish()
+    }
+}
+
+impl DetachedSink {
+    /// The dispatch this sink answers.
+    pub const fn id(&self) -> EffectId {
+        self.0.id()
+    }
+
+    /// Whether the dispatch asked for a stream.
+    pub const fn is_stream(&self) -> bool {
+        self.0.is_stream()
+    }
+
+    /// Whether the consumer is gone (its `Pending`/`EffectStream` dropped):
+    /// an answer would be discarded, and the record says cancelled.
+    pub fn is_closed(&self) -> bool {
+        self.0.is_closed()
+    }
+
+    /// Answer the dispatch: [`OutcomeSink::resolve`].
+    pub fn resolve(self, outcome: Result<Outcome, ErrorReport>) -> HandlerFuture<'static> {
+        self.0.resolve(outcome)
+    }
+
+    /// Feed one stream item: [`OutcomeSink::send`].
+    pub async fn send(&mut self, item: Result<StreamEvent, ErrorReport>) -> Result<(), SinkClosed> {
+        self.0.send(item).await
+    }
+
+    /// Stream through a writer: [`OutcomeSink::writer`].
+    pub fn writer(self) -> super::StreamWriter {
+        self.0.writer()
+    }
+
+    /// The sink back, for a resolver that has the handler-side API in hand.
+    pub fn into_sink(self) -> OutcomeSink {
+        self.0
+    }
 }
 
 /// What a bus tap observes: the outcome, as it resolves.
@@ -248,6 +331,9 @@ fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
 
 impl Drop for OutcomeSink {
     fn drop(&mut self) {
+        // Answered or not, the dispatch is over for the driver: dropping
+        // the sender resolves the driver's receiver.
+        self.done = None;
         // A sink dropped before it answered is a dispatch the consumer sees
         // fail — a stream cut short before its `Final`, a unary handler
         // that never resolved — and the log records the same failure the
@@ -318,6 +404,7 @@ impl OutcomeSink {
                 message_id: None,
             },
             tap: None,
+            done: None,
         }
     }
 
@@ -329,7 +416,23 @@ impl OutcomeSink {
                 finished: false,
             },
             tap: None,
+            done: None,
         }
+    }
+
+    /// Part of the driver seam: `done`'s receiver resolves when this sink
+    /// has answered or been dropped — after the handler future that held
+    /// it, if the sink was [detached](Self::detach). A driver keys the
+    /// dispatch's lifetime on it, not on the handler future.
+    pub fn with_done(mut self, done: oneshot::Sender<()>) -> Self {
+        self.done = Some(done);
+        self
+    }
+
+    /// Leave the handler: the dispatch stays in flight until the returned
+    /// sink answers or is dropped. See [`DetachedSink`].
+    pub fn detach(self) -> DetachedSink {
+        DetachedSink(self)
     }
 
     pub fn with_tap(mut self, on_outcome: OnOutcome, on_event: Option<OnEvent>) -> Self {
@@ -645,3 +748,12 @@ pub fn stream_truncated() -> ErrorReport {
         "the stream ended before its terminal record",
     )
 }
+
+// The sink crosses out of its handler (`detach`) and into whatever answers
+// it — a Bevy system on another thread, natively — so it is `Send + Sync`
+// on every target: reply channel, fold state and taps, never a handler.
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync + 'static>() {}
+    assert_send_sync::<OutcomeSink>();
+    assert_send_sync::<DetachedSink>();
+};

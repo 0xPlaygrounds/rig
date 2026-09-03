@@ -102,7 +102,7 @@ fn bevy_host_runs_the_seven_proofs() -> Result<(), Box<dyn std::error::Error>> {
     if !status.success() {
         return Err(format!("bevy bus host fixture failed:\n{stdout}\n{stderr}").into());
     }
-    for proof in 3..=7 {
+    for proof in 3..=8 {
         if !stdout.contains(&format!("proof {proof}:")) {
             return Err(format!("fixture did not report proof {proof}:\n{stdout}").into());
         }

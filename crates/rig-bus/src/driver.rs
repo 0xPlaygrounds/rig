@@ -43,6 +43,17 @@ pub struct BusConfig {
     /// Serve one command at a time per key. `false` serves every command
     /// concurrently; `true` is the cassette-ordered property — a handler
     /// sees its dispatches in the order they arrived.
+    ///
+    /// Under serial serving a handler must not dispatch to **its own key**
+    /// and wait for the answer: that dispatch would queue behind the
+    /// command that waits on it. The bus refuses the case it can see — a
+    /// dispatch to the key being served, made on the thread the driver is
+    /// polling it on — with a `Request` report instead of hanging. It
+    /// cannot see a nested dispatch made from another task or thread the
+    /// handler spawned (`tokio::spawn`, `IoTaskPool::spawn`): that one
+    /// queues behind its parent and waits forever. A handler that needs
+    /// its own key serves it from a second key, or the bus runs with
+    /// `serial_per_handler: false`.
     pub serial_per_handler: bool,
 }
 
@@ -300,7 +311,12 @@ impl BusDriver {
         if self.config.serial_per_handler {
             self.busy.insert(key.clone());
         }
-        let sink = reply.into_sink(id);
+        // The dispatch is over when the *sink* has answered or been dropped
+        // — not when the handler future ends: a handler may detach its
+        // sink and hand it to a system that answers later, and until then
+        // the key stays busy and the dispatch in flight.
+        let (done, sink_done) = futures::channel::oneshot::channel();
+        let sink = reply.into_sink(id).with_done(done);
         let sink = match &self.recorder {
             Some(recorder) => {
                 // The record's place in the log is its place in the serve
@@ -321,9 +337,16 @@ impl BusDriver {
                 // answers `SinkClosed`) before the future is dropped, which
                 // is how a streaming adapter stops cleanly. A cancel that
                 // arrived *before* serving never gets here (`serve` above).
+                // The handler future is a `Pin<Box<_>>` and moves into the
+                // select by value; the select's result owns whichever side
+                // lost and drops it here, with the sink inside — unless the
+                // handler detached the sink first.
                 let serving = handler.handle(kind, sink);
-                futures::pin_mut!(serving);
-                let _ = futures::future::select(serving, cancel).await;
+                drop(futures::future::select(serving, cancel).await);
+                // Ended or dropped: if the handler detached its sink, wait
+                // for whoever holds it. (Undetached, the sink went with the
+                // future and this is already resolved.)
+                let _ = sink_done.await;
                 task_key
             }
             .instrument(span),

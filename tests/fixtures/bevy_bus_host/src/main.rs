@@ -24,6 +24,11 @@
 //!    to it; a later system removes it and a dispatch answers
 //!    `HandlerUnavailable`. The `Dispatcher` stays a plain `Resource`.
 //!
+//! 8. A tool that is a system: a handler detaches its sink into a resource
+//!    and returns; a system with `World` access answers it on a later
+//!    tick. Under serial serving the key stays busy until the answer, so
+//!    a second dispatch to it waits — the log's order is the serve order.
+//!
 //! Every proof runs under a wall-clock guard; a hang is a failure, never a
 //! wait.
 
@@ -39,7 +44,7 @@ use std::{
 use bevy_ecs::prelude::*;
 use bevy_tasks::{Task, TaskPool, block_on, futures_lite::future::poll_once};
 use rig_bus::{Bus, BusConfig, Dispatcher, EffectStream, ModelHandle, Pending, Registrar};
-use rig_core::serve::{OutcomeSink, Serve};
+use rig_core::serve::{DetachedSink, OutcomeSink, Serve};
 use rig_core::{
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
@@ -250,6 +255,99 @@ struct InFlightStream(EffectStream);
 
 #[derive(Resource, Default)]
 struct Ticks(usize);
+
+// ---- proof 8: a tool that is a system ----
+
+/// Effects a `WorldTool` handler handed to the world, with their sinks:
+/// a plain `Resource` — the sink is `Send + Sync` on every target.
+#[derive(Resource, Default, Clone)]
+struct WorldToolMailbox(Arc<std::sync::Mutex<Vec<(EffectKind, DetachedSink)>>>);
+
+/// A handler that never answers in its own future.
+struct WorldTool {
+    mailbox: WorldToolMailbox,
+}
+
+impl Serve for WorldTool {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("world-tool"),
+            family: FamilyDescriptor::Custom {
+                kind: "host:world-tool".into(),
+            },
+        }
+    }
+
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        self.mailbox
+            .0
+            .lock()
+            .expect("mailbox")
+            .push((kind, sink.detach()));
+    }
+}
+
+/// World state the answering system reads.
+#[derive(Component)]
+struct WorldState;
+
+#[derive(Resource)]
+struct WorldToolRuns {
+    key: HandlerKey,
+    in_flight: Vec<Pending>,
+    answered: Vec<Result<Outcome, rig_core::error::ErrorReport>>,
+    /// Model entities seen by the answering system, per answer.
+    seen: Vec<usize>,
+}
+
+fn dispatch_world_tool(bus: Res<BusRes>, mut runs: ResMut<WorldToolRuns>) {
+    if runs.in_flight.is_empty() && runs.answered.is_empty() {
+        for n in 0..2u64 {
+            let pending = bus.0.dispatch(
+                &runs.key,
+                EffectKind::Custom {
+                    kind: Arc::from("host:world-tool"),
+                    payload: serde_json::json!({ "n": n }),
+                },
+            );
+            runs.in_flight.push(pending);
+        }
+    }
+}
+
+/// The answering system: `World` access (a query over the model entities)
+/// and the mailbox. One answer per tick, so the serial order is visible.
+fn answer_world_tool(
+    mailbox: Res<WorldToolMailbox>,
+    state: Query<(), With<WorldState>>,
+    mut runs: ResMut<WorldToolRuns>,
+) {
+    let next = mailbox.0.lock().expect("mailbox").pop();
+    if let Some((kind, sink)) = next {
+        let seen = state.iter().count();
+        runs.seen.push(seen);
+        let payload = match kind {
+            EffectKind::Custom { payload, .. } => payload,
+            other => panic!("proof 8: {other:?}"),
+        };
+        block_on(sink.resolve(Ok(Outcome::Custom(
+            serde_json::json!({ "answered": payload, "models": seen }),
+        ))));
+    }
+}
+
+fn poll_world_tool(mut runs: ResMut<WorldToolRuns>) {
+    let mut still = Vec::new();
+    for mut pending in std::mem::take(&mut runs.in_flight) {
+        match pending.poll_outcome() {
+            Some(outcome) => runs.answered.push(outcome),
+            None => still.push(pending),
+        }
+    }
+    runs.in_flight = still;
+}
 
 fn dispatch_system(
     mut commands: Commands,
@@ -544,6 +642,74 @@ fn main() {
             "proof 6: the stream was cancelled, not capped"
         );
         println!("proof 6: handler observed cancellation after {received} events");
+    }
+
+    // ---- proof 8: a tool that is a system ----
+    {
+        let mailbox = WorldToolMailbox::default();
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+            serial_per_handler: true,
+            ..BusConfig::default()
+        });
+        driver
+            .register(
+                "world-tool",
+                WorldTool {
+                    mailbox: mailbox.clone(),
+                },
+            )
+            .expect("register");
+        let _driver_task = pool.spawn(driver);
+        let mut world = World::new();
+        world.insert_resource(BusRes(dispatcher.clone()));
+        world.insert_resource(mailbox.clone());
+        world.insert_resource(WorldToolRuns {
+            key: HandlerKey::from("world-tool"),
+            in_flight: Vec::new(),
+            answered: Vec::new(),
+            seen: Vec::new(),
+        });
+        // World state the answering system reads: three marker entities.
+        for _ in 0..3 {
+            world.spawn(WorldState);
+        }
+        let mut schedule = Schedule::default();
+        schedule.add_systems((dispatch_world_tool, answer_world_tool, poll_world_tool).chain());
+        // Tick until the first dispatch is with the world and answered;
+        // the second must still be unserved — the serial key is busy
+        // until the detached sink answered, not until the handler returned.
+        guarded("proof 8", || {
+            schedule.run(&mut world);
+            let runs = world.resource::<WorldToolRuns>();
+            (runs.answered.len() == 1).then_some(())
+        });
+        fn custom_payload(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> serde_json::Value {
+            match outcome {
+                Ok(Outcome::Custom(payload)) => payload.clone(),
+                other => panic!("proof 8: expected a custom outcome, got {other:?}"),
+            }
+        }
+        {
+            let runs = world.resource::<WorldToolRuns>();
+            assert_eq!(runs.in_flight.len(), 1, "proof 8: the second waits");
+            assert_eq!(
+                custom_payload(&runs.answered[0]),
+                serde_json::json!({ "answered": { "n": 0 }, "models": 3 }),
+                "proof 8: answered from world state, in serve order"
+            );
+        }
+        guarded("proof 8", || {
+            schedule.run(&mut world);
+            let runs = world.resource::<WorldToolRuns>();
+            (runs.answered.len() == 2).then_some(())
+        });
+        let runs = world.resource::<WorldToolRuns>();
+        assert_eq!(
+            custom_payload(&runs.answered[1]),
+            serde_json::json!({ "answered": { "n": 1 }, "models": 3 })
+        );
+        assert!(runs.in_flight.is_empty());
+        println!("proof 8: a system answered a detached sink; the serial key waited for it");
     }
 
     // ---- proof 4 (buffered): a dispatch dropped before the driver ran ----
