@@ -148,6 +148,7 @@ async fn into_parts_hands_over_the_driver_with_the_dispatcher() {
     };
     let rig_agent::agent::AgentParts {
         dispatcher,
+        registrar: _,
         driver,
         agent,
     } = parts;
@@ -187,14 +188,20 @@ async fn into_parts_fails_while_a_clone_still_shares_the_driver() {
 
 #[tokio::test]
 async fn a_run_over_a_dropped_host_bus_answers_bus_closed_not_a_hang() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     driver
         .register(
             "model:host",
             CompletionAdapter::new("host", MockCompletionModel::text("never")),
         )
         .expect("register");
-    let agent = AgentBuilder::over_bus(dispatcher, "guest", HandlerKey::from("model:host")).build();
+    let agent = AgentBuilder::over_bus(
+        dispatcher,
+        registrar,
+        "guest",
+        HandlerKey::from("model:host"),
+    )
+    .build();
     drop(driver);
     let error = within(agent.prompt("hello").run())
         .await
@@ -228,7 +235,7 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     // no model and no tool behind the keys.
     let saved = serde_json::to_string(&log).expect("log serializes");
     let restored: rig_core::effect::EffectLog = serde_json::from_str(&saved).expect("restores");
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
     let replay_task = tokio::spawn(driver);
 
@@ -238,19 +245,20 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     let tool_key = log[1].key.clone();
     let tool_replayer =
         EffectLogReplayer::for_key(&restored, &tool_key).expect("the log has the tool's records");
-    let replayed = AgentBuilder::over_bus(dispatcher.clone(), "replay", model_key)
-        .tool_server_handle({
-            let server = rig_agent::tool::server::ToolServer::new().run();
-            // The registration's handler *is* the replayer, under the recorded
-            // key: the catalog advertises the tool, the bus answers from the
-            // log, and no `Slow` exists on this side at all.
-            server.add_registered_tool(
-                rig_core::tool::RegisteredTool::from_handler(tool_replayer)
-                    .expect("a tool-family replayer"),
-            );
-            server
-        })
-        .build();
+    let replayed =
+        AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "replay", model_key)
+            .tool_server_handle({
+                let server = rig_agent::tool::server::ToolServer::new().run();
+                // The registration's handler *is* the replayer, under the recorded
+                // key: the catalog advertises the tool, the bus answers from the
+                // log, and no `Slow` exists on this side at all.
+                server.add_registered_tool(
+                    rig_core::tool::RegisteredTool::from_handler(tool_replayer)
+                        .expect("a tool-family replayer"),
+                );
+                server
+            })
+            .build();
     let response = within(replayed.prompt("go").max_turns(3).run())
         .await
         .expect("replayed run");
@@ -1226,7 +1234,7 @@ impl Tool for Tag {
 
 #[tokio::test]
 async fn two_agents_on_one_host_bus_keep_their_own_keys() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     let recorder = rig_core::bus::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     for label in ["left-host", "right-host"] {
@@ -1240,6 +1248,7 @@ async fn two_agents_on_one_host_bus_keep_their_own_keys() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let left = AgentBuilder::over_bus(
         dispatcher.clone(),
+        registrar.clone(),
         "left",
         HandlerKey::from("model:left-host"),
     )
@@ -1250,6 +1259,7 @@ async fn two_agents_on_one_host_bus_keep_their_own_keys() {
     .build();
     let right = AgentBuilder::over_bus(
         dispatcher.clone(),
+        registrar.clone(),
         "right",
         HandlerKey::from("model:right-host"),
     )
@@ -1311,11 +1321,11 @@ async fn two_agents_on_one_host_bus_keep_their_own_keys() {
 
 #[tokio::test]
 async fn a_retired_tool_generation_leaves_the_bus_when_its_last_snapshot_drops() {
-    let (dispatcher, driver) = Bus::channel();
+    let (dispatcher, registrar, driver) = Bus::channel();
     let server = rig_agent::tool::server::ToolServer::new()
         .tool(Slow::default())
         .run();
-    server.attach(&dispatcher);
+    server.attach(&registrar);
     let first_key = dispatcher
         .keys()
         .into_iter()
@@ -1346,9 +1356,9 @@ async fn a_retired_tool_generation_leaves_the_bus_when_its_last_snapshot_drops()
 
 #[tokio::test]
 async fn registering_an_explicit_key_that_is_live_keeps_it_served() {
-    let (dispatcher, driver) = Bus::channel();
+    let (dispatcher, registrar, driver) = Bus::channel();
     let server = rig_agent::tool::server::ToolServer::new().run();
-    server.attach(&dispatcher);
+    server.attach(&registrar);
     let registration = || {
         rig_core::tool::RegisteredTool::from_tool(Slow::default())
             .with_key(HandlerKey::from("host/tool:slow"))
@@ -1374,6 +1384,7 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
         .unwrap_or_else(|_| panic!("the only clone"));
     let rig_agent::agent::AgentParts {
         dispatcher,
+        registrar: _,
         driver,
         agent,
     } = parts;
@@ -1438,6 +1449,7 @@ async fn recording_survives_into_parts() {
         .unwrap_or_else(|_| panic!("the only clone"));
     let rig_agent::agent::AgentParts {
         dispatcher,
+        registrar: _,
         driver,
         agent,
     } = parts;
@@ -1457,16 +1469,21 @@ async fn recording_survives_into_parts() {
 
 #[tokio::test]
 async fn a_bus_failure_on_a_tool_dispatch_is_a_run_error_not_a_tool_result() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     driver
         .register(
             "model:host",
             CompletionAdapter::new("host", two_tool_calls_then_done()),
         )
         .expect("register");
-    let agent = AgentBuilder::over_bus(dispatcher.clone(), "guest", HandlerKey::from("model:host"))
-        .tool(Slow::default())
-        .build();
+    let agent = AgentBuilder::over_bus(
+        dispatcher.clone(),
+        registrar.clone(),
+        "guest",
+        HandlerKey::from("model:host"),
+    )
+    .tool(Slow::default())
+    .build();
     let task = tokio::spawn(driver);
     // The host pulls the tool's handler out from under the registry: the
     // catalog still advertises it, the bus cannot serve it.
@@ -1475,7 +1492,7 @@ async fn a_bus_failure_on_a_tool_dispatch_is_a_run_error_not_a_tool_result() {
         .into_iter()
         .find(|key| key.as_str().contains("/tool:slow#"))
         .expect("the tool is published");
-    assert!(dispatcher.deregister(&tool_key));
+    assert!(registrar.deregister(&tool_key));
 
     let error = within(agent.prompt("go").max_turns(3).run())
         .await
@@ -1506,6 +1523,7 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         .unwrap_or_else(|_| panic!("the only clone"));
     let rig_agent::agent::AgentParts {
         dispatcher,
+        registrar: _,
         driver,
         agent,
     } = parts;
@@ -1549,5 +1567,52 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
     );
     assert_eq!(streamed.choice, unary.choice);
     drop((agent, dispatcher, model, streamer));
+    within(task).await.expect("driver task");
+}
+
+#[tokio::test]
+async fn a_model_registered_through_the_parts_registrar_serves_the_next_run() {
+    let agent = AgentBuilder::new(two_tool_calls_then_done())
+        .tool(Slow::default())
+        .build();
+    let parts = agent
+        .into_parts()
+        .unwrap_or_else(|_| panic!("the only clone"));
+    let rig_agent::agent::AgentParts {
+        dispatcher,
+        registrar,
+        driver,
+        agent,
+    } = parts;
+    let task = tokio::spawn(driver);
+
+    // A run is in flight on the moved-out driver (its tool sleeps); the host
+    // registers another model through the registrar meanwhile.
+    let in_flight = tokio::spawn({
+        let agent = agent.clone();
+        async move { agent.prompt("go").max_turns(3).run().await }
+    });
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let key = HandlerKey::from(format!("{}/model:late", agent.owner()));
+    registrar
+        .register(
+            key.clone(),
+            CompletionAdapter::new("late", MockCompletionModel::text("late")),
+        )
+        .expect("a fresh key");
+    assert!(
+        dispatcher.descriptor(&key).is_some(),
+        "the descriptor is visible at once"
+    );
+    let response = within(agent.runner("hello").using_model("late").run())
+        .await
+        .expect("the next run selects it");
+    assert_eq!(response.output, "late");
+    let first = within(in_flight)
+        .await
+        .expect("join")
+        .expect("the in-flight run");
+    assert_eq!(first.output, "done");
+    drop((agent, dispatcher, registrar));
     within(task).await.expect("driver task");
 }

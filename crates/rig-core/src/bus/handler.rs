@@ -12,10 +12,11 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-/// The future a handler returns: boxed, because the driver holds handlers
-/// as `Arc<dyn Handler>` (an in-flight task holds its handler while the
-/// table is replaced) and the trait must be object-safe. `Send` on native
-/// (the `WasmBoxedFuture` fork), which is what makes `BusDriver: Send`.
+/// The future a handler returns: boxed, because the driver's table holds
+/// handlers as `Arc<dyn Handler>` (an in-flight task holds its handler
+/// while the table is replaced) and the trait must be object-safe. `Send`
+/// on native (the `WasmBoxedFuture` fork), which is what makes
+/// `BusDriver: Send`.
 pub type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
 
 /// Something registered on the bus that serves effects.
@@ -41,15 +42,16 @@ pub trait Handler: WasmCompatSend + WasmCompatSync {
     fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_>;
 }
 
-/// A handler behind the bus's one erasure, shareable between the driver
-/// and every dispatcher: `Clone + Send + Sync + 'static` on every target.
+/// A handler behind the bus's one erasure: what a registry stages until a
+/// bus takes it, what a [`Registrar`](super::Registrar) carries to the
+/// driver, what the driver's handler table holds.
 ///
 /// On native this is `Arc<dyn Handler + Send + Sync>` (every handler is,
-/// through the `WasmCompat*` supertraits). On browser wasm the supertraits
-/// are no-op markers — a provider client there is `!Send` — and the target
-/// has no threads, so the cell asserts `Send + Sync` for the single-threaded
-/// runtime the same way the markers do; nothing on that target can move a
-/// handler across a thread that does not exist.
+/// through the `WasmCompat*` supertraits), so it is `Clone + Send + Sync +
+/// 'static`. On browser wasm the supertraits are no-op markers — a provider
+/// client there is `!Send` — and so is this: `Arc<dyn Handler>`, `!Send`,
+/// honestly. Nothing that must be `Send + Sync` on every target (the
+/// [`Dispatcher`](super::Dispatcher), the typed views) holds one.
 #[derive(Clone)]
 pub struct ErasedHandler(ErasedInner);
 
@@ -57,21 +59,6 @@ pub struct ErasedHandler(ErasedInner);
 type ErasedInner = std::sync::Arc<dyn Handler + Send + Sync>;
 #[cfg(target_family = "wasm")]
 type ErasedInner = std::sync::Arc<dyn Handler>;
-
-// SAFETY: `wasm32-unknown-unknown` is single-threaded; there is no thread to
-// send to or share with, which is the premise of `WasmCompatSend` and
-// `WasmCompatSync` being no-op markers on this target. `wasm_compat.rs`
-// refuses threaded wasm (`+atomics`) at compile time, so the premise holds
-// wherever this compiles. This is the bus's one `unsafe`, and it cannot be
-// removed by moving the handler table to the driver: `Dispatcher` must be
-// `Send + Sync` on wasm (a Bevy `Resource`), so whatever carries a `!Send`
-// handler from `Dispatcher::register` to the driver — a table, a command
-// queue, a channel — needs this same assertion, or a thread-local side
-// channel, which is global state the bus does not have.
-#[cfg(target_family = "wasm")]
-unsafe impl Send for ErasedHandler {}
-#[cfg(target_family = "wasm")]
-unsafe impl Sync for ErasedHandler {}
 
 impl ErasedHandler {
     /// Erase `handler`.

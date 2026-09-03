@@ -95,8 +95,12 @@ fn request() -> CompletionRequest {
     }
 }
 
-fn bus() -> (Dispatcher, tokio::task::JoinHandle<()>) {
-    let (dispatcher, mut driver) = Bus::channel();
+fn bus() -> (
+    Dispatcher,
+    crate::bus::Registrar,
+    tokio::task::JoinHandle<()>,
+) {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
     driver
         .register(
             "model",
@@ -131,12 +135,12 @@ fn bus() -> (Dispatcher, tokio::task::JoinHandle<()>) {
     driver
         .register("embed", EmbedAdapter::new("tiny", Tiny))
         .expect("register");
-    (dispatcher, tokio::spawn(driver))
+    (dispatcher, registrar, tokio::spawn(driver))
 }
 
 #[tokio::test]
 async fn binding_checks_the_family_typed_at_bind_time() {
-    let (dispatcher, _task) = bus();
+    let (dispatcher, _registrar, _task) = bus();
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("model");
@@ -162,7 +166,7 @@ async fn binding_checks_the_family_typed_at_bind_time() {
 
 #[tokio::test]
 async fn model_handle_completes_and_streams() {
-    let (dispatcher, _task) = bus();
+    let (dispatcher, _registrar, _task) = bus();
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("model");
@@ -192,11 +196,11 @@ async fn model_handle_completes_and_streams() {
 
 #[tokio::test]
 async fn handle_descriptor_follows_a_runtime_replacement() {
-    let (dispatcher, _task) = bus();
+    let (dispatcher, registrar, _task) = bus();
     let model: ModelHandle = dispatcher
         .handle(&HandlerKey::from("model"))
         .expect("model");
-    dispatcher
+    registrar
         .register(
             "model",
             CompletionAdapter::new(
@@ -220,7 +224,7 @@ async fn handle_descriptor_follows_a_runtime_replacement() {
 
 #[tokio::test]
 async fn tool_memory_index_and_embed_handles_call_their_families() {
-    let (dispatcher, _task) = bus();
+    let (dispatcher, _registrar, _task) = bus();
     let tool: ToolHandle = dispatcher
         .handle(&HandlerKey::from("double"))
         .expect("tool");
@@ -267,7 +271,7 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
 
 #[tokio::test]
 async fn handles_fail_closed_when_the_driver_is_gone() {
-    let (dispatcher, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver
         .register("double", ToolAdapter::new(Double))
         .expect("register");

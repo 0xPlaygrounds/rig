@@ -6,6 +6,32 @@
 //! `VectorStoreIndex` behind a vtable now holds a [`HandlerKey`] and talks to
 //! the bus; the one stored `dyn` is the handler table inside the driver.
 //!
+//! # Three roles, three types
+//!
+//! | Type | Job | `Send + Sync`? |
+//! | --- | --- | --- |
+//! | [`Dispatcher`] | the client half: dispatch effects, read descriptors, bind typed views | on every target, by construction — it holds serde data, channels and atomics, never a handler; a Bevy `Resource`, and the typed views are `Component`s |
+//! | [`Registrar`] | the impl half's handle: install, replace and remove handlers on a live bus | exactly when the handlers are: natively yes, on browser wasm no — the value that carries a handler shares the handler's thread affinity |
+//! | [`BusDriver`] | serves; owns the **only** handler table | `Send` natively, `!Send` tolerated on browser wasm |
+//!
+//! There is no `unsafe` in the bus: nothing that must be `Send + Sync`
+//! everywhere ever holds a handler.
+//!
+//! # Registration
+//!
+//! A registration writes the handler's **descriptor** into the bus's
+//! shared table synchronously — [`Dispatcher::descriptor`] sees it and
+//! [`Dispatcher::handle`] binds to it at once, and a family change under a
+//! live key is refused there — while the **handler** travels to the driver:
+//! by value while the driver is in hand ([`BusDriver::register`], before it
+//! is spawned), or through the [`Registrar`] afterwards, which posts it for
+//! the driver's next poll. The driver installs posted handlers before it
+//! serves the commands enqueued after them, so a dispatch made right after a
+//! registration is served by the new handler. The trade-off, stated once: a
+//! handler is callable one driver poll after `register`, not instantly —
+//! observable only to a caller that registers and dispatches without ever
+//! driving, which the ownership rule below already forbids.
+//!
 //! # The three spawning layers
 //!
 //! 1. **Inline** — [`Bus::channel`] gives you a [`Dispatcher`] and a
@@ -20,11 +46,15 @@
 //!    and `!Send`-tolerant on browser wasm, so one host call site (a Bevy
 //!    `IoTaskPool::get().spawn(driver)`) compiles on both targets.
 //!
-//! **The ownership rule: whoever holds the driver drives.** A dispatcher
-//! whose driver is un-polled waits forever, and nothing in this module
-//! polls a driver behind your back — there is no global, no `static`, no
-//! ambient executor. An agent therefore never hands out its dispatcher
-//! while keeping its driver; `into_parts` moves both.
+//! **The ownership rule: whoever holds the driver drives** — and whoever
+//! holds the driver registers: the registrar is the driver's hand, minted
+//! from it ([`BusDriver::registrar`]) or alongside it ([`Bus::channel`]),
+//! never from a dispatcher, a handle or a hook. A dispatcher whose driver
+//! is un-polled waits forever, and nothing in this module polls a driver
+//! behind your back — there is no global, no `static`, no ambient
+//! executor. An agent therefore never hands out its dispatcher while
+//! keeping its driver; `into_parts` moves the dispatcher, the registrar
+//! and the driver together.
 //!
 //! # Spawning on wasm
 //!
@@ -33,18 +63,24 @@
 //! browser.
 //!
 //! ```ignore
-//! // Bevy: one call site, both targets.
-//! let (dispatcher, mut driver) = rig_core::bus::Bus::channel();
+//! // Bevy: one call site, one spelling, both targets.
+//! let (dispatcher, registrar, mut driver) = rig_core::bus::Bus::channel();
 //! driver.register("model", rig_core::bus::adapters::CompletionAdapter::new("gpt", model))?;
 //! let task = IoTaskPool::get().spawn(driver);   // BusDriver: Send on native, !Send ok on wasm
 //! world.insert_resource(BusRes(dispatcher));     // Dispatcher: Send + Sync + 'static everywhere
+//! world.insert_non_send(RegistrarRes(registrar)); // Registrar: NonSend — natively too, so the
+//!                                                 // host writes the same line on both targets
+//! // later, from a system:
+//! fn install(registrar: NonSendMut<RegistrarRes>) {
+//!     registrar.0.register("model", CompletionAdapter::new("gpt", other)).ok();
+//! }
 //! ```
 //!
 //! A bare wasm host passes its own spawner to [`Bus::new_with`] — rig-core
 //! does not depend on `wasm-bindgen-futures`; the host supplies it.
 //!
 //! ```ignore
-//! let dispatcher = rig_core::bus::Bus::new_with(
+//! let (dispatcher, registrar) = rig_core::bus::Bus::new_with(
 //!     rig_core::bus::BusConfig::default(),
 //!     |driver| {
 //!         driver
@@ -95,6 +131,7 @@ mod dispatcher;
 mod driver;
 mod handle;
 mod handler;
+mod registrar;
 mod replay;
 
 pub use dispatcher::{Dispatcher, EffectStream, Pending};
@@ -107,6 +144,7 @@ pub use handler::{
     ErasedHandler, Handler, HandlerFuture, OutcomeSink, SinkClosed, events_from_response,
     serve_inline,
 };
+pub use registrar::Registrar;
 pub use replay::EffectLogReplayer;
 
 use std::sync::Arc;
@@ -118,21 +156,24 @@ use crate::effect::HandlerKey;
 pub struct Bus;
 
 impl Bus {
-    /// A bus with the default [`BusConfig`]: the dispatcher and the driver.
-    /// Register handlers on the driver, then drive it or spawn it.
-    pub fn channel() -> (Dispatcher, BusDriver) {
+    /// A bus with the default [`BusConfig`]: the dispatcher, the registrar
+    /// and the driver. Register handlers on the driver, then drive it or
+    /// spawn it; register through the registrar once it is spawned.
+    pub fn channel() -> (Dispatcher, Registrar, BusDriver) {
         Self::channel_with(BusConfig::default())
     }
 
     /// A bus with an explicit config.
-    pub fn channel_with(config: BusConfig) -> (Dispatcher, BusDriver) {
+    pub fn channel_with(config: BusConfig) -> (Dispatcher, Registrar, BusDriver) {
         let shared = Arc::new(dispatcher::Shared::new(
             config.command_capacity,
             config.serial_per_handler,
         ));
+        let mailbox = Arc::new(registrar::Mailbox::new());
         let dispatcher = Dispatcher::open(shared.clone(), config.stream_capacity.max(1));
-        let driver = BusDriver::new(shared, config);
-        (dispatcher, driver)
+        let driver = BusDriver::new(shared, mailbox, config);
+        let registrar = driver.registrar();
+        (dispatcher, registrar, driver)
     }
 
     /// A bus whose driver is handed to `spawn` after `register` has filled
@@ -142,11 +183,11 @@ impl Bus {
         config: BusConfig,
         register: impl FnOnce(&mut BusDriver),
         spawn: impl FnOnce(BusDriver),
-    ) -> Dispatcher {
-        let (dispatcher, mut driver) = Self::channel_with(config);
+    ) -> (Dispatcher, Registrar) {
+        let (dispatcher, registrar, mut driver) = Self::channel_with(config);
         register(&mut driver);
         spawn(driver);
-        dispatcher
+        (dispatcher, registrar)
     }
 }
 

@@ -406,3 +406,39 @@ fn the_impl_scan_reads_qualified_and_wrapped_headers() {
     assert!(dyn_targets("// dyn CompletionModel in a comment").is_empty());
     assert!(dyn_targets("let dynamic = 1;").is_empty());
 }
+
+/// The bus has no `unsafe`: the handler's thread affinity is carried by the
+/// type that carries the handler (`Registrar`), so nothing in `bus/` needs
+/// to assert `Send` or `Sync` by hand.
+#[test]
+fn bus_has_no_unsafe() {
+    let mut offenders = Vec::new();
+    for source in sources() {
+        if source.krate != "rig-core" || !source.relative.starts_with("bus/") {
+            continue;
+        }
+        for (line_number, line) in source.text.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            let has_token = line
+                .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .any(|token| token == "unsafe");
+            if has_token {
+                offenders.push(format!(
+                    "{}/{}:{}: {}",
+                    source.krate,
+                    source.relative,
+                    line_number + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "`unsafe` in the bus:\n{}",
+        offenders.join("\n")
+    );
+}

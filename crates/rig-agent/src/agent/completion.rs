@@ -524,9 +524,11 @@ impl Agent {
         } = self;
         let detached = config.bus.detached();
         let bus = std::mem::replace(&mut config.bus, detached);
+        let registrar = bus.registrar().clone();
         match bus.try_into_parts() {
             Ok((dispatcher, driver)) => Ok(AgentParts {
                 dispatcher,
+                registrar,
                 driver,
                 agent: Agent {
                     config,
@@ -641,6 +643,9 @@ mod request_identity_tests;
 pub struct AgentParts {
     /// The bus's client half.
     pub dispatcher: Dispatcher,
+    /// The bus's registration handle: register on the bus once the driver
+    /// is spawned.
+    pub registrar: rig_core::bus::Registrar,
     /// The bus's serving half: spawn it or drive it, or the agent hangs.
     pub driver: BusDriver,
     /// The agent, now over the bus rather than owning it.

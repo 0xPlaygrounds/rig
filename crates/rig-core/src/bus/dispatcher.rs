@@ -23,16 +23,20 @@ use crate::{
     streaming::StreamEvent,
 };
 
-use super::{ErasedHandler, Handler, OutcomeSink};
+use super::OutcomeSink;
 
-/// State shared between every `Dispatcher` clone and the driver.
+/// State shared between every `Dispatcher` clone, every `Registrar` and the
+/// driver. Holds only `Send + Sync` data — serde descriptors, the command
+/// queue, atomics — which is what makes `Dispatcher: Send + Sync` on every
+/// target by construction; handlers never pass through here.
 pub(super) struct Shared {
     next_id: AtomicU64,
-    /// The handler table. Registration writes it synchronously from either
-    /// side — no control message, so a registration made while nobody is
-    /// driving (an MCP reconcile, a sync `add_tool`) never waits on the
-    /// driver — and the driver reads it when it serves a command.
-    handlers: RwLock<BTreeMap<HandlerKey, ErasedHandler>>,
+    /// The descriptor table: what serves each key, as data. Registration
+    /// writes it synchronously from either side — so a descriptor read or
+    /// a typed bind made while nobody is driving (an MCP reconcile, a sync
+    /// `add_tool`) never waits on the driver — while the handler itself
+    /// travels to the driver, which owns the only handler table.
+    descriptors: RwLock<BTreeMap<HandlerKey, HandlerDescriptor>>,
     /// The command queue: one bounded buffer for the whole bus. The bound is
     /// bus-wide on purpose — a per-sender channel would hand every
     /// `Dispatcher` clone (and every dispatch, if each cloned a sender) a
@@ -81,7 +85,7 @@ impl Shared {
             serial_per_handler,
             serving: Mutex::new(None),
             next_id: AtomicU64::new(1),
-            handlers: RwLock::new(BTreeMap::new()),
+            descriptors: RwLock::new(BTreeMap::new()),
             queue: Mutex::new(CommandQueue {
                 commands: VecDeque::new(),
                 capacity: command_capacity.max(1),
@@ -185,43 +189,48 @@ impl Shared {
         self.closed.load(Ordering::SeqCst)
     }
 
-    /// Install `handler` under `key`, replacing what served it. A
+    /// Publish the descriptor of the handler that will serve `key`, stamped
+    /// with the key it is registered under (the registration is
+    /// authoritative; a handler's self-declared key is only a default). A
     /// replacement must keep the key's family: a bound handle checked its
     /// family at bind time, and that check stays true for its lifetime.
-    /// The displaced handler is dropped after the table lock is released —
-    /// its `Drop` may touch this bus.
-    pub(super) fn register(
+    pub(super) fn publish_descriptor(
         &self,
         key: HandlerKey,
-        handler: ErasedHandler,
+        descriptor: HandlerDescriptor,
     ) -> Result<(), ErrorReport> {
-        let family = handler.descriptor().family.family();
-        let displaced = {
-            let mut handlers = self
-                .handlers
-                .write()
-                .unwrap_or_else(PoisonError::into_inner);
-            if let Some(current) = handlers.get(&key) {
-                let current_family = current.descriptor().family.family();
-                if current_family != family {
-                    return Err(ErrorReport::new(
-                        ErrorKind::HandlerUnavailable,
-                        format!(
-                            "key `{key}` serves the {current_family:?} family; a {family:?} handler cannot replace it"
-                        ),
-                    )
-                    .with_retryable(false));
-                }
+        let family = descriptor.family.family();
+        let mut descriptors = self
+            .descriptors
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(current) = descriptors.get(&key) {
+            let current_family = current.family.family();
+            if current_family != family {
+                return Err(ErrorReport::new(
+                    ErrorKind::HandlerUnavailable,
+                    format!(
+                        "key `{key}` serves the {current_family:?} family; a {family:?} handler cannot replace it"
+                    ),
+                )
+                .with_retryable(false));
             }
-            handlers.insert(key, handler)
-        };
-        drop(displaced);
+        }
+        descriptors.insert(
+            key.clone(),
+            HandlerDescriptor {
+                key,
+                family: descriptor.family,
+            },
+        );
         Ok(())
     }
 
-    pub(super) fn deregister(&self, key: &HandlerKey) -> bool {
+    /// Retract the descriptor under `key`: later dispatches answer
+    /// `HandlerUnavailable`. Returns whether one was published.
+    pub(super) fn retract_descriptor(&self, key: &HandlerKey) -> bool {
         let removed = self
-            .handlers
+            .descriptors
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(key)
@@ -258,26 +267,17 @@ impl Shared {
             )
     }
 
-    pub(super) fn handler(&self, key: &HandlerKey) -> Option<ErasedHandler> {
-        self.handlers
+    /// The descriptor published under `key`.
+    pub(super) fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
+        self.descriptors
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .get(key)
             .cloned()
     }
 
-    /// The descriptor of the handler under `key`, stamped with the key it
-    /// is registered under: the registration is authoritative, a handler's
-    /// self-declared key is only a default.
-    pub(super) fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
-        self.handler(key).map(|handler| HandlerDescriptor {
-            key: key.clone(),
-            family: handler.descriptor().family,
-        })
-    }
-
     pub(super) fn keys(&self) -> Vec<HandlerKey> {
-        self.handlers
+        self.descriptors
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .keys()
@@ -329,8 +329,10 @@ impl Reply {
     }
 }
 
-/// The erased half of the bus: sends effects, reads descriptors, registers
-/// handlers on a live bus. `Clone + Send + Sync + 'static` on every target.
+/// The client half of the bus: sends effects, reads descriptors, binds typed
+/// views. `Clone + Send + Sync + 'static` on every target **by
+/// construction** — it holds serde data, channels and atomics, never a
+/// handler; handlers are the [`Registrar`](super::Registrar)'s business.
 ///
 /// A dispatcher never blocks and never awaits: [`Dispatcher::dispatch`] and
 /// [`Dispatcher::dispatch_stream`] return immediately, and the *first poll*
@@ -471,7 +473,7 @@ impl Dispatcher {
     }
 
     /// The descriptor of the handler serving `key` — a snapshot of the
-    /// handler table, no round trip. `None` when nothing serves the key.
+    /// descriptor table, no round trip. `None` when nothing serves the key.
     pub fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
         self.shared.descriptor(key)
     }
@@ -479,35 +481,6 @@ impl Dispatcher {
     /// Every registered key, in key order.
     pub fn keys(&self) -> Vec<HandlerKey> {
         self.shared.keys()
-    }
-
-    /// Register (or replace) the handler serving `key` on a live bus. Takes
-    /// effect for the next dispatch the driver *serves*; a dispatch already
-    /// in flight keeps the handler it started with. A replacement must keep
-    /// the key's family (a handle bound to the key checked its family at
-    /// bind time); a family change is refused with `HandlerUnavailable`.
-    pub fn register(
-        &self,
-        key: impl Into<HandlerKey>,
-        handler: impl Handler + 'static,
-    ) -> Result<(), ErrorReport> {
-        self.shared
-            .register(key.into(), ErasedHandler::new(handler))
-    }
-
-    /// Register an already-erased handler on a live bus.
-    pub fn register_erased(
-        &self,
-        key: impl Into<HandlerKey>,
-        handler: ErasedHandler,
-    ) -> Result<(), ErrorReport> {
-        self.shared.register(key.into(), handler)
-    }
-
-    /// Remove the handler serving `key`; later dispatches answer
-    /// `HandlerUnavailable`. Returns whether a handler was registered.
-    pub fn deregister(&self, key: &HandlerKey) -> bool {
-        self.shared.deregister(key)
     }
 
     /// Whether the driver has been dropped. A dispatch on a closed bus

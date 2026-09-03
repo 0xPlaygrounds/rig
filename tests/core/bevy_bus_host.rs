@@ -86,7 +86,7 @@ fn target_dir() -> PathBuf {
 }
 
 #[test]
-fn bevy_host_runs_the_six_proofs() -> Result<(), Box<dyn std::error::Error>> {
+fn bevy_host_runs_the_seven_proofs() -> Result<(), Box<dyn std::error::Error>> {
     let child = fixture_cargo()
         .args(["run", "--quiet", "--locked", "--manifest-path"])
         .arg(fixture_manifest())
@@ -99,13 +99,31 @@ fn bevy_host_runs_the_six_proofs() -> Result<(), Box<dyn std::error::Error>> {
     if !status.success() {
         return Err(format!("bevy bus host fixture failed:\n{stdout}\n{stderr}").into());
     }
-    for proof in 3..=6 {
+    for proof in 3..=7 {
         if !stdout.contains(&format!("proof {proof}:")) {
             return Err(format!("fixture did not report proof {proof}:\n{stdout}").into());
         }
     }
     if !stdout.contains("bevy-bus-host: ok") {
         return Err(format!("fixture did not report success:\n{stdout}").into());
+    }
+    Ok(())
+}
+
+/// One vocabulary on both targets: the fixture spells the registrar as a
+/// `NonSend` resource natively and on wasm, and nothing else in it forks
+/// on the target either.
+#[test]
+fn bevy_host_fixture_has_no_target_cfg() -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(fixture_dir().join("src/main.rs"))?;
+    let offenders: Vec<String> = source
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| line.contains("cfg("))
+        .map(|(number, line)| format!("{}: {}", number + 1, line.trim()))
+        .collect();
+    if !offenders.is_empty() {
+        return Err(format!("the fixture forks on the target:\n{}", offenders.join("\n")).into());
     }
     Ok(())
 }
