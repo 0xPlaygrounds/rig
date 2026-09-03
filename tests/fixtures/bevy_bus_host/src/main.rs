@@ -45,7 +45,7 @@ use rig_core::{
     effect::{EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorKind,
     message::AssistantContent,
-    streaming::{BlockId, MintKind, StreamEvent, StreamFinal},
+    streaming::StreamFinal,
 };
 
 const GUARD: Duration = Duration::from_secs(10);
@@ -107,7 +107,7 @@ impl Serve for MockModel {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, mut sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
                 self.counters.unary_started.fetch_add(1, Ordering::SeqCst);
@@ -123,10 +123,9 @@ impl Serve for MockModel {
                 sink.resolve(Ok(Outcome::Completion(response))).await;
             }
             EffectKind::Completion { stream: true, .. } => {
-                let id = BlockId::minted(MintKind::Text, 0);
+                let mut out = sink.writer();
                 loop {
-                    let event = StreamEvent::text(id.clone(), "tick ");
-                    if sink.send(Ok(event)).await.is_err() {
+                    if out.text("tick ").await.is_err() {
                         self.counters
                             .stream_cancelled
                             .fetch_add(1, Ordering::SeqCst);
@@ -134,12 +133,7 @@ impl Serve for MockModel {
                     }
                     let sent = self.counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
                     if sent >= STREAM_CAP {
-                        let _ = sink
-                            .send(Ok(StreamEvent::Final(StreamFinal::new(
-                                "mock",
-                                Usage::new(),
-                            ))))
-                            .await;
+                        let _ = out.finish(StreamFinal::new("mock", Usage::new())).await;
                         return;
                     }
                 }

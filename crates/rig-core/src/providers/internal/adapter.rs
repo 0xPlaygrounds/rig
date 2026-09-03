@@ -29,8 +29,8 @@ use futures::{Stream, StreamExt};
 use super::wire::WireEvent;
 use crate::completion::CompletionError;
 use crate::streaming::{
-    BlockClose, BlockId, BlockKind, Delta, StreamEvent, StreamFinal, StreamingResult, SyntheticIds,
-    ToolCallEnd, UnknownPayload,
+    BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, StreamingResult,
+    SyntheticIds, ToolCallEnd, UnknownPayload,
 };
 use crate::wasm_compat::WasmCompatSend;
 
@@ -74,6 +74,23 @@ pub struct AdapterOutput {
     /// The block receiving bare text deltas and metadata, until a boundary
     /// or an explicit text start/end switches it.
     active_text: Option<BlockId>,
+    /// Minter for reasoning blocks opened by a bare reasoning delta.
+    reasoning_ids: Option<SyntheticIds>,
+    /// The block receiving bare reasoning deltas, until a boundary or an
+    /// explicit reasoning end switches it.
+    active_reasoning: Option<BlockId>,
+    /// The blocks this output opened itself (minted on demand for a bare
+    /// delta) and therefore closes itself — at the boundary that ends
+    /// them, or at [`close_active_blocks`](Self::close_active_blocks). A
+    /// block a provider opened explicitly is the provider's to close.
+    auto_text: Option<BlockId>,
+    auto_reasoning: Option<BlockId>,
+    /// Whether a block this output opened itself is closed at its boundary
+    /// (the bus's `StreamWriter`: a handler that says `text` then
+    /// `tool_call` means the text block ended). Off for provider adapters,
+    /// whose wires say where their blocks end — their event sequences are
+    /// unchanged.
+    self_closing: bool,
     /// Blocks a start was emitted for (or that a delta opened leniently),
     /// so a delta never precedes its block's start on the wire we emit.
     opened: std::collections::HashSet<BlockId>,
@@ -85,8 +102,95 @@ impl AdapterOutput {
         Self::default()
     }
 
-    /// Push one event verbatim.
+    /// An output that closes the blocks it opened itself at their boundary
+    /// and at [`close_active_blocks`](Self::close_active_blocks): what a
+    /// bus handler writes through, where nothing else will close them.
+    pub fn self_closing() -> Self {
+        Self {
+            self_closing: true,
+            ..Self::default()
+        }
+    }
+
+    /// Push one event verbatim. A block this output opened itself for a
+    /// bare delta is closed first when `item` is its boundary.
     pub fn push(&mut self, item: Result<StreamEvent, CompletionError>) {
+        if self.self_closing
+            && let Ok(event) = &item
+            && event.block_id().is_some()
+            && !Self::is_message_start(event)
+        {
+            if !Self::is_text_event(event)
+                && let Some(id) = self.auto_text.take()
+            {
+                self.active_text = None;
+                self.push_raw(Ok(StreamEvent::BlockEnd {
+                    id,
+                    end: BlockClose::Text,
+                    block: None,
+                }));
+            }
+            if !Self::is_reasoning_event(event)
+                && let Some(id) = self.auto_reasoning.take()
+            {
+                self.active_reasoning = None;
+                self.push_raw(Ok(StreamEvent::BlockEnd {
+                    id,
+                    end: BlockClose::Reasoning {
+                        reasoning: None,
+                        signature: None,
+                        wire_sent: false,
+                    },
+                    block: None,
+                }));
+            }
+        }
+        self.push_raw(item);
+    }
+
+    fn is_message_start(event: &StreamEvent) -> bool {
+        matches!(
+            event,
+            StreamEvent::BlockStart {
+                kind: BlockKind::Message,
+                ..
+            }
+        )
+    }
+
+    fn is_text_event(event: &StreamEvent) -> bool {
+        matches!(
+            event,
+            StreamEvent::BlockStart {
+                kind: BlockKind::Text { .. },
+                ..
+            } | StreamEvent::BlockDelta {
+                delta: Delta::Text { .. } | Delta::TextMeta { .. },
+                ..
+            } | StreamEvent::BlockEnd {
+                end: BlockClose::Text,
+                ..
+            }
+        )
+    }
+
+    fn is_reasoning_event(event: &StreamEvent) -> bool {
+        matches!(
+            event,
+            StreamEvent::BlockStart {
+                kind: BlockKind::Reasoning { .. },
+                ..
+            } | StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { .. },
+                ..
+            } | StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                ..
+            }
+        )
+    }
+
+    fn push_raw(&mut self, item: Result<StreamEvent, CompletionError>) {
         if let Ok(event) = &item
             && let Some(id) = event.block_id()
         {
@@ -105,30 +209,13 @@ impl AdapterOutput {
                 | StreamEvent::Final(_)
                 | StreamEvent::Unknown(_) => {}
             }
-            // Any non-text block event is a boundary for anonymous text.
-            let is_text = matches!(
-                event,
-                StreamEvent::BlockStart {
-                    kind: BlockKind::Text { .. },
-                    ..
-                } | StreamEvent::BlockDelta {
-                    delta: Delta::Text { .. } | Delta::TextMeta { .. },
-                    ..
-                } | StreamEvent::BlockEnd {
-                    end: BlockClose::Text,
-                    ..
-                }
-            );
-            if !is_text
-                && !matches!(
-                    event,
-                    StreamEvent::BlockStart {
-                        kind: BlockKind::Message,
-                        ..
-                    }
-                )
-            {
+            // Any non-text block event is a boundary for anonymous text, any
+            // non-reasoning one for anonymous reasoning.
+            if !Self::is_text_event(event) && !Self::is_message_start(event) {
                 self.active_text = None;
+            }
+            if !Self::is_reasoning_event(event) && !Self::is_message_start(event) {
+                self.active_reasoning = None;
             }
         }
         self.items.push(item);
@@ -183,6 +270,58 @@ impl AdapterOutput {
         }));
     }
 
+    /// A bare reasoning delta: lands in the active reasoning block, opening
+    /// a minted one if none is active (the reasoning counterpart of
+    /// [`text`](Self::text); any text or tool block is a boundary, and a
+    /// block opened this way is closed at its boundary).
+    pub fn reasoning(&mut self, text: impl Into<String>) {
+        let id = match &self.active_reasoning {
+            Some(id) => id.clone(),
+            None => {
+                let id = self
+                    .reasoning_ids
+                    .get_or_insert_with(|| SyntheticIds::new(MintKind::Reasoning))
+                    .mint();
+                self.push(Ok(StreamEvent::BlockStart {
+                    id: id.clone(),
+                    kind: BlockKind::Reasoning { provider_id: None },
+                }));
+                self.active_reasoning = Some(id.clone());
+                self.auto_reasoning = Some(id.clone());
+                id
+            }
+        };
+        self.push(Ok(StreamEvent::BlockDelta {
+            id,
+            delta: Delta::Reasoning { text: text.into() },
+        }));
+    }
+
+    /// Close the blocks bare deltas opened (text, reasoning), so a terminal
+    /// record never follows a block this output opened.
+    pub fn close_active_blocks(&mut self) {
+        if let Some(id) = self.auto_reasoning.take() {
+            self.active_reasoning = None;
+            self.push_raw(Ok(StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::Reasoning {
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: false,
+                },
+                block: None,
+            }));
+        }
+        if let Some(id) = self.auto_text.take() {
+            self.active_text = None;
+            self.push_raw(Ok(StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::Text,
+                block: None,
+            }));
+        }
+    }
+
     /// Provider metadata for the active text block (opening a minted one if
     /// none is active).
     pub fn text_meta(&mut self, additional_params: crate::message::AdditionalParams) {
@@ -213,6 +352,9 @@ impl AdapterOutput {
         if self.active_text.as_ref() == Some(&id) {
             self.active_text = None;
         }
+        if self.auto_text.as_ref() == Some(&id) {
+            self.auto_text = None;
+        }
         self.push(Ok(StreamEvent::BlockEnd {
             id,
             end: BlockClose::Text,
@@ -232,6 +374,7 @@ impl AdapterOutput {
             },
         }));
         self.active_text = Some(id.clone());
+        self.auto_text = Some(id.clone());
         id
     }
 
