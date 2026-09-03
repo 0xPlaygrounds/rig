@@ -23,7 +23,7 @@ use rig_agent::{
     tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
 use rig_core::{
-    bus::{Bus, BusConfig, BusDriver, EffectLogReplayer, adapters::CompletionAdapter},
+    bus::{Bus, BusConfig, BusDriver, adapters::CompletionAdapter},
     effect::{EffectFamily, EffectKind, HandlerKey},
     error::ErrorKind,
     test_utils::{MockCompletionModel, MockTurn},
@@ -211,64 +211,6 @@ async fn a_run_over_a_dropped_host_bus_answers_bus_closed_not_a_hang() {
         message.contains("bus driver is gone"),
         "expected BusClosed, got {message}"
     );
-}
-
-#[tokio::test]
-async fn a_run_records_every_dispatch_and_replays_from_the_log() {
-    let recorded = AgentBuilder::new(two_tool_calls_then_done())
-        .tool(Slow::default())
-        .record_effects()
-        .build();
-    let response = within(recorded.prompt("go").max_turns(3).run())
-        .await
-        .expect("recorded run");
-    assert_eq!(response.output, "done");
-    let log = recorded.take_effect_log().expect("recording was enabled");
-    assert_eq!(log.len(), 4, "two completions and two tool calls");
-    assert_eq!(log[0].kind.family(), EffectFamily::Completion);
-    assert_eq!(log[1].kind.family(), EffectFamily::Tool);
-    assert_eq!(log[2].kind.family(), EffectFamily::Tool);
-    assert_eq!(log[3].kind.family(), EffectFamily::Completion);
-    assert!(log.iter().all(|record| record.outcome.is_ok()));
-
-    // The examples-doc flow: save the session, restore it, replay it with
-    // no model and no tool behind the keys.
-    let saved = serde_json::to_string(&log).expect("log serializes");
-    let restored: rig_core::effect::EffectLog = serde_json::from_str(&saved).expect("restores");
-    let (dispatcher, registrar, mut driver) = Bus::channel();
-    EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
-    let replay_task = tokio::spawn(driver);
-
-    // The replayed agent advertises the same tool (its handler is the
-    // replayer under the recorded key) and dispatches to the recorded keys.
-    let model_key = log[0].key.clone();
-    let tool_key = log[1].key.clone();
-    let tool_replayer =
-        EffectLogReplayer::for_key(&restored, &tool_key).expect("the log has the tool's records");
-    let replayed =
-        AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "replay", model_key)
-            .tool_server_handle({
-                let server = rig_agent::tool::server::ToolServer::new().run();
-                // The registration's handler *is* the replayer, under the recorded
-                // key: the catalog advertises the tool, the bus answers from the
-                // log, and no `Slow` exists on this side at all.
-                server.add_registered_tool(
-                    rig_core::tool::RegisteredTool::from_handler(tool_replayer)
-                        .expect("a tool-family replayer"),
-                );
-                server
-            })
-            .build();
-    let response = within(replayed.prompt("go").max_turns(3).run())
-        .await
-        .expect("replayed run");
-    assert_eq!(
-        response.output, "done",
-        "the same PromptResponse from the record"
-    );
-    drop(replayed);
-    drop(dispatcher);
-    within(replay_task).await.expect("replay driver ends");
 }
 
 /// A hook at the dispatch boundary sees every effect with its id, can patch

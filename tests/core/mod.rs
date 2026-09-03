@@ -1,3 +1,9 @@
+//! The root package's own tests: guards that scan the source tree and the
+//! fixture runners, which need the repository root. Behaviour of the bus and
+//! the agent over it is verified in `crates/rig-verify`; provider behaviour
+//! in `tests/providers`; anything needing crate-private types stays a unit
+//! test in its crate.
+
 mod agent_run_stepper;
 mod bevy_bus_host;
 mod dependency_graph;

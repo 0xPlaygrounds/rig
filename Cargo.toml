@@ -56,6 +56,7 @@ default-members = [
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
+    "crates/rig-verify",
 ]
 exclude = [
     "archived",

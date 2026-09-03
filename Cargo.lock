@@ -10303,6 +10303,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-verify"
+version = "0.0.0"
+dependencies = [
+ "futures",
+ "proptest",
+ "rig-agent",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rig-vertexai"
 version = "0.42.0"
 dependencies = [
