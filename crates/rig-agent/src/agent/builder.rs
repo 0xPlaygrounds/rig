@@ -153,6 +153,8 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     record_effects: bool,
     record_events: bool,
     retrieval_indexes: usize,
+    /// The labels `model_route` registered, in order.
+    routes: Vec<String>,
 }
 
 impl<ToolState> AgentBuilder<ToolState> {
@@ -322,9 +324,29 @@ impl<ToolState> AgentBuilder<ToolState> {
         M: CompletionModel + 'static,
     {
         let label = label.into();
+        self.routes.push(label.as_str().to_owned());
         self.pending.push((
             rig_core::effect::model_key(label.as_str()).to_string(),
             ErasedHandler::new(CompletionAdapter::new(label, model)),
+        ));
+        self
+    }
+
+    /// Register a route served by `handler` — any completion-family
+    /// handler, such as a replayer answering a recorded route from an
+    /// effect log — under the agent's key for `label`, so the program's
+    /// required row names the route as [`model_route`](Self::model_route)
+    /// would.
+    pub fn model_route_handler(
+        mut self,
+        label: impl Into<ModelRef>,
+        handler: impl rig_core::serve::Serve + 'static,
+    ) -> Self {
+        let label = label.into();
+        self.routes.push(label.as_str().to_owned());
+        self.pending.push((
+            rig_core::effect::model_key(label.as_str()).to_string(),
+            ErasedHandler::new(handler),
         ));
         self
     }
@@ -398,6 +420,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             record_effects: self.record_effects,
             record_events: self.record_events,
             retrieval_indexes: self.retrieval_indexes,
+            routes: self.routes,
         }
     }
 
@@ -430,6 +453,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             record_effects,
             record_events,
             retrieval_indexes: _,
+            routes,
         } = self;
         // The owner: the label given, else the agent's name (so a named
         // agent's keys are the same in every process — what a log meant
@@ -476,6 +500,10 @@ impl<ToolState> AgentBuilder<ToolState> {
             // The slot is this builder's own, filled exactly once.
             let _ = slot.set(config.bus.key(&suffix));
         }
+        config.route_keys = routes
+            .iter()
+            .map(|label| config.bus.model_key(label))
+            .collect();
         if memory {
             config.memory_key = Some(config.bus.key("memory"));
         }
@@ -566,6 +594,7 @@ impl AgentBuilder<NoToolConfig> {
             record_effects: false,
             record_events: false,
             retrieval_indexes: 0,
+            routes: Vec::new(),
         }
     }
 
@@ -651,6 +680,7 @@ impl AgentBuilder<WithBuilderTools> {
             record_effects,
             record_events,
             retrieval_indexes,
+            routes,
         } = self;
         Self {
             config,
@@ -664,6 +694,7 @@ impl AgentBuilder<WithBuilderTools> {
             record_effects,
             record_events,
             retrieval_indexes,
+            routes,
         }
     }
 

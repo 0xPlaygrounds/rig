@@ -248,6 +248,9 @@ pub(crate) struct AgentConfig {
     pub(crate) output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
     pub(crate) memory_key: Option<Key<family::Memory>>,
+    /// The models registered as routes at build (`model_route`), part of
+    /// the required row: a program that can select them needs them served.
+    pub(crate) route_keys: Vec<Key<family::Completion>>,
     /// Optional conversation id used when none is set per-request.
     pub(crate) conversation_id: Option<ConversationId>,
     /// The anonymous model this value selected ([`Agent::set_model`],
@@ -273,6 +276,7 @@ impl AgentConfig {
             tool_choice: None,
             max_turns: 1,
             hooks: HookStack::new(),
+            route_keys: Vec::new(),
             output_schema: None,
             output_mode: OutputMode::default(),
             memory_key: None,
@@ -519,7 +523,13 @@ impl Agent {
         rig_effect_log::stable_hash(&self.config.run_spec()).unwrap_or_default()
     }
 
-    fn stamp(&self, mut log: EffectLog) -> EffectLog {
+    /// `log` with this agent's program identity in its header: the run-spec
+    /// hash, the hook stack, the required row and, for an agent that owns
+    /// its bus, the bus policy. What [`take_effect_log`](Self::take_effect_log)
+    /// does to a log the agent's own driver recorded; an agent over a
+    /// host's bus does not record, so the host taps its driver and stamps
+    /// the log here before committing it as a golden.
+    pub fn stamp(&self, mut log: EffectLog) -> EffectLog {
         log.header.run_spec = Some(self.run_spec_hash());
         log.header.hooks = self.config.hooks.names();
         log.header.required = self.required_row();
@@ -541,6 +551,9 @@ impl Agent {
             self.config.model_key.raw().clone(),
             EffectFamily::Completion,
         );
+        for route in &self.config.route_keys {
+            row.insert(route.raw().clone(), EffectFamily::Completion);
+        }
         if let Some(memory) = &self.config.memory_key {
             row.insert(memory.raw().clone(), EffectFamily::Memory);
         }
