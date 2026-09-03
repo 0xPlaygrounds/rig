@@ -373,13 +373,20 @@ impl Serve for EffectLogReplayer {
                     None => {
                         // A stream recorded verbatim replays verbatim: the
                         // consumer sees the original delta boundaries, not
-                        // the fold re-emitted.
+                        // the fold re-emitted. A stream that ended in an
+                        // error — the consumer's cancel, the provider's
+                        // refusal — has its events and then the error, which
+                        // is the record's outcome; a success has its
+                        // terminal among its events.
                         if let (Some(events), true) = (record.events, sink.is_stream()) {
                             let mut sink = sink;
                             for event in events {
                                 if sink.send(Ok(event)).await.is_err() {
                                     return;
                                 }
+                            }
+                            if record.outcome.is_err() {
+                                sink.resolve(record.outcome).await;
                             }
                             return;
                         }
