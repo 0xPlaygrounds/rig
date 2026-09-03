@@ -30,7 +30,7 @@ use super::{
 };
 
 /// Bus sizing and serving policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BusConfig {
     /// Commands the bus buffers, **bus-wide**, before a `Pending`/
     /// `EffectStream` parks at its send stage (its poll stays `Pending`

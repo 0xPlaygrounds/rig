@@ -418,7 +418,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         config.bus = match bus {
             BusSource::Owned(bus_config) => {
                 let (dispatcher, registrar, driver) = Bus::channel_with(bus_config);
-                AgentBus::owned(dispatcher, registrar, driver, owner)
+                AgentBus::owned(dispatcher, registrar, driver, owner, bus_config)
             }
             BusSource::Host(dispatcher, registrar) => AgentBus::over(dispatcher, registrar, owner),
         };

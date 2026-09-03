@@ -582,6 +582,15 @@ impl ToolServerHandle {
     /// retrieval index, under the key the index is registered on every
     /// attached bus. The engine dispatches them at the boundary and hands
     /// the ids back to [`ToolServerHandle::snapshot_with_dynamic`].
+    /// The keys of every retrieval index this registry serves.
+    pub fn retrieval_keys(&self) -> Vec<HandlerKey> {
+        self.state()
+            .retrieval_indexes
+            .iter()
+            .map(|index| index.key.clone())
+            .collect()
+    }
+
     pub fn retrieval_effects(
         &self,
         prompt: Option<String>,

@@ -83,3 +83,116 @@ async fn an_agents_log_carries_its_spec_and_the_agent_checks_it() {
         report.message
     );
 }
+
+/// The header names the program: its hook stack, its required effect row
+/// and its bus policy. Each is a refusal with both sides in the message.
+#[tokio::test]
+async fn the_header_names_the_program_and_the_agent_refuses_another() {
+    use rig_agent::agent::{AgentHook, HookContext, RunStart, RunStartAction};
+    use rig_core::effect::EffectFamily;
+
+    #[derive(serde::Deserialize)]
+    struct NoArgs {}
+    struct Add;
+    impl rig_agent::tool::Tool for Add {
+        const NAME: &'static str = "add";
+        type Args = NoArgs;
+        type Output = i64;
+        type Error = rig_agent::tool::ToolExecutionError;
+        fn description(&self) -> String {
+            "adds".into()
+        }
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+        async fn call(
+            &self,
+            _context: &mut rig_agent::tool::ToolContext,
+            _args: NoArgs,
+        ) -> Result<i64, Self::Error> {
+            Ok(0)
+        }
+    }
+
+    struct Tagger;
+    impl AgentHook for Tagger {
+        async fn on_run_start(&self, _ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+            RunStartAction::Continue
+        }
+    }
+
+    let recorded = AgentBuilder::new(MockCompletionModel::text("hi"))
+        .name("planner")
+        .add_hook(Tagger)
+        .record_effects()
+        .build();
+    within(recorded.prompt("go").run()).await.expect("run");
+    let log = recorded.take_effect_log().expect("recording");
+    assert_eq!(log.header.hooks.len(), 1);
+    assert!(
+        log.header.hooks[0].ends_with("Tagger"),
+        "{:?}",
+        log.header.hooks
+    );
+    assert_eq!(
+        log.header.required.get(recorded.model_key().raw()),
+        Some(&EffectFamily::Completion),
+        "the required row names the model"
+    );
+    assert_eq!(log.header.bus, recorded.bus_config());
+    recorded
+        .check_replayable(&log)
+        .expect("its own log replays");
+
+    // Another hook stack, same spec: another program.
+    let other_hooks = AgentBuilder::new(MockCompletionModel::text("hi"))
+        .name("planner")
+        .build();
+    let refusal = other_hooks
+        .check_replayable(&log)
+        .expect_err("a different hook stack is a different program");
+    assert!(
+        refusal.message.contains("hook stack"),
+        "{}",
+        refusal.message
+    );
+    assert!(
+        refusal.message.contains("Tagger"),
+        "both stacks: {}",
+        refusal.message
+    );
+
+    // A program that needs a tool the log never served.
+    let needs_a_tool = AgentBuilder::new(MockCompletionModel::text("hi"))
+        .name("planner")
+        .add_hook(Tagger)
+        .tool(Add)
+        .build();
+    let refusal = needs_a_tool
+        .check_replayable(&log)
+        .expect_err("a tool the log never served");
+    assert!(
+        refusal.message.contains("never served"),
+        "{}",
+        refusal.message
+    );
+    assert!(refusal.message.contains("tool:add"), "{}", refusal.message);
+
+    // Another bus policy.
+    let serial = AgentBuilder::new(MockCompletionModel::text("hi"))
+        .name("planner")
+        .add_hook(Tagger)
+        .configure_bus(rig_bus::BusConfig {
+            serial_per_handler: true,
+            ..rig_bus::BusConfig::default()
+        })
+        .build();
+    let refusal = serial
+        .check_replayable(&log)
+        .expect_err("a different serving policy");
+    assert!(
+        refusal.message.contains("bus policy"),
+        "{}",
+        refusal.message
+    );
+}

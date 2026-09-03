@@ -27,7 +27,7 @@ use super::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
-use rig_bus::{BusDriver, Dispatcher, Registrar};
+use rig_bus::{BusConfig, BusDriver, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
@@ -84,6 +84,8 @@ pub(crate) struct AgentBus {
     wakers: Arc<WakerSet>,
     recorder: Option<EffectLogRecorder>,
     anonymous_models: Arc<AtomicUsize>,
+    /// The policy the owned bus was created with; `None` over a host's bus.
+    config: Option<BusConfig>,
 }
 
 impl std::fmt::Debug for AgentBus {
@@ -102,6 +104,7 @@ impl AgentBus {
         registrar: Registrar,
         driver: BusDriver,
         owner: String,
+        config: BusConfig,
     ) -> Self {
         Self {
             dispatcher,
@@ -111,7 +114,13 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
+            config: Some(config),
         }
+    }
+
+    /// The policy the owned bus runs under; `None` over a host's bus.
+    pub(crate) fn config(&self) -> Option<BusConfig> {
+        self.config
     }
 
     /// Install a recorder on the owned driver. Called at build, when the
@@ -149,6 +158,7 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
+            config: None,
         }
     }
 
@@ -165,6 +175,7 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             recorder: self.recorder.clone(),
             anonymous_models: self.anonymous_models.clone(),
+            config: self.config,
         }
     }
 
