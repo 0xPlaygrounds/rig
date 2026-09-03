@@ -22,7 +22,10 @@ fn target_dir() -> PathBuf {
 
 #[test]
 fn agent_run_is_steppable_without_the_futures_driver() -> Result<(), Box<dyn std::error::Error>> {
+    // CI compiles the fixture with warnings denied; do the same here so a
+    // warning in the fixture fails locally, not on the runner.
     let output = Command::new(env!("CARGO"))
+        .env("RUSTFLAGS", "-D warnings")
         .args(["run", "--quiet", "--manifest-path"])
         .arg(fixture_manifest())
         .arg("--target-dir")

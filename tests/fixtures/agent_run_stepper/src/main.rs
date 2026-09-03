@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. An erased model with a serializable identity.
     // A layer-1 host: its own bus, driven inline while each dispatch is
     // awaited — whoever holds the driver drives.
-    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
     driver.register(
         "model",
         CompletionAdapter::new(ModelRef::new("fixture"), ScriptedModel::default()),

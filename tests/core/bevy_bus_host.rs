@@ -29,7 +29,10 @@ fn fixture_cargo() -> Command {
     command
         .current_dir(fixture_dir())
         .env_remove("RUSTUP_TOOLCHAIN")
-        .env_remove("CARGO");
+        .env_remove("CARGO")
+        // CI compiles the fixture with warnings denied; do the same here so
+        // a warning in the fixture fails locally, not on the runner.
+        .env("RUSTFLAGS", "-D warnings");
     command
 }
 
