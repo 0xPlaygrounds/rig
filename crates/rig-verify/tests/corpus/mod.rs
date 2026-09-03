@@ -181,10 +181,10 @@ pub struct Program {
     /// The producer's hooks, in registration order.
     pub hooks: &'static [Hook],
     pub invalid_retries: usize,
-    /// The producer dropped the stream after its first text delta: the
-    /// one record is a `Cancelled` completion and the run never finishes.
-    /// On replay the replayer answers that record as the cancel it was, so
-    /// the consumer sees the cancel as its first item, never a delta.
+    /// The producer dropped the stream mid-way: the one record is a
+    /// `Cancelled` completion and the run never finishes. On replay the
+    /// replayer answers that record as the cancel it was — after the
+    /// events it kept, if any, else as the consumer's first item.
     pub cancel_after_first_delta: bool,
     pub ending: Ending,
     /// The run's output when a hook replaced it; else the golden's last
@@ -539,9 +539,6 @@ impl Replay {
                 rig_core::serve::ErasedHandler::new(model),
             )
             .expect("a fresh key");
-        // A route is the agent's to register (`model_route_handler`), as
-        // the producer's `model_route` was; the host bus serves only the
-        // default model, as the producer's client did.
         let recorder = if keeps_events(&log) {
             EffectLogRecorder::keeping_stream_events()
         } else {
@@ -564,7 +561,7 @@ impl Replay {
         HandlerKey::from(format!("{}/model:{label}", self.log_owner()))
     }
 
-    fn log_owner(&self) -> String {
+    pub fn log_owner(&self) -> String {
         self.model_key
             .as_str()
             .rsplit_once("/model:")
@@ -677,6 +674,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
             .expect("the conversation's records");
         builder = builder.memory_handler(memory).conversation(conversation);
     }
+    // A route is the agent's to register (`model_route_handler`), as the
+    // producer's `model_route` was; the host bus serves only the default
+    // model, as the producer's client did.
     if let Some(label) = program.route {
         let route = EffectLogReplayer::for_key(&replay.log, &replay.route_key(label))
             .expect("the route is in the required row");
@@ -703,6 +703,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
         if let Some(concurrency) = program.tool_concurrency {
             runner = runner.tool_concurrency(concurrency);
         }
+        runner = runner.max_invalid_tool_call_retries(program.invalid_retries);
         let mut stream = runner.stream().await;
         let mut output = None;
         let mut failed_as_expected = false;
@@ -879,6 +880,76 @@ pub async fn call_tools(
 }
 
 /// The run spec the producer's builder and runner amount to.
+/// The name the header records for a hook: its type's last path segment.
+fn hook_name(hook: Hook) -> &'static str {
+    match hook {
+        Hook::RetryUnknownTool => "RetryUnknownTool",
+        Hook::ObserveEverything => "ObserveEverything",
+        Hook::PatchAddArgs => "PatchAddArgs",
+        Hook::DenyAdd => "DenyAdd",
+        Hook::ReplaceAddResult => "ReplaceAddResult",
+        Hook::ReplaceAnswer => "ReplaceAnswer",
+        Hook::PreambleOverride => "PreambleOverride",
+        Hook::DemandDone => "DemandDone",
+        Hook::LookupBeforeRun => "LookupBeforeRun",
+        Hook::RouteAfterFirstTurn => "RouteAfterFirstTurn",
+    }
+}
+
+/// What the bus engine's `check_replayable` checks, for the hand driver:
+/// the header names this program — its spec hash (the builder's spec:
+/// the default budget, no runner retries), its hook stack, and every key
+/// it will dispatch to in the required row.
+pub fn assert_header_names_the_program(replay: &Replay, program: &Program) {
+    let header = &replay.log.header;
+    let builder_spec = RunSpec {
+        max_turns: Some(program.default_max_turns.unwrap_or(1)),
+        max_invalid_tool_call_retries: 0,
+        ..run_spec(program)
+    };
+    assert_eq!(
+        header.run_spec,
+        rig_effect_log::stable_hash(&builder_spec).ok(),
+        "the header's spec hash is this program's"
+    );
+    // `dynamic_context` is a hook of the builder's own (`DynamicContext`),
+    // named in the header like any other; the producers register it
+    // before their own hooks.
+    let hooks: Vec<&str> = program
+        .dynamic_context
+        .map(|_| "DynamicContext")
+        .into_iter()
+        .chain(program.hooks.iter().map(|hook| hook_name(*hook)))
+        .collect();
+    assert_eq!(
+        header.hooks, hooks,
+        "the header's hook stack is this program's"
+    );
+    let mut needed = vec![(replay.model_key.clone(), EffectFamily::Completion)];
+    if program.conversation.is_some() {
+        needed.push((replay.memory_key.clone(), EffectFamily::Memory));
+    }
+    if let Some(label) = program.route {
+        needed.push((replay.route_key(label), EffectFamily::Completion));
+    }
+    if program.dynamic_context.is_some() {
+        needed.push((replay.context_key(), EffectFamily::Retrieve));
+    }
+    if program.retrieved_tools.is_some() {
+        needed.push((
+            HandlerKey::from(format!("{}/retrieve:tools#0", replay.log_owner())),
+            EffectFamily::Retrieve,
+        ));
+    }
+    for (key, family) in needed {
+        assert_eq!(
+            header.required.get(&key),
+            Some(&family),
+            "the required row names `{key}`"
+        );
+    }
+}
+
 pub fn run_spec(program: &Program) -> RunSpec {
     RunSpec {
         preamble: program.spec_preamble(),
@@ -945,6 +1016,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expect("the memory");
         (handle, ConversationId::from(id))
     });
+    assert_header_names_the_program(&replay, program);
     let spec = run_spec(program);
     // Explicit history bypasses memory for the run, as the runner does.
     let history = match (program.history, &memory) {
@@ -994,12 +1066,16 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 asked_before = true;
                 // The retrievals the engine performs at the boundary, in its
                 // order: the context (a completion-call hook), then the tool
-                // index; the query is the run's prompt (the current prompt's
-                // text, else the last text in history — the same prompt).
+                // index; the query is the current prompt's text, else the
+                // last text in history, as the engine derives it.
+                let query = prompt
+                    .rag_text()
+                    .or_else(|| history.iter().rev().find_map(Message::rag_text))
+                    .unwrap_or_default();
                 let mut turn_patch = patch.clone();
                 if let (Some(context), Some(samples)) = (&context, program.dynamic_context) {
                     let req = rig_core::vector_store::request::VectorSearchRequest::builder()
-                        .query(program.prompt)
+                        .query(query.clone())
                         .samples(samples as u64)
                         .build();
                     let results = within(context.top_n::<serde_json::Value>(req))
@@ -1014,7 +1090,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
                     turn_patch = Some(turn_patch.unwrap_or_default().extra_context(docs));
                 }
                 let mut dynamic_tool_ids = Vec::new();
-                for (key, kind) in server.retrieval_effects(Some(program.prompt.to_owned())) {
+                for (key, kind) in server.retrieval_effects(Some(query.clone())) {
                     match within(replay.dispatcher.dispatch(&key, kind))
                         .await
                         .expect("the replayer answered the tool query")
@@ -1207,6 +1283,7 @@ pub async fn resume_reproduces(program: &Program) {
         .dispatcher
         .handle(&replay.model_key)
         .expect("the model");
+    assert_header_names_the_program(&replay, program);
     let spec = run_spec(program);
     let definitions = server.static_tool_defs();
     let mut run = AgentRun::from_spec(&spec, program.prompt, None);

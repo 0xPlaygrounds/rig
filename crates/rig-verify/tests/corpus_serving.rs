@@ -25,7 +25,7 @@
 //! | routing | one model · a route selected after the first turn · a route registered, never selected |
 //! | bus ownership | own · a host's (unary · streamed with events) |
 //!
-//! Full cross-product: 2 × 2 × 2 × 2 × 3 × 2 × 3 × 3 = 1728. Recorded:
+//! Full cross-product: 2 × 2 × 2 × 2 × 3 × 2 × 3 × 3 = 864. Recorded:
 //! the 12 cells below. Pruned: the serving axes are crossed only on the
 //! program that can show them (anthropic's two calls in one turn, the one
 //! provider that emits them); a two-turn program has nothing for

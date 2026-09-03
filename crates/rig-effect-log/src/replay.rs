@@ -239,14 +239,6 @@ fn first_difference(recorded: &serde_json::Value, got: &serde_json::Value, path:
     }
 }
 
-/// The descriptor a replayer advertises under `key`. A tool's definition is
-/// taken from the recorded completion requests that advertised it, so a
-/// replayed run builds byte-identical requests — the replayer must look to
-/// the model exactly like the tool it stands in for, or the next completion
-/// dispatch diverges.
-/// The descriptor of a required key the log never dispatched. Only a tool
-/// can be described without a record: its definition is in the requests
-/// that advertised it. Any other family has nothing to describe it by.
 /// The descriptor a replayer advertises for a required key the log never
 /// dispatched to: the one the header's handler table recorded for it when
 /// it was installed — a retrievable tool the index never named, a route

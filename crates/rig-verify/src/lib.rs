@@ -41,7 +41,8 @@
 //! | E, request-shape axes | `corpus_request_shape.rs` | 13 goldens, one axis each |
 //!
 //! Every golden is replayed by both interpreters (a cancelled stream by
-//! both too: the replayer answers the record as the cancel it was). The
+//! both too: the replayer answers the record as the cancel it was, after
+//! the events it kept). The
 //! producers are the `golden_fixture` tests of the root suite
 //! (`tests/providers/*/cassette/corpus_*.rs`, `tests/core/golden_*.rs`),
 //! paired one-to-one with the goldens by `tests/core/golden_pairing.rs`.

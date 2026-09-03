@@ -37,22 +37,6 @@ pub trait VectorDistance {
 /// twice.)
 const CHUNK: usize = 256;
 
-/// The sum of `terms`, in `CHUNK`s, in order.
-#[cfg(not(feature = "rayon"))]
-fn chunked_sum(terms: impl ExactSizeIterator<Item = f64>) -> f64 {
-    let mut chunks = Vec::with_capacity(terms.len().div_ceil(CHUNK).max(1));
-    let mut chunk = 0.0;
-    for (index, term) in terms.enumerate() {
-        chunk += term;
-        if (index + 1) % CHUNK == 0 {
-            chunks.push(chunk);
-            chunk = 0.0;
-        }
-    }
-    chunks.push(chunk);
-    chunks.into_iter().sum()
-}
-
 /// Generates the [`VectorDistance`] method bodies for [`Embedding`](crate::embeddings::Embedding)
 /// from one pairwise sum, one unary sum and one max-reduction, so the
 /// sequential and the Rayon-backed implementations share their math.
@@ -96,15 +80,22 @@ macro_rules! impl_vector_distance {
 
 #[cfg(not(feature = "rayon"))]
 mod sequential {
-    use super::{VectorDistance, chunked_sum};
+    use super::{CHUNK, VectorDistance};
     use crate::embeddings::Embedding;
 
+    /// The same chunks and the same two left-to-right sums as the Rayon
+    /// build, one thread.
     fn pair_sum(a: &[f64], b: &[f64], term: impl Fn(f64, f64) -> f64) -> f64 {
-        chunked_sum(a.iter().zip(b).map(|(x, y)| term(*x, *y)))
+        a.chunks(CHUNK)
+            .zip(b.chunks(CHUNK))
+            .map(|(a, b)| a.iter().zip(b).map(|(x, y)| term(*x, *y)).sum::<f64>())
+            .sum()
     }
 
     fn unary_sum(a: &[f64], term: impl Fn(f64) -> f64) -> f64 {
-        chunked_sum(a.iter().map(|x| term(*x)))
+        a.chunks(CHUNK)
+            .map(|a| a.iter().map(|x| term(*x)).sum::<f64>())
+            .sum()
     }
 
     fn pair_max(a: &[f64], b: &[f64], term: impl Fn(f64, f64) -> f64) -> f64 {
