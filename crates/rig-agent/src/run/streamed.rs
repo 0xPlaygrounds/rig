@@ -285,6 +285,12 @@ pub enum StreamedResolution {
         /// consumer stream. Boxed: the result dwarfs the other variant.
         skipped_tool_result: Option<Box<ToolResult>>,
     },
+    /// The invalid call is dropped and the turn goes on without it: the
+    /// runner's `UnhandledInvalidToolCall::Ignore` on the streaming
+    /// surface. Apply it via
+    /// [`StreamedTurnAssembler::resolve_pending_invalid`] and keep consuming
+    /// the provider stream; nothing of the call enters the run.
+    Ignored,
 }
 
 /// What a driver must do with one ingested stream item.
@@ -405,6 +411,10 @@ pub struct StreamedTurnAssembler {
     pending_tool_calls: Vec<(ToolCall, BlockId)>,
     delta_states: HashMap<BlockId, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
+    /// The ids of calls an [`StreamedResolution::Ignored`] dropped: they
+    /// are still in the provider's own view of the turn (the stream's
+    /// snapshot) and must not come back through it at [`Self::finish`].
+    ignored_calls: Vec<rig_core::message::ToolCallId>,
     /// Terminal reason from this turn's provider final record, retained so
     /// [`Self::finish`] can carry it onto the [`StreamedTurn`] (rig#2322).
     finish_reason: Option<FinishReason>,
@@ -458,6 +468,7 @@ impl StreamedTurnAssembler {
             pending_tool_calls: Vec::new(),
             delta_states: HashMap::new(),
             pending_invalid: None,
+            ignored_calls: Vec::new(),
             finish_reason: None,
             excluded_assistant_content: ExclusionCount::default(),
         }
@@ -888,6 +899,18 @@ impl StreamedTurnAssembler {
             (StreamedResolution::TurnAbandoned { .. }, PendingInvalid::FullCall { .. }) => {
                 Vec::new()
             }
+            (StreamedResolution::Ignored, PendingInvalid::FullCall { tool_call, .. }) => {
+                self.ignored_calls.push(tool_call.id.clone());
+                Vec::new()
+            }
+            (StreamedResolution::Ignored, PendingInvalid::NameDelta { block_id }) => {
+                // The ignored call's buffered state must not trip the
+                // pending-delta consistency check as the turn goes on.
+                self.delta_states.remove(&block_id);
+                self.ignored_calls
+                    .push(rig_core::message::ToolCallId::from_block(&block_id));
+                Vec::new()
+            }
         }
     }
 
@@ -935,7 +958,18 @@ impl StreamedTurnAssembler {
             .iter()
             .map(|(tool_call, block_id)| (tool_call.id.as_str().to_owned(), block_id.clone()))
             .collect();
-        let choice = Self::canonical_choice_with(pending_tool_calls, reasoning, final_choice);
+        // An ignored call is dropped from the turn: the provider's own view
+        // of the turn still carries it, and the turn is re-validated.
+        let ignored = std::mem::take(&mut self.ignored_calls);
+        let provider_choice: Vec<AssistantContent> = final_choice
+            .iter()
+            .filter(|content| match content {
+                AssistantContent::ToolCall(call) => !ignored.contains(&call.id),
+                _ => true,
+            })
+            .cloned()
+            .collect();
+        let choice = Self::canonical_choice_with(pending_tool_calls, reasoning, &provider_choice);
 
         StreamedTurn {
             message_id,

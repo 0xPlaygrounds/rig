@@ -592,6 +592,8 @@ impl std::future::IntoFuture for AgentRunner {
 }
 
 #[cfg(test)]
+mod ignore_tests;
+#[cfg(test)]
 mod settled_tests;
 #[cfg(test)]
 mod tests;
