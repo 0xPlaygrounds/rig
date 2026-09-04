@@ -170,14 +170,12 @@ async fn redacted_thinking_streaming() {
                     StreamEvent::BlockEnd {
                         block: Some(AssistantContent::Reasoning(reasoning)),
                         ..
-                    } => {
-                        if reasoning
-                            .content
-                            .iter()
-                            .any(|item| matches!(item, ReasoningContent::Redacted { .. }))
-                        {
-                            saw_redacted_reasoning = true;
-                        }
+                    } if reasoning
+                        .content
+                        .iter()
+                        .any(|item| matches!(item, ReasoningContent::Redacted { .. })) =>
+                    {
+                        saw_redacted_reasoning = true;
                     }
                     StreamEvent::BlockDelta {
                         delta: Delta::Text { text },

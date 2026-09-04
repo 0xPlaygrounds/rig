@@ -1019,10 +1019,8 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
                     StreamEvent::BlockDelta {
                         delta: Delta::Text { text },
                         ..
-                    } => {
-                        if !text.is_empty() {
-                            text_chunks += 1;
-                        }
+                    } if !text.is_empty() => {
+                        text_chunks += 1;
                     }
                     StreamEvent::Final(response) => {
                         final_usage = Some(response.usage);

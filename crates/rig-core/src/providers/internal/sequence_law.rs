@@ -108,10 +108,8 @@ impl SequenceLaws {
                 | StreamEvent::BlockDelta {
                     id,
                     delta: Delta::Reasoning { .. },
-                } => {
-                    if id.is_minted() {
-                        self.open_minted_reasoning.insert(id.clone());
-                    }
+                } if id.is_minted() => {
+                    self.open_minted_reasoning.insert(id.clone());
                 }
                 // A close — bare, signed, or a whole-block restatement —
                 // ends the open part. For a never-opened key the remove is a
