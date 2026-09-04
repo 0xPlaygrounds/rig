@@ -102,3 +102,43 @@ fn the_recorder_finds_the_newest_slot_first() {
         "the earlier slot is still in flight"
     );
 }
+
+/// A key the handler table names is described from it whether or not any
+/// record dispatched to it and whether or not the required row names it:
+/// a host's handler nothing asked, or one a layer denied every dispatch
+/// to, replays as what the table says it was.
+#[test]
+fn a_key_the_handler_table_names_is_described_without_records_or_a_row_entry() {
+    let mut log = EffectLog::from_records(vec![]);
+    log.header
+        .handlers
+        .push(rig_core::effect::HandlerDescriptor {
+            key: HandlerKey::from("host/note"),
+            family: rig_core::effect::FamilyDescriptor::Custom {
+                kind: "corpus:note".to_owned(),
+            },
+            layers: vec!["DenyAllLayer".to_owned()],
+        });
+    let replayer = super::EffectLogReplayer::for_key(&log, &HandlerKey::from("host/note"))
+        .expect("described from the handler table");
+    let descriptor = rig_core::serve::Serve::descriptor(&replayer);
+    assert_eq!(descriptor.key.as_str(), "host/note");
+    assert!(matches!(
+        descriptor.family,
+        rig_core::effect::FamilyDescriptor::Custom { ref kind } if kind == "corpus:note"
+    ));
+    assert!(
+        descriptor.layers.is_empty(),
+        "the replayer is the handler beneath; whoever replays re-applies the layers"
+    );
+    let refused = match super::EffectLogReplayer::for_key(&log, &HandlerKey::from("host/other")) {
+        Ok(_) => panic!("nothing describes an unknown key"),
+        Err(report) => report,
+    };
+    assert_eq!(refused.kind, rig_core::error::ErrorKind::HandlerUnavailable);
+    assert!(
+        refused.message.contains("`host/other`"),
+        "{}",
+        refused.message
+    );
+}

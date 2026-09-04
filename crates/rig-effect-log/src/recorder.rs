@@ -26,6 +26,9 @@ use super::{EffectLog, LogHeader};
 pub struct EffectLogRecorder {
     slots: Arc<Mutex<Vec<RecordSlot>>>,
     header: Arc<Mutex<LogHeader>>,
+    /// Records per key, taken or not: the signature names a key while one
+    /// exists, and forgets it when a layer's decision discards the last.
+    touched: Arc<Mutex<std::collections::BTreeMap<HandlerKey, usize>>>,
     /// Keep a streamed dispatch's events verbatim (see
     /// [`Self::keeping_stream_events`]).
     keep_events: bool,
@@ -176,6 +179,12 @@ impl EffectLogRecorder {
             .unwrap_or_else(PoisonError::into_inner)
             .signature
             .insert_if_absent(key.clone(), kind.family());
+        *self
+            .touched
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(key.clone())
+            .or_insert(0) += 1;
         let events = (self.keep_events && kind.streams()).then(Vec::new);
         self.slots
             .lock()
@@ -208,8 +217,24 @@ impl EffectLogRecorder {
     /// record. The slot is the newest for the id, as `resolve_slot` finds it.
     fn discard_slot(&self, id: EffectId) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(position) = slots.iter().rposition(|slot| slot.id == id) {
-            slots.remove(position);
+        let Some(position) = slots.iter().rposition(|slot| slot.id == id) else {
+            return;
+        };
+        let key = slots.remove(position).key;
+        drop(slots);
+        // The signature is the trace's row: a key with no record left —
+        // none taken, none in flight — is not in it.
+        let mut touched = self.touched.lock().unwrap_or_else(PoisonError::into_inner);
+        let remaining = touched.get(&key).copied().unwrap_or(0).saturating_sub(1);
+        if remaining == 0 {
+            touched.remove(&key);
+            self.header
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .signature
+                .remove(&key);
+        } else {
+            touched.insert(key, remaining);
         }
     }
 

@@ -54,17 +54,30 @@ impl EffectLogReplayer {
         let records: VecDeque<EffectRecord> = records.into();
         let (family, described) = match records.front() {
             Some(first) => (first.kind.family(), describe(key, &first.kind, log)),
-            None => {
-                let family = *log.header.required.get(key).ok_or_else(|| {
-                    ErrorReport::new(
-                        ErrorKind::HandlerUnavailable,
-                        format!(
-                            "`{key}` has no records in the log and is not in its required row: nothing describes it"
-                        ),
-                    )
-                })?;
-                (family, describe_required(key, family, log)?)
-            }
+            // No record: the handler table is the header's first source —
+            // a key the host served that nothing dispatched to, or that a
+            // layer denied every dispatch to, is described from it; a key
+            // the required row names is described for its family; anything
+            // else is refused by name.
+            None => match log
+                .header
+                .handlers
+                .iter()
+                .find(|installed| &installed.key == key)
+            {
+                Some(installed) => (installed.family.family(), installed.family.clone()),
+                None => {
+                    let family = *log.header.required.get(key).ok_or_else(|| {
+                        ErrorReport::new(
+                            ErrorKind::HandlerUnavailable,
+                            format!(
+                                "`{key}` has no records in the log, no entry in its handler table and no place in its required row: nothing describes it"
+                            ),
+                        )
+                    })?;
+                    (family, describe_required(key, family, log)?)
+                }
+            },
         };
         let descriptor = HandlerDescriptor {
             key: key.clone(),
