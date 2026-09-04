@@ -590,7 +590,8 @@ async fn resumes_from_a_checkpoint(
 
     // A fresh image: the checkpoint and the tail restored, the continuation
     // named, the state deserialized from the checkpoint.
-    let checkpoint: Checkpoint = serde_json::from_str(&persisted.0).expect("a checkpoint restores");
+    let checkpoint: Checkpoint<serde_json::Value> =
+        serde_json::from_str(&persisted.0).expect("a checkpoint restores");
     let tail: EffectLog = serde_json::from_str(&persisted.1).expect("the tail restores");
     let refused = EffectLog::from_checkpoint(&checkpoint, reference_log.clone())
         .expect_err("the full log is not the tail");

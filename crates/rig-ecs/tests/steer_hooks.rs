@@ -10,6 +10,8 @@
 //! | `Retry { feedback }` on a text turn makes the turn and the feedback history, then another turn | `a_retry_with_feedback_asks_again` |
 //! | `UsesModel` written on the run before `Select` routes the turn; `Route` is in the required row | `uses_model_written_before_select_routes_the_turn` |
 //! | a decision written and not yet read survives a scene (§10 of the dissolves doc) | `a_retry_written_before_a_save_is_read_after_the_load` |
+//! | `RequestPatch` on the turn and `Resolution` on the invalid call survive a scene the same way | `a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load` |
+//! | `Cancelled` is read at once; the scene carries it and the ending it made, and the loaded run stays ended when the re-issued effect answers | `a_cancel_written_before_a_save_is_the_ending_after_the_load` |
 
 #![allow(
     clippy::expect_used,
@@ -21,6 +23,8 @@
 
 mod run_support;
 
+use std::sync::{Arc, Mutex};
+
 use bevy_ecs::prelude::*;
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
@@ -29,8 +33,8 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, Order, RequestPatch, Retry,
-        Route, RunResult, Settled, UsesModel,
+        Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, Order,
+        RequestPatch, Resolution, Retry, Route, RunResult, Settled, UsesModel,
         scene::{load_world, save_world},
     },
     bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
@@ -354,4 +358,146 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
         "the decision restored intact"
     );
     let _ = Handlers::with(app.world_mut(), |handlers| handlers.keys());
+}
+
+/// A first world whose model never answers: the run open, its completion
+/// in flight, the turn folded — the moment a decision is written on.
+fn open_run() -> (bevy_app::App, Entity, Entity) {
+    let mut app = app();
+    let model = register(
+        &mut app,
+        MODEL,
+        NeverAnswers {
+            label: MODEL.to_owned(),
+        },
+    );
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    tick_until(&mut app, "the completion in flight", |world| {
+        world
+            .query_filtered::<(), (With<PendingEffect>, With<rig_ecs::bus::InFlight>)>()
+            .iter(world)
+            .next()
+            .is_some()
+    });
+    assert!(app.world().get::<Settled>(run).is_none());
+    let turn = app
+        .world_mut()
+        .query_filtered::<Entity, With<rig_ecs::agent::Turn>>()
+        .iter(app.world())
+        .next()
+        .expect("a turn");
+    (app, run, turn)
+}
+
+/// The scene as JSON, loaded into a fresh world with a capturing model:
+/// the run, the turn, and the requests the model saw.
+fn reload(
+    json: &str,
+) -> (
+    bevy_app::App,
+    Entity,
+    Entity,
+    Arc<Mutex<Vec<rig_core::completion::CompletionRequest>>>,
+) {
+    let mut app = app();
+    let (model, requests) = Capturing::new(MODEL, "again");
+    register(&mut app, MODEL, model);
+    let loaded =
+        load_world(&serde_json::from_str(json).expect("serde"), app.world_mut()).expect("loads");
+    let find = |is: fn(&World, Entity) -> bool| {
+        loaded
+            .graph
+            .iter()
+            .copied()
+            .find(|entity| is(app.world(), *entity))
+            .expect("the entity")
+    };
+    let run = find(|world, entity| world.get::<rig_ecs::agent::Run>(entity).is_some());
+    let turn = find(|world, entity| world.get::<rig_ecs::agent::Turn>(entity).is_some());
+    (app, run, turn, requests)
+}
+
+#[test]
+fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
+    // On the entities CONTRACT §9 puts them on: the patch on the turn, the
+    // resolution on an invalid call `ChildOf` the turn.
+    let (mut first, _run, turn) = open_run();
+    let patch = RequestPatch {
+        preamble: Some("You are a pirate.".to_owned()),
+        max_tokens: Some(64),
+        ..Default::default()
+    };
+    let resolution = Resolution::Retry {
+        feedback: "there is no tool named multiply".to_owned(),
+    };
+    first.world_mut().entity_mut(turn).insert(patch.clone());
+    first.world_mut().spawn((
+        InvalidCall {
+            id: "c1".to_owned(),
+            name: "multiply".to_owned(),
+            arguments: serde_json::json!({"x": 2, "y": 3}),
+        },
+        resolution.clone(),
+        ChildOf(turn),
+    ));
+    let scene = save_world(first.world_mut()).expect("serializes");
+    let json = serde_json::to_string(&scene).expect("serde");
+    for decision in ["You are a pirate.", "no tool named multiply"] {
+        assert!(
+            json.contains(decision),
+            "{decision}: the decision is scene state"
+        );
+    }
+    drop(first);
+
+    let (app, _run, turn, _) = reload(&json);
+    let call = app
+        .world()
+        .get::<Children>(turn)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .find(|child| app.world().get::<InvalidCall>(*child).is_some())
+        .expect("the invalid call is the turn's");
+    assert_eq!(app.world().get::<RequestPatch>(turn), Some(&patch));
+    assert_eq!(app.world().get::<Resolution>(call), Some(&resolution));
+}
+
+#[test]
+fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
+    // A cancel is read at once (an observer): the scene carries the
+    // decision and the ending it made, with the reason; the loaded run
+    // stays ended.
+    let (mut first, run, _turn) = open_run();
+    first
+        .world_mut()
+        .entity_mut(run)
+        .insert(Cancelled("stopped before the save".to_owned()));
+    let scene = save_world(first.world_mut()).expect("serializes");
+    let json = serde_json::to_string(&scene).expect("serde");
+    assert!(
+        json.contains("stopped before the save"),
+        "the decision is scene state"
+    );
+    drop(first);
+
+    let (mut app, run, _turn, requests) = reload(&json);
+    assert_eq!(
+        app.world().get::<Cancelled>(run),
+        Some(&Cancelled("stopped before the save".to_owned()))
+    );
+    ended(&mut app, run, "cancelled after the load");
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(matches!(
+        app.world().get::<Failed>(run),
+        Some(Failed(Failure::Cancelled(report))) if report.message == "stopped before the save"
+    ));
+    // The completion in flight at the cut was saved as intent and is
+    // re-issued to its handler here (CONTRACT §13: an effect in flight is
+    // the handler's); its answer does not reopen a run that ended.
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    assert!(app.world().get::<Settled>(run).is_none());
+    assert!(app.world().get::<RunResult>(run).is_none());
 }

@@ -4008,9 +4008,10 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             .unwrap_or(replay.log.len());
                         let (checkpoint, tail) = replay.log.checkpoint(
                             at,
-                            serde_json::from_str(&state).expect("the run state is JSON"),
+                            serde_json::from_str::<serde_json::Value>(&state)
+                                .expect("the run state is JSON"),
                         );
-                        let checkpoint: Checkpoint = serde_json::from_str(
+                        let checkpoint: Checkpoint<serde_json::Value> = serde_json::from_str(
                             &serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
                         )
                         .expect("a checkpoint restores");

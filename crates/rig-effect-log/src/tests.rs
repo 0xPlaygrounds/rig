@@ -188,7 +188,8 @@ fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     assert_eq!(tail.header, log.header, "the tail keeps the header");
     // Serde round trip, then the continuation.
     let json = serde_json::to_string(&checkpoint).expect("serializes");
-    let restored: super::Checkpoint = serde_json::from_str(&json).expect("restores");
+    let restored: super::Checkpoint<serde_json::Value> =
+        serde_json::from_str(&json).expect("restores");
     assert_eq!(restored, checkpoint);
     let continuation = EffectLog::from_checkpoint(&restored, tail).expect("the tail follows");
     assert_eq!(continuation.len(), 1);

@@ -116,11 +116,11 @@ impl EffectLog {
     }
 
     /// Cut the log at `at`: a [`Checkpoint`] naming the position, the id of
-    /// the record that follows it, and `state` — what the driver persists
-    /// (an agent's serialized run, a scene) — beside the tail the
-    /// continuation replays. `at` past the end is a checkpoint with an
-    /// empty tail.
-    pub fn checkpoint(&self, at: usize, state: serde_json::Value) -> (Checkpoint, Self) {
+    /// the record that follows it, and `state` — what the driver persists,
+    /// in its own type (a world's scene; the frozen engine's serialized
+    /// run as JSON) — beside the tail the continuation replays. `at` past
+    /// the end is a checkpoint with an empty tail.
+    pub fn checkpoint<S>(&self, at: usize, state: S) -> (Checkpoint<S>, Self) {
         let checkpoint = Checkpoint {
             format: EFFECT_LOG_FORMAT,
             at,
@@ -135,7 +135,7 @@ impl EffectLog {
     /// record is not the one the checkpoint expects next (ids are total, so
     /// a tail begins exactly at the checkpoint's next id), or when the
     /// tail's own header is of another format.
-    pub fn from_checkpoint(checkpoint: &Checkpoint, tail: Self) -> Result<Self, ErrorReport> {
+    pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
         if checkpoint.format != EFFECT_LOG_FORMAT {
             return Err(ErrorReport::new(
                 ErrorKind::Internal,
@@ -188,9 +188,11 @@ fn unreachable_refusal() -> String {
 /// A cut in a log: where a run was suspended, what follows, and what the
 /// driver persisted — beside the tail, so a resumed run replays only what
 /// it has not performed, and a full log offered in a tail's place is
-/// refused by its first id.
+/// refused by its first id. `S` is the driver's state in its own type: a
+/// world's scene is a scene here, not a blob; only the frozen engine's
+/// serialized run is a `serde_json::Value`, until it retires.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Checkpoint {
+pub struct Checkpoint<S> {
     /// The log format the checkpoint was cut under ([`EFFECT_LOG_FORMAT`]).
     pub format: u32,
     /// The position in the log: `at` records were performed before it.
@@ -199,8 +201,8 @@ pub struct Checkpoint {
     /// checkpoint ends the log.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next: Option<EffectId>,
-    /// What the driver persists: an agent's serialized run, a host's scene.
-    pub state: serde_json::Value,
+    /// What the driver persists, in its own type.
+    pub state: S,
 }
 
 impl std::ops::Deref for EffectLog {

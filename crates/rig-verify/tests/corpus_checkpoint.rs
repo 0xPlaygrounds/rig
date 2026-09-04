@@ -439,7 +439,8 @@ fn a_checkpoint_of_another_format_is_refused_by_name() {
         "resume refused: the checkpoint is format 6, this rig reads format 5"
     );
     let json = serde_json::to_string(&checkpoint).expect("serializes");
-    let restored: Checkpoint = serde_json::from_str(&json).expect("restores: the number is data");
+    let restored: Checkpoint<serde_json::Value> =
+        serde_json::from_str(&json).expect("restores: the number is data");
     assert_eq!(restored.format, 6);
 }
 

@@ -138,13 +138,12 @@ pub fn world_resume_reproduces(
     let head: EffectLog = serde_json::from_str(&serde_json::to_string(&head).expect("serde"))
         .expect("the head log restores");
     let at = head.records.len();
-    let (checkpoint, tail) = log.checkpoint(at, serde_json::to_value(&scene).expect("serde"));
-    let checkpoint: Checkpoint =
+    let (checkpoint, tail) = log.checkpoint(at, scene);
+    let checkpoint: Checkpoint<WorldScene> =
         serde_json::from_str(&serde_json::to_string(&checkpoint).expect("serde"))
             .expect("a checkpoint restores");
     assert_eq!(checkpoint.at, at);
-    let scene: WorldScene =
-        serde_json::from_value(checkpoint.state.clone()).expect("the state is a world scene");
+    let scene = checkpoint.state.clone();
     let continuation = match against {
         Against::Tail => {
             EffectLog::from_checkpoint(&checkpoint, tail).expect("the tail follows its checkpoint")
