@@ -32,9 +32,10 @@ pub fn collect_tasks(
                 .remove::<Serving>()
                 .insert(EffectOutcome(outcome));
             if let Some(Publishing(published)) = publishing {
-                entity_commands
-                    .remove::<Publishing>()
-                    .insert(ToolOutputs(published.take().unwrap_or_default()));
+                entity_commands.remove::<Publishing>();
+                if let Some(context) = published.take() {
+                    entity_commands.insert(ToolOutputs(context));
+                }
             }
             progress.mark();
         }
@@ -113,17 +114,26 @@ pub type StreamingView = (
 /// An outcome that landed on an effect still in flight.
 pub type Landed = (Added<EffectOutcome>, With<InFlight>);
 
+/// The outcome and durable tool output needed to close a dispatch's record.
+pub type LandedView = (
+    Entity,
+    &'static Issued,
+    &'static EffectOutcome,
+    Option<&'static Observed>,
+    Option<&'static ToolOutputs>,
+);
+
 /// An outcome landed on an in-flight effect: the record closes with it and
 /// the effect leaves flight. The one place records close, so a `Gate`
 /// denial (never in flight) is no record and a `Judge` rewrite (after this)
 /// is not re-recorded: decisions are program, never record.
 pub fn settle(
     mut commands: Commands,
-    landed: Query<(Entity, &Issued, &EffectOutcome, Option<&Observed>), Landed>,
+    landed: Query<LandedView, Landed>,
     recording: Option<Res<Recording>>,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, &Issued(id), outcome, observed) in &landed {
+    for (entity, &Issued(id), outcome, observed, outputs) in &landed {
         // A layered handler: the record holds what the innermost handler
         // answered (the observer's), never a layer's verdict; a dispatch a
         // layer discarded is no record.
@@ -132,6 +142,13 @@ pub fn settle(
             .and_then(|observed| observed.0.take_outcome())
             .unwrap_or_else(|| outcome.0.clone());
         if let (Some(recording), false) = (&recording, discarded) {
+            // Layered dispatches captured output at the inner handler's
+            // terminal, before an outer verdict could change it.
+            if observed.is_none()
+                && let Some(outputs) = outputs
+            {
+                recording.tool_output(id, outputs.0.result_context());
+            }
             recording.resolve(id, recorded);
         }
         commands.entity(entity).remove::<(InFlight, Observed)>();

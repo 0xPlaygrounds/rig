@@ -16,7 +16,7 @@ use rig_core::{
 
 use rig_core::serve::{OutcomeSink, Serve};
 
-use super::{EFFECT_LOG_FORMAT, EffectLog, stable_hash};
+use super::{EffectLog, stable_hash};
 
 /// How a replayer compares an incoming request with the record's: by the
 /// whole payload as data (the divergence names the first differing JSON
@@ -119,6 +119,7 @@ impl EffectLogReplayer {
         first: Option<EffectRecord>,
         records: Records,
     ) -> Result<Self, ErrorReport> {
+        Self::check_header(log)?;
         let (family, described) = match first {
             Some(first) => (first.kind.family(), describe(key, &first.kind, log)),
             // No record: the handler table is the header's first source —
@@ -175,6 +176,7 @@ impl EffectLogReplayer {
     /// key the required row names that no record does, each with its
     /// replayer.
     pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+        Self::check_header(log)?;
         Self::keys_of(log)
             .iter()
             .map(|key| Self::for_key(log, key))
@@ -183,6 +185,7 @@ impl EffectLogReplayer {
 
     /// [`for_log`](Self::for_log) with every replayer answering by id.
     pub fn for_log_by_id(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+        Self::check_header(log)?;
         Self::keys_of(log)
             .iter()
             .map(|key| Self::for_key_by_id(log, key))
@@ -204,19 +207,10 @@ impl EffectLogReplayer {
         keys
     }
 
-    /// The header checks a replay makes before any dispatch: the format is
-    /// this crate's, and every key the signature names is answered by
-    /// records of that family.
+    /// Check that each recorded key named by the signature has records of
+    /// that family. Logs have no global version gate: decoding validates
+    /// required data fields, while replay checks identity and requests.
     pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
-        if log.header.format != EFFECT_LOG_FORMAT {
-            return Err(ErrorReport::new(
-                ErrorKind::Internal,
-                format!(
-                    "replay refused: the log is format {}, this rig reads format {}",
-                    log.header.format, EFFECT_LOG_FORMAT
-                ),
-            ));
-        }
         for (key, family) in &log.header.signature {
             let recorded = log
                 .records
@@ -512,6 +506,22 @@ impl Serve for EffectLogReplayer {
                         ),
                     )),
                     None => {
+                        if let Some(output) = record.tool_output {
+                            let Some(published) = sink.scope::<rig_core::tool::PublishedContext>()
+                            else {
+                                sink.resolve(Err(ErrorReport::new(
+                                    ErrorKind::Divergence,
+                                    "replay requires a tool-result publication slot",
+                                )))
+                                .await;
+                                return;
+                            };
+                            let context = sink
+                                .scope::<rig_core::tool::ToolContext>()
+                                .map(|context| context.for_dispatch())
+                                .unwrap_or_default();
+                            published.publish(context.with_result_context(output));
+                        }
                         // A stream recorded verbatim replays verbatim: the
                         // consumer sees the original delta boundaries, not
                         // the fold re-emitted. A stream that ended in an

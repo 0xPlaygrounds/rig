@@ -135,6 +135,15 @@ pub struct InvalidCalls {
     pub unhandled: Unhandled,
 }
 
+/// The application's versioned declaration of its policy systems, ordering,
+/// and configuration not represented by the library's policy components.
+/// Set on the agent or override on the run before stamping its identity.
+/// Change this value when that policy changes. It is a declaration, not an
+/// automatic fingerprint of executable code or ambient credentials.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct PolicyVersion(pub String);
+
 /// How many of a turn's tool calls may be in flight at once: 1 (the
 /// default) runs them one after another in call order; N keeps N going.
 /// The run's, else the agent's.
@@ -216,6 +225,14 @@ pub struct Remembered;
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Remembering;
+
+/// Finalization has created this run's memory append intent. Persisted so
+/// rehydrating `Settled` cannot schedule a second operation. The child
+/// effect owns the request, saved dispatch id, and eventual outcome; this
+/// marker does not claim that the external write succeeded exactly once.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct MemoryAppendScheduled;
 
 /// The run's memory load is out; its first turn waits for it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

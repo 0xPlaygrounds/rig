@@ -1,6 +1,5 @@
 {
   "header": {
-    "format": 5,
     "run_spec": 13216707040221315529,
     "handlers": [
       {
@@ -98,6 +97,7 @@
   },
   "records": [
     {
+      "tool_output": null,
       "id": 1,
       "key": "golden/retrieve:tools#0",
       "kind": {
@@ -127,6 +127,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
@@ -258,6 +259,7 @@
       }
     },
     {
+      "tool_output": {},
       "id": 3,
       "key": "golden/tool:subtract#1",
       "kind": {
@@ -281,6 +283,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 4,
       "key": "golden/retrieve:tools#0",
       "kind": {
@@ -310,6 +313,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 5,
       "key": "golden/model:default",
       "kind": {

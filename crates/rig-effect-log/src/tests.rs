@@ -25,6 +25,7 @@ fn request() -> CompletionRequest {
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
@@ -41,6 +42,7 @@ fn effect_record_and_log_round_trip() {
             events: None,
         },
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
@@ -64,6 +66,37 @@ fn effect_record_and_log_round_trip() {
     assert_eq!(back[0].id, EffectId::from_raw(1));
     assert_eq!(back[1].key.as_str(), "tool:add");
     assert!(matches!(&back[1].outcome, Err(report) if report.kind == ErrorKind::Timeout));
+}
+
+#[test]
+fn headers_have_no_format_and_unknown_legacy_versions_do_not_gate_replay() {
+    let log = two_records();
+    let mut json = serde_json::to_value(&log).expect("serializes");
+    assert!(json["header"].get("format").is_none());
+    // Legacy headers may still carry the obsolete field; its value is ignored.
+    json["header"]["format"] = serde_json::json!(999);
+    let restored: EffectLog = serde_json::from_value(json).expect("structurally valid");
+    super::EffectLogReplayer::check_header(&restored).expect("no version gate");
+    super::EffectLogReplayer::for_log(&restored).expect("registers");
+    assert!(
+        serde_json::to_value(restored).unwrap()["header"]
+            .get("format")
+            .is_none()
+    );
+}
+
+#[test]
+fn missing_published_output_is_unknown_not_explicitly_absent() {
+    let mut json = serde_json::to_value(two_records()).unwrap();
+    assert!(json["records"][0].get("tool_output").is_some());
+    assert!(json["records"][0]["tool_output"].is_null());
+    serde_json::from_value::<EffectLog>(json.clone()).expect("explicit absence is valid");
+    json["records"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("tool_output");
+    let error = serde_json::from_value::<EffectLog>(json).expect_err("old recorder omitted output");
+    assert!(error.to_string().contains("tool_output"));
 }
 
 /// The recorder finds a slot from the back: the newest slot with an id is
@@ -151,6 +184,7 @@ fn custom_kind() -> EffectKind {
 fn two_records() -> EffectLog {
     EffectLog::from_records(vec![
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
@@ -162,6 +196,7 @@ fn two_records() -> EffectLog {
             events: None,
         },
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
@@ -179,7 +214,7 @@ fn two_records() -> EffectLog {
 fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let log = two_records();
     let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
-    assert_eq!(checkpoint.format, super::EFFECT_LOG_FORMAT);
+    assert_eq!(checkpoint.format, super::CHECKPOINT_FORMAT);
     assert_eq!(checkpoint.at, 1);
     assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
     assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
@@ -227,20 +262,13 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
         refused.message,
         "resume refused: the checkpoint at 2 ends the log, the tail begins at effect:2"
     );
-    // Another format, on either side.
+    // The checkpoint envelope retains its own version check.
     let mut old = checkpoint.clone();
     old.format = 3;
     let refused = EffectLog::from_checkpoint(&old, tail.clone()).expect_err("format 3");
     assert_eq!(
         refused.message,
-        "resume refused: the checkpoint is format 3, this rig reads format 5"
-    );
-    let mut old_tail = tail;
-    old_tail.header.format = 3;
-    let refused = EffectLog::from_checkpoint(&checkpoint, old_tail).expect_err("format 3");
-    assert_eq!(
-        refused.message,
-        "resume refused: the tail is format 3, this rig reads format 5"
+        "resume refused: the checkpoint is format 3, this rig reads format 6"
     );
 }
 

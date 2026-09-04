@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::bus::{Bus, BusDriver};
 
-use rig_effect_log::{EFFECT_LOG_FORMAT, EffectLog, EffectLogRecorder};
+use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 use rig_core::serve::{
     OutcomeSink, Serve,
@@ -34,6 +34,88 @@ use rig_core::{
 };
 
 const TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Raw tool dispatches also get a publication slot; recording must not
+/// consume it before the pending caller can read it.
+#[tokio::test]
+async fn raw_tool_dispatch_records_and_replays_published_output() {
+    use rig_core::tool::{ContextValue, PublishedContext, ToolOutput, ToolResult};
+    #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    struct Artifact(String);
+    impl ContextValue for Artifact {
+        const KEY: &'static str = "artifact.v1";
+    }
+    struct Publisher;
+    impl Serve for Publisher {
+        type Family = rig_core::effect::family::Tool;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: HandlerKey::from("tool:publish"),
+                family: FamilyDescriptor::Tool {
+                    name: "publish".into(),
+                    description: "artifact".into(),
+                    parameters: json!({}),
+                    embedding: None,
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, sink: OutcomeSink) {
+            let mut context = ToolContext::new();
+            context
+                .insert_result(Artifact("result-123".into()))
+                .expect("encodes");
+            sink.scope::<PublishedContext>()
+                .expect("raw dispatch has a slot")
+                .publish(context);
+            sink.resolve(Ok(Outcome::ToolResult {
+                result: ToolResult::success(ToolOutput::text("ok")),
+            }))
+            .await;
+        }
+    }
+    let key = HandlerKey::from("tool:publish");
+    let kind = EffectKind::ToolCall {
+        name: "publish".into(),
+        args: "{}".into(),
+    };
+    let recorder = EffectLogRecorder::new();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver.register(key.clone(), Publisher).expect("fresh");
+    driver.record_to(recorder.clone());
+    let _task = spawn(driver);
+    let pending = dispatcher.dispatch(&key, kind.clone());
+    let published = pending.published_context().expect("slot");
+    let original = within(pending).await.expect("answer");
+    assert_eq!(
+        published
+            .take()
+            .expect("caller retains output")
+            .result::<Artifact>()
+            .expect("decodes"),
+        Some(Artifact("result-123".into()))
+    );
+    let json = serde_json::to_string(&recorder.log()).expect("serializes");
+    let log = serde_json::from_str(&json).expect("deserializes");
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    super::register_all(&log, &mut driver).expect("replayers");
+    let _task = spawn(driver);
+    let pending = dispatcher.dispatch(&key, kind);
+    let published = pending.published_context().expect("slot");
+    let replayed = within(pending).await.expect("answer");
+    assert_eq!(
+        serde_json::to_value(original).expect("serializes"),
+        serde_json::to_value(replayed).expect("serializes")
+    );
+    assert_eq!(
+        published
+            .take()
+            .expect("replayed output")
+            .result::<Artifact>()
+            .expect("decodes"),
+        Some(Artifact("result-123".into()))
+    );
+}
 
 async fn within<T>(future: impl Future<Output = T>) -> T {
     tokio::time::timeout(TIMEOUT, future)
@@ -491,7 +573,6 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
         .await
         .expect("served");
     let log = recorder.take();
-    assert_eq!(log.header.format, EFFECT_LOG_FORMAT);
     assert_eq!(log.header.run_spec, None, "a bare-bus record names no spec");
     assert_eq!(
         log.header
@@ -509,22 +590,10 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
     );
     let json = serde_json::to_value(&log).expect("serializes");
     assert!(json.get("header").is_some() && json.get("records").is_some());
+    assert!(json["header"].get("format").is_none());
     let back: EffectLog = serde_json::from_value(json).expect("restores");
     assert_eq!(back.header, log.header);
     assert_eq!(back.len(), 1);
-
-    // A future format is refused with the version in the message.
-    let mut future = back.clone();
-    future.header.format = EFFECT_LOG_FORMAT + 1;
-    let (_dispatcher, _registrar, mut driver) = Bus::channel();
-    let report = super::register_all(&future, &mut driver).expect_err("refused");
-    assert!(
-        report
-            .message
-            .contains(&format!("format {}", EFFECT_LOG_FORMAT + 1)),
-        "{}",
-        report.message
-    );
 
     // A signature that names a family the records do not answer is refused
     // at registration, not at the first dispatch.
@@ -709,6 +778,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),

@@ -73,6 +73,11 @@ impl Recording {
         self.0.resolve(id, outcome);
     }
 
+    /// Durable output published before this dispatch's terminal outcome.
+    pub fn tool_output(&self, id: EffectId, output: rig_core::tool::ToolResultContext) {
+        self.0.tool_output(id, output);
+    }
+
     /// A layer decided `id` before any handler served it: no record.
     pub fn discard(&self, id: EffectId) {
         self.0.discard(id);
@@ -120,6 +125,8 @@ impl ObservedState {
 /// it is told are the innermost handler's — what the record holds,
 /// whatever verdict the outer channel carries to the world.
 pub struct WorldObserver {
+    /// Tool output shared with the caller, read without consuming it.
+    pub published: Option<Arc<rig_core::tool::PublishedContext>>,
     /// The dispatch.
     pub id: EffectId,
     /// The world's recorder, if any.
@@ -130,6 +137,14 @@ pub struct WorldObserver {
 
 impl rig_core::serve::Observe for WorldObserver {
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        if let (Some(recording), Some(output)) = (
+            &self.recording,
+            self.published
+                .as_ref()
+                .and_then(|published| published.result_context()),
+        ) {
+            recording.tool_output(self.id, output);
+        }
         *self
             .observed
             .outcome
@@ -166,18 +181,32 @@ impl rig_core::serve::Observe for WorldObserver {
     }
 }
 
+/// State needed to record cancellation and any output published before it.
+pub type CancellationView = (
+    &'static Issued,
+    Option<&'static EffectOutcome>,
+    Option<&'static super::effect::Publishing>,
+    Option<&'static super::effect::ToolOutputs>,
+);
+
 /// An in-flight effect losing `InFlight` without an outcome — a despawn,
 /// its own or an ancestor's — is a cancelled dispatch: the record says so,
 /// as it does when a consumer drops its `Pending` on rig-bus.
 pub fn record_cancelled(
     removed: On<Remove, InFlight>,
-    effects: Query<(&Issued, Option<&EffectOutcome>)>,
+    effects: Query<CancellationView>,
     recording: Option<Res<Recording>>,
 ) {
     let Some(recording) = recording else {
         return;
     };
-    if let Ok((Issued(id), None)) = effects.get(removed.event().entity) {
+    if let Ok((Issued(id), None, publishing, outputs)) = effects.get(removed.event().entity) {
+        let output = publishing
+            .and_then(|published| published.0.result_context())
+            .or_else(|| outputs.map(|outputs| outputs.0.result_context()));
+        if let Some(output) = output {
+            recording.tool_output(*id, output);
+        }
         recording.resolve(*id, Err(cancelled()));
     }
 }

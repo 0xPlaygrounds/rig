@@ -152,8 +152,12 @@ impl TypeMap {
 /// values nor result metadata are sent to the model.
 ///
 /// Every value is **data**: inserting serializes it, reading deserializes it,
-/// and the whole context is itself `Serialize + Deserialize`, so it crosses
-/// tasks, channels, scenes, and record/replay logs unchanged. Values with
+/// and the whole context is itself `Serialize + Deserialize`. Explicit scene
+/// serialization can therefore contain sensitive inbound values and must be
+/// protected by the host. Effect logs record only [`ToolResultContext`]:
+/// values explicitly published through `insert_result`, never inbound slots
+/// or runtime scopes. Replay uses the current dispatch's inbound context;
+/// code must not treat mutations to inbound slots as durable output. Values with
 /// interior sharing (`Arc<Mutex<_>>`, atomics, channels) do not belong here;
 /// they belong to the tool instance.
 ///
@@ -178,6 +182,28 @@ pub struct ToolContext {
     /// built over it, descends from this call. Empty for an inline call.
     #[serde(skip)]
     scopes: Vec<std::sync::Arc<dyn Any + Send + Sync>>,
+}
+
+/// Explicitly published, durable tool-result metadata. Unlike [`ToolContext`],
+/// this contains no inbound credentials or live runtime scopes. Values are
+/// keyed by [`ContextValue::KEY`]; applications own their schema versions.
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolResultContext(BTreeMap<String, serde_json::Value>);
+
+impl std::fmt::Debug for ToolResultContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ToolResultContext")
+            .field(&self.0.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl ToolResultContext {
+    /// Read a published value without exposing ambient execution inputs.
+    pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
+        get_slot(&self.0)
+    }
 }
 
 impl PartialEq for ToolContext {
@@ -355,6 +381,17 @@ impl ToolContext {
         self.result = dispatched.result;
     }
 
+    /// Snapshot only the values explicitly published with `insert_result`.
+    pub fn result_context(&self) -> ToolResultContext {
+        ToolResultContext(self.result.clone())
+    }
+
+    /// Restore durable output while preserving this dispatch's inbound values.
+    pub fn with_result_context(mut self, result: ToolResultContext) -> Self {
+        self.result = result.0;
+        self
+    }
+
     /// Drop the previous dispatch's result metadata before starting another.
     pub fn clear_dispatch_result(&mut self) {
         self.result.clear();
@@ -384,7 +421,20 @@ impl PublishedContext {
         std::sync::Arc::new(Self::default())
     }
 
+    /// The recorder's non-consuming snapshot. Publish before resolving the
+    /// sink; values published after resolution are not part of that outcome.
+    pub fn result_context(&self) -> Option<ToolResultContext> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(ToolContext::result_context)
+    }
+
     /// The adapter's write: the context after the tool ran, scopes cleared.
+    /// All publication must finish before resolving the sink. Publishing
+    /// afterward violates the delivery contract: consumers and recorders may
+    /// observe different versions. The slot does not enforce this ordering.
     pub fn publish(&self, mut context: ToolContext) {
         context.clear_scope();
         *self

@@ -282,25 +282,16 @@ async fn a_policy_absent_on_one_side_is_accepted() {
 }
 
 #[tokio::test]
-async fn a_log_of_another_format_is_refused_by_number() {
-    let mut log = corpus::golden(TOOLS.fixture);
-    log.header.format = 3;
-    let by_the_replayer = EffectLogReplayer::check_header(&log)
-        .expect_err("format 3")
-        .to_string();
-    assert_eq!(
-        by_the_replayer,
-        "replay refused: the log is format 3, this rig reads format 5"
-    );
-    // The agent's check reads the header first, before its own fields.
-    let by_the_agent = refusal(&TOOLS, |log| log.header.format = 3).await;
-    assert_eq!(by_the_agent, by_the_replayer);
-    // And the replayer's registration refuses before any key.
+async fn a_log_header_needs_no_global_format_number() {
+    let log = corpus::golden(TOOLS.fixture);
+    let mut json = serde_json::to_value(&log).expect("serializes");
+    assert!(json["header"].get("format").is_none());
+    json["header"]["format"] = serde_json::json!(999);
+    let log = serde_json::from_value(json).expect("legacy header field is ignored");
+    EffectLogReplayer::check_header(&log).expect("compatible structure");
     let (_dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
-    let by_registration = rig_agent::bus::replay::register_all(&log, &mut driver)
-        .expect_err("format 3")
-        .to_string();
-    assert_eq!(by_registration, by_the_replayer);
+    rig_agent::bus::replay::register_all(&log, &mut driver)
+        .expect("registers without a version gate");
 }
 
 #[tokio::test]
