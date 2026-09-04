@@ -1,7 +1,0 @@
-# bevy 0.19.1 requires rustc 1.95; the main workspace pins the same
-# version now. The fixture is its own workspace, so it carries its own pin
-# regardless. The root test runs cargo from this directory so rustup
-# honours it.
-[toolchain]
-channel = "1.95.0"
-targets = ["wasm32-unknown-unknown"]

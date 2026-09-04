@@ -416,62 +416,6 @@ fn loom_cancel_before_serve_never_polls_the_handler() {
     });
 }
 
-/// A consumer awaiting a reply from a dying driver, racing a reopen: the
-/// reply comes back `BusClosed`, never as a handler failure and never
-/// served by the new driver.
-#[test]
-fn loom_reopen_races_the_last_in_flight_reply() {
-    use futures::FutureExt;
-    loom::model(|| {
-        let (dispatcher, _registrar, mut driver) = Bus::channel();
-        driver.register("k", Nothing).expect("register");
-        let mut pending = dispatcher.dispatch(
-            &HandlerKey::from("k"),
-            EffectKind::Custom {
-                kind: std::sync::Arc::from("m"),
-                payload: serde_json::Value::Null,
-            },
-        );
-        {
-            let (_flag, waker) = recording();
-            let mut cx = Context::from_waker(&waker);
-            assert!(pending.poll_unpin(&mut cx).is_pending(), "sent");
-        }
-        let dying = thread::spawn(move || drop(driver));
-        let reopening = {
-            let dispatcher = dispatcher.clone();
-            thread::spawn(move || {
-                loop {
-                    match Bus::reopen(&dispatcher) {
-                        Ok(parts) => break parts,
-                        Err(_) => thread::yield_now(),
-                    }
-                }
-            })
-        };
-        dying.join().unwrap();
-        let (_registrar, mut new_driver) = reopening.join().unwrap();
-        let (_flag, waker) = recording();
-        let mut cx = Context::from_waker(&waker);
-        let _ = new_driver.poll_unpin(&mut cx);
-        match pending.poll_unpin(&mut cx) {
-            std::task::Poll::Ready(Err(report)) => {
-                assert_eq!(
-                    report.kind,
-                    rig_core::error::ErrorKind::BusClosed,
-                    "{report:?}"
-                );
-            }
-            other => panic!("a dispatch minted against the dead driver: {other:?}"),
-        }
-        assert_eq!(
-            new_driver.in_flight(),
-            0,
-            "the new driver served the old dispatch"
-        );
-    });
-}
-
 /// The close for commands races a late enqueue from a `Pending` that
 /// outlived its dispatcher: every interleaving ends with the command
 /// either buffered on a bus still open for commands (the driver's next

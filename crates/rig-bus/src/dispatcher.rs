@@ -18,7 +18,7 @@ use super::sync::{
 use futures::{
     Stream,
     channel::{mpsc, oneshot},
-    task::{AtomicWaker, noop_waker_ref},
+    task::AtomicWaker,
 };
 
 use rig_core::{
@@ -60,31 +60,14 @@ pub(super) struct Shared {
     /// a cancelled dispatch reaches its descendants (`cancel_descendants`).
     /// What a thread id used to approximate, as data.
     causality: Mutex<Causality>,
-    /// The completion inbox: every dispatch that ended (answered,
-    /// cancelled, failed) pushes its id once, for a host that probes only
-    /// what resolved this tick ([`Dispatcher::take_resolved`]) instead of
-    /// every value in flight. Bounded: a host that never drains it pays
-    /// `command_capacity * 64` ids, then the oldest are dropped and counted.
-    inbox: Mutex<Inbox>,
     /// Set by the driver's drop guard: every reply that comes back
-    /// `Canceled` after this is `BusClosed`, not a handler defect. Cleared
-    /// by [`Shared::reopen`].
+    /// `Canceled` after this is `BusClosed`, not a handler defect.
     closed: AtomicBool,
-    /// Whether a driver currently owns this bus. A driver's construction
-    /// sets it, its drop clears it; `reopen` needs it clear.
-    driver_alive: AtomicBool,
     /// Set by the driver once every `Dispatcher` has dropped and the buffer
     /// is empty: the driver will not drain again, so a `Pending` created
     /// before its dispatcher went and polled after answers `BusClosed` at
     /// once instead of waiting for the driver's last in-flight work to end.
     commands_closed: AtomicBool,
-    /// Bumped by every `reopen`. A `Pending`/`EffectStream` remembers the
-    /// generation it was dispatched under: one minted against a driver that
-    /// has since died answers `BusClosed` even after a new driver took over
-    /// — no in-flight work is resurrected across a restart.
-    generation: AtomicU64,
-    /// The config the bus was opened with; a reopened driver keeps it.
-    config: rig_core::serve::ServingPolicy,
 }
 
 /// A bus's identity while it lives (see [`Dispatcher::id`]).
@@ -136,11 +119,6 @@ impl Shared {
         Self {
             serial_per_handler: config.serial_per_handler,
             causality: Mutex::new(Causality::default()),
-            inbox: Mutex::new(Inbox {
-                ids: VecDeque::new(),
-                cap: config.command_capacity.saturating_mul(64).max(1),
-                dropped: 0,
-            }),
             next_id: AtomicU64::new(1),
             descriptors: RwLock::new(BTreeMap::new()),
             queue: Mutex::new(CommandQueue {
@@ -151,10 +129,7 @@ impl Shared {
             }),
             dispatchers: AtomicUsize::new(0),
             closed: AtomicBool::new(false),
-            driver_alive: AtomicBool::new(false),
             commands_closed: AtomicBool::new(false),
-            generation: AtomicU64::new(0),
-            config,
         }
     }
 
@@ -198,15 +173,6 @@ impl Shared {
             .collect()
     }
 
-    pub(super) fn config(&self) -> rig_core::serve::ServingPolicy {
-        self.config
-    }
-
-    /// A driver took (or is taking) the bus.
-    pub(super) fn driver_born(&self) {
-        self.driver_alive.store(true, Ordering::SeqCst);
-    }
-
     /// The driver is gone: its handlers with it, so the descriptor table
     /// describes nothing any more and is cleared. Called after
     /// [`mark_closed`](Self::mark_closed).
@@ -215,32 +181,6 @@ impl Shared {
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
-        self.driver_alive.store(false, Ordering::SeqCst);
-    }
-
-    /// Take the bus for a new driver, if no driver is alive: clears the
-    /// close and moves to the next generation. `false` when a driver holds
-    /// the bus.
-    pub(super) fn reopen(&self) -> bool {
-        if self
-            .driver_alive
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            return false;
-        }
-        // Under the queue lock, as the close was: a dispatch's first poll
-        // reads `closed` there.
-        let _queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
-        self.generation.fetch_add(1, Ordering::SeqCst);
-        self.closed.store(false, Ordering::SeqCst);
-        self.commands_closed.store(false, Ordering::SeqCst);
-        self.forget_the_dead_driver();
-        true
-    }
-
-    pub(super) fn generation(&self) -> u64 {
-        self.generation.load(Ordering::SeqCst)
     }
 
     pub(super) fn mark_closed(&self) {
@@ -260,9 +200,7 @@ impl Shared {
             )
         };
         for command in commands {
-            let id = command.id;
             command.reply.fail(bus_closed());
-            self.resolved(id);
         }
         wake_parked(senders);
     }
@@ -457,51 +395,6 @@ impl Shared {
         Ok(flag)
     }
 
-    /// A command the driver took ended — answered, failed, cancelled or
-    /// dropped unserved: its id goes to the inbox, the oldest going when
-    /// the host has not drained it.
-    pub(super) fn resolved(&self, id: EffectId) {
-        let mut inbox = self.inbox.lock().unwrap_or_else(PoisonError::into_inner);
-        if inbox.ids.len() >= inbox.cap {
-            inbox.ids.pop_front();
-            inbox.dropped += 1;
-        }
-        inbox.ids.push_back(id);
-    }
-
-    pub(super) fn take_resolved(&self) -> Vec<EffectId> {
-        std::mem::take(
-            &mut self
-                .inbox
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .ids,
-        )
-        .into()
-    }
-
-    /// A new driver starts with no history: the causality table and the
-    /// inbox of the driver that died are cleared with the flags.
-    fn forget_the_dead_driver(&self) {
-        let mut causality = self
-            .causality
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        causality.in_flight.clear();
-        causality.cancelled.clear();
-        drop(causality);
-        let mut inbox = self.inbox.lock().unwrap_or_else(PoisonError::into_inner);
-        inbox.ids.clear();
-        inbox.dropped = 0;
-    }
-
-    pub(super) fn inbox_dropped(&self) -> usize {
-        self.inbox
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .dropped
-    }
-
     /// A dispatch left the driver. Returns whether it had been cancelled
     /// from above or below — its consumer's, or an ancestor's, departure —
     /// in which case the driver sweeps the children it still holds
@@ -529,9 +422,7 @@ impl Shared {
             orphans
         };
         for orphan in orphans {
-            let id = orphan.id;
             orphan.reply.fail(rig_core::serve::cancelled());
-            self.resolved(id);
         }
     }
 
@@ -618,13 +509,6 @@ fn wake_parked(senders: Vec<Weak<AtomicWaker>>) {
             parked.wake();
         }
     }
-}
-
-/// The ids of dispatches that ended, waiting for the host's next drain.
-pub(super) struct Inbox {
-    ids: VecDeque<EffectId>,
-    cap: usize,
-    dropped: usize,
 }
 
 /// The dispatches in flight and the cancels they descend from.
@@ -851,28 +735,6 @@ impl Dispatcher {
     pub fn scope(&self) -> Option<&Arc<str>> {
         self.scope.as_ref()
     }
-
-    /// The completion inbox, drained: the id of every command the driver
-    /// took that ended since the last drain — answered, failed, cancelled
-    /// or dropped unserved — in the order the driver saw them end, which
-    /// is one driver poll after the sink's reply (a host that answers a
-    /// detached sink and drains in the same tick finds the id on the next).
-    /// A dispatch refused before any send ([`Dispatcher::dispatch`] of a
-    /// request with no wire form) was never taken and is not named. A
-    /// ticking host probes those values only (`poll_outcome`/`poll_item`
-    /// on the ones it maps the ids to) instead of every value in flight.
-    /// Bounded at `command_capacity * 64`: past it the oldest ids are
-    /// dropped and [`Dispatcher::inbox_dropped`] counts them, so a host that
-    /// never drains pays a bounded vector and can tell it fell behind. A
-    /// [`Bus::reopen`](crate::Bus::reopen) starts an empty inbox.
-    pub fn take_resolved(&self) -> Vec<EffectId> {
-        self.shared.take_resolved()
-    }
-
-    /// How many inbox ids were dropped for want of a drain.
-    pub fn inbox_dropped(&self) -> usize {
-        self.shared.inbox_dropped()
-    }
 }
 
 impl Clone for Dispatcher {
@@ -950,7 +812,6 @@ impl Dispatcher {
             receiver,
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
-            generation: self.shared.generation(),
             _cancel_guard: cancel_guard,
         }
     }
@@ -969,7 +830,6 @@ impl Dispatcher {
             receiver,
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
-            generation: self.shared.generation(),
             _cancel_guard: cancel_guard,
         }
     }
@@ -1004,7 +864,6 @@ impl Dispatcher {
                 ))),
                 shared: self.shared.clone(),
                 parked: Arc::new(AtomicWaker::new()),
-                generation: self.shared.generation(),
             };
         }
         let (events, receiver) = mpsc::channel(self.stream_capacity);
@@ -1027,7 +886,6 @@ impl Dispatcher {
             },
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
-            generation: self.shared.generation(),
             _cancel_guard: Some(cancel_guard),
         }
     }
@@ -1045,16 +903,14 @@ impl Dispatcher {
 
     /// Every registered descriptor, in key order, as one snapshot under one
     /// lock — a registration made while a host iterates cannot tear it.
-    /// The scene half of a bus: what a save stores and a load re-binds
-    /// ([`Handle::rebind`](super::Handle::rebind)).
+    /// The scene half of a bus: what a save stores.
     pub fn descriptors(&self) -> Vec<HandlerDescriptor> {
         self.shared.descriptors()
     }
 
     /// This bus's identity for as long as it lives: distinct from every
     /// other live bus in the process, the same for every clone and handle
-    /// over this bus, and stable across [`Bus::reopen`](super::Bus::reopen).
-    /// Derived from the bus's allocation, so it is **not** a persistent
+    /// over this bus. Derived from the bus's allocation, so it is **not** a persistent
     /// identifier: a scene stores keys and descriptors, never a `BusId`. Its
     /// use is in-memory bookkeeping — `EffectId`s are minted per bus, so a
     /// host with two buses keys its map by `(BusId, EffectId)`.
@@ -1063,8 +919,7 @@ impl Dispatcher {
     }
 
     /// Whether the driver has been dropped. A dispatch on a closed bus
-    /// resolves `BusClosed` on first poll — until [`Bus::reopen`](super::Bus::reopen)
-    /// gives the bus a new driver.
+    /// resolves `BusClosed` on first poll.
     pub fn is_closed(&self) -> bool {
         self.shared.is_closed()
     }
@@ -1108,8 +963,8 @@ pub(super) fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
     .with_retryable(false)
 }
 
-fn reply_dropped(shared: &Shared, generation: u64) -> ErrorReport {
-    if shared.is_closed() || shared.generation() != generation {
+fn reply_dropped(shared: &Shared) -> ErrorReport {
+    if shared.is_closed() {
         bus_closed()
     } else {
         ErrorReport::new(
@@ -1133,11 +988,9 @@ enum PendingState {
 
 /// A unary dispatch in flight: a plain `Unpin` future with no executor
 /// affinity, resolving to the outcome or a report. Dropping it cancels the
-/// dispatch (the handler's sink reports closed).
-///
-/// A host that ticks rather than awaits — a Bevy system, once per frame —
-/// probes it with [`Pending::poll_outcome`] instead of `block_on`: no
-/// executor, no waker minted per frame.
+/// dispatch (the handler's sink reports closed). A host that ticks rather
+/// than awaits does not hold one: it holds effects as entities
+/// (`rig_ecs::bus`).
 pub struct Pending {
     id: EffectId,
     /// The dispatch this one was made from, if a handler made it.
@@ -1148,9 +1001,6 @@ pub struct Pending {
     /// This value's one slot in the bus's parked-sender list while it waits
     /// on a full buffer; holds the latest waker it was polled with.
     parked: Arc<AtomicWaker>,
-    /// The bus generation this dispatch was minted under (see
-    /// [`Shared::reopen`]).
-    generation: u64,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: oneshot::Sender<()>,
 }
@@ -1165,20 +1015,6 @@ impl Pending {
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.id
-    }
-
-    /// One poll, no executor: the outcome if the dispatch has resolved,
-    /// `None` if not yet. The first call performs the send (or parks on a
-    /// full buffer), exactly as the first `poll` would; a host calls it
-    /// once per tick. Polling with a real waker and probing may be mixed —
-    /// the bus keeps only the latest waker, and a probe's is a no-op, so a
-    /// host that probes must keep probing.
-    pub fn poll_outcome(&mut self) -> Option<Result<Outcome, ErrorReport>> {
-        let mut cx = Context::from_waker(noop_waker_ref());
-        match Pin::new(self).poll(&mut cx) {
-            Poll::Ready(outcome) => Some(outcome),
-            Poll::Pending => None,
-        }
     }
 }
 
@@ -1196,7 +1032,7 @@ impl Future for Pending {
         loop {
             match &mut this.state {
                 PendingState::Sending { command } => {
-                    if this.shared.is_closed() || this.shared.generation() != this.generation {
+                    if this.shared.is_closed() {
                         return Poll::Ready(Err(bus_closed()));
                     }
                     let Some(taken) = command.take() else {
@@ -1233,7 +1069,7 @@ impl Future for Pending {
                         Poll::Pending => Poll::Pending,
                         Poll::Ready(Ok(outcome)) => Poll::Ready(outcome),
                         Poll::Ready(Err(oneshot::Canceled)) => {
-                            Poll::Ready(Err(reply_dropped(&this.shared, this.generation)))
+                            Poll::Ready(Err(reply_dropped(&this.shared)))
                         }
                     };
                 }
@@ -1260,8 +1096,7 @@ enum StreamState {
 /// `Result<StreamEvent, ErrorReport>`, `Final`-terminated. Dropping it
 /// cancels the dispatch: the handler's next send fails and the provider
 /// stream is dropped. Pause is client-side back-pressure — stop polling and
-/// the bounded channel stalls the handler. A ticking host probes it with
-/// [`EffectStream::poll_item`].
+/// the bounded channel stalls the handler.
 pub struct EffectStream {
     id: EffectId,
     /// The dispatch this one was made from, if a handler made it.
@@ -1270,8 +1105,6 @@ pub struct EffectStream {
     shared: Arc<Shared>,
     /// This value's one slot in the parked-sender list (see [`Pending`]).
     parked: Arc<AtomicWaker>,
-    /// The bus generation this dispatch was minted under.
-    generation: u64,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: Option<oneshot::Sender<()>>,
 }
@@ -1285,18 +1118,6 @@ impl EffectStream {
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.id
-    }
-
-    /// One poll, no executor: `Some(Some(item))` for the next item,
-    /// `Some(None)` once the stream has ended, `None` if nothing is ready
-    /// yet. The first call performs the send; a host calls it once per
-    /// tick (or in a loop until `None`, to drain what a tick delivered).
-    pub fn poll_item(&mut self) -> Option<Option<Result<StreamEvent, ErrorReport>>> {
-        let mut cx = Context::from_waker(noop_waker_ref());
-        match Pin::new(self).poll_next(&mut cx) {
-            Poll::Ready(item) => Some(item),
-            Poll::Pending => None,
-        }
     }
 }
 
@@ -1322,7 +1143,7 @@ impl Stream for EffectStream {
                 }
                 StreamState::Done => return Poll::Ready(None),
                 StreamState::Sending { command, receiver } => {
-                    if this.shared.is_closed() || this.shared.generation() != this.generation {
+                    if this.shared.is_closed() {
                         this.state = StreamState::Done;
                         return Poll::Ready(Some(Err(bus_closed())));
                     }
@@ -1383,9 +1204,7 @@ impl Stream for EffectStream {
                             this.state = StreamState::Done;
                             if terminated {
                                 Poll::Ready(None)
-                            } else if this.shared.is_closed()
-                                || this.shared.generation() != this.generation
-                            {
+                            } else if this.shared.is_closed() {
                                 Poll::Ready(Some(Err(bus_closed())))
                             } else {
                                 Poll::Ready(Some(Err(stream_truncated())))
@@ -1419,11 +1238,11 @@ const _: () = {
         "Dispatcher budget: 48 bytes (measured 48 natively: the shared half, the stream capacity, the parent, the scope)"
     );
     assert!(
-        size_of::<Pending>() <= 80,
-        "Pending budget: 80 bytes (measured 80 natively: one parked-sender slot, one generation, one parent)"
+        size_of::<Pending>() <= 72,
+        "Pending budget: 72 bytes (measured 72 natively: one parked-sender slot, one parent)"
     );
     assert!(
-        size_of::<EffectStream>() <= 176,
-        "EffectStream budget: 176 bytes (measured 176 natively: one parked-sender slot, one generation, one parent)"
+        size_of::<EffectStream>() <= 168,
+        "EffectStream budget: 168 bytes (measured 168 natively: one parked-sender slot, one parent)"
     );
 };

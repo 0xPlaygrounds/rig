@@ -98,6 +98,93 @@ impl HandlerKey {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The key read by its grammar: see [`KeyParts`]. Never fails — every
+    /// string is some key — and round-trips through [`KeyParts::to_key`].
+    pub fn parts(&self) -> KeyParts {
+        KeyParts::parse(&self.0)
+    }
+}
+
+/// A key's parts, by the grammar every key the tree mints follows:
+///
+/// ```text
+/// [<owner>/]<name>[#<generation>]     where <name> is [<kind>:]<label>
+/// ```
+///
+/// `golden/tool:add#2` is owner `golden`, kind `tool`, label `add`,
+/// generation `2`; `host/note` is owner `host`, no kind, label `note`;
+/// `model:fast` is no owner, kind `model`, label `fast`. The owner is the
+/// text before the first `/`, the kind the text before the first `:` of
+/// what follows, the generation the digits after the last `#`; a label
+/// holds anything else, so a key whose label contains one of those
+/// separators is read as its grammar says, not as its author meant. The
+/// string is the wire form; this is how a reader takes it apart without
+/// a hand parser of its own.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyParts {
+    /// The program or host the key belongs to (`golden`, `host`).
+    pub owner: Option<Arc<str>>,
+    /// The family-shaped prefix of the name (`model`, `tool`, `retrieve`).
+    pub kind: Option<Arc<str>>,
+    /// The name proper: a model label, a tool name, `memory`, `note`.
+    pub label: Arc<str>,
+    /// The disambiguating generation (`#2`): the same tool registered
+    /// again under a fresh key.
+    pub generation: Option<u64>,
+}
+
+impl KeyParts {
+    /// Read `key` by the grammar.
+    pub fn parse(key: &str) -> Self {
+        let (owner, rest) = match key.split_once('/') {
+            Some((owner, rest)) if !owner.is_empty() && !rest.is_empty() => {
+                (Some(Arc::from(owner)), rest)
+            }
+            _ => (None, key),
+        };
+        let (rest, generation) = match rest.rsplit_once('#') {
+            Some((head, digits))
+                if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) =>
+            {
+                (head, digits.parse::<u64>().ok())
+            }
+            _ => (rest, None),
+        };
+        let (kind, label) = match rest.split_once(':') {
+            Some((kind, label)) if !kind.is_empty() && !label.is_empty() => {
+                (Some(Arc::from(kind)), label)
+            }
+            _ => (None, rest),
+        };
+        Self {
+            owner,
+            kind,
+            label: Arc::from(label),
+            generation,
+        }
+    }
+
+    /// The parts as the key they came from (`Display` writes the same).
+    pub fn to_key(&self) -> HandlerKey {
+        HandlerKey::from(self.to_string())
+    }
+}
+
+impl fmt::Display for KeyParts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(owner) = &self.owner {
+            write!(f, "{owner}/")?;
+        }
+        if let Some(kind) = &self.kind {
+            write!(f, "{kind}:")?;
+        }
+        f.write_str(&self.label)?;
+        if let Some(generation) = self.generation {
+            write!(f, "#{generation}")?;
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Debug for HandlerKey {

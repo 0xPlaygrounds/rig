@@ -3,7 +3,7 @@
 //! dispatch before the handler does ([`Intercept::before`]) and every
 //! answer after ([`Intercept::after`]). Layers nest by wrapping; a
 //! [`Decision`] and a [`Verdict`] are data. Decisions are program, never
-//! record: the driver's tap moves to the innermost hop, so a denial leaves
+//! record: the driver's observer moves to the innermost hop, so a denial leaves
 //! no record and a replacement leaves the handler's real answer in it — a
 //! replay re-makes the decision.
 
@@ -140,8 +140,8 @@ impl<I: Intercept> Layer<I> {
     }
 
     /// Serve a unary dispatch beneath: the inner handler answers into a
-    /// sink of its own, which carries the driver's tap, so the record is
-    /// its answer; the fold comes back here for the verdict.
+    /// sink of its own, which carries the driver's observer, so the record
+    /// is its answer; the fold comes back here for the verdict.
     async fn serve_unary(
         &self,
         kind: &EffectKind,
@@ -149,7 +149,7 @@ impl<I: Intercept> Layer<I> {
     ) -> Result<Outcome, ErrorReport> {
         let (reply, receiver) = oneshot::channel();
         let inner = OutcomeSink::unary(outer.id(), reply)
-            .with_tap_slot(outer.take_tap())
+            .with_observer_slot(outer.take_observer())
             .inheriting(outer);
         let mut serving = Serving {
             answer: receiver,
@@ -167,13 +167,13 @@ impl<I: Intercept> Layer<I> {
     }
 
     /// Serve a streaming dispatch beneath: every event is forwarded to the
-    /// consumer as it comes (the inner sink taps it for the record); the
+    /// consumer as it comes (the inner sink's observer records it); the
     /// terminal is folded for the verdict, which decides what ends the
     /// consumer's stream.
     async fn serve_stream(&self, kind: &EffectKind, outer: &mut OutcomeSink) {
         let (events, receiver) = mpsc::channel(0);
         let inner = OutcomeSink::stream(outer.id(), events)
-            .with_tap_slot(outer.take_tap())
+            .with_observer_slot(outer.take_observer())
             .inheriting(outer);
         let mut serving = Serving {
             answer: receiver,
@@ -206,7 +206,7 @@ impl<I: Intercept> Layer<I> {
         }
         if !decided {
             // The handler dropped its sink before the terminal: the record
-            // says so (the inner sink's tap); the consumer hears it through
+            // says so (the inner sink's observer); the consumer hears it through
             // the verdict.
             let outcome: Result<Outcome, ErrorReport> = Err(stream_truncated());
             let report = match self.intercept.after(outer.id(), kind, &outcome).await {

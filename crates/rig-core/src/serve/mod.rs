@@ -11,10 +11,11 @@
 //! [`serve_inline`] runs without a bus.
 //!
 //! The driver seam — [`OutcomeSink::unary`], [`OutcomeSink::stream`],
-//! [`OutcomeSink::with_tap`], [`ErasedHandler::handle`], [`StreamTap`] — is
-//! what a bus driver builds to hand a handler its sink and observe what it
-//! answers. `rig_bus` is one such driver; a second runtime (an ECS
-//! schedule) is another.
+//! [`OutcomeSink::with_observer`], [`ErasedHandler::handle`], [`StreamTap`]
+//! — is what a bus driver builds to hand a handler its sink and, when the
+//! driver is not itself on the reply path, observe what it answers.
+//! `rig_bus` is one such driver; a second runtime (an ECS schedule, which
+//! reads the outcome where it lands and installs no observer) is another.
 
 pub mod adapters;
 mod handler;
@@ -23,9 +24,8 @@ mod recorder;
 mod writer;
 
 pub use handler::{
-    DetachedSink, ErasedHandler, HandlerFuture, OnDiscard, OnEvent, OnOutcome, OnPatch,
-    OutcomeSink, Serve, SinkClosed, StreamTap, cancelled, events_from_response, finish_unary,
-    serve_inline, stream_truncated,
+    DetachedSink, ErasedHandler, HandlerFuture, Observe, OutcomeSink, Serve, SinkClosed, StreamTap,
+    cancelled, events_from_response, serve_inline, stream_truncated,
 };
 pub use layer::{Decision, Intercept, Layer, Verdict};
 pub use recorder::{Origin, Recorder};

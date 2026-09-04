@@ -137,33 +137,33 @@ struct Tapped {
     patched: Mutex<Vec<EffectKind>>,
 }
 
+impl super::super::Observe for Arc<Tapped> {
+    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        self.outcomes
+            .lock()
+            .expect("outcomes")
+            .push(outcome.clone());
+    }
+
+    fn keep_events(&self) -> bool {
+        true
+    }
+
+    fn event(&mut self, event: &StreamEvent) {
+        self.events.lock().expect("events").push(event.clone());
+    }
+
+    fn discard(&mut self) {
+        self.discarded.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn patch(&mut self, kind: &EffectKind) {
+        self.patched.lock().expect("patched").push(kind.clone());
+    }
+}
+
 fn tapped(sink: OutcomeSink, tapped: &Arc<Tapped>) -> OutcomeSink {
-    let for_outcome = Arc::clone(tapped);
-    let for_event = Arc::clone(tapped);
-    let for_discard = Arc::clone(tapped);
-    let for_patch = Arc::clone(tapped);
-    sink.with_tap(
-        Box::new(move |outcome| {
-            for_outcome
-                .outcomes
-                .lock()
-                .expect("outcomes")
-                .push(outcome.clone());
-        }),
-        Some(Box::new(move |event| {
-            for_event.events.lock().expect("events").push(event.clone());
-        })),
-        Box::new(move || {
-            for_discard.discarded.fetch_add(1, Ordering::SeqCst);
-        }),
-        Box::new(move |kind: &EffectKind| {
-            for_patch
-                .patched
-                .lock()
-                .expect("patched")
-                .push(kind.clone());
-        }),
-    )
+    sink.with_observer(Box::new(Arc::clone(tapped)))
 }
 
 fn echo() -> (ErasedHandler, Arc<AtomicUsize>) {

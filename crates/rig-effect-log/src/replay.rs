@@ -1,15 +1,15 @@
 //! Replaying a recorded [`EffectLog`] as a handler.
 
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     sync::{Mutex, PoisonError},
 };
 
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{
-        EffectFamily, EffectKind, EffectRecord, EmbedModality, FamilyDescriptor, HandlerDescriptor,
-        HandlerKey,
+        EffectFamily, EffectId, EffectKind, EffectRecord, EmbedModality, FamilyDescriptor,
+        HandlerDescriptor, HandlerKey,
     },
     error::{ErrorKind, ErrorReport},
 };
@@ -36,17 +36,40 @@ pub enum RequestCheck {
 /// A handler that answers dispatches from a recorded log instead of a
 /// provider: the replay half of record/replay.
 ///
-/// One replayer serves one key. It answers that key's records in recorded
+/// One replayer serves one key, in one of two modes. **By position**
+/// ([`for_key`](Self::for_key)): it answers that key's records in recorded
 /// order, checking each incoming effect's family against the record's; a
 /// divergence (a different family, or more dispatches than records) fails
-/// the dispatch with an `Internal` report naming the position, never with a
-/// guess. Register one per key with [`EffectLogReplayer::register_all`].
+/// the dispatch with a report naming the position, never with a guess —
+/// the mode for a runtime that mints its own ids. **By id**
+/// ([`for_key_by_id`](Self::for_key_by_id)): it answers each dispatch
+/// with the record of the dispatch's own id, whatever order the dispatches
+/// arrive in — the mode for a world that re-issues effects under their
+/// recorded ids, where the replayer is then a pure function of the log and
+/// the id. Register one per key with [`EffectLogReplayer::register_all`].
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,
     descriptor: HandlerDescriptor,
-    records: Mutex<VecDeque<EffectRecord>>,
+    records: Mutex<Records>,
     check: RequestCheck,
+}
+
+/// The records a replayer answers from, in its mode.
+enum Records {
+    /// In recorded order, front first.
+    ByPosition(VecDeque<EffectRecord>),
+    /// By the dispatch's id.
+    ById(BTreeMap<EffectId, EffectRecord>),
+}
+
+impl Records {
+    fn len(&self) -> usize {
+        match self {
+            Self::ByPosition(records) => records.len(),
+            Self::ById(records) => records.len(),
+        }
+    }
 }
 
 impl EffectLogReplayer {
@@ -59,16 +82,43 @@ impl EffectLogReplayer {
     /// key of a family only the handler table can describe and the table
     /// has no entry for it — there is nothing to describe the handler by.
     pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
-        // Dispatch order, whatever order the log was assembled in: ids are
-        // minted at dispatch and strictly increasing.
+        let records = Self::records_of(log, key);
+        let by_position: VecDeque<EffectRecord> = records.into();
+        let first = by_position.front().cloned();
+        Self::describing(log, key, first, Records::ByPosition(by_position))
+    }
+
+    /// A replayer for `key` answering by id: see the type's docs. Described
+    /// as [`for_key`](Self::for_key) describes.
+    pub fn for_key_by_id(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
+        let records = Self::records_of(log, key);
+        let first = records.first().cloned();
+        let by_id: BTreeMap<EffectId, EffectRecord> = records
+            .into_iter()
+            .map(|record| (record.id, record))
+            .collect();
+        Self::describing(log, key, first, Records::ById(by_id))
+    }
+
+    /// `key`'s records in dispatch order, whatever order the log was
+    /// assembled in: ids are minted at dispatch and strictly increasing.
+    fn records_of(log: &EffectLog, key: &HandlerKey) -> Vec<EffectRecord> {
         let mut records: Vec<EffectRecord> = log
             .iter()
             .filter(|record| &record.key == key)
             .cloned()
             .collect();
         records.sort_by_key(|record| record.id);
-        let records: VecDeque<EffectRecord> = records.into();
-        let (family, described) = match records.front() {
+        records
+    }
+
+    fn describing(
+        log: &EffectLog,
+        key: &HandlerKey,
+        first: Option<EffectRecord>,
+        records: Records,
+    ) -> Result<Self, ErrorReport> {
+        let (family, described) = match first {
             Some(first) => (first.kind.family(), describe(key, &first.kind, log)),
             // No record: the handler table is the header's first source —
             // a key the host served that nothing dispatched to, or that a
@@ -124,6 +174,21 @@ impl EffectLogReplayer {
     /// key the required row names that no record does, each with its
     /// replayer.
     pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+        Self::keys_of(log)
+            .iter()
+            .map(|key| Self::for_key(log, key))
+            .collect()
+    }
+
+    /// [`for_log`](Self::for_log) with every replayer answering by id.
+    pub fn for_log_by_id(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+        Self::keys_of(log)
+            .iter()
+            .map(|key| Self::for_key_by_id(log, key))
+            .collect()
+    }
+
+    fn keys_of(log: &EffectLog) -> Vec<HandlerKey> {
         let mut keys: Vec<HandlerKey> = Vec::new();
         for record in log {
             if !keys.contains(&record.key) {
@@ -135,13 +200,14 @@ impl EffectLogReplayer {
                 keys.push(key.clone());
             }
         }
-        keys.iter().map(|key| Self::for_key(log, key)).collect()
+        keys
     }
 
     /// Register a replayer for every key in `log` on `driver`. Refuses a
     /// log of another format, and a log whose signature names a family its
     /// records do not answer — before the first dispatch, not at the record
     /// where it would have diverged.
+    #[cfg(feature = "bus")]
     pub fn register_all(
         log: &EffectLog,
         driver: &mut rig_bus::BusDriver,
@@ -151,6 +217,7 @@ impl EffectLogReplayer {
 
     /// [`register_all`](Self::register_all) with every replayer comparing
     /// requests as `check` says.
+    #[cfg(feature = "bus")]
     pub fn register_all_checking(
         log: &EffectLog,
         driver: &mut rig_bus::BusDriver,
@@ -349,11 +416,11 @@ fn describe_required(
     };
     match family {
         EffectFamily::Tool => {
-            let name = key
-                .as_str()
-                .rsplit_once("tool:")
-                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))
-                .ok_or_else(|| gap("the key does not name a tool"))?;
+            let parts = key.parts();
+            let name = match parts.kind.as_deref() {
+                Some("tool") => parts.label.as_ref(),
+                _ => return Err(gap("the key does not name a tool")),
+            };
             let advertised = advertised_tool(name, log)
                 .ok_or_else(|| gap("no recorded request advertises the tool"))?;
             Ok(FamilyDescriptor::Tool {
@@ -439,21 +506,31 @@ impl Serve for EffectLogReplayer {
     }
 
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        let next = self
-            .records
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .pop_front();
-        {
-            let outcome = match next {
-                None => Err(ErrorReport::new(
-                    ErrorKind::Divergence,
+        let (next, missing) = {
+            let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
+            match &mut *records {
+                Records::ByPosition(records) => (
+                    records.pop_front(),
                     format!(
                         "replay divergence: `{}` received a `{}` dispatch after its log ran out",
                         self.key,
                         kind.name()
                     ),
-                )),
+                ),
+                Records::ById(records) => (
+                    records.remove(&sink.id()),
+                    format!(
+                        "replay divergence: `{}` received a `{}` dispatch as {}, and the log has no record of that id",
+                        self.key,
+                        kind.name(),
+                        sink.id()
+                    ),
+                ),
+            }
+        };
+        {
+            let outcome = match next {
+                None => Err(ErrorReport::new(ErrorKind::Divergence, missing)),
                 Some(record) => match divergence_under(self.check, &record.kind, &kind) {
                     Some(what) => Err(ErrorReport::new(
                         ErrorKind::Divergence,

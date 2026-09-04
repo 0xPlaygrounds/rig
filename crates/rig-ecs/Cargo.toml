@@ -1,0 +1,45 @@
+[package]
+name = "rig-ecs"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+description = "rig inside a Bevy World: effects as entities, handlers as entities, the driver as a system."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Published once rig-bus is; rig-verify is the precedent.
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[features]
+default = ["replay"]
+# `Replay` and the `EffectLog` resource: record a world's effects into a
+# log and replay a log through a world.
+replay = ["dep:rig-effect-log"]
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+rig-effect-log = { path = "../rig-effect-log", version = "0.42.0", optional = true, default-features = false }
+# Each Bevy crate with default features off and exactly what the module
+# needs: `std` for the executor-backed task pools and `bevy_app`'s
+# `ScheduleRunnerPlugin`; `multi_threaded` so handler futures run on pool
+# threads natively (the single-threaded pool takes over on wasm).
+bevy_ecs = { workspace = true }
+bevy_tasks = { workspace = true }
+bevy_app = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
+
+# The module executed on `wasm32-unknown-unknown` (`tests/bus_wasm.rs`),
+# under `wasm-bindgen-test-runner`, as rig-bus's `tests/wasm.rs` is.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"

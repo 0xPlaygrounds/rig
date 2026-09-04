@@ -55,6 +55,52 @@ fn handler_key_is_a_transparent_string() {
 }
 
 #[test]
+fn a_key_is_read_by_its_grammar_and_written_back() {
+    use super::KeyParts;
+    for (key, owner, kind, label, generation) in [
+        (
+            "golden/tool:add#2",
+            Some("golden"),
+            Some("tool"),
+            "add",
+            Some(2),
+        ),
+        (
+            "golden/model:default",
+            Some("golden"),
+            Some("model"),
+            "default",
+            None,
+        ),
+        (
+            "golden/retrieve:tools#0",
+            Some("golden"),
+            Some("retrieve"),
+            "tools",
+            Some(0),
+        ),
+        ("host/note", Some("host"), None, "note", None),
+        ("model:fast", None, Some("model"), "fast", None),
+        ("tool:lookup#7", None, Some("tool"), "lookup", Some(7)),
+        ("memory", None, None, "memory", None),
+        ("not-a-model", None, None, "not-a-model", None),
+    ] {
+        let parts = HandlerKey::from(key).parts();
+        assert_eq!(parts.owner.as_deref(), owner, "{key}: owner");
+        assert_eq!(parts.kind.as_deref(), kind, "{key}: kind");
+        assert_eq!(parts.label.as_ref(), label, "{key}: label");
+        assert_eq!(parts.generation, generation, "{key}: generation");
+        assert_eq!(parts.to_key(), HandlerKey::from(key), "{key}: round trip");
+        assert_eq!(parts.to_string(), key);
+        assert_eq!(KeyParts::parse(key), parts);
+    }
+    // A generation is digits after the last `#`; anything else is label.
+    let odd = HandlerKey::from("host/tool:a#b").parts();
+    assert_eq!(odd.label.as_ref(), "a#b");
+    assert_eq!(odd.generation, None);
+}
+
+#[test]
 fn descriptor_variant_is_the_family() {
     let cases = [
         (

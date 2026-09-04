@@ -102,36 +102,9 @@ impl<F: Family> Handle<F> {
             .unwrap_or_else(|| self.descriptor.clone())
     }
 
-    /// The bind-time snapshot of the descriptor.
-    pub fn bound_descriptor(&self) -> &HandlerDescriptor {
-        &self.descriptor
-    }
-
     /// Whether the bus behind this handle has closed.
     pub fn is_closed(&self) -> bool {
         self.dispatcher.is_closed()
-    }
-
-    /// A view over `dispatcher` from a descriptor a host kept — a scene
-    /// loaded before its handlers are re-registered — with **no** table
-    /// check: the first dispatch answers `HandlerUnavailable` if nothing
-    /// serves the key by then, exactly as for any stale key. The
-    /// descriptor's family must be `F`; a mismatch is the host's
-    /// programming error and panics here, at the host's line.
-    #[track_caller]
-    pub fn rebind(dispatcher: Dispatcher, descriptor: HandlerDescriptor) -> Self {
-        assert!(
-            descriptor.family.family() == F::FAMILY,
-            "rebind: descriptor for `{}` serves the {} family, not {}",
-            descriptor.key,
-            descriptor.family.family(),
-            F::FAMILY
-        );
-        Self {
-            dispatcher,
-            descriptor,
-            _family: PhantomData,
-        }
     }
 
     fn dispatch_kind(&self, kind: EffectKind) -> Pending {
@@ -629,11 +602,10 @@ const _: () = {
     const fn assert_unpin<T: Unpin>() {}
     assert_unpin::<Completion>();
     assert_unpin::<ToolCall>();
-    // Raised 64 → 80 with `Bus::reopen`: a `Pending` carries its bus
-    // generation (8 bytes) and its parked-sender slot (8 bytes).
+    // A `Pending` carries its parked-sender slot (8 bytes) and its parent.
     assert!(
-        size_of::<Typed<family::Completion>>() <= 96,
-        "Typed<Completion> budget: 96 bytes (measured 88 natively)"
+        size_of::<Typed<family::Completion>>() <= 88,
+        "Typed<Completion> budget: 88 bytes (measured 88 natively: a Pending and its family)"
     );
 };
 

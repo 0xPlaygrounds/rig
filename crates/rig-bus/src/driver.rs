@@ -17,7 +17,7 @@ use tracing::Instrument;
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    serve::{OnDiscard, OnEvent, OnOutcome, OnPatch, Origin, OutcomeSink, Recorder},
+    serve::{Observe, Origin, OutcomeSink, Recorder},
     streaming::StreamEvent,
     wasm_compat::WasmBoxedFuture,
 };
@@ -34,12 +34,41 @@ use rig_core::serve::ServingPolicy;
 type InFlight = WasmBoxedFuture<'static, (HandlerKey, EffectId)>;
 type InFlightServing = Pin<Box<Serving>>;
 
-/// The driver's hold on a recorder: closures, like the sink's taps, so the
-/// driver names no recorder type.
+/// The driver's hold on a recorder: closures, so the driver names no
+/// recorder type, and one observer per dispatch — the driver is not on the
+/// reply path (the consumer holds the reply channel), so the sink tells it.
 struct Recording {
     handlers: Box<dyn Fn(Vec<HandlerDescriptor>) + Send + Sync>,
     begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind, Origin) + Send + Sync>,
-    tap: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
+    observe: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
+}
+
+/// The record's view of one dispatch: the recorder, told by id.
+struct Recorded<R> {
+    recorder: R,
+    id: EffectId,
+}
+
+impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
+    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        self.recorder.resolve(self.id, outcome.clone());
+    }
+
+    fn keep_events(&self) -> bool {
+        self.recorder.keep_events()
+    }
+
+    fn event(&mut self, event: &StreamEvent) {
+        self.recorder.event(self.id, event);
+    }
+
+    fn discard(&mut self) {
+        self.recorder.discard(self.id);
+    }
+
+    fn patch(&mut self, kind: &EffectKind) {
+        self.recorder.patch(self.id, kind.clone());
+    }
 }
 
 impl Recording {
@@ -48,26 +77,16 @@ impl Recording {
         let handlers = Box::new(move |described| for_handlers.handlers(described));
         let for_begin = recorder.clone();
         let begin = Box::new(move |id, key, kind, origin| for_begin.begin(id, key, kind, origin));
-        let tap = Box::new(move |sink: OutcomeSink, id: EffectId| {
-            let on_event: Option<OnEvent> = recorder.keep_events().then(|| {
-                let recorder = recorder.clone();
-                Box::new(move |event: &StreamEvent| recorder.event(id, event)) as OnEvent
-            });
-            let for_outcome = recorder.clone();
-            let on_outcome: OnOutcome = Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
-                for_outcome.resolve(id, outcome.clone());
-            });
-            let for_discard = recorder.clone();
-            let on_discard: OnDiscard = Box::new(move || for_discard.discard(id));
-            let for_patch = recorder.clone();
-            let on_patch: OnPatch =
-                Box::new(move |kind: &EffectKind| for_patch.patch(id, kind.clone()));
-            sink.with_tap(on_outcome, on_event, on_discard, on_patch)
+        let observe = Box::new(move |sink: OutcomeSink, id: EffectId| {
+            sink.with_observer(Box::new(Recorded {
+                recorder: recorder.clone(),
+                id,
+            }))
         });
         Self {
             handlers,
             begin,
-            tap,
+            observe,
         }
     }
 }
@@ -117,7 +136,6 @@ impl fmt::Debug for BusDriver {
 
 impl BusDriver {
     pub(super) fn new(shared: Arc<Shared>, mailbox: Arc<Mailbox>, config: ServingPolicy) -> Self {
-        shared.driver_born();
         Self {
             shared,
             mailbox,
@@ -273,19 +291,16 @@ impl BusDriver {
         } = command;
         if cancel.try_recv().is_err() {
             drop(reply);
-            self.shared.resolved(id);
             return false;
         }
         let Some(handler) = self.handlers.get(&key).cloned() else {
             reply.fail(handler_unavailable(&key));
-            self.shared.resolved(id);
             return false;
         };
         // A dispatch whose ancestor was cancelled while it was queued is
         // dropped unserved: no handler poll, no record.
         let Ok(flag) = self.shared.begin_in_flight(id, key.clone(), parent) else {
             reply.fail(rig_core::serve::cancelled());
-            self.shared.resolved(id);
             return false;
         };
         if self.config.serial_per_handler {
@@ -308,7 +323,7 @@ impl BusDriver {
         let sink = match &self.recorder {
             Some(recorder) => {
                 (recorder.begin)(id, key.clone(), kind.clone(), Origin { parent, scope });
-                (recorder.tap)(sink, id)
+                (recorder.observe)(sink, id)
             }
             None => sink,
         };
@@ -373,7 +388,6 @@ impl BusDriver {
     /// answered on the spot and the loop moves on — a key never strands
     /// its queue behind a command that will not be served.
     fn release(&mut self, key: HandlerKey, id: EffectId) {
-        self.shared.resolved(id);
         if self.shared.end_in_flight(id) {
             // Cancelled: the children it still has here are dropped unserved
             // — no handler poll, no record — and answered as cancelled.
@@ -383,9 +397,7 @@ impl BusDriver {
                     .partition(|command| command.parent == Some(id));
                 *queue = kept.into();
                 for orphan in orphans {
-                    let id = orphan.id;
                     orphan.reply.fail(rig_core::serve::cancelled());
-                    self.shared.resolved(id);
                 }
             }
             self.shared.fail_buffered_children(id);
@@ -421,9 +433,7 @@ impl BusDriver {
         for key in orphaned {
             if let Some(queue) = self.queued.remove(&key) {
                 for command in queue {
-                    let id = command.id;
                     command.reply.fail(handler_unavailable(&key));
-                    self.shared.resolved(id);
                 }
             }
         }
@@ -511,7 +521,7 @@ impl Drop for BusDriver {
         // The guard: after this every reply the channel loses is `BusClosed`,
         // and handlers posted but never installed go with the driver. The
         // descriptor table goes too — it described handlers this driver
-        // held — and the bus is free for `Bus::reopen`.
+        // held.
         self.shared.mark_closed();
         self.mailbox.clear();
         self.shared.driver_died();
