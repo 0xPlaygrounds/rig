@@ -1416,3 +1416,360 @@ impl rig::agent::AgentHook for RerankDocs {
         rig::agent::RunStartAction::continue_run()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Matrix Q: causal dispatch. The `lookup` tool dispatches from inside its
+// own service through the dispatcher its sink carries, so the child record
+// names the tool's record as its parent; the host's relay nests once more;
+// the host's `never` handler holds a dispatch until its consumer goes. The
+// rig-verify replay registers the same handlers (`corpus/mod.rs`): program,
+// not record.
+
+#[allow(dead_code)]
+pub(crate) const NESTING_TOOL_KEY: &str = "golden/tool:lookup#0";
+#[allow(dead_code)]
+pub(crate) const RELAY_KEY: &str = "host/relay";
+#[allow(dead_code)]
+pub(crate) const NEVER_KEY: &str = "host/never";
+#[allow(dead_code)]
+pub(crate) const NESTED_PREAMBLE: &str = "Answer in one word.";
+
+/// What the `lookup` tool dispatches, and from where.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) struct Nesting {
+    pub child: NestedChild,
+    /// The nested dispatch is made from a spawned OS thread, blocking on
+    /// its first poll (serial programs only: the refusal is decided at the
+    /// send).
+    pub from_thread: bool,
+    /// The tool detaches its sink; a spawned task answers, dispatching the
+    /// child through the detached sink's dispatcher.
+    pub detached: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum NestedChild {
+    /// A completion on the agent's model key: the question in the args.
+    Completion,
+    /// A host note.
+    Note,
+    /// The tool's own key with `leaf: true`: refused under serial serving,
+    /// served under concurrent.
+    Same,
+    /// The host's relay, which itself dispatches a note: a chain of three.
+    Relay,
+    /// The host's never-answering handler: the child is in flight when the
+    /// run is dropped.
+    Never,
+    /// Two dispatches to the never-answering handler at once: under a
+    /// serial host the second is queued when the run is dropped.
+    NeverTwice,
+}
+
+/// The relay's effect.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct RelayNote {
+    pub at: String,
+}
+
+impl rig::effect::CustomEffect for RelayNote {
+    const KIND: &'static str = "corpus:relay";
+    type Answer = NoteAck;
+}
+
+/// The never-answering effect.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct Hold;
+
+impl rig::effect::CustomEffect for Hold {
+    const KIND: &'static str = "corpus:hold";
+    type Answer = NoteAck;
+}
+
+#[allow(dead_code)]
+fn relay_key() -> rig::effect::Key<rig::effect::family::Custom<RelayNote>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(RELAY_KEY))
+}
+
+#[allow(dead_code)]
+fn never_key() -> rig::effect::Key<rig::effect::family::Custom<Hold>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(NEVER_KEY))
+}
+
+/// The `lookup` tool's arguments: a question, or a leaf marker.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct LookupArgs {
+    #[serde(default)]
+    pub q: String,
+    #[serde(default)]
+    pub leaf: bool,
+}
+
+#[allow(dead_code)]
+pub(crate) fn lookup_parameters() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "q": {"type": "string", "description": "The question to look up"},
+            "leaf": {"type": "boolean", "description": "Answer directly, without looking further"}
+        },
+        "required": ["q"]
+    })
+}
+
+/// A tool that dispatches from inside its own service, through the
+/// dispatcher its sink carries.
+#[allow(dead_code)]
+pub(crate) struct Lookup {
+    pub nesting: Nesting,
+    pub model_key: rig::effect::HandlerKey,
+}
+
+#[allow(dead_code)]
+fn tool_text(context: rig::tool::ToolContext, text: String) -> rig::effect::Outcome {
+    rig::effect::Outcome::ToolResult {
+        result: rig::core::tool::ToolResult::success(rig::core::tool::ToolOutput::text(text)),
+        context,
+    }
+}
+
+impl Lookup {
+    #[allow(dead_code)]
+    async fn nest(&self, dispatcher: rig::bus::Dispatcher, args: LookupArgs) -> String {
+        match self.nesting.child {
+            NestedChild::Completion => {
+                let model: rig::bus::ModelHandle =
+                    dispatcher.handle(&self.model_key).expect("the model");
+                let request =
+                    rig::core::completion::CompletionRequestBuilder::unbound(args.q.as_str())
+                        .preamble(NESTED_PREAMBLE.to_owned())
+                        .temperature(0.0)
+                        .build();
+                let response = model
+                    .complete(request)
+                    .await
+                    .expect("the nested completion");
+                response
+                    .choice
+                    .iter()
+                    .filter_map(|content| match content {
+                        rig::core::message::AssistantContent::Text(text) => {
+                            Some(text.text.trim().to_owned())
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+            NestedChild::Note => {
+                let ack = dispatcher
+                    .bind(&note_key())
+                    .expect("the host serves notes")
+                    .dispatch(Note {
+                        at: "lookup".to_owned(),
+                    })
+                    .await
+                    .expect("acknowledged");
+                format!("noted:{}", ack.at)
+            }
+            NestedChild::Same => {
+                let handle: rig::bus::ToolHandle = dispatcher
+                    .handle(&rig::effect::HandlerKey::from(NESTING_TOOL_KEY))
+                    .expect("the tool's own key");
+                let call = handle.call(
+                    "lookup",
+                    r#"{"q":"","leaf":true}"#,
+                    rig::tool::ToolContext::new(),
+                );
+                let answer = if self.nesting.from_thread {
+                    std::thread::spawn(move || futures::executor::block_on(call))
+                        .join()
+                        .expect("the nested thread")
+                } else {
+                    call.await
+                };
+                match answer {
+                    Ok(answer) => format!("served:{}", answer.result.output().render()),
+                    Err(report) => format!("refused:{:?}", report.kind),
+                }
+            }
+            NestedChild::Relay => {
+                let ack = dispatcher
+                    .bind(&relay_key())
+                    .expect("the host serves the relay")
+                    .dispatch(RelayNote {
+                        at: "lookup".to_owned(),
+                    })
+                    .await
+                    .expect("relayed");
+                format!("relayed:{}", ack.at)
+            }
+            NestedChild::Never => {
+                let held = dispatcher
+                    .bind(&never_key())
+                    .expect("the host holds")
+                    .dispatch(Hold);
+                match held.await {
+                    Ok(ack) => format!("answered:{}", ack.at),
+                    Err(report) => format!("failed:{:?}", report.kind),
+                }
+            }
+            NestedChild::NeverTwice => {
+                let host = dispatcher.bind(&never_key()).expect("the host holds");
+                let first = host.dispatch(Hold);
+                let second = host.dispatch(Hold);
+                match futures::join!(first, second) {
+                    (Ok(first), Ok(second)) => format!("answered:{}:{}", first.at, second.at),
+                    (Err(report), _) | (_, Err(report)) => format!("failed:{:?}", report.kind),
+                }
+            }
+        }
+    }
+}
+
+impl rig::serve::Serve for Lookup {
+    type Family = rig::effect::family::Tool;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(NESTING_TOOL_KEY),
+            family: rig::effect::FamilyDescriptor::Tool {
+                name: "lookup".to_owned(),
+                description: "Look a question up".to_owned(),
+                parameters: lookup_parameters(),
+                embedding: None,
+            },
+        }
+    }
+
+    async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        let rig::effect::EffectKind::ToolCall { args, context, .. } = kind else {
+            sink.resolve(Err(rig::error::ErrorReport::new(
+                rig::error::ErrorKind::Request,
+                "a tool call",
+            )))
+            .await;
+            return;
+        };
+        let args: LookupArgs = serde_json::from_str(&args).unwrap_or_default();
+        if args.leaf {
+            sink.resolve(Ok(tool_text(context, "leaf".to_owned())))
+                .await;
+            return;
+        }
+        if self.nesting.detached {
+            let sink = sink.detach();
+            let dispatcher = rig::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+            assert_eq!(dispatcher.parent(), Some(sink.id()));
+            let lookup = Lookup {
+                nesting: Nesting {
+                    detached: false,
+                    ..self.nesting
+                },
+                model_key: self.model_key.clone(),
+            };
+            tokio::spawn(async move {
+                let text = lookup.nest(dispatcher, args).await;
+                sink.resolve(Ok(tool_text(context, text))).await;
+            });
+            return;
+        }
+        let dispatcher = rig::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+        assert_eq!(dispatcher.parent(), Some(sink.id()));
+        let text = self.nest(dispatcher, args).await;
+        sink.resolve(Ok(tool_text(context, text))).await;
+    }
+}
+
+/// The host's relay: takes a note through its own sink's dispatcher.
+#[allow(dead_code)]
+pub(crate) struct Relay;
+
+impl rig::serve::Serve for Relay {
+    type Family = rig::effect::family::Custom<RelayNote>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(RELAY_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <RelayNote as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+        }
+    }
+
+    async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        let rig::effect::EffectKind::Custom { payload, .. } = kind else {
+            sink.resolve(Err(rig::error::ErrorReport::new(
+                rig::error::ErrorKind::Request,
+                "a relay note",
+            )))
+            .await;
+            return;
+        };
+        let note: RelayNote = serde_json::from_value(payload).expect("a relay note");
+        let dispatcher = rig::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+        let ack = dispatcher
+            .bind(&note_key())
+            .expect("the host serves notes")
+            .dispatch(Note {
+                at: format!("relay<{}", note.at),
+            })
+            .await
+            .expect("acknowledged");
+        sink.resolve(Ok(rig::effect::Outcome::Custom(
+            serde_json::to_value(NoteAck {
+                accepted: ack.accepted,
+                at: ack.at,
+            })
+            .expect("an ack serializes"),
+        )))
+        .await;
+    }
+}
+
+/// The host's handler that never answers: it signals that it was reached
+/// and holds the dispatch until the consumer goes.
+#[allow(dead_code)]
+pub(crate) struct Never {
+    pub reached: std::sync::Arc<tokio::sync::Notify>,
+}
+
+impl rig::serve::Serve for Never {
+    type Family = rig::effect::family::Custom<Hold>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(NEVER_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <Hold as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+        }
+    }
+
+    async fn serve(&self, _kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        self.reached.notify_one();
+        futures::future::pending::<()>().await;
+        drop(sink);
+    }
+}
+
+/// The parent of every record, by position in the log.
+#[allow(dead_code)]
+pub(crate) fn parent_positions(log: &EffectLog) -> Vec<Option<usize>> {
+    log.records
+        .iter()
+        .map(|record| {
+            record.parent.map(|parent| {
+                log.records
+                    .iter()
+                    .position(|r| r.id == parent)
+                    .expect("a parent in the log")
+            })
+        })
+        .collect()
+}
