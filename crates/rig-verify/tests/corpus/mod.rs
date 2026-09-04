@@ -568,7 +568,7 @@ impl AgentHook for ObserveEverything {
     }
 }
 
-struct PatchAddArgs;
+pub struct PatchAddArgs;
 
 impl AgentHook for PatchAddArgs {
     async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
