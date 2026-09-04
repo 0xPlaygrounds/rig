@@ -137,6 +137,15 @@ impl<F: Family> Handle<F> {
     fn dispatch_kind(&self, kind: EffectKind) -> Pending {
         self.dispatcher.dispatch(&self.descriptor.key, kind)
     }
+
+    /// Dispatch a wrapped request, or pre-fail the dispatch when the
+    /// request had no wire form.
+    fn dispatch_wrapped(&self, kind: Result<EffectKind, ErrorReport>) -> Pending {
+        match kind {
+            Ok(kind) => self.dispatch_kind(kind),
+            Err(report) => self.dispatcher.refused(report),
+        }
+    }
 }
 
 fn family_mismatch(
@@ -264,7 +273,7 @@ impl<F: Family> Handle<F> {
     /// Dispatch a typed request of this family: one implementation for
     /// every family, the shapes coming from [`Family`].
     pub fn dispatch(&self, request: F::Request) -> Typed<F> {
-        Typed::narrow(self.dispatch_kind(F::wrap(request)), Ok)
+        Typed::narrow(self.dispatch_wrapped(F::wrap(request)), Ok)
     }
 }
 
@@ -361,7 +370,7 @@ impl MemoryHandle {
     /// Load a conversation's history.
     pub fn load(&self, conversation: ConversationId) -> Typed<family::Memory, Vec<Message>> {
         Typed::narrow(
-            self.dispatch_kind(family::Memory::wrap(MemoryOp::Load { conversation })),
+            self.dispatch_wrapped(family::Memory::wrap(MemoryOp::Load { conversation })),
             |answer| match answer {
                 MemoryOutcome::Loaded { messages } => Ok(messages),
                 MemoryOutcome::Appended | MemoryOutcome::Cleared => {
@@ -378,7 +387,7 @@ impl MemoryHandle {
         messages: Vec<Message>,
     ) -> Typed<family::Memory, ()> {
         Typed::narrow(
-            self.dispatch_kind(family::Memory::wrap(MemoryOp::Append {
+            self.dispatch_wrapped(family::Memory::wrap(MemoryOp::Append {
                 conversation,
                 messages,
             })),
@@ -394,7 +403,7 @@ impl MemoryHandle {
     /// Clear a conversation.
     pub fn clear(&self, conversation: ConversationId) -> Typed<family::Memory, ()> {
         Typed::narrow(
-            self.dispatch_kind(family::Memory::wrap(MemoryOp::Clear { conversation })),
+            self.dispatch_wrapped(family::Memory::wrap(MemoryOp::Clear { conversation })),
             |answer| match answer {
                 MemoryOutcome::Cleared => Ok(()),
                 MemoryOutcome::Loaded { .. } | MemoryOutcome::Appended => {
@@ -436,7 +445,7 @@ impl IndexHandle {
         req: VectorSearchRequest<Filter<serde_json::Value>>,
     ) -> Retrieval<T> {
         Typed::narrow(
-            self.dispatch_kind(family::Retrieve::wrap(RetrieveQuery::TopN { req })),
+            self.dispatch_wrapped(family::Retrieve::wrap(RetrieveQuery::TopN { req })),
             deserialize_scored::<T>,
         )
     }
@@ -447,7 +456,7 @@ impl IndexHandle {
         req: VectorSearchRequest<Filter<serde_json::Value>>,
     ) -> Typed<family::Retrieve, Vec<(f64, String)>> {
         Typed::narrow(
-            self.dispatch_kind(family::Retrieve::wrap(RetrieveQuery::TopNIds { req })),
+            self.dispatch_wrapped(family::Retrieve::wrap(RetrieveQuery::TopNIds { req })),
             |documents| match documents {
                 RetrievedDocuments::Ids(results) => Ok(results),
                 RetrievedDocuments::Scored(_) => {
@@ -501,7 +510,7 @@ impl EmbedHandle {
     /// Embed text documents.
     pub fn embed_texts(&self, texts: Vec<String>) -> Typed<family::Embed, EmbeddingResponse> {
         Typed::narrow(
-            self.dispatch_kind(family::Embed::wrap(EmbedInputs::Texts(texts))),
+            self.dispatch_wrapped(family::Embed::wrap(EmbedInputs::Texts(texts))),
             |outputs| match outputs {
                 EmbedOutputs::Texts(response) => Ok(response),
                 EmbedOutputs::Images(_) => {
@@ -534,7 +543,7 @@ impl EmbedHandle {
         images: Vec<Vec<u8>>,
     ) -> Typed<family::Embed, ImageEmbeddingResponse> {
         Typed::narrow(
-            self.dispatch_kind(family::Embed::wrap(EmbedInputs::Images(images))),
+            self.dispatch_wrapped(family::Embed::wrap(EmbedInputs::Images(images))),
             |outputs| match outputs {
                 EmbedOutputs::Images(response) => Ok(response),
                 EmbedOutputs::Texts(_) => {

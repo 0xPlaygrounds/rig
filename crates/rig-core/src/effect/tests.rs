@@ -368,7 +368,7 @@ fn custom_kind_label_is_a_plain_string_on_the_wire() {
 
 #[test]
 fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
-    let completion = family::Completion::wrap(request());
+    let completion = family::Completion::wrap(request()).expect("a request has a wire form");
     assert_eq!(completion.family(), EffectFamily::Completion);
     let response =
         CompletionResponse::new(vec![AssistantContent::text("hi")], Usage::new(), "mock");
@@ -380,7 +380,8 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
         name: "add".into(),
         args: "{}".into(),
         context: ToolContext::new(),
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(tool.family(), EffectFamily::Tool);
     let answer = family::Tool::unwrap(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text("3")),
@@ -391,7 +392,8 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
 
     let memory = family::Memory::wrap(MemoryOp::Clear {
         conversation: crate::id::ConversationId::new("c"),
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(memory.family(), EffectFamily::Memory);
     assert!(matches!(
         family::Memory::unwrap(Outcome::Memory(MemoryOutcome::Cleared)),
@@ -404,7 +406,8 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
             .samples(1)
             .build()
             .map_filter(Filter::interpret),
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(retrieve.family(), EffectFamily::Retrieve);
     assert!(matches!(
         family::Retrieve::unwrap(Outcome::Documents(RetrievedDocuments::Ids(vec![]))),
@@ -414,14 +417,16 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     let rerank = family::Rerank::wrap(RerankRequest {
         query: "q".into(),
         documents: vec!["a".into()],
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(rerank.family(), EffectFamily::Rerank);
     assert!(matches!(
         family::Rerank::unwrap(Outcome::Reranked(RerankResponse::new(vec![], "mock"))),
         Ok(response) if response.provider == "mock"
     ));
 
-    let embed = family::Embed::wrap(EmbedInputs::Texts(vec!["a".into()]));
+    let embed = family::Embed::wrap(EmbedInputs::Texts(vec!["a".into()]))
+        .expect("a request has a wire form");
     assert_eq!(embed.family(), EffectFamily::Embed);
     assert!(
         family::Embed::unwrap(Outcome::Embeddings(EmbedOutputs::Texts(
@@ -469,7 +474,8 @@ impl CustomEffect for AskUser {
 fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
     let kind = family::Custom::<AskUser>::wrap(AskUser {
         prompt: "name?".into(),
-    });
+    })
+    .expect("a request has a wire form");
     match &kind {
         EffectKind::Custom { kind, payload } => {
             assert_eq!(&**kind, AskUser::KIND);
@@ -499,4 +505,32 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
     let copied = marker;
     assert_eq!(marker, copied);
     assert_eq!(format!("{marker:?}"), "Custom<test:ask_user>");
+}
+
+/// A custom effect whose `Serialize` fails.
+#[derive(Debug, Deserialize)]
+struct Unserializable;
+
+impl Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("no wire form"))
+    }
+}
+
+impl CustomEffect for Unserializable {
+    const KIND: &'static str = "test:unserializable";
+    type Answer = serde_json::Value;
+}
+
+/// A custom effect that does not serialize has no wire form: the wrap is
+/// a `Request` report naming the kind and the serde error, never a
+/// dispatch carrying the error as its payload.
+#[test]
+fn a_custom_effect_that_does_not_serialize_is_refused_at_wrap() {
+    let report = family::Custom::<Unserializable>::wrap(Unserializable).expect_err("no wire form");
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(
+        report.message.contains("test:unserializable") && report.message.contains("no wire form"),
+        "{report:?}"
+    );
 }

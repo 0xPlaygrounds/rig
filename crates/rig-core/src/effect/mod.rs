@@ -223,8 +223,11 @@ pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     type Request: WasmCompatSend + 'static;
     /// What it resolves to.
     type Answer: WasmCompatSend + 'static;
-    /// The wire form of a request.
-    fn wrap(request: Self::Request) -> EffectKind;
+    /// The wire form of a request, or the report for a request that has
+    /// none (a [`CustomEffect`] whose `Serialize` fails). The in-tree
+    /// families always have one; a typed dispatch of a request without one
+    /// is pre-failed by the bus and never reaches a handler or a log.
+    fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport>;
     /// The typed answer, or the report for an outcome of another family.
     fn unwrap(outcome: Outcome) -> Result<Self::Answer, ErrorReport>;
     /// The report [`Family::unwrap`] gives for an outcome of another family.
@@ -336,9 +339,9 @@ pub mod family {
                 type Request = $request;
                 type Answer = $answer;
 
-                fn wrap(request: Self::Request) -> EffectKind {
+                fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport> {
                     let wrap: fn(Self::Request) -> EffectKind = $wrap;
-                    wrap(request)
+                    Ok(wrap(request))
                 }
 
                 fn unwrap(outcome: Outcome) -> Result<Self::Answer, ErrorReport> {
@@ -454,20 +457,22 @@ pub mod family {
         type Request = E;
         type Answer = E::Answer;
 
-        fn wrap(request: E) -> EffectKind {
-            match serde_json::to_value(&request) {
-                Ok(payload) => EffectKind::Custom {
+        fn wrap(request: E) -> Result<EffectKind, ErrorReport> {
+            // An effect that does not serialize is a defect in `E`: the
+            // dispatch is refused with the serde error as its report, so no
+            // handler serves and no log records a request that had no
+            // wire form.
+            serde_json::to_value(&request)
+                .map(|payload| EffectKind::Custom {
                     kind: std::sync::Arc::from(E::KIND),
                     payload,
-                },
-                // An effect that does not serialize is a defect in `E`; the
-                // dispatch carries the error as its payload so the handler
-                // (and the log) see it rather than a silent `null`.
-                Err(error) => EffectKind::Custom {
-                    kind: std::sync::Arc::from(E::KIND),
-                    payload: serde_json::json!({ "error": error.to_string() }),
-                },
-            }
+                })
+                .map_err(|error| {
+                    ErrorReport::new(
+                        ErrorKind::Request,
+                        format!("the `{}` effect did not serialize: {error}", E::KIND),
+                    )
+                })
         }
 
         fn unwrap(outcome: Outcome) -> Result<E::Answer, ErrorReport> {

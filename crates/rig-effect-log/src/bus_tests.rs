@@ -794,3 +794,44 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
         "and nothing after it"
     );
 }
+
+/// A custom effect whose `Serialize` fails.
+#[derive(Debug, serde::Deserialize)]
+struct Unserializable;
+
+impl serde::Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("no wire form"))
+    }
+}
+
+impl rig_core::effect::CustomEffect for Unserializable {
+    const KIND: &'static str = "test:echo";
+    type Answer = serde_json::Value;
+}
+
+/// A custom effect that does not serialize never reaches a handler: the
+/// typed dispatch resolves `Request` with the serde message before any
+/// send, the handler's counter stays at zero, and the log holds no record.
+#[tokio::test]
+async fn a_custom_effect_that_does_not_serialize_never_reaches_a_handler() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("a fresh key");
+    let recorder = EffectLogRecorder::new();
+    driver.record_to(recorder.clone());
+    let driver = spawn(driver);
+    let key: rig_core::effect::Key<rig_core::effect::family::Custom<Unserializable>> =
+        rig_core::effect::Key::new_unchecked(HandlerKey::from("echo"));
+    let handle = dispatcher.bind(&key).expect("bound by family");
+    let report = within(handle.dispatch(Unserializable))
+        .await
+        .expect_err("no wire form");
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(report.message.contains("no wire form"), "{report:?}");
+    assert_eq!(served.load(Ordering::SeqCst), 0, "the handler never served");
+    drop((handle, dispatcher));
+    within(driver).await.expect("the driver finishes");
+    let log = recorder.take();
+    assert!(log.records.is_empty(), "no record: {:?}", log.records);
+}

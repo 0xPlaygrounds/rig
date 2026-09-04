@@ -593,6 +593,24 @@ impl Dispatcher {
     /// streams — today `Completion { stream: true }` alone; a stream
     /// dispatch of a unary kind resolves as one failed item with an
     /// invalid-dispatch report and never reaches a handler.
+    /// A dispatch refused before any send — a typed request with no wire
+    /// form — as a [`Pending`] that resolves `report` on its first poll. It
+    /// never reaches the buffer, a handler or a recorder; the id is minted so
+    /// a host's bookkeeping keys it like any dispatch.
+    pub(crate) fn refused(&self, report: ErrorReport) -> Pending {
+        let (_reply, receiver) = oneshot::channel();
+        let (cancel_guard, _cancel) = oneshot::channel();
+        Pending {
+            id: self.mint_id(),
+            state: PendingState::Failed(Some(Box::new(report))),
+            receiver,
+            shared: self.shared.clone(),
+            parked: Arc::new(AtomicWaker::new()),
+            generation: self.shared.generation(),
+            _cancel_guard: cancel_guard,
+        }
+    }
+
     pub fn dispatch_stream(&self, key: &HandlerKey, kind: EffectKind) -> EffectStream {
         self.dispatch_stream_with_id(self.mint(), key, kind)
     }
@@ -731,8 +749,15 @@ fn reply_dropped(shared: &Shared, generation: u64) -> ErrorReport {
 }
 
 enum PendingState {
-    Sending { command: Option<Box<Command>> },
+    Sending {
+        command: Option<Box<Command>>,
+    },
     Waiting,
+    /// Refused before any send: the request had no wire form
+    /// ([`rig_core::effect::Family::wrap`] failed). Resolves the report on
+    /// the first poll; nothing reaches a handler or a recorder. Boxed so
+    /// the rare arm costs the common ones nothing (`Pending`'s budget).
+    Failed(Option<Box<ErrorReport>>),
 }
 
 /// A unary dispatch in flight: a plain `Unpin` future with no executor
@@ -812,6 +837,17 @@ impl Future for Pending {
                         }
                         Enqueue::Closed => return Poll::Ready(Err(bus_closed())),
                     }
+                }
+                PendingState::Failed(report) => {
+                    return Poll::Ready(Err(report.take().map_or_else(
+                        || {
+                            ErrorReport::new(
+                                ErrorKind::Internal,
+                                "a refused dispatch was polled twice",
+                            )
+                        },
+                        |report| *report,
+                    )));
                 }
                 PendingState::Waiting => {
                     return match Pin::new(&mut this.receiver).poll(cx) {
