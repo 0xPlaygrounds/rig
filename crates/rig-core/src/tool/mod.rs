@@ -21,7 +21,9 @@ pub mod managed;
 mod output;
 pub mod portable;
 mod result;
-pub use context::{ContextValue, PublishedContext, ToolContext, ToolContextError};
+pub use context::{
+    ContextValue, PublishedContext, ToolContext, ToolContextError, ToolResultContext,
+};
 pub use contextual::{DynamicTool, ErasedTool, Tool, ToolEmbedding, tool_definition};
 pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};

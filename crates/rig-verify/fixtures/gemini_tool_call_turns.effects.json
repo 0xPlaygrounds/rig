@@ -1,6 +1,5 @@
 {
   "header": {
-    "format": 5,
     "run_spec": 13512054446980575785,
     "handlers": [
       {
@@ -83,6 +82,7 @@
   },
   "records": [
     {
+      "tool_output": null,
       "id": 1,
       "key": "stress-agent/model:default",
       "kind": {
@@ -211,6 +211,7 @@
       }
     },
     {
+      "tool_output": {},
       "id": 2,
       "key": "stress-agent/tool:add#0",
       "kind": {
@@ -234,6 +235,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 3,
       "key": "stress-agent/model:default",
       "kind": {
@@ -397,6 +399,7 @@
       }
     },
     {
+      "tool_output": {},
       "id": 4,
       "key": "stress-agent/tool:subtract#1",
       "kind": {
@@ -420,6 +423,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 5,
       "key": "stress-agent/model:default",
       "kind": {

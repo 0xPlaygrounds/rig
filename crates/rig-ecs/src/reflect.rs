@@ -97,6 +97,8 @@ pub fn register(app: &mut App) {
             agent::Conversation,
             agent::Remembered,
             agent::Remembering,
+            agent::MemoryAppendScheduled,
+            agent::PolicyVersion,
             agent::LoadingMemory,
             agent::Retrieves,
             agent::RetrievedBy,

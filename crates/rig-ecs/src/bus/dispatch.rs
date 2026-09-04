@@ -153,13 +153,19 @@ pub fn dispatch(
                     entity_commands.insert(super::record::Observed(Arc::clone(&observed)));
                     observed
                 });
-                let observe = |sink: OutcomeSink| match &observed {
-                    Some(observed) => sink.with_observer(Box::new(super::record::WorldObserver {
-                        id,
-                        recording: recording.as_ref().map(|r| (**r).clone()),
-                        observed: Arc::clone(observed),
-                    })),
-                    None => sink,
+                let observe = |sink: OutcomeSink| {
+                    let published = sink.scope::<rig_core::tool::PublishedContext>();
+                    match &observed {
+                        Some(observed) => {
+                            sink.with_observer(Box::new(super::record::WorldObserver {
+                                published,
+                                id,
+                                recording: recording.as_ref().map(|r| (**r).clone()),
+                                observed: Arc::clone(observed),
+                            }))
+                        }
+                        None => sink,
+                    }
                 };
                 if effect.is_stream() {
                     let (events, receiver) = mpsc::channel(policy.stream_capacity);
@@ -177,7 +183,7 @@ pub fn dispatch(
                     ));
                 } else {
                     let (reply, receiver) = oneshot::channel();
-                    let mut sink = observe(OutcomeSink::unary(id, reply));
+                    let mut sink = OutcomeSink::unary(id, reply);
                     // A tool call's context travels beside the effect
                     // (format 5): the inbound values on the sink, and the
                     // slot the tool publishes into, read by `Collect`.
@@ -190,6 +196,7 @@ pub fn dispatch(
                                 as std::sync::Arc<dyn std::any::Any + Send + Sync>);
                         entity_commands.insert(Publishing(published));
                     }
+                    let sink = observe(sink);
                     let task = IoTaskPool::get().spawn(async move {
                         handler.handle(kind, sink).await;
                         match receiver.await {

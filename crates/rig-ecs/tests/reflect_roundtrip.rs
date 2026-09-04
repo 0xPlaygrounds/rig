@@ -32,10 +32,10 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, Conversation, Failed, Failure, InvalidCall, LoadingMemory, MessageParts,
-        Remembered, Remembering, Reprompt, RequestPatch, Resolution, Retrievable, Retrieval,
-        RetrievalKind, Retrieves, Retrieving, Retry, Route, Streamed as RunStreamed,
-        ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
+        Cancelled, Conversation, Failed, Failure, InvalidCall, LoadingMemory,
+        MemoryAppendScheduled, MessageParts, Remembered, Remembering, Reprompt, RequestPatch,
+        Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Route,
+        Streamed as RunStreamed, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
     },
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
     systems::spawn_run,
@@ -121,6 +121,11 @@ fn populated() -> bevy_app::App {
         Conversation("c".to_owned()),
         Remembered,
         Remembering,
+        (
+            MemoryAppendScheduled,
+            rig_ecs::agent::PolicyVersion("reflect-test/v1".into()),
+            rig_ecs::bus::ToolOutputs(rig_core::tool::ToolContext::new()),
+        ),
         LoadingMemory,
         Retrievable,
         Retrieving,

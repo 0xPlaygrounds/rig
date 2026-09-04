@@ -9,16 +9,18 @@
 use bevy_ecs::prelude::*;
 use rig_core::effect::HandlerKey;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
+use super::PolicyVersion;
 use super::{
     AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
     Conversation, Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant,
-    InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns, Order,
-    OrderCounter, Output, OutputRetries, OutputToolName, Outputs, Owner, Parts, Preamble,
-    Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools,
-    Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run, RunCounter, RunOf,
-    RunResult, RunSeq, Settled, Streamed, Temperature, ToolCallSlot, ToolChoiceSpec,
-    ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
+    InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
+    MemoryAppendScheduled, Order, OrderCounter, Output, OutputRetries, OutputToolName, Outputs,
+    Owner, Parts, Preamble, Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution,
+    ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run,
+    RunCounter, RunOf, RunResult, RunSeq, Settled, Streamed, Temperature, ToolCallSlot,
+    ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
 use crate::bus::{Bound, Scope};
 
@@ -116,11 +118,15 @@ macro_rules! give {
     };
 }
 
-/// The whole state of the agent runtime in a world: the run graph and the
+/// The supported persistent state of the agent runtime: the run graph and the
 /// bus module's effects, saved together so an effect `ChildOf` a turn is
 /// `ChildOf` it again after a load — which is what lets a run saved with
 /// its model call in flight resume: the effect is re-issued under its saved
 /// id, answered, and read by the turn it belongs to.
+///
+/// Only the library's listed components and components explicitly registered
+/// with [`SceneExtensions`] are captured. Resources, arbitrary entities,
+/// system-local state, tasks and live handles remain the host's responsibility.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WorldScene {
     /// The graph.
@@ -136,6 +142,71 @@ pub struct WorldScene {
     /// index into `effects.effects`: a run cut while retrieving resumes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub retrievals: Vec<(usize, Retrieval)>,
+    /// Registered extension components on graph entities, keyed by graph index
+    /// and the application's versioned component name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extensions: BTreeMap<usize, BTreeMap<String, serde_json::Value>>,
+}
+
+/// Explicit persistence registration for application components on entities
+/// already captured by [`WorldScene::graph`]. Install the same registrations
+/// in the source and destination worlds before saving or loading.
+///
+/// Payloads must be entity-independent serde data with pure, deterministic
+/// serialization and deserialization (loading validates then deserializes).
+/// Entity references inside a
+/// payload are **not** remapped; use the library's graph relationships for
+/// ownership and links. Registrations do not capture resources, additional
+/// entities, system-local state or effects' custom components. Version names
+/// when the payload's schema or meaning changes. Unregistered components are
+/// outside the contract; a saved name missing at load is an error.
+#[derive(Resource, Default, Clone)]
+pub struct SceneExtensions {
+    components: BTreeMap<String, ComponentCodec>,
+}
+
+#[derive(Clone)]
+struct ComponentCodec {
+    save: fn(&World, Entity) -> Result<Option<serde_json::Value>, serde_json::Error>,
+    validate: fn(serde_json::Value) -> Result<(), serde_json::Error>,
+    load: fn(&mut World, Entity, serde_json::Value) -> Result<(), serde_json::Error>,
+}
+
+impl SceneExtensions {
+    /// Register one component under a nonempty, unique, application-owned name
+    /// such as `acme/retry-budget/v1`. Duplicate names are rejected, including
+    /// repeated registration of the same type. The host must use one name per
+    /// type and register the same type for that name in both worlds.
+    pub fn register_component<T>(
+        &mut self,
+        name: impl Into<String>,
+    ) -> Result<(), rig_core::error::ErrorReport>
+    where
+        T: Component + Serialize + serde::de::DeserializeOwned,
+    {
+        let name = name.into();
+        if name.trim().is_empty() || self.components.contains_key(&name) {
+            return Err(extension_error("empty or duplicate extension name"));
+        }
+        self.components.insert(
+            name,
+            ComponentCodec {
+                save: |world, entity| world.get::<T>(entity).map(serde_json::to_value).transpose(),
+                validate: |value| serde_json::from_value::<T>(value).map(|_| ()),
+                load: |world, entity, value| {
+                    world
+                        .entity_mut(entity)
+                        .insert(serde_json::from_value::<T>(value)?);
+                    Ok(())
+                },
+            },
+        );
+        Ok(())
+    }
+}
+
+fn extension_error(message: impl Into<String>) -> rig_core::error::ErrorReport {
+    rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Request, message)
 }
 
 /// What [`load_world`] spawned, by scene index.
@@ -150,6 +221,21 @@ pub struct Loaded {
 /// Save the graph and the effects of `world` as one [`WorldScene`].
 pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::ErrorReport> {
     let (graph, entities) = RunScene::take(world)?;
+    let mut extensions = BTreeMap::<usize, BTreeMap<String, serde_json::Value>>::new();
+    if let Some(registry) = world.get_resource::<SceneExtensions>() {
+        for (index, entity) in entities.iter().enumerate() {
+            for (name, codec) in &registry.components {
+                if let Some(value) = (codec.save)(world, *entity)
+                    .map_err(|error| extension_error(format!("extension {name}: {error}")))?
+                {
+                    extensions
+                        .entry(index)
+                        .or_default()
+                        .insert(name.clone(), value);
+                }
+            }
+        }
+    }
     let effects = crate::bus::Scene::save_with(world, |parent| {
         entities.iter().position(|entity| *entity == parent)
     });
@@ -183,16 +269,39 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
         effects,
         slots,
         retrievals,
+        extensions,
     })
 }
 
 /// Load `scene` into `world`: the graph first, then the effects, each
 /// effect `ChildOf` the graph entity its `parent_ref` names. Handlers are
 /// the host's to bind first, as for [`RunScene::load`].
+/// Registered extensions are validated before spawning and inserted after the
+/// graph and effects have loaded. Install application observers after loading:
+/// insertion observers can otherwise see a partially restored entity. Loading
+/// is not transactional if a graph error, extension insertion/deserialization
+/// or application observer fails.
 pub fn load_world(
     scene: &WorldScene,
     world: &mut World,
 ) -> Result<Loaded, rig_core::error::ErrorReport> {
+    let registry = world
+        .get_resource::<SceneExtensions>()
+        .cloned()
+        .unwrap_or_default();
+    for (index, components) in &scene.extensions {
+        if *index >= scene.graph.entities.len() {
+            return Err(extension_error("extension graph index is out of bounds"));
+        }
+        for (name, value) in components {
+            let codec = registry
+                .components
+                .get(name)
+                .ok_or_else(|| extension_error(format!("unregistered scene extension {name}")))?;
+            (codec.validate)(value.clone())
+                .map_err(|error| extension_error(format!("extension {name}: {error}")))?;
+        }
+    }
     let graph = scene.graph.load(world)?;
     let effects = scene
         .effects
@@ -205,6 +314,16 @@ pub fn load_world(
     for (index, retrieval) in &scene.retrievals {
         if let Some(effect) = effects.get(*index).copied() {
             world.entity_mut(effect).insert(*retrieval);
+        }
+    }
+    for (index, components) in &scene.extensions {
+        if let Some(entity) = graph.get(*index).copied() {
+            for (name, value) in components {
+                if let Some(codec) = registry.components.get(name) {
+                    (codec.load)(world, entity, value.clone())
+                        .map_err(|error| extension_error(format!("extension {name}: {error}")))?;
+                }
+            }
         }
     }
     Ok(Loaded { graph, effects })
@@ -297,6 +416,8 @@ impl RunScene {
                 Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
                 Conversation => "conversation", Remembered => "remembered",
                 Remembering => "remembering", LoadingMemory => "loading_memory",
+                MemoryAppendScheduled => "memory_append_scheduled",
+                PolicyVersion => "policy_version",
                 Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
             );
             if !errors.is_empty() {
@@ -436,6 +557,8 @@ impl RunScene {
                 Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
                 Conversation => "conversation", Remembered => "remembered",
                 Remembering => "remembering", LoadingMemory => "loading_memory",
+                MemoryAppendScheduled => "memory_append_scheduled",
+                PolicyVersion => "policy_version",
                 Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
             );
             if !errors.is_empty() {

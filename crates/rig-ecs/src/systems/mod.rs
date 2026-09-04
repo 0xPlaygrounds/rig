@@ -30,12 +30,12 @@ use crate::{
         AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
         Conversation, Cursor, DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant,
         InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
-        MessageParts, Order, OrderCounter, Output, OutputKind, OutputRetries, OutputToolName,
-        Outputs, Parts, Preamble, Remembered, Remembering, Remembers, Reprompt, RequestPatch,
-        Resolution, ResolvingTools, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving,
-        Retry, Run, RunCounter, RunOf, RunResult, RunSeq, Settled, Streamed, Temperature,
-        ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage,
-        UsesModel, Utterance,
+        MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output, OutputKind,
+        OutputRetries, OutputToolName, Outputs, Parts, Preamble, Remembered, Remembering,
+        Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval,
+        RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq,
+        Settled, Streamed, Temperature, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy,
+        Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
         Bound, BusPlugin, BusSet, EffectOutcome, Held, Issued, PendingEffect, Progress,
@@ -115,8 +115,12 @@ pub type FreshView = (
 );
 /// A fresh turn whose retrievals are out.
 pub type RetrievingTurn = (With<Fresh>, With<Retrieving>);
-/// A remembering run that just settled.
-pub type JustSettled = (Added<Settled>, With<Remembering>);
+/// A remembering run whose persisted finalization has not scheduled an append.
+pub type NeedsMemoryAppend = (
+    With<Settled>,
+    With<Remembering>,
+    Without<MemoryAppendScheduled>,
+);
 /// A completion effect: any effect of a turn that is not a retrieval.
 pub type NotRetrieval = (With<PendingEffect>, Without<Retrieval>);
 /// What `materialise` reads of a run awaiting its model.
@@ -641,10 +645,11 @@ pub fn land_memory(
 
 /// `RigSet::Settle`: a run that loaded its conversation appends what it
 /// said — every utterance not `Remembered`, in order — when it settles
-/// (CONTRACT §11).
+/// (CONTRACT §11). The persisted marker distinguishes new work from scene
+/// rehydration; Bevy change-detection ticks are not durable transitions.
 pub fn append_memory(
     mut commands: Commands,
-    settled: Query<(Entity, &RunOf, &Conversation), JustSettled>,
+    settled: Query<(Entity, &RunOf, &Conversation), NeedsMemoryAppend>,
     memories: Query<&Remembers>,
     bound: Query<&Bound>,
     children: Query<&Children>,
@@ -686,6 +691,7 @@ pub fn append_memory(
             ),
             ChildOf(run),
         ));
+        commands.entity(run).insert(MemoryAppendScheduled);
     }
 }
 

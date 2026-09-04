@@ -322,6 +322,7 @@ struct Begun {
 }
 
 impl rig_core::serve::Recorder for Begun {
+    fn tool_output(&self, _: EffectId, _: rig_core::tool::ToolResultContext) {}
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
     fn begin(
         &self,

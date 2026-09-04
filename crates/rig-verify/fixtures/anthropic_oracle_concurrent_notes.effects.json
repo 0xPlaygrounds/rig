@@ -1,6 +1,5 @@
 {
   "header": {
-    "format": 5,
     "run_spec": 6972143684084239244,
     "handlers": [
       {
@@ -64,6 +63,7 @@
   },
   "records": [
     {
+      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
@@ -204,6 +204,7 @@
       }
     },
     {
+      "tool_output": {},
       "id": 2,
       "key": "golden/tool:lookup_harbor_label#0",
       "kind": {
@@ -227,6 +228,7 @@
       }
     },
     {
+      "tool_output": {},
       "id": 3,
       "key": "golden/tool:lookup_orchard_label#1",
       "kind": {
@@ -250,6 +252,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 4,
       "key": "host/note",
       "kind": {
@@ -268,6 +271,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 5,
       "key": "host/note",
       "kind": {
@@ -286,6 +290,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {

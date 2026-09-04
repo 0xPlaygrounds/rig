@@ -54,6 +54,9 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn keep_events(&self) -> bool;
     /// One streamed event of `id`.
     fn event(&self, id: EffectId, event: &StreamEvent);
+    /// Explicitly published tool output, delivered before `resolve`. A driver
+    /// snapshots it without consuming the caller's published context.
+    fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);
     /// The outcome of `id`.
     fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>);
 }

@@ -1,6 +1,5 @@
 {
   "header": {
-    "format": 5,
     "run_spec": 171082663332529849,
     "handlers": [
       {
@@ -37,6 +36,7 @@
   },
   "records": [
     {
+      "tool_output": null,
       "id": 1,
       "key": "golden/memory",
       "kind": {
@@ -55,6 +55,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 2,
       "key": "golden/model:default",
       "kind": {
@@ -136,6 +137,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 3,
       "key": "golden/memory",
       "kind": {

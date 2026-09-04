@@ -231,8 +231,8 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 | what | where | pinned by |
 |---|---|---|
 | `LogHeader::hooks` | the program's declaration — the corpus's `hook_name` list, then `layer_names` — passed to `replay::stamp_header(world, agent, recorder, bus, hooks)`; the world has no hook stack to name | every golden's `/header/hooks`, asserted by the interpreter |
-| `LogHeader::programs: BTreeMap<String, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_header` (`policy` = `stable_hash(spec_json)`), `#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]`: rig-agent's goldens carry none, no re-stamp; a world's own log carries its scopes | `rig-effect-log`'s round-trip test |
-| `replay::check_replayable(world, agent, &log)` | refuses a foreign golden: the scope's `required` not served by the log's handlers, or its `policy` ≠ the agent's `spec_hash`; falls back to `run_spec`/`required` for a golden without `programs` | `run_identity.rs` |
+| `LogHeader::programs: BTreeMap<String, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_run` (`policy` = `stable_hash(spec_json(world, run))`), using supported effective run-over-agent settings; rig-agent's builder-only goldens carry none | `run_identity.rs`, `run_replay_policy.rs` |
+| `replay::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
 
 ## 11. Memory is the graph
@@ -266,6 +266,13 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
 ## 13. Resume is a scene load; two runs
+
+The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before
+scheduling, while queued, after an external write but before its outcome,
+and after completion. `MemoryAppendScheduled` and the child effect persist
+separately from Bevy change-detection ticks: loading `Settled` is not a new
+append transition. An unanswered write is retried under its saved effect id;
+external deduplication or reconciliation is the host's responsibility.
 
 | what | how | pinned by |
 |---|---|---|

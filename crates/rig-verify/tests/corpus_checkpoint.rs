@@ -433,16 +433,16 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
 fn a_checkpoint_of_another_format_is_refused_by_name() {
     let log = corpus::golden(PATCH_TOOL_ARGS.fixture);
     let (mut checkpoint, tail) = log.checkpoint(2, serde_json::json!({"run": "state"}));
-    checkpoint.format = 6;
-    let refused = EffectLog::from_checkpoint(&checkpoint, tail).expect_err("format 6");
+    checkpoint.format = 7;
+    let refused = EffectLog::from_checkpoint(&checkpoint, tail).expect_err("format 7");
     assert_eq!(
         refused.message,
-        "resume refused: the checkpoint is format 6, this rig reads format 5"
+        "resume refused: the checkpoint is format 7, this rig reads format 6"
     );
     let json = serde_json::to_string(&checkpoint).expect("serializes");
     let restored: Checkpoint<serde_json::Value> =
         serde_json::from_str(&json).expect("restores: the number is data");
-    assert_eq!(restored.format, 6);
+    assert_eq!(restored.format, 7);
 }
 
 #[test]

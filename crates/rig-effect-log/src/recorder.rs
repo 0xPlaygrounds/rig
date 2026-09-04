@@ -37,6 +37,7 @@ pub struct EffectLogRecorder {
 /// One dispatch the recorder has seen: opened at serve time, filled at
 /// resolution.
 struct RecordSlot {
+    tool_output: Option<rig_core::tool::ToolResultContext>,
     id: EffectId,
     origin: Origin,
     key: HandlerKey,
@@ -48,6 +49,7 @@ struct RecordSlot {
 impl RecordSlot {
     fn record(&self) -> Option<EffectRecord> {
         self.outcome.as_ref().map(|outcome| EffectRecord {
+            tool_output: self.tool_output.clone(),
             parent: self.origin.parent,
             scope: self.origin.scope.clone(),
             id: self.id,
@@ -201,6 +203,7 @@ impl EffectLogRecorder {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(RecordSlot {
+                tool_output: None,
                 id,
                 origin,
                 key,
@@ -278,6 +281,16 @@ impl fmt::Debug for EffectLogRecorder {
 }
 
 impl Recorder for EffectLogRecorder {
+    fn tool_output(&self, id: EffectId, output: rig_core::tool::ToolResultContext) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(slot) = slots
+            .iter_mut()
+            .rev()
+            .find(|slot| slot.id == id && slot.outcome.is_none())
+        {
+            slot.tool_output = Some(output);
+        }
+    }
     fn handlers(&self, handlers: Vec<HandlerDescriptor>) {
         self.set_handlers(handlers);
     }

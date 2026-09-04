@@ -2151,12 +2151,13 @@ pub fn golden(fixture: &str) -> EffectLog {
     serde_json::from_str(&text).expect("the golden fixture loads")
 }
 
-/// A record as data: its kind, its outcome and its events, if any.
+/// A record as data: its kind, outcome, published tool output and events.
 pub fn as_data(record: &EffectRecord) -> serde_json::Value {
     serde_json::json!({
         "key": record.key,
         "kind": record.kind,
         "outcome": record.outcome,
+        "tool_output": record.tool_output,
         "events": record.events,
     })
 }

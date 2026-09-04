@@ -7,9 +7,10 @@ use rig_effect_log::{EffectLogRecorder, stable_hash};
 
 use crate::{
     agent::{
-        AdditionalParams, Context, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Grant,
-        MaxTokens, Order, Output, OutputKind, Preamble, Remembers, Retrieves, Route, RunOf,
-        Temperature, ToolChoiceSpec, UsesModel,
+        AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentProps,
+        DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Order, Output, OutputKind,
+        PolicyVersion, Preamble, Remembers, Retrievable, Retrieval, Retrieves, Route, RunOf,
+        Streamed, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
     },
     bus::{Bound, Scope},
 };
@@ -17,8 +18,9 @@ use crate::{
 /// The JSON the header's `run_spec` hashes for `agent`: the shape
 /// `CONTRACT.md` names, built from components, canonicalised by
 /// [`stable_hash`]. The builder's identity: the default turn budget, no
-/// retries, `fail` — a run's own overrides are not identity.
-pub fn spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
+/// retries, `fail`. Retained solely for builder/corpus header interoperability;
+/// effective replay compatibility uses [`stamp_run`] instead.
+fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
     let preamble = world.get::<Preamble>(agent).and_then(|p| p.0.clone());
     let temperature = world.get::<Temperature>(agent).and_then(|t| t.0);
     let max_tokens = world.get::<MaxTokens>(agent).and_then(|m| m.0);
@@ -86,7 +88,112 @@ pub fn spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
     })
 }
 
-/// The header's `run_spec` for `agent`.
+fn effective<T: Component>(world: &World, subject: Entity) -> Option<&T> {
+    world.get::<T>(subject).or_else(|| {
+        world
+            .get::<RunOf>(subject)
+            .and_then(|agent| world.get::<T>(agent.0))
+    })
+}
+
+/// Effective policy from components, using the same run-over-agent precedence
+/// as execution. This is not the legacy builder-only `LogHeader::run_spec`.
+/// Custom systems and their ordering are represented by `PolicyVersion`.
+/// Ambient tool inputs are not serialized or automatically fingerprinted.
+pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
+    let agent = world.get::<RunOf>(subject).map_or(subject, |run| run.0);
+    let mut spec = builder_spec_json(world, agent);
+    if let Some(fields) = spec.as_object_mut() {
+        fields.insert(
+            "preamble".into(),
+            serde_json::json!(effective::<Preamble>(world, subject).and_then(|v| v.0.as_ref())),
+        );
+        fields.insert(
+            "temperature".into(),
+            serde_json::json!(effective::<Temperature>(world, subject).and_then(|v| v.0)),
+        );
+        fields.insert(
+            "max_tokens".into(),
+            serde_json::json!(effective::<MaxTokens>(world, subject).and_then(|v| v.0)),
+        );
+        fields.insert(
+            "additional_params".into(),
+            serde_json::json!(
+                effective::<AdditionalParams>(world, subject).and_then(|v| v.0.as_ref())
+            ),
+        );
+        fields.insert(
+            "tool_choice".into(),
+            serde_json::json!(
+                effective::<ToolChoiceSpec>(world, subject).and_then(|v| v.0.as_ref())
+            ),
+        );
+        fields.insert(
+            "max_turns".into(),
+            serde_json::json!(effective::<MaxTurns>(world, subject).map_or(1, |v| v.0)),
+        );
+        let invalid = effective::<InvalidCalls>(world, subject)
+            .copied()
+            .unwrap_or_default();
+        fields.insert(
+            "max_invalid_tool_call_retries".into(),
+            serde_json::json!(invalid.retries),
+        );
+        fields.insert(
+            "unhandled_invalid_tool_call".into(),
+            serde_json::json!(invalid.unhandled),
+        );
+        let output = effective::<Output>(world, subject)
+            .cloned()
+            .unwrap_or_default();
+        fields.insert("output_mode".into(), serde_json::json!(output.mode));
+        fields.insert("output_schema".into(), serde_json::json!(output.schema));
+        fields.insert(
+            "tool_concurrency".into(),
+            serde_json::json!(
+                effective::<ToolPolicy>(world, subject).map_or(1, |v| v.concurrency.max(1))
+            ),
+        );
+        fields.insert(
+            "policy_version".into(),
+            serde_json::json!(effective::<PolicyVersion>(world, subject).map(|v| &v.0)),
+        );
+        fields.insert(
+            "streamed".into(),
+            serde_json::json!(world.get::<Streamed>(subject).is_some_and(|v| v.0)),
+        );
+        fields.insert(
+            "conversation".into(),
+            serde_json::json!(effective::<Conversation>(world, subject).map(|v| &v.0)),
+        );
+        fields.insert(
+            "model".into(),
+            serde_json::json!(
+                effective::<UsesModel>(world, subject)
+                    .and_then(|model| world.get::<Bound>(model.0))
+                    .map(|bound| &bound.descriptor)
+            ),
+        );
+        let mut links: Vec<_> = world
+            .get::<Children>(agent)
+            .into_iter()
+            .flat_map(|children| children.iter())
+            .filter_map(|link| world.get::<Order>(link).map(|order| (*order, link)))
+            .collect();
+        links.sort_by_key(|(order, _)| *order);
+        let dependencies: Vec<_> = links.into_iter().filter_map(|(_, link)| {
+            if let Some(Grant(tool)) = world.get::<Grant>(link) {
+                Some(serde_json::json!({"tool": world.get::<Bound>(*tool).map(|b| &b.descriptor), "retrievable": world.get::<Retrievable>(link).is_some()}))
+            } else if let Some(Retrieves(index)) = world.get::<Retrieves>(link) {
+                Some(serde_json::json!({"index": world.get::<Bound>(*index).map(|b| &b.descriptor), "retrieval": world.get::<Retrieval>(link)}))
+            } else { None }
+        }).collect();
+        fields.insert("dependencies".into(), serde_json::json!(dependencies));
+    }
+    spec
+}
+
+/// The effective policy hash for an agent or run, not a code fingerprint.
 pub fn spec_hash(world: &mut World, agent: Entity) -> Option<u64> {
     stable_hash(&spec_json(world, agent)).ok()
 }
@@ -95,8 +202,10 @@ pub fn spec_hash(world: &mut World, agent: Entity) -> Option<u64> {
 /// grants (retrievable or not), every index it retrieves from, and its
 /// memory, by their bound keys.
 pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
+    let subject = agent;
+    let agent = world.get::<RunOf>(subject).map_or(subject, |run| run.0);
     let mut row = EffectRow::new();
-    let model = world.get::<UsesModel>(agent).map(|uses| uses.0);
+    let model = effective::<UsesModel>(world, subject).map(|uses| uses.0);
     if let Some(model) = model
         && let Some(bound) = world.get::<Bound>(model)
     {
@@ -135,7 +244,8 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     row
 }
 
-/// Stamp `recorder`'s header with `agent`'s identity: the spec hash, the
+/// Stamp `recorder`'s legacy builder header for corpus interoperability, not
+/// a claim of effective run compatibility: the builder spec hash, the
 /// program's hook list as it declares it (`hooks` — the world has no hook
 /// stack to name; a program with none passes an empty list), the required
 /// row, and the bus policy the world runs under.
@@ -146,7 +256,7 @@ pub fn stamp_header(
     bus: Option<rig_core::serve::ServingPolicy>,
     hooks: Vec<String>,
 ) {
-    if let Some(hash) = spec_hash(world, agent) {
+    if let Ok(hash) = stable_hash(&builder_spec_json(world, agent)) {
         recorder.set_run_spec(hash);
     }
     let required = required_row(world, agent);
@@ -154,63 +264,58 @@ pub fn stamp_header(
 }
 
 /// Stamp `run`'s program identity under its scope
-/// ([`rig_effect_log::LogHeader::programs`]): the agent's required row and
-/// policy hash, keyed by the run's `Scope`. A world running several
+/// ([`rig_effect_log::LogHeader::programs`]): the effective run's required row
+/// and policy hash, keyed by the run's `Scope`. A world running several
 /// programs into one log names each this way.
 pub fn stamp_run(world: &mut World, run: Entity, recorder: &EffectLogRecorder) {
-    let Some(agent) = world.get::<RunOf>(run).map(|run_of| run_of.0) else {
+    let Some(_) = world.get::<RunOf>(run) else {
         return;
     };
     let Some(scope) = world.get::<Scope>(run).map(|scope| scope.0.clone()) else {
         return;
     };
-    let Some(policy) = spec_hash(world, agent) else {
+    let Some(policy) = spec_hash(world, run) else {
         return;
     };
-    let required = required_row(world, agent);
+    let required = required_row(world, run);
     recorder.set_program_identity(scope, rig_effect_log::ProgramIdentity { required, policy });
 }
 
-/// Whether `agent` is the program `log` was recorded by: refused by name
-/// when the log's identity (a `programs` entry with this agent's policy,
-/// else the header's `run_spec`) is not this agent's, when the required
-/// row differs (every difference named), or when the log's handlers do
-/// not serve the row.
+/// Check `run` against its explicitly named `Scope` in `log`, before dispatch.
+/// Requires a nonempty `PolicyVersion`: arbitrary systems cannot be
+/// automatically fingerprinted. A missing declaration or a builder-only log
+/// is reported as unverified, not accepted as replay-compatible. Success
+/// verifies the declared policy and supported configuration, not ambient
+/// inputs, execution ordering beyond that declaration, or external state.
 pub fn check_replayable(
     world: &mut World,
-    agent: Entity,
+    run: Entity,
     log: &rig_effect_log::EffectLog,
 ) -> Result<(), rig_core::error::ErrorReport> {
     use rig_core::error::{ErrorKind, ErrorReport};
-    let policy = spec_hash(world, agent)
+    rig_effect_log::EffectLogReplayer::check_header(log)?;
+    if world.get::<RunOf>(run).is_none() {
+        return Err(ErrorReport::new(
+            ErrorKind::Request,
+            "replay compatibility unverified: provide a run with an explicit Scope, not an agent",
+        ));
+    }
+    let scope = world
+        .get::<Scope>(run)
+        .ok_or_else(|| {
+            ErrorReport::new(
+                ErrorKind::Request,
+                "replay compatibility unverified: the run has no Scope",
+            )
+        })?
+        .0
+        .clone();
+    let policy = spec_hash(world, run)
         .ok_or_else(|| ErrorReport::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
-    let required = required_row(world, agent);
-    let (recorded_policy, recorded_row) = if log.header.programs.is_empty() {
-        (log.header.run_spec, log.header.required.clone())
-    } else {
-        match log
-            .header
-            .programs
-            .values()
-            .find(|identity| identity.policy == policy)
-        {
-            Some(identity) => (Some(identity.policy), identity.required.clone()),
-            None => {
-                return Err(ErrorReport::new(
-                    ErrorKind::Internal,
-                    format!(
-                        "replay refused: no program in the log has this agent's policy ({policy:#018x}); the log names {}",
-                        log.header
-                            .programs
-                            .keys()
-                            .map(String::as_str)
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-            }
-        }
-    };
+    let required = required_row(world, run);
+    let identity = log.header.programs.get(&scope).ok_or_else(|| ErrorReport::new(ErrorKind::Request,
+        format!("replay compatibility unverified: the log has no program for scope `{scope}`; builder identity is insufficient")))?;
+    let (recorded_policy, recorded_row) = (Some(identity.policy), &identity.required);
     if recorded_policy != Some(policy) {
         return Err(ErrorReport::new(
             ErrorKind::Internal,
@@ -220,7 +325,7 @@ pub fn check_replayable(
             ),
         ));
     }
-    let differences = required.diff(&recorded_row);
+    let differences = required.diff(recorded_row);
     if !differences.is_empty() {
         return Err(ErrorReport::new(
             ErrorKind::Internal,
@@ -238,6 +343,12 @@ pub fn check_replayable(
         return Err(ErrorReport::new(
             ErrorKind::HandlerUnavailable,
             format!("replay refused: the log's handlers do not serve the row: {gap}"),
+        ));
+    }
+    if effective::<PolicyVersion>(world, run).is_none_or(|version| version.0.trim().is_empty()) {
+        return Err(ErrorReport::new(
+            ErrorKind::Request,
+            "replay compatibility unverified: declare a nonempty PolicyVersion for custom systems, ordering and configuration",
         ));
     }
     Ok(())
