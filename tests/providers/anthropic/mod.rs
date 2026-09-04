@@ -11,6 +11,7 @@ mod cassette {
     mod corpus_output;
     mod corpus_request_shape;
     mod corpus_serving;
+    mod corpus_shaping;
     mod default_max_turns;
     mod document_file_id;
     mod effect_corpus;

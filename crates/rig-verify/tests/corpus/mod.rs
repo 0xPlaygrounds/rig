@@ -154,6 +154,27 @@ pub enum Hook {
     StopOnToolNameDelta,
     /// `on_tool_call_delta` → `Stop` on the first arguments delta.
     StopOnToolArgumentsDelta,
+    /// `on_completion_call` → `tool_choice: Required` on turn 1 (Matrix M).
+    PatchToolChoiceRequiredFirst,
+    /// `on_completion_call` → `tool_choice: None` on turn 2.
+    PatchToolChoiceNoneSecond,
+    /// `on_completion_call` → a context document on every turn.
+    PatchExtraContext,
+    /// `on_completion_call` → `max_tokens: 5` on turn 2.
+    PatchMaxTokensSecond,
+    /// `on_completion_call` → thinking (and temperature 1.0) on turn 2.
+    PatchThinkingSecond,
+    /// `on_completion_call` → the pirate preamble on turn 2.
+    PatchPreambleSecond,
+    /// `on_completion_call` → no tools advertised on turn 2.
+    PatchActiveToolsNoneSecond,
+    /// `on_completion_call` → a prior exchange as turn 1's history.
+    PatchHistoryFirst,
+    /// `on_model_select` → `Select("fast")` on the first turn only.
+    RouteOnFirstTurn,
+    /// `on_model_select` → `Select("late")` on every turn: a route
+    /// registered after build.
+    SelectLate,
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -312,6 +333,12 @@ pub struct Program {
     /// A second `prompt` on the same agent after the first run settles:
     /// two runs, one log (Matrix J).
     pub second_prompt: Option<&'static str>,
+    /// A route the producer registered after build (`register_model`):
+    /// served under `<owner>/model:<label>` and in the handler table, but
+    /// not in the required row, so the replay registers its replayer on
+    /// the bus before the agent is built rather than through the builder
+    /// (Matrix M).
+    pub late_route: Option<&'static str>,
 }
 
 impl Program {
@@ -345,6 +372,7 @@ impl Program {
         unhandled: Unhandled::Fail,
         output_mode: None,
         second_prompt: None,
+        late_route: None,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -903,6 +931,159 @@ impl AgentHook for StopOnToolArgumentsDelta {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Matrix M: per-turn shaping.
+
+pub const SHAPING_CONTEXT_ID: &str = "shaping-context";
+pub const SHAPING_CONTEXT: &str =
+    "Definition of a glarb-glarb: an ancient farming tool from planet Jiro.";
+pub const LATE_ROUTE: &str = "late";
+
+fn shaping_document() -> Document {
+    Document {
+        id: SHAPING_CONTEXT_ID.to_owned(),
+        text: SHAPING_CONTEXT.to_owned(),
+        additional_props: Default::default(),
+    }
+}
+
+/// The patch one of the corpus's hooks makes on `turn`, as the hook makes it.
+fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
+    match hook {
+        Hook::PatchToolChoiceRequiredFirst => {
+            (turn == 1).then(|| RequestPatch::new().tool_choice(ToolChoice::Required))
+        }
+        Hook::PatchToolChoiceNoneSecond => {
+            (turn == 2).then(|| RequestPatch::new().tool_choice(ToolChoice::None))
+        }
+        Hook::PatchExtraContext => Some(RequestPatch::new().context(shaping_document())),
+        Hook::PatchMaxTokensSecond => (turn == 2).then(|| RequestPatch::new().max_tokens(5)),
+        Hook::PatchThinkingSecond => (turn == 2).then(|| {
+            RequestPatch::new().temperature(1.0).additional_params(
+                serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }),
+            )
+        }),
+        Hook::PatchPreambleSecond => {
+            (turn == 2).then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE))
+        }
+        Hook::PatchActiveToolsNoneSecond => {
+            (turn == 2).then(|| RequestPatch::new().active_tools(Vec::<String>::new()))
+        }
+        Hook::PatchHistoryFirst => (turn == 1).then(|| {
+            RequestPatch::new().history(vec![
+                Message::user("My name is Ada."),
+                Message::assistant("Hello, Ada."),
+            ])
+        }),
+        Hook::PreambleOverride => Some(RequestPatch::new().preamble(PIRATE_PREAMBLE)),
+        Hook::RetryUnknownTool
+        | Hook::ObserveEverything
+        | Hook::PatchAddArgs
+        | Hook::DenyAdd
+        | Hook::ReplaceAddResult
+        | Hook::ReplaceAnswer
+        | Hook::DemandDone
+        | Hook::LookupBeforeRun
+        | Hook::RouteAfterFirstTurn
+        | Hook::StopAtStart
+        | Hook::StopAtModelSelect
+        | Hook::StopAtCompletionCall
+        | Hook::CancelAddDispatch
+        | Hook::CancelAddOutcome
+        | Hook::CancelAnswer
+        | Hook::StopAfterTurn
+        | Hook::StopAtAnswer
+        | Hook::StopOnTextDelta
+        | Hook::StopOnToolCallDelta
+        | Hook::StopOnReasoningDelta
+        | Hook::RecordSettled
+        | Hook::RepairToAdd
+        | Hook::SkipUnknown
+        | Hook::NoteAtStart
+        | Hook::NoteAtCompletionCall
+        | Hook::NoteAtOutcome
+        | Hook::NoteAtSettled
+        | Hook::NoteTwice
+        | Hook::NoteUnserved
+        | Hook::EmbedPrompt
+        | Hook::ClearAtStart
+        | Hook::ClearAtSettled
+        | Hook::StopOnToolNameDelta
+        | Hook::StopOnToolArgumentsDelta
+        | Hook::RouteOnFirstTurn
+        | Hook::SelectLate => None,
+    }
+}
+
+/// The program's request patch for `turn`: every patching hook's, merged in
+/// registration order as the hook stack merges them.
+pub fn patch_for_turn(program: &Program, turn: usize) -> Option<RequestPatch> {
+    program
+        .hooks
+        .iter()
+        .filter_map(|hook| hook_patch(*hook, turn))
+        .reduce(RequestPatch::merge)
+}
+
+macro_rules! patch_hook {
+    ($name:ident, $hook:expr) => {
+        struct $name;
+
+        impl AgentHook for $name {
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                event: CompletionCallEvent<'_>,
+            ) -> CompletionCallAction {
+                match hook_patch($hook, event.turn) {
+                    Some(patch) => CompletionCallAction::patch(patch),
+                    None => CompletionCallAction::Continue,
+                }
+            }
+        }
+    };
+}
+
+patch_hook!(
+    PatchToolChoiceRequiredFirst,
+    Hook::PatchToolChoiceRequiredFirst
+);
+patch_hook!(PatchToolChoiceNoneSecond, Hook::PatchToolChoiceNoneSecond);
+patch_hook!(PatchExtraContext, Hook::PatchExtraContext);
+patch_hook!(PatchMaxTokensSecond, Hook::PatchMaxTokensSecond);
+patch_hook!(PatchThinkingSecond, Hook::PatchThinkingSecond);
+patch_hook!(PatchPreambleSecond, Hook::PatchPreambleSecond);
+patch_hook!(PatchActiveToolsNoneSecond, Hook::PatchActiveToolsNoneSecond);
+patch_hook!(PatchHistoryFirst, Hook::PatchHistoryFirst);
+
+struct RouteOnFirstTurn;
+
+impl AgentHook for RouteOnFirstTurn {
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        if event.previous_model.is_none() {
+            ModelSelectionAction::select(ROUTE)
+        } else {
+            ModelSelectionAction::continue_run()
+        }
+    }
+}
+
+struct SelectLate;
+
+impl AgentHook for SelectLate {
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        ModelSelectionAction::select(LATE_ROUTE)
+    }
+}
+
 fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
@@ -941,6 +1122,16 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::ClearAtSettled => builder.add_hook(ClearAtSettled),
             Hook::StopOnToolNameDelta => builder.add_hook(StopOnToolNameDelta),
             Hook::StopOnToolArgumentsDelta => builder.add_hook(StopOnToolArgumentsDelta),
+            Hook::PatchToolChoiceRequiredFirst => builder.add_hook(PatchToolChoiceRequiredFirst),
+            Hook::PatchToolChoiceNoneSecond => builder.add_hook(PatchToolChoiceNoneSecond),
+            Hook::PatchExtraContext => builder.add_hook(PatchExtraContext),
+            Hook::PatchMaxTokensSecond => builder.add_hook(PatchMaxTokensSecond),
+            Hook::PatchThinkingSecond => builder.add_hook(PatchThinkingSecond),
+            Hook::PatchPreambleSecond => builder.add_hook(PatchPreambleSecond),
+            Hook::PatchActiveToolsNoneSecond => builder.add_hook(PatchActiveToolsNoneSecond),
+            Hook::PatchHistoryFirst => builder.add_hook(PatchHistoryFirst),
+            Hook::RouteOnFirstTurn => builder.add_hook(RouteOnFirstTurn),
+            Hook::SelectLate => builder.add_hook(SelectLate),
         };
     }
     builder
@@ -1092,6 +1283,16 @@ impl Replay {
         for key in host_keys {
             let replayer =
                 EffectLogReplayer::for_key(&log, &key).expect("the host handler's records");
+            driver
+                .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
+                .expect("a fresh key");
+        }
+        // A route registered after build is served the way the producer
+        // served it: on the bus, outside the builder and the row.
+        if let Some(label) = program.late_route {
+            let key = HandlerKey::from(format!("{}/model:{label}", program.owner));
+            let replayer =
+                EffectLogReplayer::for_key(&log, &key).expect("the late route's records");
             driver
                 .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
                 .expect("a fresh key");
@@ -1549,6 +1750,16 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::ClearAtSettled => "ClearAtSettled",
         Hook::StopOnToolNameDelta => "StopOnToolNameDelta",
         Hook::StopOnToolArgumentsDelta => "StopOnToolArgumentsDelta",
+        Hook::PatchToolChoiceRequiredFirst => "PatchToolChoiceRequiredFirst",
+        Hook::PatchToolChoiceNoneSecond => "PatchToolChoiceNoneSecond",
+        Hook::PatchExtraContext => "PatchExtraContext",
+        Hook::PatchMaxTokensSecond => "PatchMaxTokensSecond",
+        Hook::PatchThinkingSecond => "PatchThinkingSecond",
+        Hook::PatchPreambleSecond => "PatchPreambleSecond",
+        Hook::PatchActiveToolsNoneSecond => "PatchActiveToolsNoneSecond",
+        Hook::PatchHistoryFirst => "PatchHistoryFirst",
+        Hook::RouteOnFirstTurn => "RouteOnFirstTurn",
+        Hook::SelectLate => "SelectLate",
     }
 }
 
@@ -1784,6 +1995,12 @@ async fn hand_drive(program: &Program, resume: bool) {
             .expect("a fresh key");
         replay.dispatcher.handle(&key).expect("the route")
     });
+    let late_route: Option<ModelHandle> = program.late_route.map(|label| {
+        replay
+            .dispatcher
+            .handle(&replay.route_key(label))
+            .expect("the late route")
+    });
     let memory: Option<(MemoryHandle, ConversationId)> = program.conversation.map(|id| {
         let replayer = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
             .expect("the conversation's records");
@@ -1878,7 +2095,7 @@ async fn hand_drive(program: &Program, resume: bool) {
         };
         if load_failed {
             // As the engine: the run fails at the load, before any completion.
-            drop((model, route, tools, memory, context));
+            drop((model, route, late_route, tools, memory, context));
             let log = replay.log.clone();
             let replayed = replay.close().await;
             assert_same_records(&replayed, &log, "hand driver");
@@ -1931,10 +2148,6 @@ async fn hand_drive(program: &Program, resume: bool) {
             .expect("the replayer embedded");
             assert!(matches!(outputs, rig_core::effect::EmbedOutputs::Texts(_)));
         }
-        let patch = program
-            .hooks
-            .contains(&Hook::PreambleOverride)
-            .then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE));
         let mut run = AgentRun::from_spec(&spec, prompt, history);
         // The routing hook selects the route once a model has been asked
         // (`previous_model` is set): the first call goes to the default.
@@ -1970,11 +2183,26 @@ async fn hand_drive(program: &Program, resume: bool) {
                     history,
                     turn,
                 } => {
-                    let (model, label) =
-                        match (&route, program.hooks.contains(&Hook::RouteAfterFirstTurn)) {
-                            (Some(route), true) if asked_before => (route, ROUTE),
-                            _ => (&model, default_label.as_str()),
-                        };
+                    // The selection hook's choice: a route after the first
+                    // turn, on the first turn only, or on every turn.
+                    let (model, label) = match &route {
+                        Some(route)
+                            if program.hooks.contains(&Hook::RouteAfterFirstTurn)
+                                && asked_before =>
+                        {
+                            (route, program.route.expect("a route"))
+                        }
+                        Some(route)
+                            if program.hooks.contains(&Hook::RouteOnFirstTurn) && !asked_before =>
+                        {
+                            (route, program.route.expect("a route"))
+                        }
+                        _ if program.hooks.contains(&Hook::SelectLate) => (
+                            late_route.as_ref().expect("a late route"),
+                            program.late_route.expect("a late route"),
+                        ),
+                        _ => (&model, default_label.as_str()),
+                    };
                     asked_before = true;
                     // The driver's routing state, persisted on the run as the engine
                     // persists it, so a resumed engine's selection hook sees it.
@@ -1987,7 +2215,9 @@ async fn hand_drive(program: &Program, resume: bool) {
                         .rag_text()
                         .or_else(|| history.iter().rev().find_map(Message::rag_text))
                         .unwrap_or_default();
-                    let mut turn_patch = patch.clone();
+                    // The completion-call hooks' patches for this turn, merged
+                    // as the stack merges them.
+                    let mut turn_patch = patch_for_turn(program, turn);
                     if let (Some(context), Some(samples)) = (&context, program.dynamic_context) {
                         let req = rig_core::vector_store::request::VectorSearchRequest::builder()
                             .query(query.clone())
@@ -2354,7 +2584,7 @@ async fn hand_drive(program: &Program, resume: bool) {
             assert_eq!(cancelled, None, "no hook stops this program");
         }
         let Some(response) = response else {
-            drop((model, route, tools, memory, context));
+            drop((model, route, late_route, tools, memory, context));
             let log = replay.log.clone();
             let replayed = replay.close().await;
             assert_same_records(&replayed, &log, "hand driver");
@@ -2389,7 +2619,7 @@ async fn hand_drive(program: &Program, resume: bool) {
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)
     );
-    drop((model, route, tools, memory, context, notes));
+    drop((model, route, late_route, tools, memory, context, notes));
     let log = replay.log.clone();
     let replayed = replay.close().await;
     assert_same_records(&replayed, &log, "hand driver");
