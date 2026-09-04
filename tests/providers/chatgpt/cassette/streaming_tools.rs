@@ -106,11 +106,9 @@ async fn stream_tool_call_completed_response_without_output() {
                     StreamEvent::BlockEnd {
                         block: Some(AssistantContent::ToolCall(tool_call)),
                         ..
-                    } => {
-                        if tool_call.function.name == "ping" {
-                            assert_eq!(tool_call.function.arguments, json!({}));
-                            saw_ping_tool_call = true;
-                        }
+                    } if tool_call.function.name == "ping" => {
+                        assert_eq!(tool_call.function.arguments, json!({}));
+                        saw_ping_tool_call = true;
                     }
                     StreamEvent::Final(response) => {
                         final_usage = Some(response.usage);
