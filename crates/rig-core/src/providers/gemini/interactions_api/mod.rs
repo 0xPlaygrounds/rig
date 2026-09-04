@@ -286,9 +286,12 @@ pub(crate) fn create_request_body(
 
     let steps = history
         .into_iter()
-        .map(Step::try_from)
+        .map(Step::from_message)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| CompletionError::RequestError(Box::new(err)))?;
+        .map_err(|err| CompletionError::RequestError(Box::new(err)))?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
     let input = InteractionInput::Steps(steps);
 
@@ -1305,32 +1308,82 @@ pub mod interactions_api_types {
         }
     }
 
-    impl TryFrom<crate::completion::Message> for Step {
-        type Error = message::MessageError;
-
-        fn try_from(message: crate::completion::Message) -> Result<Self, Self::Error> {
+    impl Step {
+        /// The steps a history message is on the wire, in the message's
+        /// order. A function call, its result and a thought are steps of
+        /// their own — the shape the API emits them in and the only shape it
+        /// accepts them back in (nested in a `model_output` or `user_input`
+        /// step, a call-and-result round trip is "an invalid argument");
+        /// text and media stay grouped in a `user_input` / `model_output`
+        /// step, one per run of them.
+        pub(crate) fn from_message(
+            message: crate::completion::Message,
+        ) -> Result<Vec<Self>, message::MessageError> {
             match message {
-                crate::completion::Message::System { content } => Ok(Self::UserInput {
+                crate::completion::Message::System { content } => Ok(vec![Self::UserInput {
                     content: vec![Content::Text(TextContent {
                         text: content,
                         annotations: None,
                     })],
-                }),
+                }]),
                 crate::completion::Message::User { content } => {
-                    let content = content
+                    let contents = content
                         .into_iter()
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Self::UserInput { content })
+                    Ok(Self::split(contents, |content| Self::UserInput { content }))
                 }
                 crate::completion::Message::Assistant { content, .. } => {
-                    let content = content
+                    let contents = content
                         .into_iter()
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Self::ModelOutput { content })
+                    Ok(Self::split(contents, |content| Self::ModelOutput {
+                        content,
+                    }))
                 }
             }
+        }
+
+        /// Lift the contents that are steps of their own out of `contents`,
+        /// grouping each run of the others under `group`.
+        fn split(contents: Vec<Content>, group: impl Fn(Vec<Content>) -> Self) -> Vec<Self> {
+            let mut steps = Vec::new();
+            let mut run: Vec<Content> = Vec::new();
+            for content in contents {
+                let own = match content {
+                    Content::Thought(thought) => Some(Self::Thought(thought)),
+                    Content::FunctionCall(call) => Some(Self::FunctionCall(call)),
+                    Content::FunctionResult(result) => Some(Self::FunctionResult(result)),
+                    Content::CodeExecutionCall(call) => Some(Self::CodeExecutionCall(call)),
+                    Content::CodeExecutionResult(result) => Some(Self::CodeExecutionResult(result)),
+                    Content::UrlContextCall(call) => Some(Self::UrlContextCall(call)),
+                    Content::UrlContextResult(result) => Some(Self::UrlContextResult(result)),
+                    Content::GoogleSearchCall(call) => Some(Self::GoogleSearchCall(call)),
+                    Content::GoogleSearchResult(result) => Some(Self::GoogleSearchResult(result)),
+                    Content::McpServerToolCall(call) => Some(Self::McpServerToolCall(call)),
+                    Content::McpServerToolResult(result) => Some(Self::McpServerToolResult(result)),
+                    Content::FileSearchResult(result) => Some(Self::FileSearchResult(result)),
+                    grouped @ (Content::Text(_)
+                    | Content::Image(_)
+                    | Content::Audio(_)
+                    | Content::Document(_)
+                    | Content::Video(_)) => {
+                        run.push(grouped);
+                        None
+                    }
+                };
+                if let Some(step) = own {
+                    if !run.is_empty() {
+                        steps.push(group(std::mem::take(&mut run)));
+                    }
+                    steps.push(step);
+                }
+            }
+            if !run.is_empty() {
+                steps.push(group(run));
+            }
+            steps
         }
     }
 
@@ -1512,9 +1565,11 @@ pub mod interactions_api_types {
         pub summary: Option<Vec<ThoughtSummaryContent>>,
     }
 
-    /// Thought summary item.
+    /// Thought summary item: a content item like any other on this wire,
+    /// tagged by `type` (the API refuses an untagged one on the way back:
+    /// "The 'type' parameter is required at 'input[n].content[0].summary[0]'").
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
+    #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ThoughtSummaryContent {
         Text(TextContent),
         Image(ImageContent),
@@ -1785,11 +1840,16 @@ pub mod interactions_api_types {
 
                         match content {
                             message::ToolResultContent::Text(text) => Value::String(text.text),
+                            // A scalar or array JSON result is wrapped as the
+                            // generate wire wraps it (`{"result": value}`): sent
+                            // as a text block it is a multimodal response, which
+                            // the models refuse.
                             message::ToolResultContent::Json { value } => match value {
                                 value @ (Value::String(_) | Value::Object(_)) => value,
-                                value => Value::Array(vec![rich_function_result_block(
-                                    message::ToolResultContent::Json { value },
-                                )?]),
+                                value @ (Value::Null
+                                | Value::Bool(_)
+                                | Value::Number(_)
+                                | Value::Array(_)) => serde_json::json!({ "result": value }),
                             },
                             rich_content => {
                                 Value::Array(vec![rich_function_result_block(rich_content)?])
@@ -1927,25 +1987,27 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::Reasoning(message::Reasoning { content, .. }) => {
-                    let mut signature = None;
-                    let summary = content
+                    // The thought's signature is the first text part's, text
+                    // or no text: a signature-only thought (the wire's
+                    // `thought_signature` with no summary) goes back as
+                    // signature-only, since an empty summary item is an
+                    // invalid argument to the API.
+                    let signature = content.iter().find_map(|part| match part {
+                        message::ReasoningContent::Text { signature, .. } => signature.clone(),
+                        message::ReasoningContent::Summary(_)
+                        | message::ReasoningContent::Encrypted(_)
+                        | message::ReasoningContent::Redacted { .. } => None,
+                    });
+                    let summary: Vec<ThoughtSummaryContent> = content
                         .into_iter()
-                        .map(|reasoning_content| {
-                            let text = match reasoning_content {
-                                message::ReasoningContent::Text {
-                                    text,
-                                    signature: content_signature,
-                                } => {
-                                    if signature.is_none() {
-                                        signature = content_signature;
-                                    }
-                                    text
-                                }
-                                message::ReasoningContent::Summary(text)
-                                | message::ReasoningContent::Encrypted(text) => text,
-                                message::ReasoningContent::Redacted { data } => data,
-                            };
-
+                        .map(|part| match part {
+                            message::ReasoningContent::Text { text, .. }
+                            | message::ReasoningContent::Summary(text)
+                            | message::ReasoningContent::Encrypted(text) => text,
+                            message::ReasoningContent::Redacted { data } => data,
+                        })
+                        .filter(|text| !text.is_empty())
+                        .map(|text| {
                             ThoughtSummaryContent::Text(TextContent {
                                 text,
                                 annotations: None,
@@ -1955,7 +2017,7 @@ pub mod interactions_api_types {
 
                     Ok(Self::Thought(ThoughtContent {
                         signature,
-                        summary: Some(summary),
+                        summary: (!summary.is_empty()).then_some(summary),
                     }))
                 }
                 message::AssistantContent::Image(message::Image {
