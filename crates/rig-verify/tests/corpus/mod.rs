@@ -2386,7 +2386,7 @@ impl Replay {
             .handlers
             .iter()
             .map(|handler| &handler.key)
-            .filter(|key| key.as_str().starts_with("host/"))
+            .filter(|key| key.parts().owner.as_deref() == Some("host"))
             .filter(|key| {
                 program.nesting.is_none()
                     || (key.as_str() != RELAY_KEY && key.as_str() != NEVER_KEY)
@@ -2442,9 +2442,9 @@ impl Replay {
 
     pub fn log_owner(&self) -> String {
         self.model_key
-            .as_str()
-            .rsplit_once("/model:")
-            .map(|(owner, _)| owner.to_owned())
+            .parts()
+            .owner
+            .map(|owner| owner.to_string())
             .expect("the model key names its owner")
     }
 
@@ -2469,11 +2469,13 @@ impl Replay {
         let mut server = ToolServer::new().owner(self.log_owner());
         let mut retrievable = rig_agent::tool::ToolSet::default();
         for key in self.tool_keys() {
-            let name = key
-                .as_str()
-                .rsplit_once("tool:")
-                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))
-                .expect("a tool key names its tool");
+            let parts = key.parts();
+            assert_eq!(
+                parts.kind.as_deref(),
+                Some("tool"),
+                "a tool key names its tool"
+            );
+            let name = parts.label.as_ref();
             let tool = match program.nesting {
                 Some(nesting) if key.as_str() == NESTING_TOOL_KEY => {
                     RegisteredTool::from_handler(Lookup {
@@ -3380,12 +3382,15 @@ async fn hand_drive(program: &Program, resume: Resume) {
     let mut resumed: Option<String> = None;
     // The default model's label, as the engine names it to the selection
     // hook: the key's label.
-    let default_label = replay
-        .model_key
-        .as_str()
-        .rsplit_once("model:")
-        .map(|(_, label)| label.to_owned())
-        .expect("the model key names its label");
+    let default_label = {
+        let parts = replay.model_key.parts();
+        assert_eq!(
+            parts.kind.as_deref(),
+            Some("model"),
+            "the model key names its label"
+        );
+        parts.label.to_string()
+    };
     let prompts: Vec<&str> = std::iter::once(program.prompt)
         .chain(program.second_prompt)
         .collect();

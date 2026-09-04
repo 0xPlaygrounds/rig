@@ -10,7 +10,9 @@ use std::{
 use futures::{FutureExt, StreamExt, channel::oneshot, future::poll_fn, task::noop_waker_ref};
 use serde_json::json;
 
-use super::{Bus, BusDriver, Dispatcher, ModelHandle, Registrar, ServingPolicy};
+use super::{
+    Bus, BusDriver, Dispatcher, EffectStream, ModelHandle, Pending, Registrar, ServingPolicy,
+};
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     OutcomeSink, Serve,
@@ -1951,6 +1953,28 @@ fn a_serial_key_is_not_occupied_by_a_dispatch_cancelled_before_it_was_served() {
     assert_eq!(served.load(Ordering::SeqCst), 1);
 }
 
+/// One poll with a no-op waker: the outcome if the dispatch has resolved.
+/// What a ticking host used to get from `Pending::poll_outcome`; the bus
+/// no longer offers it (a world holds no future to probe), and these tests
+/// keep it as a spelling of "poll once, no executor".
+fn probe(pending: &mut Pending) -> Option<Result<Outcome, ErrorReport>> {
+    let mut cx = Context::from_waker(noop_waker_ref());
+    match pending.poll_unpin(&mut cx) {
+        Poll::Ready(outcome) => Some(outcome),
+        Poll::Pending => None,
+    }
+}
+
+/// One poll with a no-op waker: `Some(Some(item))` for the next item,
+/// `Some(None)` once the stream ended, `None` if nothing is ready.
+fn probe_item(stream: &mut EffectStream) -> Option<Option<Result<StreamEvent, ErrorReport>>> {
+    let mut cx = Context::from_waker(noop_waker_ref());
+    match stream.poll_next_unpin(&mut cx) {
+        Poll::Ready(item) => Some(item),
+        Poll::Pending => None,
+    }
+}
+
 #[test]
 fn a_probe_resolves_a_dispatch_without_an_executor() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
@@ -1959,23 +1983,26 @@ fn a_probe_resolves_a_dispatch_without_an_executor() {
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
     let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(7)));
-    assert!(pending.poll_outcome().is_none(), "the first probe sends");
+    assert!(probe(&mut pending).is_none(), "the first probe sends");
     assert_eq!(dispatcher.buffered(), 1);
     let _ = driver.poll_unpin(&mut cx);
-    let outcome = pending.poll_outcome().expect("served").expect("ok");
+    let outcome = probe(&mut pending).expect("served").expect("ok");
     assert!(matches!(outcome, Outcome::Custom(ref payload) if *payload == json!(7)));
     assert_eq!(served.load(Ordering::SeqCst), 1);
 
     let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
     // Unknown key: the probe sends, the driver answers, the probe drains.
-    assert!(stream.poll_item().is_none());
+    assert!(probe_item(&mut stream).is_none());
     let _ = driver.poll_unpin(&mut cx);
-    let first = stream.poll_item().expect("ready").expect("an item");
+    let first = probe_item(&mut stream).expect("ready").expect("an item");
     assert_eq!(
         first.expect_err("unavailable").kind,
         ErrorKind::HandlerUnavailable
     );
-    assert!(stream.poll_item().expect("ready").is_none(), "then the end");
+    assert!(
+        probe_item(&mut stream).expect("ready").is_none(),
+        "then the end"
+    );
 }
 
 #[test]
@@ -1991,9 +2018,9 @@ fn ten_thousand_probes_on_a_full_bus_keep_one_waker() {
     let key = HandlerKey::from("echo");
     let mut first = dispatcher.dispatch(&key, custom(json!(1)));
     let mut parked = dispatcher.dispatch(&key, custom(json!(2)));
-    assert!(first.poll_outcome().is_none());
+    assert!(probe(&mut first).is_none());
     for _ in 0..10_000 {
-        assert!(parked.poll_outcome().is_none());
+        assert!(probe(&mut parked).is_none());
         // A real waker per poll, as `block_on(poll_once)` mints, is one
         // slot too.
         let waker = futures::task::waker(Arc::new(CountingWake));
@@ -2006,15 +2033,15 @@ fn ten_thousand_probes_on_a_full_bus_keep_one_waker() {
     for _ in 0..4 {
         let _ = driver.poll_unpin(&mut cx);
     }
-    assert!(first.poll_outcome().is_some());
+    assert!(probe(&mut first).is_some());
     // The drain freed the buffer and woke the parked value: its next probe
     // sends, and one more driver poll serves it.
-    assert!(parked.poll_outcome().is_none(), "sent on this probe");
+    assert!(probe(&mut parked).is_none(), "sent on this probe");
     assert_eq!(dispatcher.buffered(), 1);
     for _ in 0..4 {
         let _ = driver.poll_unpin(&mut cx);
     }
-    assert!(parked.poll_outcome().is_some(), "served");
+    assert!(probe(&mut parked).is_some(), "served");
     assert_eq!(served.load(Ordering::SeqCst), 2);
     assert_eq!(dispatcher.shared.parked_senders(), 0);
 }
@@ -2036,8 +2063,8 @@ fn a_parked_value_dropped_before_the_drain_leaves_no_slot_to_wake() {
     let key = HandlerKey::from("echo");
     let mut first = dispatcher.dispatch(&key, custom(json!(1)));
     let mut parked = dispatcher.dispatch(&key, custom(json!(2)));
-    assert!(first.poll_outcome().is_none());
-    assert!(parked.poll_outcome().is_none());
+    assert!(probe(&mut first).is_none());
+    assert!(probe(&mut parked).is_none());
     assert_eq!(dispatcher.shared.parked_senders(), 1);
     drop(parked);
     let waker = noop_waker_ref();
@@ -2092,8 +2119,8 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
     let key = HandlerKey::from("world");
     let mut first = dispatcher.dispatch(&key, custom(json!(1)));
     let mut second = dispatcher.dispatch(&key, custom(json!(2)));
-    assert!(first.poll_outcome().is_none());
-    assert!(second.poll_outcome().is_none());
+    assert!(probe(&mut first).is_none());
+    assert!(probe(&mut second).is_none());
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
     for _ in 0..4 {
@@ -2103,13 +2130,13 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
     // the key is busy and the second command waits behind it.
     assert_eq!(mailbox.lock().expect("mailbox").len(), 1);
     assert_eq!(driver.in_flight(), 1, "keyed on the sink, not the future");
-    assert!(second.poll_outcome().is_none());
+    assert!(probe(&mut second).is_none());
 
     let sink = mailbox.lock().expect("mailbox").remove(0);
     assert!(!sink.is_closed());
     let mut resolving = sink.resolve(Ok(Outcome::Custom(json!("answered"))));
     assert!(resolving.poll_unpin(&mut cx).is_ready());
-    let outcome = first.poll_outcome().expect("answered").expect("ok");
+    let outcome = probe(&mut first).expect("answered").expect("ok");
     assert!(matches!(outcome, Outcome::Custom(ref v) if *v == json!("answered")));
     for _ in 0..4 {
         let _ = driver.poll_unpin(&mut cx);
@@ -2120,7 +2147,7 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
     let sink = mailbox.lock().expect("mailbox").remove(0);
     let mut resolving = sink.resolve(Ok(Outcome::Custom(json!("second"))));
     assert!(resolving.poll_unpin(&mut cx).is_ready());
-    assert!(second.poll_outcome().is_some());
+    assert!(probe(&mut second).is_some());
     for _ in 0..4 {
         let _ = driver.poll_unpin(&mut cx);
     }
@@ -2140,7 +2167,7 @@ fn dropping_the_pending_closes_a_detached_sink() {
         )
         .expect("register");
     let mut pending = dispatcher.dispatch(&HandlerKey::from("world"), custom(json!(1)));
-    assert!(pending.poll_outcome().is_none());
+    assert!(probe(&mut pending).is_none());
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
     let _ = driver.poll_unpin(&mut cx);
@@ -2155,98 +2182,6 @@ fn dropping_the_pending_closes_a_detached_sink() {
     mailbox.lock().expect("mailbox").clear();
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(driver.in_flight(), 0);
-}
-
-#[test]
-fn a_reopened_bus_serves_handles_bound_before_the_drop() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let (echo, served) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    // The host's bound view: a key it keeps (a typed `Handle` is the same
-    // thing over a key; `ModelHandle` is proven on the fixture side).
-    let handle = HandlerKey::from("echo");
-    let waker = noop_waker_ref();
-    let mut cx = Context::from_waker(waker);
-    // Served once, then the driver goes.
-    let mut before = dispatcher.dispatch(&handle, custom(json!(1)));
-    assert!(before.poll_outcome().is_none());
-    let _ = driver.poll_unpin(&mut cx);
-    assert!(before.poll_outcome().is_some());
-    let mut minted_before_drop = dispatcher.dispatch(&handle, custom(json!(2)));
-    drop(driver);
-    assert!(dispatcher.is_closed());
-    assert!(
-        dispatcher.descriptor(&HandlerKey::from("echo")).is_none(),
-        "the handlers died with the driver; the table says so"
-    );
-    let report = dispatcher
-        .dispatch(&handle, custom(json!(3)))
-        .poll_outcome()
-        .expect("closed")
-        .expect_err("closed");
-    assert_eq!(report.kind, ErrorKind::BusClosed);
-
-    let (registrar, mut driver) = Bus::reopen(&dispatcher).expect("no driver alive");
-    assert!(!dispatcher.is_closed());
-    // What was minted against the dead driver stays dead.
-    let report = minted_before_drop
-        .poll_outcome()
-        .expect("decided")
-        .expect_err("closed");
-    assert_eq!(report.kind, ErrorKind::BusClosed);
-    // Re-register (through the new registrar) and the same handle works.
-    let (echo, served_again) = Echo::new();
-    registrar.register("echo", echo).expect("fresh table");
-    let mut after = dispatcher.dispatch(&handle, custom(json!(4)));
-    assert!(after.poll_outcome().is_none());
-    for _ in 0..4 {
-        let _ = driver.poll_unpin(&mut cx);
-    }
-    let outcome = after.poll_outcome().expect("served").expect("ok");
-    assert!(matches!(outcome, Outcome::Custom(ref v) if *v == json!(4)));
-    assert_eq!(served.load(Ordering::SeqCst), 1);
-    assert_eq!(served_again.load(Ordering::SeqCst), 1);
-    assert_eq!(
-        dispatcher.descriptor(&handle).expect("re-registered").key,
-        handle
-    );
-}
-
-#[test]
-fn reopen_while_a_driver_is_alive_is_refused() {
-    let (dispatcher, _registrar, driver) = Bus::channel();
-    let report = Bus::reopen(&dispatcher).expect_err("a driver is alive");
-    assert_eq!(report.kind, ErrorKind::Request);
-    assert!(report.retryable, "retry once the driver has been dropped");
-    drop(driver);
-    let (_registrar, driver) = Bus::reopen(&dispatcher).expect("now free");
-    assert!(Bus::reopen(&dispatcher).is_err(), "the new driver holds it");
-    drop(driver);
-    assert!(Bus::reopen(&dispatcher).is_ok());
-}
-
-#[test]
-fn pendings_and_streams_created_while_closed_stay_closed_after_reopen() {
-    let (dispatcher, _registrar, driver) = Bus::channel();
-    drop(driver);
-    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("echo"), completion_kind(true));
-    let (_registrar, mut driver) = Bus::reopen(&dispatcher).expect("free");
-    let (echo, served) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    let report = pending
-        .poll_outcome()
-        .expect("decided")
-        .expect_err("closed");
-    assert_eq!(report.kind, ErrorKind::BusClosed);
-    let item = stream.poll_item().expect("decided").expect("one item");
-    assert_eq!(item.expect_err("closed").kind, ErrorKind::BusClosed);
-    assert!(stream.poll_item().expect("decided").is_none());
-    let waker = noop_waker_ref();
-    let mut cx = Context::from_waker(waker);
-    let _ = driver.poll_unpin(&mut cx);
-    assert_eq!(served.load(Ordering::SeqCst), 0, "nothing was resurrected");
-    assert_eq!(dispatcher.buffered(), 0);
 }
 
 #[test]
@@ -2284,59 +2219,6 @@ fn registrar_bus_id(_registrar: &Registrar, dispatcher: &Dispatcher) -> super::B
 }
 
 #[test]
-fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    // What a scene stored: the descriptor, no handler yet.
-    let stored = HandlerDescriptor {
-        key: HandlerKey::from("model"),
-        family: FamilyDescriptor::Completion {
-            model: "gpt".into(),
-            capabilities: Default::default(),
-        },
-        layers: Vec::new(),
-    };
-    let handle: ModelHandle = super::Handle::rebind(dispatcher.clone(), stored.clone());
-    assert_eq!(handle.key(), &HandlerKey::from("model"));
-    assert_eq!(
-        handle.descriptor(),
-        stored,
-        "the snapshot until the table says otherwise"
-    );
-    let waker = noop_waker_ref();
-    let mut cx = Context::from_waker(waker);
-    let mut pending = handle.complete(completion_request_value());
-    assert!(pending.poll_unpin(&mut cx).is_pending());
-    let _ = driver.poll_unpin(&mut cx);
-    let report = match pending.poll_unpin(&mut cx) {
-        Poll::Ready(Err(report)) => report,
-        other => panic!("expected HandlerUnavailable, got {other:?}"),
-    };
-    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
-    // Registered later, the same handle works.
-    driver
-        .register(
-            "model",
-            CompletionAdapter::new(
-                "gpt",
-                MockCompletionModel::from_turns([MockTurn::text("hi")]),
-            ),
-        )
-        .expect("register");
-    let mut pending = handle.complete(completion_request_value());
-    assert!(pending.poll_unpin(&mut cx).is_pending());
-    let _ = driver.poll_unpin(&mut cx);
-    assert!(pending.poll_unpin(&mut cx).is_ready());
-}
-
-#[test]
-#[should_panic(expected = "serves the tool_call family, not completion")]
-fn a_rebind_of_the_wrong_family_panics_at_the_hosts_line() {
-    let (dispatcher, _registrar, _driver) = Bus::channel();
-    let stored = rig_core::serve::Serve::descriptor(&ToolAdapter::new(Add));
-    let _: ModelHandle = super::Handle::rebind(dispatcher, stored);
-}
-
-#[test]
 fn a_pending_whose_dispatcher_died_before_its_first_poll_is_bus_closed_while_a_stream_is_in_flight()
 {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
@@ -2346,7 +2228,7 @@ fn a_pending_whose_dispatcher_died_before_its_first_poll_is_bus_closed_while_a_s
     let mut cx = Context::from_waker(waker);
     // A long dispatch in flight (the gate never opens).
     let mut held = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
-    assert!(held.poll_outcome().is_none());
+    assert!(probe(&mut held).is_none());
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(driver.in_flight(), 1);
     // A dispatch minted but not yet polled when its dispatcher goes.
@@ -2359,15 +2241,9 @@ fn a_pending_whose_dispatcher_died_before_its_first_poll_is_bus_closed_while_a_s
         "the held dispatch keeps the driver alive"
     );
     // The late send is refused at once — not held until the stream ends.
-    let report = late
-        .poll_outcome()
-        .expect("decided now")
-        .expect_err("closed");
+    let report = probe(&mut late).expect("decided now").expect_err("closed");
     assert_eq!(report.kind, ErrorKind::BusClosed);
-    assert!(
-        held.poll_outcome().is_none(),
-        "the in-flight one is untouched"
-    );
+    assert!(probe(&mut held).is_none(), "the in-flight one is untouched");
 }
 
 #[test]
@@ -2392,26 +2268,6 @@ fn a_bind_on_a_closed_bus_is_bus_closed_not_unavailable() {
         .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
         .expect_err("closed");
     assert_eq!(report.kind, ErrorKind::BusClosed, "{report:?}");
-    // Reopened and re-registered, the bind works again.
-    let (_registrar, mut driver) = Bus::reopen(&dispatcher).expect("free");
-    let report = dispatcher
-        .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
-        .expect_err("nothing serves it yet");
-    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
-    driver
-        .register(
-            "model",
-            CompletionAdapter::new(
-                "gpt",
-                MockCompletionModel::from_turns([MockTurn::text("hi")]),
-            ),
-        )
-        .expect("register");
-    assert!(
-        dispatcher
-            .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
-            .is_ok()
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2960,76 +2816,4 @@ fn a_denied_dispatch_is_denied_on_the_consumers_pending_and_leaves_no_record() {
         0,
         "never resolved: no record"
     );
-}
-
-// ---------------------------------------------------------------------------
-// The completion inbox: what ended since the last drain, bounded.
-
-#[test]
-fn the_inbox_names_every_dispatch_that_ended_since_the_last_drain() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel();
-    let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    let mut cx = Context::from_waker(noop_waker_ref());
-    assert!(dispatcher.take_resolved().is_empty());
-    let mut a = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
-    let mut b = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(2)));
-    assert!(a.poll_unpin(&mut cx).is_pending());
-    assert!(b.poll_unpin(&mut cx).is_pending());
-    let _ = driver.poll_unpin(&mut cx);
-    let _ = driver.poll_unpin(&mut cx);
-    assert_eq!(
-        dispatcher.take_resolved(),
-        [a.id(), b.id()],
-        "in the order they ended"
-    );
-    assert!(dispatcher.take_resolved().is_empty(), "drained");
-    assert!(a.poll_unpin(&mut cx).is_ready());
-    assert!(b.poll_unpin(&mut cx).is_ready());
-    // A cancelled dispatch ends too; an unknown key's answers at once.
-    let c = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(3)));
-    let c_id = c.id();
-    let mut c = c;
-    assert!(c.poll_unpin(&mut cx).is_pending());
-    drop(c);
-    let _ = driver.poll_unpin(&mut cx);
-    let mut d = dispatcher.dispatch(&HandlerKey::from("nope"), custom(json!(4)));
-    assert!(d.poll_unpin(&mut cx).is_pending());
-    let _ = driver.poll_unpin(&mut cx);
-    let ended = dispatcher.take_resolved();
-    assert_eq!(
-        ended,
-        [c_id, d.id()],
-        "every command the driver took ends in the inbox: the one dropped unserved, the one answered on the spot"
-    );
-    assert!(d.poll_unpin(&mut cx).is_ready());
-    // A dispatch refused before any send was never taken.
-    let refused = dispatcher.refused(ErrorReport::new(ErrorKind::Request, "no wire form"));
-    assert!(dispatcher.take_resolved().is_empty());
-    drop(refused);
-    assert_eq!(dispatcher.inbox_dropped(), 0);
-}
-
-#[test]
-fn the_inbox_is_bounded_and_counts_what_it_dropped() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
-        command_capacity: 1,
-        ..ServingPolicy::default()
-    });
-    let (echo, _) = Echo::new();
-    driver.register("echo", echo).expect("register");
-    let mut cx = Context::from_waker(noop_waker_ref());
-    // The cap is command_capacity * 64 = 64: the 65th push drops the oldest.
-    let mut first = None;
-    for n in 0..65u64 {
-        let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(n)));
-        first.get_or_insert(pending.id());
-        while pending.poll_unpin(&mut cx).is_pending() {
-            let _ = driver.poll_unpin(&mut cx);
-        }
-    }
-    assert_eq!(dispatcher.inbox_dropped(), 1);
-    let ended = dispatcher.take_resolved();
-    assert_eq!(ended.len(), 64);
-    assert!(!ended.contains(&first.expect("a first")), "the oldest went");
 }

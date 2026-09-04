@@ -17,7 +17,11 @@ doctest = false
 rig-core = { path = "../rig-core", features = ["test-utils"] }
 rig-agent = { path = "../rig-agent" }
 rig-bus = { path = "../rig-bus" }
+rig-ecs = { path = "../rig-ecs" }
 rig-effect-log = { path = "../rig-effect-log" }
+# The world interpreter (tests/world_replay.rs) builds its own App.
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
 futures = { workspace = true }
 proptest = "1"
 serde = { workspace = true, features = ["derive"] }

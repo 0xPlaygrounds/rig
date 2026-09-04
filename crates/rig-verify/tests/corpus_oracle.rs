@@ -10,7 +10,7 @@
 //! `Rerank` has a golden through a mock reranker on a host's bus; a
 //! `Prompted` answer is returned unvalidated; the handler table, the
 //! signature and the required row are three sets with stated inclusions;
-//! and the Bevy host replays a golden (`tests/core/bevy_bus_host.rs`).
+//! and a Bevy world replays every golden by id (`tests/world_replay.rs`).
 //!
 //! # Dimensions
 //!
@@ -190,7 +190,7 @@ fn the_header_sets_nest_as_stated() {
             );
         }
         for key in log.header.signature.keys() {
-            if key.as_str().starts_with("host/") {
+            if key.parts().owner.as_deref() == Some("host") {
                 assert!(!log.header.required.contains_key(key), "{name}: `{key}`");
             }
         }

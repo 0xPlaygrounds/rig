@@ -132,7 +132,7 @@ jobs:
       # independent wasm breaks behind an extra CI round-trip.
       fail-fast: false
       matrix:
-        package: [rig-core, rig-bus, rig-effect-log, rig-reqwest, rig-agent, rig, rig-candle, candle_wasm_chat]
+        package: [rig-core, rig-bus, rig-effect-log, rig-ecs, rig-reqwest, rig-agent, rig, rig-candle, candle_wasm_chat]
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -149,38 +149,23 @@ jobs:
         if: matrix.package == 'rig-core'
         run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
 
-  # The Bevy host fixture (tests/fixtures/bevy_bus_host) is its own
-  # workspace on the latest crates.io Bevy release and its own toolchain, so
-  # the matrix above cannot name it as a package. Its native run lives in the
-  # `test` sweep (tests/core/bevy_bus_host.rs); this job is the browser-target
-  # half of that proof: bevy_tasks' wasm pool accepts the `!Send` driver, and
-  # the whole stack must compile for wasm32-unknown-unknown.
-  check-bevy-bus-host-wasm:
-    name: stable / check bevy_bus_host fixture wasm target
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install Rust stable
-        uses: ./.github/actions/rust-setup
-        with:
-          bevy-fixture: "true"
-
-      - name: Run cargo check wasm target
-        working-directory: tests/fixtures/bevy_bus_host
-        run: |
-          unset RUSTUP_TOOLCHAIN
-          cargo check --locked --target wasm32-unknown-unknown
-
-  # The one *executed* wasm test in the tree: rig-bus's `tests/wasm.rs`,
-  # run under `wasm-bindgen-test-runner` on Node. Every other wasm job is a
-  # `cargo check`. The CLI must match the `wasm-bindgen` crate version the
-  # lock file resolves, so it is read from the lock file rather than pinned
-  # here (the classic red is a mismatch between the two).
+  # The *executed* wasm tests in the tree: rig-bus's `tests/wasm.rs` and
+  # rig-ecs's `tests/bus_wasm.rs`, run under `wasm-bindgen-test-runner` on
+  # Node. Every other wasm job is a `cargo check`. The CLI must match the
+  # `wasm-bindgen` crate version the lock file resolves, so it is read from
+  # the lock file rather than pinned here (the classic red is a mismatch
+  # between the two).
   test-rig-bus-wasm:
-    name: stable / test rig-bus wasm target
+    name: stable / test ${{ matrix.package }} wasm target
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: rig-bus
+            test: wasm
+          - package: rig-ecs
+            test: bus_wasm
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -205,10 +190,10 @@ jobs:
         with:
           tool: wasm-bindgen@${{ steps.wasm-bindgen.outputs.version }}
 
-      - name: Run the bus on wasm
+      - name: Run the wasm suite
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
-        run: cargo test --locked --package rig-bus --target wasm32-unknown-unknown --test wasm
+        run: cargo test --locked --package ${{ matrix.package }} --target wasm32-unknown-unknown --test ${{ matrix.test }}
 
   # `rig-rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
   # unconditionally, which rig's wasm tool registry cannot satisfy. Building it
@@ -369,8 +354,6 @@ jobs:
         with:
           sccache: "true"
           nextest: "true"
-          # The sweep below executes tests/core/bevy_bus_host.rs.
-          bevy-fixture: "true"
 
       # `nextest` below runs with `--features bedrock`, which does not compile
       # the pure default-feature test graph. Check the root integration tests

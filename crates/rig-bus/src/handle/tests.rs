@@ -208,10 +208,6 @@ async fn handle_descriptor_follows_a_runtime_replacement() {
         "swapped",
         "re-read, not the snapshot"
     );
-    assert!(matches!(
-        &model.bound_descriptor().family,
-        FamilyDescriptor::Completion { model, .. } if model.as_str() == "mock"
-    ));
     let response = within(model.complete(request())).await.expect("completed");
     assert_eq!(response.choice, vec![AssistantContent::text("swapped")]);
 }
