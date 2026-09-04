@@ -46,7 +46,10 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use rig_agent::agent::{ModelSelection, ModelSelectionAction};
+use rig_agent::agent::{
+    ModelSelection, ModelSelectionAction, ObservationAction, ReasoningDelta, TextDelta,
+    ToolCallDelta,
+};
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
     agent::{
@@ -98,7 +101,43 @@ pub enum Hook {
     LookupBeforeRun,
     /// `on_model_select` → `Select(fast)` on every turn after the first.
     RouteAfterFirstTurn,
+    /// `on_run_start` → `Stop`.
+    StopAtStart,
+    /// `on_model_select` → `Stop`.
+    StopAtModelSelect,
+    /// `on_completion_call` → `Stop`.
+    StopAtCompletionCall,
+    /// `on_dispatch` → `Deny(Cancelled)` for `add`.
+    CancelAddDispatch,
+    /// `on_outcome` → `Replace(Err(Cancelled))` for `add`'s result.
+    CancelAddOutcome,
+    /// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
+    CancelAnswer,
+    /// `on_model_turn_finished` → `Stop` on every turn.
+    StopAfterTurn,
+    /// `on_model_turn_finished` → `Stop` at the turn with no tool call.
+    StopAtAnswer,
+    /// `on_text_delta` → `Stop`.
+    StopOnTextDelta,
+    /// `on_tool_call_delta` → `Stop`.
+    StopOnToolCallDelta,
+    /// `on_reasoning_delta` → `Stop`.
+    StopOnReasoningDelta,
+    /// Observes `on_run_settled`; decides nothing.
+    RecordSettled,
 }
+
+pub const STOP_AT_START: &str = "stopped at run start";
+pub const STOP_AT_MODEL_SELECT: &str = "stopped at model selection";
+pub const STOP_AT_COMPLETION_CALL: &str = "stopped before the completion call";
+pub const CANCEL_ADD_DISPATCH: &str = "add is cancelled before the bus";
+pub const CANCEL_ADD_OUTCOME: &str = "add is cancelled after the bus";
+pub const CANCEL_ANSWER: &str = "the answer is cancelled";
+pub const STOP_AFTER_TURN: &str = "stopped after the model turn";
+pub const STOP_AT_ANSWER: &str = "stopped at the answer turn";
+pub const STOP_ON_TEXT_DELTA: &str = "stopped on the first text delta";
+pub const STOP_ON_TOOL_CALL_DELTA: &str = "stopped on the first tool-call delta";
+pub const STOP_ON_REASONING_DELTA: &str = "stopped on the first reasoning delta";
 
 pub const PIRATE_PREAMBLE: &str = "You are a pirate. Answer in one short sentence.";
 pub const DENY_REASON: &str = "add is disabled for this run";
@@ -126,6 +165,9 @@ pub enum Ending {
     /// does not advertise and no hook resolved it; the run fails at the
     /// completion record.
     UnknownToolCall,
+    /// `PromptError::PromptCancelled` with this reason: a hook stopped the
+    /// run. The records are those the engine made before the stop.
+    Cancelled(&'static str),
 }
 
 /// The producer's tool choice, as data.
@@ -407,6 +449,137 @@ impl AgentHook for RouteAfterFirstTurn {
     }
 }
 
+struct StopAtStart;
+impl AgentHook for StopAtStart {
+    async fn on_run_start(&self, _ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        RunStartAction::stop(STOP_AT_START)
+    }
+}
+
+struct StopAtModelSelect;
+impl AgentHook for StopAtModelSelect {
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        ModelSelectionAction::stop(STOP_AT_MODEL_SELECT)
+    }
+}
+
+struct StopAtCompletionCall;
+impl AgentHook for StopAtCompletionCall {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        CompletionCallAction::stop(STOP_AT_COMPLETION_CALL)
+    }
+}
+
+struct CancelAddDispatch;
+impl AgentHook for CancelAddDispatch {
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name() == Some("add") {
+            DispatchAction::stop(CANCEL_ADD_DISPATCH)
+        } else {
+            DispatchAction::proceed()
+        }
+    }
+}
+
+struct CancelAddOutcome;
+impl AgentHook for CancelAddOutcome {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some("add") && event.tool_result().is_some() {
+            OutcomeAction::stop(CANCEL_ADD_OUTCOME)
+        } else {
+            OutcomeAction::proceed()
+        }
+    }
+}
+
+struct CancelAnswer;
+impl AgentHook for CancelAnswer {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        match event.completion() {
+            Some(response)
+                if !response
+                    .choice
+                    .iter()
+                    .any(|c| matches!(c, AssistantContent::ToolCall(_))) =>
+            {
+                OutcomeAction::stop(CANCEL_ANSWER)
+            }
+            _ => OutcomeAction::proceed(),
+        }
+    }
+}
+
+struct StopAfterTurn;
+impl AgentHook for StopAfterTurn {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelTurnFinished<'_>,
+    ) -> ModelTurnAction {
+        ModelTurnAction::stop(STOP_AFTER_TURN)
+    }
+}
+
+struct StopAtAnswer;
+impl AgentHook for StopAtAnswer {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        event: ModelTurnFinished<'_>,
+    ) -> ModelTurnAction {
+        if event
+            .content
+            .iter()
+            .any(|c| matches!(c, AssistantContent::ToolCall(_)))
+        {
+            ModelTurnAction::continue_run()
+        } else {
+            ModelTurnAction::stop(STOP_AT_ANSWER)
+        }
+    }
+}
+
+struct StopOnTextDelta;
+impl AgentHook for StopOnTextDelta {
+    async fn on_text_delta(&self, _ctx: &HookContext, _event: TextDelta<'_>) -> ObservationAction {
+        ObservationAction::stop(STOP_ON_TEXT_DELTA)
+    }
+}
+
+struct StopOnToolCallDelta;
+impl AgentHook for StopOnToolCallDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        ObservationAction::stop(STOP_ON_TOOL_CALL_DELTA)
+    }
+}
+
+struct StopOnReasoningDelta;
+impl AgentHook for StopOnReasoningDelta {
+    async fn on_reasoning_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ReasoningDelta<'_>,
+    ) -> ObservationAction {
+        ObservationAction::stop(STOP_ON_REASONING_DELTA)
+    }
+}
+
+/// The producer's settled observer, by name; observes nothing here.
+struct RecordSettled;
+impl AgentHook for RecordSettled {}
+
 fn answer_text(content: &[AssistantContent]) -> String {
     content
         .iter()
@@ -435,6 +608,18 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::DemandDone => builder.add_hook(DemandDone),
             Hook::LookupBeforeRun => builder.add_hook(LookupBeforeRun),
             Hook::RouteAfterFirstTurn => builder.add_hook(RouteAfterFirstTurn),
+            Hook::StopAtStart => builder.add_hook(StopAtStart),
+            Hook::StopAtModelSelect => builder.add_hook(StopAtModelSelect),
+            Hook::StopAtCompletionCall => builder.add_hook(StopAtCompletionCall),
+            Hook::CancelAddDispatch => builder.add_hook(CancelAddDispatch),
+            Hook::CancelAddOutcome => builder.add_hook(CancelAddOutcome),
+            Hook::CancelAnswer => builder.add_hook(CancelAnswer),
+            Hook::StopAfterTurn => builder.add_hook(StopAfterTurn),
+            Hook::StopAtAnswer => builder.add_hook(StopAtAnswer),
+            Hook::StopOnTextDelta => builder.add_hook(StopOnTextDelta),
+            Hook::StopOnToolCallDelta => builder.add_hook(StopOnToolCallDelta),
+            Hook::StopOnReasoningDelta => builder.add_hook(StopOnReasoningDelta),
+            Hook::RecordSettled => builder.add_hook(RecordSettled),
         };
     }
     builder
@@ -730,6 +915,15 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 {
                     failed_as_expected = true;
                 }
+                Err(StreamingError::Prompt(error))
+                    if matches!(
+                        (&*error, program.ending),
+                        (PromptError::PromptCancelled { reason, .. }, Ending::Cancelled(expected))
+                            if reason == expected
+                    ) =>
+                {
+                    failed_as_expected = true;
+                }
                 Err(StreamingError::Report(report))
                     if program.ending == Ending::ProviderError
                         && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
@@ -782,6 +976,11 @@ pub async fn bus_engine_reproduces(program: &Program) {
             {
                 None
             }
+            (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+                if reason == expected =>
+            {
+                None
+            }
             (Ok(response), ending) => {
                 panic!("the run ends in {ending:?}, not an answer: {response:?}")
             }
@@ -831,20 +1030,24 @@ pub async fn call_tools(
     tools: &[(String, ToolHandle)],
     concurrency: usize,
     hooks: &[Hook],
-) -> Vec<UserContent> {
+) -> Result<Vec<UserContent>, &'static str> {
     let dispatch = |call: PendingToolCall| async move {
         if let Some(preresolved) = call.preresolved_result {
-            return preresolved;
+            return Ok(preresolved);
         }
         let name = call.tool_call.function.name.clone();
         let is_add = name == "add";
+        if is_add && hooks.contains(&Hook::CancelAddDispatch) {
+            // `Deny(Cancelled)`: the call never reaches the bus; the run stops.
+            return Err(CANCEL_ADD_DISPATCH);
+        }
         if is_add && hooks.contains(&Hook::DenyAdd) {
-            return tool_result_output(
+            return Ok(tool_result_output(
                 call.tool_call.id.clone(),
                 call.tool_call.provider.clone(),
                 name,
                 ToolOutput::text(DENY_REASON),
-            );
+            ));
         }
         let (_, handle) = tools
             .iter()
@@ -860,23 +1063,30 @@ pub async fn call_tools(
             .expect("the replayer answered the recorded call");
         // The model-visible output of the result, failed or not: what the
         // engine shapes into the transcript.
+        if is_add && hooks.contains(&Hook::CancelAddOutcome) {
+            // `Replace(Err(Cancelled))`: the tool ran and is recorded; the
+            // run stops.
+            return Err(CANCEL_ADD_OUTCOME);
+        }
         let mut output = answer.result.output().clone();
         if is_add && hooks.contains(&Hook::ReplaceAddResult) {
             output = ToolOutput::text(REPLACED_RESULT);
         }
         // The engine's own shaping of a result (`rig_core::transcript`).
-        tool_result_output(
+        Ok(tool_result_output(
             call.tool_call.id.clone(),
             call.tool_call.provider.clone(),
             name,
             output,
-        )
+        ))
     };
     futures::stream::iter(calls)
         .map(dispatch)
         .buffered(concurrency.max(1))
-        .collect()
+        .collect::<Vec<_>>()
         .await
+        .into_iter()
+        .collect()
 }
 
 /// The run spec the producer's builder and runner amount to.
@@ -893,6 +1103,18 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::DemandDone => "DemandDone",
         Hook::LookupBeforeRun => "LookupBeforeRun",
         Hook::RouteAfterFirstTurn => "RouteAfterFirstTurn",
+        Hook::StopAtStart => "StopAtStart",
+        Hook::StopAtModelSelect => "StopAtModelSelect",
+        Hook::StopAtCompletionCall => "StopAtCompletionCall",
+        Hook::CancelAddDispatch => "CancelAddDispatch",
+        Hook::CancelAddOutcome => "CancelAddOutcome",
+        Hook::CancelAnswer => "CancelAnswer",
+        Hook::StopAfterTurn => "StopAfterTurn",
+        Hook::StopAtAnswer => "StopAtAnswer",
+        Hook::StopOnTextDelta => "StopOnTextDelta",
+        Hook::StopOnToolCallDelta => "StopOnToolCallDelta",
+        Hook::StopOnReasoningDelta => "StopOnReasoningDelta",
+        Hook::RecordSettled => "RecordSettled",
     }
 }
 
@@ -1047,7 +1269,24 @@ pub async fn hand_driver_reproduces(program: &Program) {
     // The routing hook selects the route once a model has been asked
     // (`previous_model` is set): the first call goes to the default.
     let mut asked_before = false;
+    // The hook that stopped the run, with its reason: the same decision at
+    // the same point the engine makes it.
+    let mut cancelled: Option<&'static str> = None;
+    // A stop before any dispatch: at run start, at model selection, or
+    // before the completion call.
+    let stop_before_any = [
+        (Hook::StopAtStart, STOP_AT_START),
+        (Hook::StopAtModelSelect, STOP_AT_MODEL_SELECT),
+        (Hook::StopAtCompletionCall, STOP_AT_COMPLETION_CALL),
+    ]
+    .into_iter()
+    .find(|(hook, _)| program.hooks.contains(hook))
+    .map(|(_, reason)| reason);
     let response = loop {
+        if let Some(reason) = stop_before_any {
+            cancelled = Some(reason);
+            break None;
+        }
         let step = match (run.next_step(), program.ending) {
             (Ok(step), _) => step,
             (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => break None,
@@ -1124,6 +1363,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
                     let mut stream = model.stream(request);
                     let mut assembler = StreamedTurnAssembler::new(executable, allowed);
                     let mut provider_failed = false;
+                    let mut delta_stop: Option<&'static str> = None;
                     while let Some(event) = within(stream.next()).await {
                         let event = match event {
                             Ok(event) => event,
@@ -1145,7 +1385,44 @@ pub async fn hand_driver_reproduces(program: &Program) {
                                 panic!("the replayer re-emitted the recorded stream: {report:?}")
                             }
                         };
+                        // The observe-only hooks' stops, at the delta they
+                        // fire on: the engine leaves the stream there.
+                        if let rig_core::streaming::StreamEvent::BlockDelta { delta, .. } = &event {
+                            let stop = match delta {
+                                rig_core::streaming::Delta::Text { .. }
+                                    if program.hooks.contains(&Hook::StopOnTextDelta) =>
+                                {
+                                    Some(STOP_ON_TEXT_DELTA)
+                                }
+                                rig_core::streaming::Delta::ToolName { .. }
+                                | rig_core::streaming::Delta::ToolArguments { .. }
+                                    if program.hooks.contains(&Hook::StopOnToolCallDelta) =>
+                                {
+                                    Some(STOP_ON_TOOL_CALL_DELTA)
+                                }
+                                rig_core::streaming::Delta::Reasoning { .. }
+                                    if program.hooks.contains(&Hook::StopOnReasoningDelta) =>
+                                {
+                                    Some(STOP_ON_REASONING_DELTA)
+                                }
+                                _ => None,
+                            };
+                            if stop.is_some() {
+                                delta_stop = stop;
+                                break;
+                            }
+                        }
                         assembler.ingest(&event).expect("a well-formed stream");
+                    }
+                    if let Some(reason) = delta_stop {
+                        // As the engine: the model's stream is dropped at
+                        // the delta, so the dispatch is recorded as a cancel.
+                        drop(stream);
+                        for _ in 0..64 {
+                            tokio::task::yield_now().await;
+                        }
+                        cancelled = Some(reason);
+                        break None;
                     }
                     if program.cancel_after_first_delta {
                         drop(stream);
@@ -1215,6 +1492,20 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 let has_tool_calls = choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+                // The outcome hook's cancel on a text answer, then the
+                // model-turn hooks' stops, as the engine settles a turn.
+                if program.hooks.contains(&Hook::CancelAnswer) && !has_tool_calls {
+                    cancelled = Some(CANCEL_ANSWER);
+                    break None;
+                }
+                if program.hooks.contains(&Hook::StopAfterTurn) {
+                    cancelled = Some(STOP_AFTER_TURN);
+                    break None;
+                }
+                if program.hooks.contains(&Hook::StopAtAnswer) && !has_tool_calls {
+                    cancelled = Some(STOP_AT_ANSWER);
+                    break None;
+                }
                 if program.hooks.contains(&Hook::ReplaceAnswer) && !has_tool_calls {
                     run.replace_accepted_turn_choice(vec![AssistantContent::text(REPLACED_ANSWER)])
                         .expect("a text turn is replaceable");
@@ -1228,18 +1519,34 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 }
             }
             AgentRunStep::CallTools { calls } => {
-                let results = call_tools(
+                let results = match call_tools(
                     calls,
                     &tools,
                     program.tool_concurrency.unwrap_or(1),
                     program.hooks,
                 )
-                .await;
+                .await
+                {
+                    Ok(results) => results,
+                    Err(reason) => {
+                        cancelled = Some(reason);
+                        break None;
+                    }
+                };
                 run.tool_results(results).expect("results for every call");
             }
             AgentRunStep::Done(response) => break Some(response),
         }
     };
+    if let Ending::Cancelled(expected) = program.ending {
+        assert_eq!(
+            cancelled,
+            Some(expected),
+            "the driver stopped where the hook does"
+        );
+    } else {
+        assert_eq!(cancelled, None, "no hook stops this program");
+    }
     let Some(response) = response else {
         drop((model, route, tools, memory, context));
         let log = replay.log.clone();
@@ -1339,8 +1646,9 @@ pub async fn resume_reproduces(program: &Program) {
                 run.model_response(turn).expect("a model turn");
             }
             AgentRunStep::CallTools { calls } => {
-                let results =
-                    call_tools(calls, &tools, program.tool_concurrency.unwrap_or(1), &[]).await;
+                let results = call_tools(calls, &tools, program.tool_concurrency.unwrap_or(1), &[])
+                    .await
+                    .expect("no hook stops a resume row");
                 run.tool_results(results).expect("results for every call");
                 break;
             }

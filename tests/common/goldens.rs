@@ -542,3 +542,219 @@ pub(crate) fn retrievable_toolset() -> rig::tool::ToolSet {
         .expect("the tool context serializes");
     toolset
 }
+
+// ---------------------------------------------------------------------------
+// The endings matrix's hooks (Matrix F): every `Stop` in the hook surface,
+// each a stateless type deciding from its event alone, plus an
+// observe-only hook that records what `on_run_settled` saw (producer-side
+// assertion; the header names it like any other hook).
+
+#[allow(dead_code)]
+pub(crate) const STOP_AT_START: &str = "stopped at run start";
+#[allow(dead_code)]
+pub(crate) const STOP_AT_MODEL_SELECT: &str = "stopped at model selection";
+#[allow(dead_code)]
+pub(crate) const STOP_AT_COMPLETION_CALL: &str = "stopped before the completion call";
+#[allow(dead_code)]
+pub(crate) const CANCEL_ADD_DISPATCH: &str = "add is cancelled before the bus";
+#[allow(dead_code)]
+pub(crate) const CANCEL_ADD_OUTCOME: &str = "add is cancelled after the bus";
+#[allow(dead_code)]
+pub(crate) const CANCEL_ANSWER: &str = "the answer is cancelled";
+#[allow(dead_code)]
+pub(crate) const STOP_AFTER_TURN: &str = "stopped after the model turn";
+#[allow(dead_code)]
+pub(crate) const STOP_AT_ANSWER: &str = "stopped at the answer turn";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TEXT_DELTA: &str = "stopped on the first text delta";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TOOL_CALL_DELTA: &str = "stopped on the first tool-call delta";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_REASONING_DELTA: &str = "stopped on the first reasoning delta";
+
+#[allow(dead_code)]
+pub(crate) struct StopAtStart;
+impl rig::agent::AgentHook for StopAtStart {
+    async fn on_run_start(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        rig::agent::RunStartAction::stop(STOP_AT_START)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopAtModelSelect;
+impl rig::agent::AgentHook for StopAtModelSelect {
+    fn on_model_select(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ModelSelection<'_>,
+    ) -> rig::agent::ModelSelectionAction {
+        rig::agent::ModelSelectionAction::stop(STOP_AT_MODEL_SELECT)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopAtCompletionCall;
+impl rig::agent::AgentHook for StopAtCompletionCall {
+    async fn on_completion_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionCallAction {
+        rig::agent::CompletionCallAction::stop(STOP_AT_COMPLETION_CALL)
+    }
+}
+
+/// `on_dispatch` → `Deny(Cancelled)` for `add`: the run stops before the
+/// tool reaches the bus.
+#[allow(dead_code)]
+pub(crate) struct CancelAddDispatch;
+impl rig::agent::AgentHook for CancelAddDispatch {
+    async fn on_dispatch(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::DispatchEvent<'_>,
+    ) -> rig::agent::DispatchAction {
+        if event.tool_name() == Some("add") {
+            rig::agent::DispatchAction::stop(CANCEL_ADD_DISPATCH)
+        } else {
+            rig::agent::DispatchAction::proceed()
+        }
+    }
+}
+
+/// `on_outcome` → `Replace(Err(Cancelled))` for `add`'s result: the tool
+/// ran and is recorded; the run stops after.
+#[allow(dead_code)]
+pub(crate) struct CancelAddOutcome;
+impl rig::agent::AgentHook for CancelAddOutcome {
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        if event.tool_name() == Some("add") && event.tool_result().is_some() {
+            rig::agent::OutcomeAction::stop(CANCEL_ADD_OUTCOME)
+        } else {
+            rig::agent::OutcomeAction::proceed()
+        }
+    }
+}
+
+/// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
+#[allow(dead_code)]
+pub(crate) struct CancelAnswer;
+impl rig::agent::AgentHook for CancelAnswer {
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        match event.completion() {
+            Some(response)
+                if !response
+                    .choice
+                    .iter()
+                    .any(|c| matches!(c, rig::message::AssistantContent::ToolCall(_))) =>
+            {
+                rig::agent::OutcomeAction::stop(CANCEL_ANSWER)
+            }
+            _ => rig::agent::OutcomeAction::proceed(),
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopAfterTurn;
+impl rig::agent::AgentHook for StopAfterTurn {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        rig::agent::ModelTurnAction::stop(STOP_AFTER_TURN)
+    }
+}
+
+/// Stops at the turn that carries no tool call — the answer turn of a
+/// tool program, so the tool turn's records precede the stop.
+#[allow(dead_code)]
+pub(crate) struct StopAtAnswer;
+impl rig::agent::AgentHook for StopAtAnswer {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        if event
+            .content
+            .iter()
+            .any(|c| matches!(c, rig::message::AssistantContent::ToolCall(_)))
+        {
+            rig::agent::ModelTurnAction::continue_run()
+        } else {
+            rig::agent::ModelTurnAction::stop(STOP_AT_ANSWER)
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopOnTextDelta;
+impl rig::agent::AgentHook for StopOnTextDelta {
+    async fn on_text_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::TextDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        rig::agent::ObservationAction::stop(STOP_ON_TEXT_DELTA)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopOnToolCallDelta;
+impl rig::agent::AgentHook for StopOnToolCallDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ToolCallDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        rig::agent::ObservationAction::stop(STOP_ON_TOOL_CALL_DELTA)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopOnReasoningDelta;
+impl rig::agent::AgentHook for StopOnReasoningDelta {
+    async fn on_reasoning_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ReasoningDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        rig::agent::ObservationAction::stop(STOP_ON_REASONING_DELTA)
+    }
+}
+
+/// Observe-only: what `on_run_settled` saw, for the producer to assert.
+/// Not a record, and its state is not identity (the header names the
+/// type); the replay's hook of the same name observes nothing.
+#[derive(Clone, Default)]
+#[allow(dead_code)]
+pub(crate) struct RecordSettled(pub(crate) std::sync::Arc<std::sync::Mutex<Option<String>>>);
+impl rig::agent::AgentHook for RecordSettled {
+    async fn on_run_settled(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::RunSettled<'_>,
+    ) {
+        let seen = match event.outcome {
+            rig::agent::SettledOutcome::Response(response) => {
+                format!("response:{}", response.output)
+            }
+            rig::agent::SettledOutcome::Error(reason) => format!("error:{reason}"),
+        };
+        *self.0.lock().expect("settled") = Some(seen);
+    }
+}
