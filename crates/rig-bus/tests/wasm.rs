@@ -21,7 +21,8 @@ use std::{
     },
 };
 
-use rig_bus::{Bus, Dispatcher, EffectStream, Pending, ServingPolicy};
+use rig_bus::{Bus, Dispatcher, EffectStream, Pending};
+use rig_core::serve::ServingPolicy;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorKind,
