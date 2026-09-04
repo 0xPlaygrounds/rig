@@ -34,7 +34,7 @@ pub use log::{Checkpoint, EFFECT_LOG_FORMAT, EffectLog, LogHeader, stable_hash};
 pub use recorder::EffectLogRecorder;
 pub use replay::{EffectLogReplayer, RequestCheck};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "bus"))]
 mod bus_tests;
 #[cfg(test)]
 mod tests;
