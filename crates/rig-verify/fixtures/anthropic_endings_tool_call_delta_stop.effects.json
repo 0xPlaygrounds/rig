@@ -1,6 +1,5 @@
 {
   "header": {
-    "format": 6,
     "run_spec": 1956647414268051610,
     "handlers": [
       {
@@ -56,6 +55,7 @@
   },
   "records": [
     {
+      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {

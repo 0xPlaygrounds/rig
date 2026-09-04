@@ -1,6 +1,5 @@
 {
   "header": {
-    "format": 6,
     "run_spec": 6972143684084239244,
     "handlers": [
       {
@@ -64,6 +63,7 @@
   },
   "records": [
     {
+      "tool_output": null,
       "id": 1,
       "key": "golden/model:default",
       "kind": {
@@ -252,6 +252,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 4,
       "key": "host/note",
       "kind": {
@@ -270,6 +271,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 5,
       "key": "host/note",
       "kind": {
@@ -288,6 +290,7 @@
       }
     },
     {
+      "tool_output": null,
       "id": 6,
       "key": "golden/model:default",
       "kind": {

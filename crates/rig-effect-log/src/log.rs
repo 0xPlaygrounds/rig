@@ -7,18 +7,14 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
-/// The log format this crate writes and reads. A log with another format
-/// does not load: there is no tolerant decoder.
-/// Format 6 records explicitly published tool output. Format 5 cannot tell
-/// absence of output from output lost by its recorder and is not replay-safe.
-pub const EFFECT_LOG_FORMAT: u32 = 6;
+/// The checkpoint envelope format this crate writes and reads. This versions
+/// [`Checkpoint`], not [`LogHeader`]; logs have no global format number.
+pub const CHECKPOINT_FORMAT: u32 = 6;
 
 /// What a log says about the run it records, so a replay can refuse a log
 /// the program has outgrown before the first dispatch diverges.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LogHeader {
-    /// The log format version ([`EFFECT_LOG_FORMAT`]).
-    pub format: u32,
     /// A hash of the run spec the run was recorded under, when an agent
     /// recorded it (`None` for a bare-bus record). An agent that replays
     /// compares it with its own.
@@ -72,7 +68,6 @@ pub struct ProgramIdentity {
 impl Default for LogHeader {
     fn default() -> Self {
         Self {
-            format: EFFECT_LOG_FORMAT,
             run_spec: None,
             handlers: Vec::new(),
             signature: EffectRow::new(),
@@ -124,7 +119,7 @@ impl EffectLog {
     /// the end is a checkpoint with an empty tail.
     pub fn checkpoint<S>(&self, at: usize, state: S) -> (Checkpoint<S>, Self) {
         let checkpoint = Checkpoint {
-            format: EFFECT_LOG_FORMAT,
+            format: CHECKPOINT_FORMAT,
             at,
             next: self.records.get(at).map(|record| record.id),
             state,
@@ -135,24 +130,14 @@ impl EffectLog {
     /// The continuation `checkpoint` names, over `tail`: refused by name
     /// when the checkpoint is of another format, when the tail's first
     /// record is not the one the checkpoint expects next (ids are total, so
-    /// a tail begins exactly at the checkpoint's next id), or when the
-    /// tail's own header is of another format.
+    /// a tail begins exactly at the checkpoint's next id).
     pub fn from_checkpoint<S>(checkpoint: &Checkpoint<S>, tail: Self) -> Result<Self, ErrorReport> {
-        if checkpoint.format != EFFECT_LOG_FORMAT {
+        if checkpoint.format != CHECKPOINT_FORMAT {
             return Err(ErrorReport::new(
                 ErrorKind::Internal,
                 format!(
                     "resume refused: the checkpoint is format {}, this rig reads format {}",
-                    checkpoint.format, EFFECT_LOG_FORMAT
-                ),
-            ));
-        }
-        if tail.header.format != EFFECT_LOG_FORMAT {
-            return Err(ErrorReport::new(
-                ErrorKind::Internal,
-                format!(
-                    "resume refused: the tail is format {}, this rig reads format {}",
-                    tail.header.format, EFFECT_LOG_FORMAT
+                    checkpoint.format, CHECKPOINT_FORMAT
                 ),
             ));
         }
@@ -195,7 +180,7 @@ fn unreachable_refusal() -> String {
 /// serialized run is a `serde_json::Value`, until it retires.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Checkpoint<S> {
-    /// The log format the checkpoint was cut under ([`EFFECT_LOG_FORMAT`]).
+    /// The checkpoint envelope format ([`CHECKPOINT_FORMAT`]).
     pub format: u32,
     /// The position in the log: `at` records were performed before it.
     pub at: usize,

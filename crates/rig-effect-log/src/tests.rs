@@ -69,15 +69,34 @@ fn effect_record_and_log_round_trip() {
 }
 
 #[test]
-fn format_five_cannot_claim_published_output_completeness() {
-    let mut log = EffectLog::from_records(vec![]);
-    log.header.format = 5;
-    let error = super::EffectLogReplayer::check_header(&log).expect_err("old recorder lost output");
-    assert!(error.message.contains("format 5"));
-    assert!(super::EffectLogReplayer::for_log(&log).is_err());
-    assert!(super::EffectLogReplayer::for_log_by_id(&log).is_err());
-    assert!(super::EffectLogReplayer::for_key(&log, &HandlerKey::from("tool")).is_err());
-    assert!(super::EffectLogReplayer::for_key_by_id(&log, &HandlerKey::from("tool")).is_err());
+fn headers_have_no_format_and_unknown_legacy_versions_do_not_gate_replay() {
+    let log = two_records();
+    let mut json = serde_json::to_value(&log).expect("serializes");
+    assert!(json["header"].get("format").is_none());
+    // Legacy headers may still carry the obsolete field; its value is ignored.
+    json["header"]["format"] = serde_json::json!(999);
+    let restored: EffectLog = serde_json::from_value(json).expect("structurally valid");
+    super::EffectLogReplayer::check_header(&restored).expect("no version gate");
+    super::EffectLogReplayer::for_log(&restored).expect("registers");
+    assert!(
+        serde_json::to_value(restored).unwrap()["header"]
+            .get("format")
+            .is_none()
+    );
+}
+
+#[test]
+fn missing_published_output_is_unknown_not_explicitly_absent() {
+    let mut json = serde_json::to_value(two_records()).unwrap();
+    assert!(json["records"][0].get("tool_output").is_some());
+    assert!(json["records"][0]["tool_output"].is_null());
+    serde_json::from_value::<EffectLog>(json.clone()).expect("explicit absence is valid");
+    json["records"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("tool_output");
+    let error = serde_json::from_value::<EffectLog>(json).expect_err("old recorder omitted output");
+    assert!(error.to_string().contains("tool_output"));
 }
 
 /// The recorder finds a slot from the back: the newest slot with an id is
@@ -195,7 +214,7 @@ fn two_records() -> EffectLog {
 fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     let log = two_records();
     let (checkpoint, tail) = log.checkpoint(1, serde_json::json!({"turn": 1}));
-    assert_eq!(checkpoint.format, super::EFFECT_LOG_FORMAT);
+    assert_eq!(checkpoint.format, super::CHECKPOINT_FORMAT);
     assert_eq!(checkpoint.at, 1);
     assert_eq!(checkpoint.next, Some(EffectId::from_raw(2)));
     assert_eq!(checkpoint.state, serde_json::json!({"turn": 1}));
@@ -243,20 +262,13 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
         refused.message,
         "resume refused: the checkpoint at 2 ends the log, the tail begins at effect:2"
     );
-    // Another format, on either side.
+    // The checkpoint envelope retains its own version check.
     let mut old = checkpoint.clone();
     old.format = 3;
     let refused = EffectLog::from_checkpoint(&old, tail.clone()).expect_err("format 3");
     assert_eq!(
         refused.message,
         "resume refused: the checkpoint is format 3, this rig reads format 6"
-    );
-    let mut old_tail = tail;
-    old_tail.header.format = 3;
-    let refused = EffectLog::from_checkpoint(&checkpoint, old_tail).expect_err("format 3");
-    assert_eq!(
-        refused.message,
-        "resume refused: the tail is format 3, this rig reads format 6"
     );
 }
 

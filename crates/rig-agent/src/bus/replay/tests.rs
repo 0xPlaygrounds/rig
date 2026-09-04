@@ -16,7 +16,7 @@ use serde_json::json;
 
 use crate::bus::{Bus, BusDriver};
 
-use rig_effect_log::{EFFECT_LOG_FORMAT, EffectLog, EffectLogRecorder};
+use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 use rig_core::serve::{
     OutcomeSink, Serve,
@@ -573,7 +573,6 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
         .await
         .expect("served");
     let log = recorder.take();
-    assert_eq!(log.header.format, EFFECT_LOG_FORMAT);
     assert_eq!(log.header.run_spec, None, "a bare-bus record names no spec");
     assert_eq!(
         log.header
@@ -591,22 +590,10 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
     );
     let json = serde_json::to_value(&log).expect("serializes");
     assert!(json.get("header").is_some() && json.get("records").is_some());
+    assert!(json["header"].get("format").is_none());
     let back: EffectLog = serde_json::from_value(json).expect("restores");
     assert_eq!(back.header, log.header);
     assert_eq!(back.len(), 1);
-
-    // A future format is refused with the version in the message.
-    let mut future = back.clone();
-    future.header.format = EFFECT_LOG_FORMAT + 1;
-    let (_dispatcher, _registrar, mut driver) = Bus::channel();
-    let report = super::register_all(&future, &mut driver).expect_err("refused");
-    assert!(
-        report
-            .message
-            .contains(&format!("format {}", EFFECT_LOG_FORMAT + 1)),
-        "{}",
-        report.message
-    );
 
     // A signature that names a family the records do not answer is refused
     // at registration, not at the first dispatch.

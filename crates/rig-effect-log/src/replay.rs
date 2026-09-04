@@ -16,7 +16,7 @@ use rig_core::{
 
 use rig_core::serve::{OutcomeSink, Serve};
 
-use super::{EFFECT_LOG_FORMAT, EffectLog, stable_hash};
+use super::{EffectLog, stable_hash};
 
 /// How a replayer compares an incoming request with the record's: by the
 /// whole payload as data (the divergence names the first differing JSON
@@ -207,19 +207,10 @@ impl EffectLogReplayer {
         keys
     }
 
-    /// The header checks a replay makes before any dispatch: the format is
-    /// this crate's, and every key the signature names is answered by
-    /// records of that family.
+    /// Check that each recorded key named by the signature has records of
+    /// that family. Logs have no global version gate: decoding validates
+    /// required data fields, while replay checks identity and requests.
     pub fn check_header(log: &EffectLog) -> Result<(), ErrorReport> {
-        if log.header.format != EFFECT_LOG_FORMAT {
-            return Err(ErrorReport::new(
-                ErrorKind::Internal,
-                format!(
-                    "replay refused: the log is format {}, this rig reads format {}",
-                    log.header.format, EFFECT_LOG_FORMAT
-                ),
-            ));
-        }
         for (key, family) in &log.header.signature {
             let recorded = log
                 .records
