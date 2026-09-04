@@ -230,7 +230,7 @@ pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
 pub use driver::BusDriver;
 pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
-    Retrieval, SinkDispatch, ToolCall, ToolHandle, Typed, wrap_stream,
+    Retrieval, SinkDispatch, ToolAnswer, ToolCall, ToolHandle, Typed, wrap_stream,
 };
 pub use registrar::Registrar;
 use rig_core::serve::ServingPolicy;

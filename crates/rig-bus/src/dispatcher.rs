@@ -25,6 +25,7 @@ use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::StreamEvent,
+    tool::{PublishedContext, ToolContext},
 };
 
 use rig_core::serve::OutcomeSink;
@@ -615,6 +616,11 @@ pub(super) struct Command {
     /// The scope of the program that made the dispatch, if its dispatcher
     /// was scoped ([`Dispatcher::scoped`]).
     pub(super) scope: Option<Arc<str>>,
+    /// The context a tool call runs with, carried beside the effect (never
+    /// in it) to the handler's sink ([`Dispatcher::dispatch_tool_with_id`]).
+    pub(super) context: Option<ToolContext>,
+    /// Where the tool's published values come back, beside the sink.
+    pub(super) published: Option<Arc<PublishedContext>>,
     pub(super) reply: Reply,
     /// The tracing span current at dispatch: the handler runs inside it,
     /// so a provider's telemetry parents under the caller's span exactly
@@ -792,8 +798,33 @@ impl Dispatcher {
     /// [`Dispatcher::dispatch`] under an id minted earlier with
     /// [`Dispatcher::mint_id`].
     pub fn dispatch_with_id(&self, id: EffectId, key: &HandlerKey, kind: EffectKind) -> Pending {
+        self.dispatch_in(id, key, kind, None)
+    }
+
+    /// A tool call under `context`: the context travels beside the effect
+    /// to the handler's sink (never on the wire), and what the tool
+    /// publishes comes back through [`Pending::published_context`] once
+    /// the dispatch resolved.
+    pub fn dispatch_tool_with_id(
+        &self,
+        id: EffectId,
+        key: &HandlerKey,
+        kind: EffectKind,
+        context: ToolContext,
+    ) -> Pending {
+        self.dispatch_in(id, key, kind, Some(context))
+    }
+
+    fn dispatch_in(
+        &self,
+        id: EffectId,
+        key: &HandlerKey,
+        kind: EffectKind,
+        context: Option<ToolContext>,
+    ) -> Pending {
         let (reply, receiver) = oneshot::channel();
         let (cancel_guard, cancel) = oneshot::channel();
+        let published = context.as_ref().map(|_| PublishedContext::new());
         Pending {
             id,
             parent: self.parent,
@@ -804,6 +835,8 @@ impl Dispatcher {
                     kind,
                     parent: self.parent,
                     scope: self.scope.clone(),
+                    context,
+                    published: published.clone(),
                     reply: Reply::Unary(reply),
                     span: tracing::Span::current(),
                     cancel,
@@ -813,6 +846,7 @@ impl Dispatcher {
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
             _cancel_guard: cancel_guard,
+            published,
         }
     }
 
@@ -831,6 +865,7 @@ impl Dispatcher {
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
             _cancel_guard: cancel_guard,
+            published: None,
         }
     }
 
@@ -878,6 +913,8 @@ impl Dispatcher {
                     kind,
                     parent: self.parent,
                     scope: self.scope.clone(),
+                    context: None,
+                    published: None,
                     reply: Reply::Stream(events),
                     span: tracing::Span::current(),
                     cancel,
@@ -1003,9 +1040,20 @@ pub struct Pending {
     parked: Arc<AtomicWaker>,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: oneshot::Sender<()>,
+    /// Where a tool call's published context comes back
+    /// ([`Dispatcher::dispatch_tool_with_id`]); `None` for any other
+    /// dispatch.
+    published: Option<Arc<PublishedContext>>,
 }
 
 impl Pending {
+    /// Where the tool's published context lands once this dispatch resolved
+    /// (clone it before awaiting the dispatch): `Some` for a
+    /// [`Dispatcher::dispatch_tool_with_id`], `None` otherwise.
+    pub fn published_context(&self) -> Option<Arc<PublishedContext>> {
+        self.published.clone()
+    }
+
     /// The dispatch this one was made from: `Some` when a handler dispatched
     /// it through its sink's dispatcher, `None` for a consumer's own.
     pub const fn parent(&self) -> Option<EffectId> {
@@ -1238,8 +1286,8 @@ const _: () = {
         "Dispatcher budget: 48 bytes (measured 48 natively: the shared half, the stream capacity, the parent, the scope)"
     );
     assert!(
-        size_of::<Pending>() <= 72,
-        "Pending budget: 72 bytes (measured 72 natively: one parked-sender slot, one parent)"
+        size_of::<Pending>() <= 80,
+        "Pending budget: 80 bytes (measured 80 natively: one parked-sender slot, one parent, the published-context slot of a tool call)"
     );
     assert!(
         size_of::<EffectStream>() <= 168,

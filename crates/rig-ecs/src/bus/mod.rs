@@ -73,8 +73,10 @@
 //! No agent, no loop, no memory semantics, no hook trait, no policy
 //! vocabulary: those are the crate's later modules, and nothing here may
 //! anticipate them. A handler served as a task cannot reach the world; a
-//! handler that needs the world is a [`WorldHandler`]. Streaming answers
-//! from a system are not offered yet (a system answers unary effects).
+//! handler that needs the world is a [`WorldHandler`], or a key bound open
+//! ([`Handlers::register_open`]) that a system answers by inserting the
+//! outcome, whatever the family. Streaming answers from a system are not
+//! offered (a system answers unary effects).
 
 pub mod collect;
 pub mod dispatch;
@@ -82,16 +84,19 @@ pub mod effect;
 pub mod handlers;
 pub mod plugin;
 pub mod record;
+#[cfg(feature = "reflect")]
+pub mod reflect;
 pub mod scene;
 
 #[cfg(feature = "replay")]
 pub mod replay;
 
-pub use collect::{Landed, collect_streams, collect_tasks, settle};
-pub use dispatch::{Candidate, dispatch, handler_unavailable, reentrant};
+pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
+pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
-    Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Reserved,
-    Scope, Seq, SeqCounter, Serving, Streamed, Streaming, Typed, WorldEffect,
+    Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
+    Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs, ToolOutputs, Typed,
+    WorldEffect,
 };
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
@@ -99,7 +104,9 @@ pub use handlers::{
 pub use plugin::{
     BusPlugin, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, run_to_quiescence,
 };
-pub use record::{Recording, record_bound, record_cancelled};
+pub use record::{
+    Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
+};
 pub use scene::{Scene, SceneEffect};
 
 #[cfg(feature = "replay")]

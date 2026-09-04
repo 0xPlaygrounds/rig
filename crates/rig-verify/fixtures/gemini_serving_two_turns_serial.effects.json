@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 4,
+    "format": 5,
     "run_spec": 13512054446980575785,
     "handlers": [
       {
@@ -216,8 +216,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "add",
-        "args": "{\"x\":20,\"y\":5}",
-        "context": {}
+        "args": "{\"x\":20,\"y\":5}"
       },
       "outcome": {
         "Ok": {
@@ -230,8 +229,7 @@
                 "value": 25
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     },
@@ -404,8 +402,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "subtract",
-        "args": "{\"x\":25,\"y\":4}",
-        "context": {}
+        "args": "{\"x\":25,\"y\":4}"
       },
       "outcome": {
         "Ok": {
@@ -418,8 +415,7 @@
                 "value": 21
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     },

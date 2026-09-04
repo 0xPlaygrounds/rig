@@ -332,10 +332,9 @@ fn divergence(recorded: &EffectKind, got: &EffectKind) -> Option<String> {
                 "arguments differ for `{name}`: recorded `{recorded_args}`, arrived `{args}`"
             ));
         }
-        // Name and args are the readable fast path; the dispatch context is
-        // part of the effect too (a tool answers differently under a
-        // different context), so it is compared as data like every other
-        // family's payload.
+        // Name and args are the readable fast path; the rest of the payload
+        // is compared as data like every other family's (the tool context is
+        // not on the wire: it travels beside the sink).
     }
     let (Ok(recorded), Ok(got)) = (serde_json::to_value(recorded), serde_json::to_value(got))
     else {

@@ -1559,6 +1559,7 @@ pub(crate) async fn settle_model_turn(
                 outcome: &outcome,
                 turn: hook_ctx.turn(),
                 block_id: None,
+                context: None,
             },
         )
         .await
@@ -1700,6 +1701,7 @@ pub(crate) async fn dispatch_effect(
                 kind: &kind,
                 turn: ctx.turn(),
                 block_id: None,
+                context: None,
             },
         )
         .await
@@ -1719,6 +1721,7 @@ pub(crate) async fn dispatch_effect(
                 outcome: &outcome,
                 turn: ctx.turn(),
                 block_id: None,
+                context: None,
             },
         )
         .await
@@ -2172,6 +2175,7 @@ pub(crate) async fn dispatch_completion(
                 kind: &kind,
                 turn: ctx.turn(),
                 block_id: None,
+                context: None,
             },
         )
         .await
@@ -2260,8 +2264,11 @@ pub(crate) async fn dispatch_tool_call(
     let kind = EffectKind::ToolCall {
         name: tool_name.to_owned(),
         args,
-        context: tool_context.for_dispatch(),
     };
+    // The context the tool runs with travels beside the effect, never in it
+    // (format 5): the hooks see it on the event, the bus carries it to the
+    // tool's sink, and what the tool published comes back the same way.
+    let inbound = tool_context.for_dispatch();
     let (kind, denied) = match hooks
         .on_dispatch(
             ctx,
@@ -2270,6 +2277,7 @@ pub(crate) async fn dispatch_tool_call(
                 kind: &kind,
                 turn: ctx.turn(),
                 block_id: Some(block_id),
+                context: Some(&inbound),
             },
         )
         .await
@@ -2297,16 +2305,19 @@ pub(crate) async fn dispatch_tool_call(
         EffectKind::ToolCall { args, .. } => args.clone(),
         _ => String::new(),
     };
+    let mut published: Option<crate::tool::ToolContext> = None;
     let outcome: Result<Outcome, ErrorReport> = match denied {
         Some(report) => Ok(Outcome::ToolResult {
             result: ToolResult::skipped(report.message),
-            context: tool_context.for_dispatch(),
         }),
         None => match tool_snapshot.key(tool_name) {
             Some(key) => {
-                dispatcher
-                    .dispatch_with_id(id, key.raw(), kind.clone())
-                    .await
+                let pending =
+                    dispatcher.dispatch_tool_with_id(id, key.raw(), kind.clone(), inbound.clone());
+                let published_at = pending.published_context();
+                let outcome = pending.await;
+                published = published_at.and_then(|published| published.take());
+                outcome
             }
             None => Ok(Outcome::ToolResult {
                 result: ToolResult::failed(
@@ -2315,10 +2326,10 @@ pub(crate) async fn dispatch_tool_call(
                     ))
                     .with_model_feedback(format!("tool `{tool_name}` not found")),
                 ),
-                context: tool_context.for_dispatch(),
             }),
         },
     };
+    let context = published.unwrap_or_else(|| tool_context.for_dispatch());
     let outcome = match hooks
         .on_outcome(
             ctx,
@@ -2328,6 +2339,7 @@ pub(crate) async fn dispatch_tool_call(
                 outcome: &outcome,
                 turn: ctx.turn(),
                 block_id: Some(block_id),
+                context: Some(&context),
             },
         )
         .await
@@ -2336,7 +2348,7 @@ pub(crate) async fn dispatch_tool_call(
         OutcomeAction::Replace(replaced) => replaced,
     };
     Ok(match outcome {
-        Ok(Outcome::ToolResult { result, context }) => ToolCallDispatch {
+        Ok(Outcome::ToolResult { result }) => ToolCallDispatch {
             result,
             context,
             args: effective_args,

@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 4,
+    "format": 5,
     "run_spec": 6972143684084239244,
     "handlers": [
       {
@@ -355,8 +355,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "lookup_harbor_label",
-        "args": "{}",
-        "context": {}
+        "args": "{}"
       },
       "outcome": {
         "Ok": {
@@ -369,8 +368,7 @@
                 "text": "crimson-harbor"
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     },
@@ -380,8 +378,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "lookup_orchard_label",
-        "args": "{}",
-        "context": {}
+        "args": "{}"
       },
       "outcome": {
         "Ok": {
@@ -394,8 +391,7 @@
                 "text": "silver-orchard"
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     },

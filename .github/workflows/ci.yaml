@@ -145,9 +145,11 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
 
-      - name: Run rig-core all-features wasm check
-        if: matrix.package == 'rig-core'
-        run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
+      # rig-core's features and rig-ecs's `reflect` and `assets` are off by
+      # default; the wasm build of each is proven here, not only natively.
+      - name: Run all-features wasm check
+        if: matrix.package == 'rig-core' || matrix.package == 'rig-ecs'
+        run: cargo check --package ${{ matrix.package }} --all-features --target wasm32-unknown-unknown
 
   # The *executed* wasm tests in the tree: rig-bus's `tests/wasm.rs` and
   # rig-ecs's `tests/bus_wasm.rs`, run under `wasm-bindgen-test-runner` on

@@ -203,21 +203,22 @@ impl PortableDynamicTool {
         context: &mut ToolContext,
         arguments: serde_json::Value,
     ) -> Result<ToolOutput, ToolExecutionError> {
-        let outcome = crate::serve::serve_inline(
+        let published = crate::tool::PublishedContext::new();
+        let outcome = crate::serve::serve_inline_with(
             &self.handler,
             EffectKind::ToolCall {
                 name: self.definition.name.clone(),
                 args: arguments.to_string(),
-                context: std::mem::take(context),
             },
+            vec![
+                std::sync::Arc::new(std::mem::take(context)),
+                published.clone() as std::sync::Arc<dyn std::any::Any + Send + Sync>,
+            ],
         )
         .await;
         match outcome {
-            Ok(Outcome::ToolResult {
-                result,
-                context: published,
-            }) => {
-                *context = published;
+            Ok(Outcome::ToolResult { result }) => {
+                *context = published.take().unwrap_or_default();
                 result.into_result()
             }
             Ok(other) => Err(ToolExecutionError::other(format!(

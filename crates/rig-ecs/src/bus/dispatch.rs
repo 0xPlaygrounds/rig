@@ -1,6 +1,9 @@
 //! `BusSet::Dispatch`: the one system that takes pending effects.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::IoTaskPool;
@@ -13,8 +16,8 @@ use rig_core::{
 
 use super::{
     effect::{
-        EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Reserved, Scope, Seq,
-        Serving, Streamed, Streaming,
+        EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved,
+        Scope, Seq, Serving, Streamed, Streaming, ToolInputs,
     },
     handlers::{Bound, HandlerTable, Served},
     plugin::{Intake, Policy, Progress},
@@ -30,6 +33,16 @@ pub type Candidate = (
     Without<Issued>,
 );
 
+/// What `Dispatch` reads of a candidate: its order, its intent, a reserved
+/// id, and a tool call's inputs.
+pub type CandidateView = (
+    Entity,
+    &'static Seq,
+    &'static PendingEffect,
+    Option<&'static Reserved>,
+    Option<&'static ToolInputs>,
+);
+
 /// The dispatch system. In one pass, in ascending [`Seq`]:
 ///
 /// - stops at the tick's intake bound ([`Policy`]'s `command_capacity`);
@@ -41,10 +54,12 @@ pub type Candidate = (
 ///   bound to the key;
 /// - otherwise issues the id ([`Reserved`] or minted), opens the record
 ///   (`parent` from the nearest issued ancestor, `scope` from the nearest
-///   [`Scope`]), and either spawns the handler's future on the task pool —
+///   [`Scope`]; a tool call's [`ToolInputs`] and a [`Publishing`] slot on
+///   the sink), and either spawns the handler's future on the task pool —
 ///   into [`Serving`] for a unary effect, [`Streaming`] plus an empty
 ///   [`Streamed`] for a stream — or, for a handler that is a system, puts
-///   the effect on the entity as `Asked<E>`; then marks it [`InFlight`].
+///   the effect on the entity as `Asked<E>` (an open key adds nothing: the
+///   entity is the question); then marks it [`InFlight`].
 #[allow(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
@@ -54,7 +69,7 @@ pub fn dispatch(
     policy: Res<Policy>,
     table: NonSend<HandlerTable>,
     bound: Query<(Entity, &Bound)>,
-    pending: Query<(Entity, &Seq, &PendingEffect, Option<&Reserved>), Candidate>,
+    pending: Query<CandidateView, Candidate>,
     in_flight: Query<&InFlight>,
     parents: Query<&ChildOf>,
     issued: Query<&Issued>,
@@ -64,11 +79,8 @@ pub fn dispatch(
     mut intake: ResMut<Intake>,
     mut progress: ResMut<Progress>,
 ) {
-    let mut candidates: Vec<(Entity, Seq, &PendingEffect, Option<&Reserved>)> = pending
-        .iter()
-        .map(|(entity, seq, effect, reserved)| (entity, *seq, effect, reserved))
-        .collect();
-    candidates.sort_by_key(|(_, seq, _, _)| *seq);
+    let mut candidates: Vec<_> = pending.iter().collect();
+    candidates.sort_by_key(|(_, seq, _, _, _)| **seq);
 
     let policy = policy.0;
     let serial = policy.serial_per_handler;
@@ -81,7 +93,7 @@ pub fn dispatch(
         HashSet::new()
     };
 
-    for (entity, _, effect, reserved) in candidates {
+    for (entity, _, effect, reserved, inputs) in candidates {
         if intake.0 >= policy.command_capacity {
             return;
         }
@@ -95,10 +107,11 @@ pub fn dispatch(
             }
             continue;
         }
-        let served = bound
+        let (served, layered) = bound
             .iter()
             .find(|(_, bound)| &bound.key == key)
-            .and_then(|(handler, _)| table.served(handler));
+            .map(|(handler, bound)| (table.served(handler), !bound.descriptor.layers.is_empty()))
+            .unwrap_or((None, false));
         let Some(served) = served else {
             commands
                 .entity(entity)
@@ -132,9 +145,25 @@ pub fn dispatch(
                 }
                 let handler = handler.clone();
                 let kind = effect.kind.clone();
+                // A layered handler's decisions reach the record only
+                // through the sink's observer; the outcome it is told is
+                // the innermost handler's, which is what the record holds.
+                let observed = layered.then(|| {
+                    let observed = Arc::new(super::record::ObservedState::default());
+                    entity_commands.insert(super::record::Observed(Arc::clone(&observed)));
+                    observed
+                });
+                let observe = |sink: OutcomeSink| match &observed {
+                    Some(observed) => sink.with_observer(Box::new(super::record::WorldObserver {
+                        id,
+                        recording: recording.as_ref().map(|r| (**r).clone()),
+                        observed: Arc::clone(observed),
+                    })),
+                    None => sink,
+                };
                 if effect.is_stream() {
                     let (events, receiver) = mpsc::channel(policy.stream_capacity);
-                    let sink = OutcomeSink::stream(id, events);
+                    let sink = observe(OutcomeSink::stream(id, events));
                     let task = IoTaskPool::get().spawn(async move {
                         handler.handle(kind, sink).await;
                     });
@@ -148,7 +177,19 @@ pub fn dispatch(
                     ));
                 } else {
                     let (reply, receiver) = oneshot::channel();
-                    let sink = OutcomeSink::unary(id, reply);
+                    let mut sink = observe(OutcomeSink::unary(id, reply));
+                    // A tool call's context travels beside the effect
+                    // (format 5): the inbound values on the sink, and the
+                    // slot the tool publishes into, read by `Collect`.
+                    if let rig_core::effect::EffectKind::ToolCall { .. } = &kind {
+                        let inbound = inputs.map(|inputs| inputs.0.clone()).unwrap_or_default();
+                        let published = rig_core::tool::PublishedContext::new();
+                        sink = sink
+                            .with_scope(std::sync::Arc::new(inbound))
+                            .with_scope(std::sync::Arc::clone(&published)
+                                as std::sync::Arc<dyn std::any::Any + Send + Sync>);
+                        entity_commands.insert(Publishing(published));
+                    }
                     let task = IoTaskPool::get().spawn(async move {
                         handler.handle(kind, sink).await;
                         match receiver.await {

@@ -2,7 +2,6 @@ use rig_core::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Message, Usage},
     effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
-    tool::ToolContext,
 };
 
 use super::*;
@@ -49,7 +48,6 @@ fn effect_record_and_log_round_trip() {
             kind: EffectKind::ToolCall {
                 name: "add".into(),
                 args: "{}".into(),
-                context: ToolContext::new(),
             },
             outcome: Err(ErrorReport::new(ErrorKind::Timeout, "slow")),
             events: None,
@@ -190,7 +188,8 @@ fn a_checkpoint_names_the_position_the_next_id_and_the_state() {
     assert_eq!(tail.header, log.header, "the tail keeps the header");
     // Serde round trip, then the continuation.
     let json = serde_json::to_string(&checkpoint).expect("serializes");
-    let restored: super::Checkpoint = serde_json::from_str(&json).expect("restores");
+    let restored: super::Checkpoint<serde_json::Value> =
+        serde_json::from_str(&json).expect("restores");
     assert_eq!(restored, checkpoint);
     let continuation = EffectLog::from_checkpoint(&restored, tail).expect("the tail follows");
     assert_eq!(continuation.len(), 1);
@@ -234,14 +233,14 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     let refused = EffectLog::from_checkpoint(&old, tail.clone()).expect_err("format 3");
     assert_eq!(
         refused.message,
-        "resume refused: the checkpoint is format 3, this rig reads format 4"
+        "resume refused: the checkpoint is format 3, this rig reads format 5"
     );
     let mut old_tail = tail;
     old_tail.header.format = 3;
     let refused = EffectLog::from_checkpoint(&checkpoint, old_tail).expect_err("format 3");
     assert_eq!(
         refused.message,
-        "resume refused: the tail is format 3, this rig reads format 4"
+        "resume refused: the tail is format 3, this rig reads format 5"
     );
 }
 
@@ -293,4 +292,39 @@ async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
     let report = answer(by_payload, other).await.expect_err("diverged");
     assert!(report.message.contains("payload"), "{}", report.message);
     assert!(!report.message.contains("hash "), "{}", report.message);
+}
+
+/// A header with program identities round-trips, and a log without any
+/// carries no `programs` field at all (an agent's golden is untouched).
+#[test]
+fn program_identity_is_per_scope_and_absent_by_default() {
+    use super::{LogHeader, ProgramIdentity};
+    use rig_core::effect::{EffectFamily, EffectRow, HandlerKey};
+    let bare = serde_json::to_value(LogHeader::default()).expect("serializes");
+    assert!(
+        bare.get("programs").is_none(),
+        "no programs, no field: {bare}"
+    );
+    let recorder = super::EffectLogRecorder::new();
+    let mut required = EffectRow::new();
+    required.insert(
+        HandlerKey::from("golden/model:default"),
+        EffectFamily::Completion,
+    );
+    recorder.set_program_identity(
+        "golden/run#0",
+        ProgramIdentity {
+            required: required.clone(),
+            policy: 7,
+        },
+    );
+    let json = serde_json::to_string(&recorder.header()).expect("serializes");
+    let restored: LogHeader = serde_json::from_str(&json).expect("restores");
+    assert_eq!(
+        restored.programs.get("golden/run#0"),
+        Some(&ProgramIdentity {
+            required,
+            policy: 7
+        })
+    );
 }

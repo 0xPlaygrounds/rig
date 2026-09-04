@@ -561,7 +561,7 @@ impl AgentHook for RetryUnknownTool {
     }
 }
 
-fn retry_feedback(tool_name: &str) -> InvalidToolCallAction {
+pub fn retry_feedback(tool_name: &str) -> InvalidToolCallAction {
     InvalidToolCallAction::Retry {
         feedback: format!("there is no tool named {tool_name}; use add"),
     }
@@ -670,11 +670,10 @@ impl AgentHook for LookupBeforeRun {
             .dispatch(rig_core::effect::ToolCallRequest {
                 name: "add".to_owned(),
                 args: LOOKUP_ARGS.to_owned(),
-                context: ToolContext::new(),
             })
             .await
             .expect("add answers");
-        assert_eq!(answer.result.output().render(), "3");
+        assert_eq!(answer.output().render(), "3");
         RunStartAction::continue_run()
     }
 }
@@ -1125,11 +1124,10 @@ fn is_add(kind: &rig_core::effect::EffectKind) -> bool {
 
 fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::Decision {
     match kind {
-        rig_core::effect::EffectKind::ToolCall { name, context, .. } if name == "add" => {
+        rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add" => {
             rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::ToolCall {
                 name: name.clone(),
                 args: args.to_owned(),
-                context: context.clone(),
             })
         }
         _ => rig_core::serve::Decision::Proceed,
@@ -1233,12 +1231,11 @@ impl rig_core::serve::Intercept for ReplaceAddResultLayer {
         outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
     ) -> rig_core::serve::Verdict {
         match outcome {
-            Ok(rig_core::effect::Outcome::ToolResult { result, context }) if is_add(kind) => {
+            Ok(rig_core::effect::Outcome::ToolResult { result }) if is_add(kind) => {
                 rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::ToolResult {
                     result: result
                         .clone()
                         .with_output(ToolOutput::text(REPLACED_RESULT)),
-                    context: context.clone(),
                 }))
             }
             _ => rig_core::serve::Verdict::Keep,
@@ -1554,10 +1551,9 @@ pub struct Lookup {
     pub model_key: HandlerKey,
 }
 
-fn tool_text(context: ToolContext, text: String) -> rig_core::effect::Outcome {
+fn tool_text(text: String) -> rig_core::effect::Outcome {
     rig_core::effect::Outcome::ToolResult {
         result: rig_core::tool::ToolResult::success(ToolOutput::text(text)),
-        context,
     }
 }
 
@@ -1668,7 +1664,7 @@ impl rig_core::serve::Serve for Lookup {
     }
 
     async fn serve(&self, kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
-        let rig_core::effect::EffectKind::ToolCall { args, context, .. } = kind else {
+        let rig_core::effect::EffectKind::ToolCall { args, .. } = kind else {
             sink.resolve(Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Request,
                 "a tool call",
@@ -1678,8 +1674,7 @@ impl rig_core::serve::Serve for Lookup {
         };
         let args: LookupArgs = serde_json::from_str(&args).unwrap_or_default();
         if args.leaf {
-            sink.resolve(Ok(tool_text(context, "leaf".to_owned())))
-                .await;
+            sink.resolve(Ok(tool_text("leaf".to_owned()))).await;
             return;
         }
         if self.nesting.detached {
@@ -1697,14 +1692,14 @@ impl rig_core::serve::Serve for Lookup {
             };
             tokio::spawn(async move {
                 let text = lookup.nest(dispatcher, args).await;
-                sink.resolve(Ok(tool_text(context, text))).await;
+                sink.resolve(Ok(tool_text(text))).await;
             });
             return;
         }
         let dispatcher = rig_bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
         assert_eq!(dispatcher.parent(), Some(sink.id()));
         let text = self.nest(dispatcher, args).await;
-        sink.resolve(Ok(tool_text(context, text))).await;
+        sink.resolve(Ok(tool_text(text))).await;
     }
 }
 
@@ -1872,7 +1867,7 @@ fn shaping_document() -> Document {
 }
 
 /// The patch one of the corpus's hooks makes on `turn`, as the hook makes it.
-fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
+pub fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
     match hook {
         Hook::PatchToolChoiceRequiredFirst => {
             (turn == 1).then(|| RequestPatch::new().tool_choice(ToolChoice::Required))
@@ -2926,8 +2921,20 @@ pub async fn call_tools(
         .collect()
 }
 
+/// The header's hook list for `program`: `DynamicContext` first when the
+/// builder registered one, then the hooks by name, then the layers.
+pub fn program_hooks(program: &Program, owner: &str) -> Vec<String> {
+    program
+        .dynamic_context
+        .map(|_| "DynamicContext".to_owned())
+        .into_iter()
+        .chain(program.hooks.iter().map(|hook| hook_name(*hook)))
+        .chain(layer_names(program, owner))
+        .collect()
+}
+
 /// The name the header records for a hook: its type's last path segment.
-fn hook_name(hook: Hook) -> String {
+pub fn hook_name(hook: Hook) -> String {
     let name = match hook {
         Hook::RetryUnknownTool => "RetryUnknownTool",
         Hook::ObserveEverything => "ObserveEverything",
@@ -4001,9 +4008,10 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             .unwrap_or(replay.log.len());
                         let (checkpoint, tail) = replay.log.checkpoint(
                             at,
-                            serde_json::from_str(&state).expect("the run state is JSON"),
+                            serde_json::from_str::<serde_json::Value>(&state)
+                                .expect("the run state is JSON"),
                         );
-                        let checkpoint: Checkpoint = serde_json::from_str(
+                        let checkpoint: Checkpoint<serde_json::Value> = serde_json::from_str(
                             &serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
                         )
                         .expect("a checkpoint restores");
@@ -4117,8 +4125,7 @@ macro_rules! both_interpreters {
             )*
         }
         /// The third interpreter: the program as an agent graph in a Bevy
-        /// world. A program the world does not support yet prints its
-        /// reason and passes (`corpus::world::unsupported`).
+        /// world.
         mod world_agent {
             $(
                 #[test]
@@ -4131,3 +4138,6 @@ macro_rules! both_interpreters {
 }
 
 pub mod world;
+pub mod world_hooks;
+pub mod world_nesting;
+pub mod world_resume;

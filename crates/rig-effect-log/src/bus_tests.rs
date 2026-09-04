@@ -256,7 +256,6 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
             EffectKind::ToolCall {
                 name: "add".into(),
                 args: r#"{"a": 1, "b": 1}"#.into(),
-                context: ToolContext::new(),
             },
         ))
         .await
@@ -303,7 +302,6 @@ async fn recorder_captures_every_dispatch_and_the_replayer_answers_from_it() {
         EffectKind::ToolCall {
             name: "add".into(),
             args: r#"{"a": 1, "b": 1}"#.into(),
-            context: ToolContext::new(),
         },
     ))
     .await
@@ -691,10 +689,12 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
     assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
 }
 
-/// A tool call's dispatch context is part of the effect: the same name and
-/// arguments under a different context is a divergence, named by path.
+/// A tool call's dispatch context is not part of the effect (format 5: it
+/// travels beside the sink, never on the wire): the same name and
+/// arguments under a different context is the same record, and the
+/// replayer answers it.
 #[tokio::test]
-async fn a_tool_call_under_a_different_context_is_a_divergence() {
+async fn a_tool_call_under_a_different_context_is_the_same_record() {
     use super::LogHeader;
     use rig_core::{
         effect::{EffectId, EffectRecord},
@@ -706,10 +706,6 @@ async fn a_tool_call_under_a_different_context_is_a_divergence() {
         const KEY: &'static str = "tag";
     }
     let key = HandlerKey::from("tool:echo");
-    let mut recorded_context = ToolContext::new();
-    recorded_context
-        .insert(Tag("recorded".into()))
-        .expect("context value");
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
@@ -720,11 +716,9 @@ async fn a_tool_call_under_a_different_context_is_a_divergence() {
             kind: EffectKind::ToolCall {
                 name: "echo".into(),
                 args: "{}".into(),
-                context: recorded_context,
             },
             outcome: Ok(Outcome::ToolResult {
                 result: ToolResult::success(ToolOutput::text("ok")),
-                context: ToolContext::new(),
             }),
             events: None,
         }],
@@ -736,18 +730,21 @@ async fn a_tool_call_under_a_different_context_is_a_divergence() {
     other_context
         .insert(Tag("arrived".into()))
         .expect("context value");
-    let report = within(dispatcher.dispatch(
+    let outcome = within(dispatcher.dispatch_tool_with_id(
+        dispatcher.mint_id(),
         &key,
         EffectKind::ToolCall {
             name: "echo".into(),
             args: "{}".into(),
-            context: other_context,
         },
+        other_context,
     ))
     .await
-    .expect_err("a different context is a different effect");
-    assert_eq!(report.kind, ErrorKind::Divergence);
-    assert!(report.message.contains("context"), "{report:?}");
+    .expect("the context is not the effect: the record answers");
+    match outcome {
+        Outcome::ToolResult { result } => assert_eq!(result.output().as_text(), Some("ok")),
+        other => panic!("a tool result: {other:?}"),
+    }
 }
 
 /// A stream recorded with its events that ended in an error — the
