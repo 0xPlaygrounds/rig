@@ -3,13 +3,12 @@
 //! the golden's replayers, its log compared to the golden as the other two
 //! interpreters' are.
 //!
-//! What this interpreter supports is what stages 2 and 3 build: a
-//! completion-and-tools program with no hooks, no memory, no routes, no
-//! retrieval, no layers, one prompt — the `lookup` tool's nesting included
-//! (a key the world serves: `world_nesting`). Every other program is
-//! reported `unsupported` with the set or entity it waits for, and passes;
-//! the union of those lines over the corpus is the status table the PR
-//! prints.
+//! Every program of the corpus runs here: completions, tools and batches,
+//! every hook as a user system (`world_hooks`), layers, memory, retrieval,
+//! routes, the `lookup` tool's nesting (a key the world serves:
+//! `world_nesting`), and every resume and checkpoint row as a scene load
+//! (`world_resume`). There is no `unsupported` row: a program the world
+//! cannot replay is a failing test, not a table line.
 
 use std::time::{Duration, Instant};
 
