@@ -82,7 +82,7 @@ use rig_core::{
     tool::{ToolContext, ToolOutput},
     transcript::tool_result_output,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
+use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
 /// A hook the producer added, by type: the header names hooks by their
 /// type's last path segment, so the replay's hook is a type of the same
@@ -2141,6 +2141,11 @@ pub async fn within<T>(future: impl Future<Output = T>) -> T {
         .expect("a replay never hangs")
 }
 
+/// Where the goldens live.
+pub fn fixtures_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
+}
+
 pub fn golden(fixture: &str) -> EffectLog {
     let path = format!(
         "{}/fixtures/{fixture}.effects.json",
@@ -2279,10 +2284,26 @@ pub struct Replay {
     pub reached: Option<std::sync::Arc<tokio::sync::Notify>>,
     /// The world a suspending layer asks (Matrix P).
     pub world: Option<Asks>,
+    /// How every replayer of this replay compares requests (Matrix R).
+    pub check: RequestCheck,
 }
 
 impl Replay {
     pub fn open(program: &Program) -> Self {
+        Self::open_checking(program, RequestCheck::Payload)
+    }
+
+    /// A replayer for `key` over `source`, comparing requests as this
+    /// replay does.
+    pub fn replayer(
+        &self,
+        source: &EffectLog,
+        key: &HandlerKey,
+    ) -> Result<EffectLogReplayer, rig_core::error::ErrorReport> {
+        EffectLogReplayer::for_key(source, key).map(|replayer| replayer.checking(self.check))
+    }
+
+    pub fn open_checking(program: &Program, check: RequestCheck) -> Self {
         let log = golden(program.fixture);
         EffectLogReplayer::check_header(&log).expect("a current format");
         // A golden recorded over a host's bus names no policy: the host
@@ -2310,7 +2331,9 @@ impl Replay {
                 reached = Some(std::sync::Arc::clone(&notify));
                 spawn_world(answer, notify)
             });
-        let model = EffectLogReplayer::for_key(&log, &model_key).expect("the model's records");
+        let model = EffectLogReplayer::for_key(&log, &model_key)
+            .expect("the model's records")
+            .checking(check);
         driver
             .register_erased(
                 model_key.clone(),
@@ -2371,8 +2394,9 @@ impl Replay {
             .cloned()
             .collect();
         for key in host_keys {
-            let replayer =
-                EffectLogReplayer::for_key(&log, &key).expect("the host handler's records");
+            let replayer = EffectLogReplayer::for_key(&log, &key)
+                .expect("the host handler's records")
+                .checking(check);
             let handler = if key.as_str() == NOTE_KEY {
                 layered(
                     rig_core::serve::ErasedHandler::new(replayer),
@@ -2389,8 +2413,9 @@ impl Replay {
         // served it: on the bus, outside the builder and the row.
         if let Some(label) = program.late_route {
             let key = HandlerKey::from(format!("{}/model:{label}", program.owner));
-            let replayer =
-                EffectLogReplayer::for_key(&log, &key).expect("the late route's records");
+            let replayer = EffectLogReplayer::for_key(&log, &key)
+                .expect("the late route's records")
+                .checking(check);
             driver
                 .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
                 .expect("a fresh key");
@@ -2407,6 +2432,7 @@ impl Replay {
             memory_key,
             reached,
             world,
+            check,
         }
     }
 
@@ -2457,7 +2483,8 @@ impl Replay {
                     .expect("a tool-family handler")
                 }
                 _ if key.as_str().ends_with("/tool:add#0") && !program.layers.is_empty() => {
-                    let replayer = EffectLogReplayer::for_key(&self.log, &key)
+                    let replayer = self
+                        .replayer(&self.log, &key)
                         .expect("a required tool is described");
                     let handler = layered(
                         rig_core::serve::ErasedHandler::new(replayer),
@@ -2468,7 +2495,8 @@ impl Replay {
                     RegisteredTool::from_handler(handler).expect("a tool-family handler")
                 }
                 _ => {
-                    let replayer = EffectLogReplayer::for_key(&self.log, &key)
+                    let replayer = self
+                        .replayer(&self.log, &key)
                         .expect("a required tool is described");
                     RegisteredTool::from_handler(replayer).expect("a tool-family replayer")
                 }
@@ -2481,8 +2509,9 @@ impl Replay {
         }
         if let Some(sample) = program.retrieved_tools {
             let key = HandlerKey::from(format!("{}/retrieve:tools#0", self.log_owner()));
-            let replayer =
-                EffectLogReplayer::for_key(&self.log, &key).expect("the tool index's records");
+            let replayer = self
+                .replayer(&self.log, &key)
+                .expect("the tool index's records");
             server = server.retrieved_tools_handler(sample, replayer, retrievable);
         }
         server.run()
@@ -2570,7 +2599,8 @@ pub fn build_agent_unchecked(
     }
     builder = add_hooks(builder, program.hooks);
     if let Some(conversation) = program.conversation {
-        let memory = EffectLogReplayer::for_key(source, &replay.memory_key)
+        let memory = replay
+            .replayer(source, &replay.memory_key)
             .expect("the conversation's records");
         let memory = layered(
             rig_core::serve::ErasedHandler::new(memory),
@@ -2584,12 +2614,14 @@ pub fn build_agent_unchecked(
     // producer's `model_route` was; the host bus serves only the default
     // model, as the producer's client did.
     if let Some(label) = program.route {
-        let route = EffectLogReplayer::for_key(source, &replay.route_key(label))
+        let route = replay
+            .replayer(source, &replay.route_key(label))
             .expect("the route is in the required row");
         builder = builder.model_route_handler(label, route);
     }
     if let Some(samples) = program.dynamic_context {
-        let index = EffectLogReplayer::for_key(source, &replay.context_key())
+        let index = replay
+            .replayer(source, &replay.context_key())
             .expect("the context index's records");
         builder = builder.dynamic_context_handler(samples, index);
     }
@@ -3036,30 +3068,52 @@ pub fn run_spec(program: &Program) -> RunSpec {
 /// the first run of tool records (and the custom notes a hook dispatches
 /// inside them) after a completion. Everything after it is the tail the
 /// resumed engine replays.
-fn head_end_id(log: &EffectLog) -> u64 {
+fn head_end_id(log: &EffectLog, tool_turns: usize) -> u64 {
     let records = &log.records;
-    // The first tool record after a completion: a hook's own tool dispatch
-    // before the run's first completion (Matrix B's lookup) is not the
-    // tool turn.
-    let first_completion = records
-        .iter()
-        .position(|record| record.kind.family() == EffectFamily::Completion)
-        .expect("a resumed program has a completion");
-    let first_tool = first_completion
-        + records[first_completion..]
-            .iter()
-            .position(|record| record.kind.family() == EffectFamily::Tool)
-            .expect("a resumed program has a tool turn");
-    let mut end = first_tool;
-    while end + 1 < records.len()
-        && matches!(
-            records[end + 1].kind.family(),
-            EffectFamily::Tool | EffectFamily::Custom
-        )
-    {
-        end += 1;
+    let mut cursor = 0;
+    let mut end = 0;
+    for _ in 0..tool_turns {
+        let first_completion = cursor
+            + records[cursor..]
+                .iter()
+                .position(|record| record.kind.family() == EffectFamily::Completion)
+                .expect("a resumed program has a completion");
+        let first_tool = first_completion
+            + records[first_completion..]
+                .iter()
+                .position(|record| record.kind.family() == EffectFamily::Tool)
+                .expect("a resumed program has a tool turn");
+        end = first_tool;
+        while end + 1 < records.len()
+            && matches!(
+                records[end + 1].kind.family(),
+                EffectFamily::Tool | EffectFamily::Custom
+            )
+        {
+            end += 1;
+        }
+        cursor = end + 1;
     }
     records[end].id.as_u64()
+}
+
+/// The golden's records after `tool_turns` tool turns, under its header.
+fn tail_after(log: &EffectLog, tool_turns: usize) -> EffectLog {
+    let head_end = head_end_id(log, tool_turns);
+    EffectLog {
+        header: log.header.clone(),
+        records: log
+            .records
+            .iter()
+            .filter(|record| record.id.as_u64() > head_end)
+            .cloned()
+            .collect(),
+    }
+}
+
+/// `Resume::Never` never suspends, so no tail is ever asked for it.
+fn unreachable_resume() -> EffectLog {
+    panic!("a run that never suspends has no tail")
 }
 
 /// The resumed engine's tail: the persisted run resumed on the replay bus
@@ -3072,18 +3126,8 @@ async fn resumed_tail(
     program: &Program,
     server: rig_agent::tool::server::ToolServerHandle,
     state: String,
+    tail_log: EffectLog,
 ) -> Result<Option<PromptResponse>, &'static str> {
-    let head_end = head_end_id(&replay.log);
-    let tail_log = EffectLog {
-        header: replay.log.header.clone(),
-        records: replay
-            .log
-            .records
-            .iter()
-            .filter(|record| record.id.as_u64() > head_end)
-            .cloned()
-            .collect(),
-    };
     if program.conversation.is_some() {
         replay.registrar.deregister(&replay.memory_key);
     }
@@ -3143,7 +3187,64 @@ async fn resumed_tail(
 }
 
 pub async fn hand_driver_reproduces(program: &Program) {
-    hand_drive(program, false).await;
+    hand_drive(program, Resume::Never).await;
+}
+
+/// How the hand driver hands the run on (Matrices L and R).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Resume {
+    /// Never: the hand driver takes the program to its end.
+    Never,
+    /// After the first tool turn's results: the serialized run resumed on
+    /// the same replay bus, whose replayers hold the tail (Matrix L).
+    AfterFirstToolTurn,
+    /// After `tool_turns` tool turns' results, through a `Checkpoint`: the
+    /// head's serialized run and position become the checkpoint (JSON
+    /// round trip), the continuation is `EffectLog::from_checkpoint` over
+    /// `against`, and the resumed engine replays it under `check`
+    /// (Matrix R).
+    Checkpoint {
+        tool_turns: usize,
+        check: RequestCheck,
+        against: Against,
+    },
+}
+
+/// What a checkpoint's continuation is replayed against.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Against {
+    /// The log's tail from the checkpoint: the continuation.
+    Tail,
+    /// The full log in the tail's place: refused by its first id.
+    FullLog,
+}
+
+impl Resume {
+    fn tool_turns(self) -> Option<usize> {
+        match self {
+            Self::Never => None,
+            Self::AfterFirstToolTurn => Some(1),
+            Self::Checkpoint { tool_turns, .. } => Some(tool_turns),
+        }
+    }
+}
+
+/// Matrix R: the run continued from a checkpoint.
+pub async fn checkpoint_reproduces(
+    program: &Program,
+    tool_turns: usize,
+    check: RequestCheck,
+    against: Against,
+) {
+    hand_drive(
+        program,
+        Resume::Checkpoint {
+            tool_turns,
+            check,
+            against,
+        },
+    )
+    .await;
 }
 
 /// The run continued: the hand driver takes the program up to and
@@ -3155,19 +3256,26 @@ pub async fn hand_driver_reproduces(program: &Program) {
 /// none (the runner skips both on `resume`), so the head loads and the
 /// driver appends; the resumed engine fires the settled hooks itself.
 pub async fn resume_reproduces(program: &Program) {
-    hand_drive(program, true).await;
+    hand_drive(program, Resume::AfterFirstToolTurn).await;
 }
 
-async fn hand_drive(program: &Program, resume: bool) {
-    let replay = Replay::open(program);
+async fn hand_drive(program: &Program, resume: Resume) {
+    let check = match resume {
+        Resume::Checkpoint { check, .. } => check,
+        Resume::Never | Resume::AfterFirstToolTurn => RequestCheck::Payload,
+    };
+    let replay = Replay::open_checking(program, check);
+    let resume_after = resume.tool_turns();
+    let resumes = resume_after.is_some();
     let server = replay.tool_server_for(program);
     server.attach(&replay.registrar);
     // The context index, registered by the driver as the builder would.
     let context: Option<rig_bus::Handle<rig_core::effect::family::Retrieve>> =
         program.dynamic_context.map(|_| {
             let key = replay.context_key();
-            let replayer =
-                EffectLogReplayer::for_key(&replay.log, &key).expect("the context index's records");
+            let replayer = replay
+                .replayer(&replay.log, &key)
+                .expect("the context index's records");
             replay
                 .registrar
                 .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(replayer))
@@ -3183,7 +3291,8 @@ async fn hand_drive(program: &Program, resume: bool) {
     // selected on every turn after the first when the program's hook does.
     let route: Option<ModelHandle> = program.route.map(|label| {
         let key = replay.route_key(label);
-        let replayer = EffectLogReplayer::for_key(&replay.log, &key)
+        let replayer = replay
+            .replayer(&replay.log, &key)
             .expect("the route is in the required row");
         replay
             .registrar
@@ -3198,7 +3307,8 @@ async fn hand_drive(program: &Program, resume: bool) {
             .expect("the late route")
     });
     let memory: Option<(MemoryHandle, ConversationId)> = program.conversation.map(|id| {
-        let replayer = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
+        let replayer = replay
+            .replayer(&replay.log, &replay.memory_key)
             .expect("the conversation's records");
         replay
             .registrar
@@ -3264,7 +3374,7 @@ async fn hand_drive(program: &Program, resume: bool) {
         assert_eq!(refused.kind, rig_core::error::ErrorKind::HandlerUnavailable);
     }
     assert!(
-        !(resume && program.second_prompt.is_some()),
+        !(resumes && program.second_prompt.is_some()),
         "a resumed program is one run"
     );
     let mut resumed: Option<String> = None;
@@ -3401,6 +3511,7 @@ async fn hand_drive(program: &Program, resume: bool) {
             assert!(matches!(outputs, rig_core::effect::EmbedOutputs::Texts(_)));
         }
         let mut run = AgentRun::from_spec(&spec, prompt, history);
+        let mut tool_turns_done = 0usize;
         // The routing hook selects the route once a model has been asked
         // (`previous_model` is set): the first call goes to the default.
         let mut asked_before = false;
@@ -3852,7 +3963,8 @@ async fn hand_drive(program: &Program, resume: bool) {
                         }
                     };
                     run.tool_results(results).expect("results for every call");
-                    if resume && resumed.is_none() {
+                    tool_turns_done += 1;
+                    if resume_after == Some(tool_turns_done) && resumed.is_none() {
                         // The suspension: the state a driver persists between
                         // steps, with the next model call pending.
                         resumed =
@@ -3865,13 +3977,68 @@ async fn hand_drive(program: &Program, resume: bool) {
         };
         let response = match resumed.take() {
             None => response,
-            Some(state) => match resumed_tail(&replay, program, server.clone(), state).await {
-                Ok(response) => response,
-                Err(reason) => {
-                    cancelled = Some(reason);
-                    None
+            Some(state) => {
+                let tail = match resume {
+                    Resume::Checkpoint {
+                        tool_turns,
+                        against,
+                        ..
+                    } => {
+                        // The cut: the head's position and serialized run as
+                        // a checkpoint, round-tripped as JSON, then the
+                        // continuation it names.
+                        let at = replay
+                            .log
+                            .iter()
+                            .position(|record| {
+                                record.id.as_u64() > head_end_id(&replay.log, tool_turns)
+                            })
+                            .unwrap_or(replay.log.len());
+                        let (checkpoint, tail) = replay.log.checkpoint(
+                            at,
+                            serde_json::from_str(&state).expect("the run state is JSON"),
+                        );
+                        let checkpoint: Checkpoint = serde_json::from_str(
+                            &serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
+                        )
+                        .expect("a checkpoint restores");
+                        assert_eq!(checkpoint.at, at);
+                        match against {
+                            Against::Tail => EffectLog::from_checkpoint(&checkpoint, tail)
+                                .expect("the tail follows its checkpoint"),
+                            Against::FullLog => {
+                                // The full log in the tail's place is refused
+                                // by its first id, before any dispatch.
+                                let refused =
+                                    EffectLog::from_checkpoint(&checkpoint, replay.log.clone())
+                                        .expect_err("a full log is not the tail");
+                                assert!(
+                                    refused.message.starts_with(&format!(
+                                        "resume refused: the checkpoint at {at} expects record"
+                                    )) && refused.message.ends_with(&format!(
+                                        "the tail begins at {}",
+                                        replay.log[0].id
+                                    )),
+                                    "{}",
+                                    refused.message
+                                );
+                                drop((model, route, late_route, tools, memory, context, notes));
+                                replay.close().await;
+                                return;
+                            }
+                        }
+                    }
+                    Resume::AfterFirstToolTurn => tail_after(&replay.log, 1),
+                    Resume::Never => unreachable_resume(),
+                };
+                match resumed_tail(&replay, program, server.clone(), state, tail).await {
+                    Ok(response) => response,
+                    Err(reason) => {
+                        cancelled = Some(reason);
+                        None
+                    }
                 }
-            },
+            }
         };
         if let Ending::Cancelled(expected) = program.ending {
             assert_eq!(
@@ -3900,13 +4067,13 @@ async fn hand_drive(program: &Program, resume: bool) {
         }
         // The settled hooks, once per run, after the append: the clear,
         // the host note.
-        if program.hooks.contains(&Hook::ClearAtSettled) && !resume {
+        if program.hooks.contains(&Hook::ClearAtSettled) && !resumes {
             let (handle, id) = memory.as_ref().expect("a memory program");
             within(handle.clear(id.clone()))
                 .await
                 .expect("the replayer answered the clear");
         }
-        if program.hooks.contains(&Hook::NoteAtSettled) && !resume {
+        if program.hooks.contains(&Hook::NoteAtSettled) && !resumes {
             note("settled").await;
         }
         last_response = Some(response);
