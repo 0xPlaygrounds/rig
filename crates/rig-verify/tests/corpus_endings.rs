@@ -18,7 +18,9 @@
 //! | medium | unary · streamed with events |
 //! | records before the stop | none · one completion · completion + tool · completion + tool + completion |
 //!
-//! Full cross-product: 11 × 2 × 4 = 88. Recorded: the 13 cells below.
+//! Full cross-product: 11 × 2 × 4 = 88 (the third axis is decided by the
+//! stop and the program, so the real space is smaller). Recorded: the 13
+//! cells below.
 //! Pruned: a stop that fires before any dispatch, streamed (the medium is
 //! decided after those hooks fire, so the log is the same empty header —
 //! the unary cell is the cell); the delta stops unary (a delta is a stream

@@ -1790,9 +1790,6 @@ impl AgentRun {
         }
     }
 
-    /// Shared rollback for the streamed Retry and Skip resolutions: push the
-    /// partial turn's rollback messages and abandon the turn, or fail the run
-    /// when the partial turn yields no rollback messages.
     /// Drop a streamed invalid call and go on with the turn without it —
     /// [`UnhandledInvalidToolCall::Ignore`] on the streaming surface, the
     /// counterpart of [`ignore_invalid_tool_call`](Self::ignore_invalid_tool_call).
@@ -1807,6 +1804,9 @@ impl AgentRun {
         Ok(StreamedResolution::Ignored)
     }
 
+    /// Shared rollback for the streamed Retry and Skip resolutions: push the
+    /// partial turn's rollback messages and abandon the turn, or fail the run
+    /// when the partial turn yields no rollback messages.
     fn abandon_streamed_turn(
         &mut self,
         partial: &PartialStreamedTurn,

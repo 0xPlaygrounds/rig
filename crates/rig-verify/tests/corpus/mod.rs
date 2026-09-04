@@ -1257,10 +1257,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     {
                         failed_as_expected = true;
                     }
-                    Err(StreamingError::Completion(error))
+                    Err(StreamingError::Completion(_))
                         if program.ending == Ending::ProviderError =>
                     {
-                        let _ = error;
                         failed_as_expected = true;
                     }
                     Err(error) => {
@@ -1361,6 +1360,7 @@ pub async fn call_tools(
     tools: &[(String, ToolHandle)],
     concurrency: usize,
     hooks: &[Hook],
+    notes: Option<&rig_bus::Handle<rig_core::effect::family::Custom<Note>>>,
 ) -> Result<Vec<UserContent>, &'static str> {
     let dispatch = |call: PendingToolCall| async move {
         if let Some(preresolved) = call.preresolved_result {
@@ -1392,6 +1392,16 @@ pub async fn call_tools(
         let answer = within(handle.call(name.clone(), args, ToolContext::new()))
             .await
             .expect("the replayer answered the recorded call");
+        // The outcome hook's dispatch, inside the tool's dispatch as the
+        // engine fires it (Matrix I).
+        if hooks.contains(&Hook::NoteAtOutcome) {
+            let ack = within(notes.expect("a note hook").dispatch(Note {
+                at: "outcome".to_owned(),
+            }))
+            .await
+            .expect("the replayer acknowledged");
+            assert!(ack.accepted && ack.at == "outcome", "{ack:?}");
+        }
         // The model-visible output of the result, failed or not: what the
         // engine shapes into the transcript.
         if is_add && hooks.contains(&Hook::CancelAddOutcome) {
@@ -1420,7 +1430,6 @@ pub async fn call_tools(
         .collect()
 }
 
-/// The run spec the producer's builder and runner amount to.
 /// The name the header records for a hook: its type's last path segment.
 fn hook_name(hook: Hook) -> &'static str {
     match hook {
@@ -1720,7 +1729,9 @@ pub async fn hand_driver_reproduces(program: &Program) {
         // the same point the engine makes it.
         let mut cancelled: Option<&'static str> = None;
         // A stop before any dispatch: at run start, at model selection, or
-        // before the completion call.
+        // before the completion call. The hand driver has no seam for those
+        // hooks (nothing was dispatched to drive); the row asserts what the
+        // engine's empty log asserts, the header over no records.
         let stop_before_any = [
             (Hook::StopAtStart, STOP_AT_START),
             (Hook::StopAtModelSelect, STOP_AT_MODEL_SELECT),
@@ -2070,6 +2081,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         &tools,
                         program.tool_concurrency.unwrap_or(1),
                         program.hooks,
+                        notes.as_ref(),
                     )
                     .await
                     {
@@ -2079,12 +2091,6 @@ pub async fn hand_driver_reproduces(program: &Program) {
                             break None;
                         }
                     };
-                    // The outcome hook's dispatch, once per tool answer.
-                    if program.hooks.contains(&Hook::NoteAtOutcome) {
-                        for _ in &results {
-                            note("outcome").await;
-                        }
-                    }
                     run.tool_results(results).expect("results for every call");
                 }
                 AgentRunStep::Done(response) => break Some(response),
@@ -2115,12 +2121,16 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
             }
         }
-        // The settled hook's clear, after the append.
+        // The settled hooks, once per run, after the append: the clear,
+        // the host note.
         if program.hooks.contains(&Hook::ClearAtSettled) {
             let (handle, id) = memory.as_ref().expect("a memory program");
             within(handle.clear(id.clone()))
                 .await
                 .expect("the replayer answered the clear");
+        }
+        if program.hooks.contains(&Hook::NoteAtSettled) {
+            note("settled").await;
         }
         last_response = Some(response);
     }
@@ -2131,10 +2141,6 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)
     );
-    // The settled hook's dispatch, after the answer.
-    if program.hooks.contains(&Hook::NoteAtSettled) {
-        note("settled").await;
-    }
     drop((model, route, tools, memory, context, notes));
     let log = replay.log.clone();
     let replayed = replay.close().await;
@@ -2216,9 +2222,15 @@ pub async fn resume_reproduces(program: &Program) {
                 run.model_response(turn).expect("a model turn");
             }
             AgentRunStep::CallTools { calls } => {
-                let results = call_tools(calls, &tools, program.tool_concurrency.unwrap_or(1), &[])
-                    .await
-                    .expect("no hook stops a resume row");
+                let results = call_tools(
+                    calls,
+                    &tools,
+                    program.tool_concurrency.unwrap_or(1),
+                    &[],
+                    None,
+                )
+                .await
+                .expect("no hook stops a resume row");
                 run.tool_results(results).expect("results for every call");
                 break;
             }

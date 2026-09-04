@@ -90,7 +90,10 @@ pub fn to_canonical_string(value: &serde_json::Value) -> String {
             serde_json::Value::Array(items) => {
                 serde_json::Value::Array(items.iter().map(sorted).collect())
             }
-            other => other.clone(),
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => value.clone(),
         }
     }
     sorted(value).to_string()

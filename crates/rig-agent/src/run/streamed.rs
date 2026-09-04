@@ -341,6 +341,10 @@ pub enum StreamedTurnEvent {
 struct ToolCallDeltaState {
     name_validated: bool,
     buffered_arguments: Vec<String>,
+    /// The block's call was ignored (`StreamedResolution::Ignored` on its
+    /// name delta): its later deltas and its end are swallowed, and the
+    /// state is kept so they have something to land on.
+    ignored: bool,
 }
 
 /// One reasoning part of the turn, in first-arrival order. A part opens as
@@ -748,6 +752,16 @@ impl StreamedTurnAssembler {
                 // arrived) assembles nothing. Neither is forwarded: the
                 // driver reports the model's completed calls itself when the
                 // turn commits.
+                if self
+                    .delta_states
+                    .get(block_id)
+                    .is_some_and(|state| state.ignored)
+                {
+                    // The ignored call's end: the call was dropped at its
+                    // name, so it is neither pending nor re-validated.
+                    self.delta_states.remove(block_id);
+                    return Ok(Vec::new());
+                }
                 let Some(AssistantContent::ToolCall(tool_call)) = block else {
                     self.delta_states.remove(block_id);
                     return Ok(Vec::new());
@@ -775,6 +789,14 @@ impl StreamedTurnAssembler {
                 delta: delta @ (Delta::ToolName { .. } | Delta::ToolArguments { .. }),
             } => {
                 let key = block_id.clone();
+                if self
+                    .delta_states
+                    .get(&key)
+                    .is_some_and(|state| state.ignored)
+                {
+                    // A delta of an ignored call: swallowed with the call.
+                    return Ok(Vec::new());
+                }
                 match delta {
                     Delta::ToolName { name } => {
                         if !self.allowed_tool_names.contains(name) {
@@ -904,11 +926,16 @@ impl StreamedTurnAssembler {
                 Vec::new()
             }
             (StreamedResolution::Ignored, PendingInvalid::NameDelta { block_id }) => {
-                // The ignored call's buffered state must not trip the
-                // pending-delta consistency check as the turn goes on.
-                self.delta_states.remove(&block_id);
+                // The ignored call's state stays as a tombstone: its later
+                // argument deltas and its end are swallowed rather than
+                // buffered (which the pending-delta check would refuse) or
+                // re-validated at the block's end.
                 self.ignored_calls
                     .push(rig_core::message::ToolCallId::from_block(&block_id));
+                let state = self.delta_states.entry(block_id).or_default();
+                state.buffered_arguments.clear();
+                state.name_validated = false;
+                state.ignored = true;
                 Vec::new()
             }
         }
@@ -965,7 +992,9 @@ impl StreamedTurnAssembler {
             .iter()
             .filter(|content| match content {
                 AssistantContent::ToolCall(call) => !ignored.contains(&call.id),
-                _ => true,
+                AssistantContent::Text(_)
+                | AssistantContent::Reasoning(_)
+                | AssistantContent::Image(_) => true,
             })
             .cloned()
             .collect();

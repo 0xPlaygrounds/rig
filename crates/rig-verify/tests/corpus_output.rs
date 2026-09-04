@@ -23,8 +23,9 @@
 //! | `additional_params` | none · extended thinking |
 //!
 //! Full cross-product: 3 × 2 × 2 × 4 × 3 × 3 × 2 = 864. Recorded: the 14
-//! cells below. Pruned: `Prompted` under any `tool_choice` (the mode
-//! advertises no tool, so the choice has nothing to bind); a `Prompted`
+//! cells below. Pruned: `Prompted` under any `tool_choice` (the mode adds
+//! no tool, so the choice binds only the real tools Matrix E's choice
+//! cells already pin); a `Prompted`
 //! answer that violates the schema (the run does not validate a prompted
 //! or native answer, the consumer's deserialization does — only `Tool`
 //! mode reprompts); `Native` cells (Matrix E); the streamed twins of the

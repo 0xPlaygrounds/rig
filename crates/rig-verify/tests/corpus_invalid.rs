@@ -23,7 +23,7 @@
 //! | the turn | one unknown call · an unknown beside a valid call · two unknown turns in a row |
 //! | `tool_choice` | Auto · Required · None |
 //!
-//! Full cross-product: 5 × 2 × 3 × 3 = 90. Recorded: the 12 cells below.
+//! Full cross-product: 5 × 2 × 3 × 3 = 90. Recorded: the 13 cells below.
 //! Pruned: `Fail` streamed (the failure is the run's, at the completion
 //! record, on either medium: the unary cell is the cell); `Retry` under
 //! `None` (a forbidden tool set has nothing to retry into: the model must

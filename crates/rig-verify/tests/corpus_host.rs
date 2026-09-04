@@ -63,8 +63,9 @@
 //!   the recorder minted the ids at dispatch, in the hook's order, under
 //!   either policy. The replay reproduces both under its default.
 //! - The replay needs the host's handlers registered: `check_replayable`
-//!   walks the signature, not the row, and refuses a signature key no
-//!   handler serves. The custom kind is described by the handler table;
+//!   walks the signature against the bus (and the agent's row against the
+//!   log's handler table) and refuses a signature key no handler serves.
+//!   The custom kind is described by the handler table;
 //!   `describe_required` cannot name it from the row and does not need to.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
