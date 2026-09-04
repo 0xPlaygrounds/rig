@@ -17,9 +17,11 @@
 //! stream fold, the three output modes and their reprompts, invalid calls
 //! as entities with a resolution (fail, ignore, retry, repair, skip), tool
 //! calls as effect entities `ChildOf` the turn with the batch as the
-//! turn's children, endings, the header. Not yet: hooks as shipped user
-//! systems (stage 4 of the programme), memory, retrieval, routing and
-//! resume across runs (stage 5).
+//! turn's children, endings, the header; and steering as components a
+//! user system writes — [`agent::Cancelled`], [`agent::Retry`],
+//! [`agent::RequestPatch`], [`agent::Resolution`], `UsesModel` — read by
+//! the library at the next set. Not yet: memory, retrieval and resume
+//! across runs (stage 5 of the programme).
 //!
 //! The `bus` module is written as if it were already its own crate (every
 //! item `pub` or private to its file, no import from a sibling module, no

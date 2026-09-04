@@ -561,7 +561,7 @@ impl AgentHook for RetryUnknownTool {
     }
 }
 
-fn retry_feedback(tool_name: &str) -> InvalidToolCallAction {
+pub fn retry_feedback(tool_name: &str) -> InvalidToolCallAction {
     InvalidToolCallAction::Retry {
         feedback: format!("there is no tool named {tool_name}; use add"),
     }
@@ -1867,7 +1867,7 @@ fn shaping_document() -> Document {
 }
 
 /// The patch one of the corpus's hooks makes on `turn`, as the hook makes it.
-fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
+pub fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
     match hook {
         Hook::PatchToolChoiceRequiredFirst => {
             (turn == 1).then(|| RequestPatch::new().tool_choice(ToolChoice::Required))
@@ -2921,8 +2921,20 @@ pub async fn call_tools(
         .collect()
 }
 
+/// The header's hook list for `program`: `DynamicContext` first when the
+/// builder registered one, then the hooks by name, then the layers.
+pub fn program_hooks(program: &Program, owner: &str) -> Vec<String> {
+    program
+        .dynamic_context
+        .map(|_| "DynamicContext".to_owned())
+        .into_iter()
+        .chain(program.hooks.iter().map(|hook| hook_name(*hook)))
+        .chain(layer_names(program, owner))
+        .collect()
+}
+
 /// The name the header records for a hook: its type's last path segment.
-fn hook_name(hook: Hook) -> String {
+pub fn hook_name(hook: Hook) -> String {
     let name = match hook {
         Hook::RetryUnknownTool => "RetryUnknownTool",
         Hook::ObserveEverything => "ObserveEverything",
@@ -4126,4 +4138,5 @@ macro_rules! both_interpreters {
 }
 
 pub mod world;
+pub mod world_hooks;
 pub mod world_nesting;

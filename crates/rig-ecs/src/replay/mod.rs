@@ -8,7 +8,8 @@ use rig_effect_log::{EffectLogRecorder, stable_hash};
 use crate::{
     agent::{
         AdditionalParams, Context, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Grant,
-        MaxTokens, Order, Output, OutputKind, Preamble, Temperature, ToolChoiceSpec, UsesModel,
+        MaxTokens, Order, Output, OutputKind, Preamble, Route, Temperature, ToolChoiceSpec,
+        UsesModel,
     },
     bus::Bound,
 };
@@ -90,8 +91,8 @@ pub fn spec_hash(world: &mut World, agent: Entity) -> Option<u64> {
     stable_hash(&spec_json(world, agent)).ok()
 }
 
-/// The agent's required effect row: its model, and every tool it grants,
-/// by their bound keys.
+/// The agent's required effect row: its model, every route, and every
+/// tool it grants, by their bound keys.
 pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     let mut row = EffectRow::new();
     let model = world.get::<UsesModel>(agent).map(|uses| uses.0);
@@ -111,24 +112,32 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
         {
             row.insert(bound.key.clone(), bound.descriptor.family.family());
         }
+        let route = world.get::<Route>(link).map(|route| route.0);
+        if let Some(route) = route
+            && let Some(bound) = world.get::<Bound>(route)
+        {
+            row.insert(bound.key.clone(), EffectFamily::Completion);
+        }
     }
     row
 }
 
-/// Stamp `recorder`'s header with `agent`'s identity: the spec hash, an
-/// empty hook list (the world has no hooks), the required row, and the
-/// bus policy the world runs under.
+/// Stamp `recorder`'s header with `agent`'s identity: the spec hash, the
+/// program's hook list as it declares it (`hooks` — the world has no hook
+/// stack to name; a program with none passes an empty list), the required
+/// row, and the bus policy the world runs under.
 pub fn stamp_header(
     world: &mut World,
     agent: Entity,
     recorder: &EffectLogRecorder,
     bus: Option<rig_core::serve::ServingPolicy>,
+    hooks: Vec<String>,
 ) {
     if let Some(hash) = spec_hash(world, agent) {
         recorder.set_run_spec(hash);
     }
     let required = required_row(world, agent);
-    recorder.set_program(Vec::new(), required, bus);
+    recorder.set_program(hooks, required, bus);
 }
 
 /// The key an agent mints for its model: `<owner>/model:<label>`.

@@ -38,47 +38,38 @@ The first steering slot is any system before `Assemble`: it edits the graph. `te
 
 ## Every rig-agent hook action, as a system
 
-| rig-agent | here |
-|---|---|
-| `on_run_start` | an observer `On<Add, Run>` |
-| `on_model_select` / routing | a system before `RigSet::Select` inserting `UsesModel` on the run |
-| `on_completion_call` — patch the request | a system in `RigSet::Patch` editing the `PendingEffect`; or, before `Assemble`, editing the graph (utterances, `Attachment`s, `Grant`s, settings) |
-| `on_completion_call` — stop | a system in `Patch` despawning the effect (the run fails `Cancelled`) |
-| `on_dispatch` deny / patch | the bus's `Gate`: `Held`, `EffectOutcome(Err(Denied))`, or a rewrite |
-| `on_outcome` replace | the bus's `Judge` (an `EffectOutcome`), or `RigSet::Judge` (the turn's `Outputs`) |
-| deltas | `Changed<Streamed>` on the effect, `Changed<Outputs>` on the turn |
-| `on_invalid_tool_call` — `Fail`, `Ignore`, `Retry { feedback }`, `Repair { tool_name }`, `Skip { reason }` | a system before `RigSet::Materialise` writing `Resolution::{Fail, Ignore, Retry { feedback }, Repair { to }, Skip { reason }}` on the `InvalidCall` entity (`tool_batch.rs`) |
-| `tool_concurrency` | `ToolPolicy { concurrency }` on the run or the agent |
-| `on_dispatch` deny / patch on a tool call | the bus's `Gate` on the tool child: `EffectOutcome(Err(Denied))` is the skipped result the model sees, no record; a rewrite of the `PendingEffect` is the record's request |
-| `on_outcome` replace on a tool result | the bus's `Judge`: rewrite the tool child's `EffectOutcome`; history holds the replacement, the record the answer |
-| `on_turn_finished` / `on_run_settled` | observers on `Materialised`, `Settled`, `Failed` |
+No hook trait: a user system writes a component at a set boundary, a library system reads it later (CONTRACT §9). One row per rig-agent hook method and action, each naming the corpus cell that pins it (`crates/rig-verify/tests/corpus/world_hooks.rs` writes every one of them for the corpus; `tests/steer_hooks.rs` pins the library's side).
 
-None of these exists yet as a shipped policy; stage 4 reproduces every hook-recorded golden as one of them.
+| rig-agent | here | pinned by |
+|---|---|---|
+| `on_run_start` — observe, dispatch | an observer `On<Add, Run>` (a dispatch: spawn a `PendingEffect` `ChildOf` the run — its `Seq` precedes the first completion's) | `anthropic_host_custom_at_start`, `anthropic_hooks_lookup_before_run`, `openai_host_embed_prompt`, `mock_oracle_rerank` |
+| `on_run_start` — `stop(reason)` | insert `Cancelled(reason)` on the run | `mock_endings_stop_at_start` |
+| `on_run_start` — `rewrite(prompt)` | rewrite the prompt `Utterance`'s `Parts` before `Assemble` | `run_graph::a_system_before_assemble_rewrites_an_utterance` |
+| `on_model_select` — `select(label)` | a system after `RigSet::Advance`, before `RigSet::Select`, inserting `UsesModel(route)` on the run (`Route` links on the agent put the route in the required row) | `anthropic_serving_model_route`, `anthropic_shaping_route_on_first_turn`, `anthropic_shaping_late_route` |
+| `on_model_select` — `stop` | `Cancelled` on the run, same moment | `mock_endings_stop_at_model_select` |
+| `on_completion_call` — `patch(RequestPatch)` | `RequestPatch` on the fresh turn (a system on `Added<Fresh>` before `Assemble`); several merge in schedule order | `anthropic_hooks_preamble_override`, `anthropic_shaping_*` (every field), `anthropic_shaping_merged_three` |
+| `on_completion_call` — dispatch | spawn the effect on `Added<Fresh>` before `Assemble`, so it precedes the completion | `anthropic_host_custom_at_completion_call` |
+| `on_completion_call` — `stop` | `Cancelled` on the run, before or in `Patch` (the folded effect is despawned unissued: no record) | `mock_endings_stop_at_completion_call` |
+| `on_dispatch` — `patch(kind)` on a tool | rewrite the tool child's `PendingEffect` in the bus's `Gate` | `anthropic_hooks_patch_tool_args{,_streamed}` |
+| `on_dispatch` — `deny(reason)` / `skip` | `EffectOutcome(Err(Denied))` on the tool child in `Gate`: the skipped result the model sees, no record | `anthropic_hooks_deny_tool{,_streamed}` |
+| `on_dispatch` — `stop` | `Cancelled` on the run from `Gate`: the child is despawned unissued | `anthropic_endings_tool_dispatch_cancelled{,_streamed}` |
+| `on_outcome` — `replace` a tool result | rewrite the tool child's `EffectOutcome` in the bus's `Judge`: history holds the replacement, the record the answer | `anthropic_hooks_replace_tool_result`, `anthropic_hooks_two_hooks` |
+| `on_outcome` — `replace` a completion | rewrite the turn's `Outputs.content` in `RigSet::Judge` | `anthropic_hooks_replace_answer` |
+| `on_outcome` — `stop` after a tool | `Cancelled` from `On<Add, EffectOutcome>` on the tool child (the record holds the real answer, nothing is committed) | `anthropic_endings_tool_outcome_cancelled{,_streamed}` |
+| `on_outcome` — `stop` on an answer | `Cancelled` in `RigSet::Judge` | `anthropic_endings_answer_outcome_cancelled` |
+| `on_outcome` — dispatch | spawn from `On<Add, EffectOutcome>` on the tool child | `anthropic_host_custom_at_outcome{,_streamed}`, `anthropic_oracle_concurrent_notes` |
+| `on_model_turn_finished` — `retry_with_feedback` / `repeat` | `Retry { feedback }` on the turn in `RigSet::Judge`; `materialise` makes the turn and the feedback history and asks again | `anthropic_hooks_demand_done` |
+| `on_model_turn_finished` — `stop` | `Cancelled` in `RigSet::Judge` (a stateful stop reads `Cursor.turn`) | `anthropic_endings_turn_finished_stop{,_streamed}`, `anthropic_endings_answer_turn_stop`, `anthropic_oracle_stop_after_turn_two` |
+| `on_invalid_tool_call` — `Retry { feedback }` / `Repair { tool_name }` / `Skip { reason }` / `Fail` / (unhandled: `Ignore`) | `Resolution::{Retry { feedback }, Repair { to }, Skip { reason }, Fail, Ignore}` on the `InvalidCall` entity, before `RigSet::Materialise` (CONTRACT §8.2) | `mock_invalid_*`, `mock_delta_{retry,repair,skip}`, `mock_hooks_retry_twice` |
+| `on_text_delta` / `on_tool_call_delta` / `on_reasoning_delta` — observe, `stop` | a system after `RigSet::Fold` on `Changed<Outputs>` (text) or the effect's `Changed<Streamed>` (tool-call, reasoning deltas); a stop inserts `Cancelled`, the stream is the handler's to end | `anthropic_endings_text_delta_stop`, `anthropic_endings_tool_call_delta_stop`, `mock_delta_stop_on_{name,arguments}` |
+| `on_run_settled` — observe, dispatch | an observer `On<Add, Settled>` / `On<Add, Failed>` | `anthropic_host_custom_at_settled`, `anthropic_host_custom_start_and_settled` |
+| `observes(kind)` | a query; nothing to declare | `anthropic_hooks_observe_everything` (memory: stage 5) |
+| `tool_concurrency` | `ToolPolicy { concurrency }` on the run or the agent | `anthropic_serving_concurrent_concurrency_two` |
+| `HookContext::bind` refused (a key nothing serves) | the system finds no `Bound` for the key and dispatches nothing | `anthropic_host_custom_unserved` |
+| a hook's effect with no wire form | `PendingEffect::custom` refuses it; nothing is spawned | `mock_leftovers_unserializable_from_hook` |
+| the chaining rules (`HookStack`) | schedule order: two systems patching one turn run in order; the first `Cancelled` ends the run; a `Retry` short-circuits because `materialise` reads it before committing | `anthropic_shaping_merged_three` |
 
-
-The `bus` module is written as if it were already its own crate (every item `pub` or private to its file, no import from a sibling module, no agent-shaped identifier, its tests in `tests/bus_*.rs`, a root guard enforcing all four) and becomes `rig-bevy` by a `git mv` when a second consumer exists. The agent runtime the later modules add consumes it through its public items only.
-
-```rust,ignore
-App::new()
-    .add_plugins((ScheduleRunnerPlugin::default(), BusPlugin::default()))
-    .add_systems(Startup, (register_the_model, ask).chain())
-    .add_observer(print_the_answer)
-    .run();
-
-fn register_the_model(mut handlers: Handlers) {
-    handlers.register("model", CompletionAdapter::new("gpt", client)).ok();
-}
-
-fn ask(mut commands: Commands) {
-    commands.spawn(PendingEffect::new("model", EffectKind::Completion { request, stream: false }));
-}
-
-fn print_the_answer(answered: On<Add, EffectOutcome>, outcomes: Query<&EffectOutcome>) {
-    println!("{:?}", outcomes.get(answered.event().entity));
-}
-```
-
-`examples/hello_model.rs` is that program over a scripted mock.
+Every hook cell of the corpus is written against the public sets and components above with no library change beyond the sets — the claim of `how-the-ecs-dissolves-rig-agent.md` §12, tested; the one set stage 4 added is `RigSet::Release` (stage 3's, between `Patch` and the bus's `Gate`). Memory, retrieval and layer cells are stage 5's and 6's.
 
 ## Vocabulary
 
@@ -159,7 +150,7 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 
 ## What it deliberately does not have
 
-No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Not yet: hooks as shipped systems (stage 4), memory, retrieval, routing and two runs on one agent (stage 5). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). No `reflect` yet: `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save until the `reflect` PR extends it. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Not yet: layers with the record's discard (stage 4's C6), program identity in the header, memory, retrieval and two runs on one agent (stage 5). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). No `reflect` yet: `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save until the `reflect` PR extends it. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
 
 ## On wasm
 

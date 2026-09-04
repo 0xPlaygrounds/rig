@@ -9,7 +9,8 @@
 //!
 //! | design (§3.1) | here |
 //! |---|---|
-//! | Agent | an entity with [`Owner`], [`Preamble`], [`Temperature`], [`MaxTokens`], [`AdditionalParams`], [`ToolChoiceSpec`], [`Output`], [`MaxTurns`], [`InvalidCalls`]; [`UsesModel`] → the model's handler entity; [`Grant`] link entities → tool handler entities; [`Context`] link entities → document entities |
+//! | Agent | an entity with [`Owner`], [`Preamble`], [`Temperature`], [`MaxTokens`], [`AdditionalParams`], [`ToolChoiceSpec`], [`Output`], [`MaxTurns`], [`InvalidCalls`]; [`UsesModel`] → the model's handler entity; [`Grant`] link entities → tool handler entities; [`Context`] link entities → document entities; [`Route`] link entities → other models a run may be steered to |
+//! | Steering (§9) | [`Cancelled`] on a run; [`Retry`] and [`RequestPatch`] on a turn; [`Resolution`] on an invalid call; `UsesModel` on a run |
 //! | Model, Tool | the bus module's handler entities (`Bound`) |
 //! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
 //! | Utterance | [`Utterance`] + [`Role`] + [`Parts`] (the message's parts, verbatim), [`Order`]; `ChildOf` the run |
@@ -155,6 +156,18 @@ impl ModelOf {
         &self.0
     }
 }
+
+/// A route: a link entity, `ChildOf` the agent, naming another model the
+/// agent may be steered to (a system inserting [`UsesModel`] on the run);
+/// the required row names it.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[relationship(relationship_target = RoutedTo)]
+pub struct Route(pub Entity);
+
+/// The routes naming this model.
+#[derive(Component, Debug, Default)]
+#[relationship_target(relationship = Route)]
+pub struct RoutedTo(Vec<Entity>);
 
 /// A grant: a link entity, `ChildOf` the agent, naming one tool the agent
 /// advertises. Advertisement order is [`Order`].
@@ -484,6 +497,81 @@ pub struct Outputs {
     pub done: bool,
 }
 
+/// A stop, written by any system at any moment: the run ends
+/// `Failed(Cancelled)` with this reason, its effects never issued are
+/// despawned (no record), the ones in flight left to their handler
+/// (CONTRACT §9.1). Serde: a scene saved between the write and the read
+/// restores the decision.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cancelled(pub String);
+
+/// A retry of a complete, tool-free turn, written on the turn before
+/// `Materialise` reads it (CONTRACT §9.4): with feedback, the turn and the
+/// feedback become history and another turn begins; without, nothing
+/// becomes history and another turn begins.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retry {
+    /// What the model is told, if anything.
+    pub feedback: Option<String>,
+}
+
+/// A per-turn patch of the request, written on the fresh turn before
+/// `Assemble` folds it in (CONTRACT §9.3): what a completion-call hook
+/// changed about one model call, as data. Two systems patching one turn
+/// [`merge`](Self::merge) in schedule order.
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RequestPatch {
+    /// The preamble the system message is built from, instead of the
+    /// agent's.
+    pub preamble: Option<String>,
+    /// The sampling temperature for the turn.
+    pub temperature: Option<f64>,
+    /// The token budget for the turn.
+    pub max_tokens: Option<u64>,
+    /// The tool choice for the turn.
+    pub tool_choice: Option<ToolChoice>,
+    /// The tools advertised, narrowed to these names.
+    pub active_tools: Option<Vec<String>>,
+    /// Provider parameters for the turn (an object merges over the
+    /// agent's, later keys winning).
+    pub additional_params: Option<serde_json::Value>,
+    /// Documents appended after the turn's attachments.
+    pub extra_context: Vec<rig_core::completion::Document>,
+    /// The utterances sent instead of the run's (the prompt stays).
+    pub history: Option<Vec<MessageParts>>,
+}
+
+impl RequestPatch {
+    /// `later` merged over this patch: `extra_context` appends, an object
+    /// `additional_params` shallow-merges with later keys winning,
+    /// `active_tools` intersect, every other field takes the later value
+    /// when set.
+    pub fn merge(mut self, later: Self) -> Self {
+        self.extra_context.extend(later.extra_context);
+        self.additional_params = match (self.additional_params.take(), later.additional_params) {
+            (Some(base), Some(patch)) if base.is_object() && patch.is_object() => {
+                Some(rig_core::json_utils::merge(base, patch))
+            }
+            (base, patch) => patch.or(base),
+        };
+        self.preamble = later.preamble.or(self.preamble);
+        self.temperature = later.temperature.or(self.temperature);
+        self.max_tokens = later.max_tokens.or(self.max_tokens);
+        self.tool_choice = later.tool_choice.or(self.tool_choice);
+        self.history = later.history.or(self.history);
+        self.active_tools = match (self.active_tools.take(), later.active_tools) {
+            (Some(earlier), Some(later)) => Some(
+                earlier
+                    .into_iter()
+                    .filter(|name| later.contains(name))
+                    .collect(),
+            ),
+            (earlier, later) => earlier.or(later),
+        };
+        self
+    }
+}
+
 /// A reprompt the next turn carries as its last user message: the output
 /// tool was not called, or was called without a required field.
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -550,4 +638,7 @@ const _: () = {
     assert_serde::<ToolContextSpec>();
     assert_serde::<Batch>();
     assert_serde::<ToolCallSlot>();
+    assert_serde::<Cancelled>();
+    assert_serde::<Retry>();
+    assert_serde::<RequestPatch>();
 };

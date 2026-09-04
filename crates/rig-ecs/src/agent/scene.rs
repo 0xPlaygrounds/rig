@@ -11,12 +11,13 @@ use rig_core::effect::HandlerKey;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Context, Cursor,
-    DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant, InvalidCall,
+    AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
+    Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant, InvalidCall,
     InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, Order, OrderCounter, Output, OutputRetries,
-    OutputToolName, Outputs, Owner, Parts, Preamble, Reprompt, Resolution, ResolvingTools, Role,
-    Run, RunCounter, RunOf, RunResult, RunSeq, Settled, Streamed, Temperature, ToolCallSlot,
-    ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
+    OutputToolName, Outputs, Owner, Parts, Preamble, Reprompt, RequestPatch, Resolution,
+    ResolvingTools, Retry, Role, Route, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
+    Streamed, Temperature, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage,
+    UsesModel, Utterance,
 };
 use crate::bus::{Bound, Scope};
 
@@ -67,8 +68,8 @@ pub struct SceneEntity {
     /// Its `ChildOf`, by index.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<usize>,
-    /// Its relationships: `uses_model`, `run_of`, `grant`, `context`,
-    /// `attachment`, `advert`.
+    /// Its relationships: `uses_model`, `run_of`, `grant`, `route`,
+    /// `context`, `attachment`, `advert`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relations: Vec<(String, Target)>,
 }
@@ -207,7 +208,7 @@ impl RunScene {
             order.push((1, entity));
         }
         for entity in world
-            .query_filtered::<Entity, Or<(With<Grant>, With<Context>)>>()
+            .query_filtered::<Entity, Or<(With<Grant>, With<Context>, With<Route>)>>()
             .iter(world)
         {
             order.push((2, entity));
@@ -273,6 +274,7 @@ impl RunScene {
                 InvalidCall => "invalid_call", Resolution => "resolution",
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
                 ResolvingTools => "resolving_tools", Batch => "batch",
+                Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
@@ -315,6 +317,11 @@ impl RunScene {
                 && let Some(target) = target_of(world, *tool)
             {
                 relations.push(("grant".to_owned(), target));
+            }
+            if let Some(Route(model)) = world.get::<Route>(entity)
+                && let Some(target) = target_of(world, *model)
+            {
+                relations.push(("route".to_owned(), target));
             }
             if let Some(Context(document)) = world.get::<Context>(entity)
                 && let Some(target) = target_of(world, *document)
@@ -393,6 +400,7 @@ impl RunScene {
                 InvalidCall => "invalid_call", Resolution => "resolution",
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
                 ResolvingTools => "resolving_tools", Batch => "batch",
+                Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
@@ -441,6 +449,9 @@ impl RunScene {
                     }
                     "grant" => {
                         entity.insert(Grant(to));
+                    }
+                    "route" => {
+                        entity.insert(Route(to));
                     }
                     "context" => {
                         entity.insert(Context(to));

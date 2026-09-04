@@ -27,7 +27,7 @@ use rig_ecs::{
         Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, ToolPolicy,
         Unhandled as WorldUnhandled, UsesModel,
     },
-    bus::{BusPlugin, EffectLogResource, Handlers, IdCounter},
+    bus::{BusPlugin, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect},
     replay::stamp_header,
     systems::{AgentPlugin, spawn_run},
 };
@@ -43,14 +43,8 @@ const GUARD: Duration = Duration::from_secs(30);
 /// Why a program is not this interpreter's yet: the set or entity it waits
 /// for, by stage.
 pub fn unsupported(program: &Program) -> Option<&'static str> {
-    if !program.hooks.is_empty() {
-        return Some("hooks as systems and observers (stage 4)");
-    }
     if program.conversation.is_some() {
         return Some("conversation memory (stage 5)");
-    }
-    if program.route.is_some() || program.late_route.is_some() {
-        return Some("model routing (stage 4)");
     }
     if program.dynamic_context.is_some() || program.retrieved_tools.is_some() {
         return Some("retrieval (stage 4)");
@@ -92,6 +86,15 @@ pub fn world_agent_reproduces(program: &Program) {
         assert!(log.header.bus.is_none(), "a host-bus program");
         policy.serial_per_handler = true;
     }
+    // One pool thread, so same-key dispatches reach their replayer in
+    // dispatch order (see the registration below). Process-wide: nextest
+    // runs each cell in its own process.
+    bevy_tasks::IoTaskPool::get_or_init(|| {
+        bevy_tasks::TaskPoolBuilder::new()
+            .num_threads(1)
+            .thread_name("world-agent-io".to_owned())
+            .build()
+    });
     let mut app = App::new();
     app.add_plugins((
         BusPlugin::with_policy(ServingPolicy {
@@ -108,7 +111,11 @@ pub fn world_agent_reproduces(program: &Program) {
     world.resource_mut::<IdCounter>().0 = 1;
 
     // The golden's replayers, by position per key, as the other
-    // interpreters register them: the world mints its own ids.
+    // interpreters register them: rig-bus minted an id for a dispatch a
+    // hook or a layer then denied, so the ids do not align with the
+    // world's, which mints only what it dispatches. Position holds because
+    // the pool below is one thread: a handler task's first poll — where the
+    // replayer pops its record — comes in spawn order, which is `Seq` order.
     let mut handler_entities: Vec<(HandlerKey, Entity)> = Vec::new();
     Handlers::with(world, |handlers| {
         for replayer in EffectLogReplayer::for_log(&log).expect("the golden's replayers") {
@@ -136,6 +143,7 @@ pub fn world_agent_reproduces(program: &Program) {
     if let Some(nesting) = program.nesting {
         super::world_nesting::install(world, nesting, program.owner);
     }
+    super::world_hooks::install(world, program);
     let recorder = if keeps_events(&log) {
         EffectLogRecorder::keeping_stream_events()
     } else {
@@ -149,6 +157,7 @@ pub fn world_agent_reproduces(program: &Program) {
         agent,
         &world.resource::<EffectLogResource>().0.clone(),
         log.header.bus,
+        super::program_hooks(program, program.owner),
     );
     let history: Vec<MessageParts> = program
         .history
@@ -197,6 +206,25 @@ pub fn world_agent_reproduces(program: &Program) {
         );
         std::thread::yield_now();
     }
+    // To quiescence: a settled hook's dispatch, a stream a stop left to its
+    // handler, still land after the run ended.
+    loop {
+        app.update();
+        let world = app.world_mut();
+        let open = world
+            .query_filtered::<(), (With<PendingEffect>, Without<EffectOutcome>)>()
+            .iter(world)
+            .count();
+        if open == 0 {
+            break;
+        }
+        assert!(
+            start.elapsed() < GUARD,
+            "{}: {open} effects still open after the run ended",
+            program.fixture
+        );
+        std::thread::yield_now();
+    }
 
     let world = app.world();
     let ending = (
@@ -208,6 +236,9 @@ pub fn world_agent_reproduces(program: &Program) {
         // answers the record as the cancel it was, and the run ends there.
         ((None, Some(Failed(Failure::Cancelled(report)))), _)
             if program.cancel_after_first_delta && report.kind == ErrorKind::Cancelled => {}
+        // A hook's stop: the reason is the run's.
+        ((None, Some(Failed(Failure::Cancelled(report)))), Ending::Cancelled(reason))
+            if report.kind == ErrorKind::Cancelled && report.message == reason => {}
         ((Some(result), None), Ending::Answer) => {
             assert_eq!(
                 result.0,
@@ -342,6 +373,16 @@ fn spawn_agent(world: &mut World, program: &Program, handlers: &[(HandlerKey, En
             .map(|(_, entity)| *entity)
             .expect("the golden describes every required tool");
         world.spawn((Grant(tool), Order(order), ChildOf(agent)));
+        order += 1;
+    }
+    if let Some(label) = program.route {
+        let key = HandlerKey::from(format!("{}/model:{label}", program.owner));
+        let route = handlers
+            .iter()
+            .find(|(bound, _)| *bound == key)
+            .map(|(_, entity)| *entity)
+            .expect("the golden serves the route");
+        world.spawn((rig_ecs::agent::Route(route), Order(order), ChildOf(agent)));
         order += 1;
     }
     world.resource_mut::<rig_ecs::agent::OrderCounter>().0 = order;

@@ -365,6 +365,87 @@ pub fn invalid_peer_results(content: &[AssistantContent], id: &str, text: &str) 
     MessageParts::User { content: parts }
 }
 
+/// The turn as it stood when an invalid call surfaced mid-stream (CONTRACT
+/// §8.2, the delta wire): a streamed turn whose invalid call is retried or
+/// skipped is abandoned at that call — history keeps the parts before it
+/// and the call as it stood: a call built from deltas has no provider id
+/// yet and its arguments only when they streamed before its name (`events`
+/// says which: the call's block's first delta); a call whose block was
+/// delivered whole, or a unary turn, is kept whole.
+pub fn partial_turn_at(
+    content: &[AssistantContent],
+    events: Option<&[rig_core::streaming::StreamEvent]>,
+    invalid_id: &str,
+) -> Vec<AssistantContent> {
+    use rig_core::streaming::{BlockKind, Delta, StreamEvent};
+    let Some(events) = events else {
+        return content.to_vec();
+    };
+    // The tool-call blocks in the order they started, each with whether its
+    // first delta was the name.
+    let mut blocks: Vec<(rig_core::streaming::BlockId, Option<bool>)> = Vec::new();
+    for event in events {
+        match event {
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::ToolCall,
+            } => blocks.push((id.clone(), None)),
+            StreamEvent::BlockDelta { id, delta } => {
+                if let Some((_, first)) = blocks.iter_mut().find(|(block, _)| block == id)
+                    && first.is_none()
+                {
+                    *first = Some(match delta {
+                        Delta::ToolName { .. } => true,
+                        Delta::ToolArguments { .. }
+                        | Delta::Text { .. }
+                        | Delta::TextMeta { .. }
+                        | Delta::Reasoning { .. } => false,
+                    });
+                }
+            }
+            StreamEvent::BlockStart { .. }
+            | StreamEvent::BlockEnd { .. }
+            | StreamEvent::Final(_)
+            | StreamEvent::Unknown(_) => {}
+        }
+    }
+    if blocks.is_empty() {
+        return content.to_vec();
+    }
+    let mut kept = Vec::new();
+    let mut call_index = 0;
+    for part in content {
+        match part {
+            AssistantContent::ToolCall(call) => {
+                let name_first = blocks.get(call_index).and_then(|(_, first)| *first);
+                call_index += 1;
+                if call.id.as_str() == invalid_id {
+                    // A call built from deltas surfaced before its block
+                    // ended: no provider id yet, and no arguments unless
+                    // they streamed before the name. A block delivered
+                    // whole is kept whole.
+                    let mut partial = call.clone();
+                    match name_first {
+                        Some(true) => {
+                            partial.provider = None;
+                            partial.function.arguments = serde_json::Value::Null;
+                        }
+                        Some(false) => partial.provider = None,
+                        None => {}
+                    }
+                    kept.push(AssistantContent::ToolCall(partial));
+                    return kept;
+                }
+                kept.push(part.clone());
+            }
+            AssistantContent::Text(_)
+            | AssistantContent::Reasoning(_)
+            | AssistantContent::Image(_) => kept.push(part.clone()),
+        }
+    }
+    kept
+}
+
 /// The text of an assistant answer: its text parts concatenated.
 pub fn answer_text(content: &[AssistantContent]) -> String {
     content

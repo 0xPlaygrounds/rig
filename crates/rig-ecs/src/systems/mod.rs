@@ -27,13 +27,13 @@ use rig_core::{
 
 use crate::{
     agent::{
-        AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Context, Cursor,
-        DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant, InvalidCall, InvalidCalls,
-        InvalidRetries, MaxTokens, MaxTurns, MessageParts, Order, OrderCounter, Output, OutputKind,
-        OutputRetries, OutputToolName, Outputs, Parts, Preamble, Reprompt, Resolution,
-        ResolvingTools, Run, RunCounter, RunOf, RunResult, RunSeq, Settled, Streamed, Temperature,
-        ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage,
-        UsesModel, Utterance,
+        AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
+        Cursor, DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant, InvalidCall,
+        InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, MessageParts, Order, OrderCounter,
+        Output, OutputKind, OutputRetries, OutputToolName, Outputs, Parts, Preamble, Reprompt,
+        RequestPatch, Resolution, ResolvingTools, Retry, Run, RunCounter, RunOf, RunResult, RunSeq,
+        Settled, Streamed, Temperature, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy,
+        Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
         Bound, BusPlugin, BusSet, EffectOutcome, Held, Issued, PendingEffect, Progress,
@@ -79,6 +79,14 @@ pub type EffectView = (
 pub type Unresolved = (With<InvalidCall>, Without<Resolution>);
 /// A turn `Materialise` has not read.
 pub type Unread = (With<Turn>, Without<Materialised>);
+/// What `assemble` reads of a run.
+pub type AssemblingView = (
+    &'static RunOf,
+    &'static RunSeq,
+    &'static Streamed,
+    &'static UsesModel,
+    &'static OutputToolName,
+);
 /// What `materialise` reads of a run awaiting its model.
 pub type AwaitingView = (
     &'static RunOf,
@@ -121,6 +129,7 @@ impl Plugin for AgentPlugin {
         app.init_resource::<OrderCounter>()
             .init_resource::<RunCounter>();
         app.add_observer(effect_cancelled);
+        app.add_observer(run_cancelled);
         let mut schedules = app.world_mut().resource_mut::<Schedules>();
         let Some(schedule) = schedules.get_mut(RigSchedule) else {
             return;
@@ -335,8 +344,8 @@ pub fn select(
 )]
 pub fn assemble(
     mut commands: Commands,
-    fresh: Query<(Entity, &ChildOf), With<Fresh>>,
-    runs: Query<(&RunOf, &RunSeq, &Streamed, &UsesModel, &OutputToolName), With<Run>>,
+    fresh: Query<(Entity, &ChildOf, Option<&RequestPatch>), With<Fresh>>,
+    runs: Query<AssemblingView, (With<Run>, Without<Failed>)>,
     children: Query<&Children>,
     utterances: Query<(&Parts, &Order), With<Utterance>>,
     adverts: Query<(&Advert, &Order)>,
@@ -351,18 +360,18 @@ pub fn assemble(
     outputs: Query<&Output>,
     mut progress: ResMut<Progress>,
 ) {
-    let mut turns: Vec<(Entity, Entity, RunSeq)> = fresh
+    let mut turns: Vec<(Entity, Entity, RunSeq, Option<&RequestPatch>)> = fresh
         .iter()
-        .filter_map(|(turn, child_of)| {
+        .filter_map(|(turn, child_of, patch)| {
             let run = child_of.parent();
             runs.get(run)
                 .ok()
-                .map(|(_, seq, _, _, _)| (turn, run, *seq))
+                .map(|(_, seq, _, _, _)| (turn, run, *seq, patch))
         })
         .collect();
-    turns.sort_by_key(|(_, _, seq)| *seq);
+    turns.sort_by_key(|(_, _, seq, _)| *seq);
 
-    for (turn, run, _) in turns {
+    for (turn, run, _, patch) in turns {
         let Ok((RunOf(agent), _, Streamed(stream), UsesModel(model), minted)) = runs.get(run)
         else {
             continue;
@@ -399,11 +408,28 @@ pub fn assemble(
             .unwrap_or_default();
         history.sort_by_key(|(order, _)| **order);
 
+        // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
+        // folded a completion-call hook's.
         let tools: Vec<&Bound> = links_in_order(turn, &children, &adverts)
             .into_iter()
             .filter_map(|Advert(tool)| bound.get(*tool).ok())
+            .filter(|bound| {
+                match (
+                    patch.and_then(|p| p.active_tools.as_ref()),
+                    &bound.descriptor.family,
+                ) {
+                    (Some(allowed), FamilyDescriptor::Tool { name, .. }) => allowed.contains(name),
+                    (Some(_), FamilyDescriptor::Completion { .. })
+                    | (Some(_), FamilyDescriptor::Embed { .. })
+                    | (Some(_), FamilyDescriptor::Rerank { .. })
+                    | (Some(_), FamilyDescriptor::Memory { .. })
+                    | (Some(_), FamilyDescriptor::Retrieve { .. })
+                    | (Some(_), FamilyDescriptor::Custom { .. })
+                    | (None, _) => true,
+                }
+            })
             .collect();
-        let attached: Vec<rig_core::completion::Document> =
+        let mut attached: Vec<rig_core::completion::Document> =
             links_in_order(turn, &children, &attachments)
                 .into_iter()
                 .filter_map(|Attachment(document)| documents.get(*document).ok())
@@ -413,12 +439,42 @@ pub fn assemble(
                     additional_props: props.map(|props| props.0.clone()).unwrap_or_default(),
                 })
                 .collect();
+        if let Some(patch) = patch {
+            attached.extend(patch.extra_context.iter().cloned());
+        }
+        // A patched history replaces the prior utterances; the prompt — the
+        // run's last utterance — is still what the turn asks.
+        let patched_history: Option<Vec<MessageParts>> =
+            patch.and_then(|p| p.history.as_ref()).map(|messages| {
+                messages
+                    .iter()
+                    .cloned()
+                    .chain(history.last().map(|(_, parts)| parts.0.clone()))
+                    .collect()
+            });
+        let merged_params: Option<serde_json::Value> = match (
+            setting(run, agent, &params).and_then(|p| p.0.clone()),
+            patch.and_then(|p| p.additional_params.clone()),
+        ) {
+            (Some(base), Some(patched)) if base.is_object() && patched.is_object() => {
+                Some(rig_core::json_utils::merge(base, patched))
+            }
+            (base, patched) => patched.or(base),
+        };
 
-        let preamble = setting(run, agent, &preambles).and_then(|preamble| preamble.0.as_deref());
-        let temperature = setting(run, agent, &temperatures).and_then(|t| t.0);
-        let max_tokens = setting(run, agent, &max_tokens).and_then(|m| m.0);
-        let additional_params = setting(run, agent, &params).and_then(|p| p.0.as_ref());
-        let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.as_ref());
+        let preamble = patch
+            .and_then(|p| p.preamble.as_deref())
+            .or_else(|| setting(run, agent, &preambles).and_then(|preamble| preamble.0.as_deref()));
+        let temperature = patch
+            .and_then(|p| p.temperature)
+            .or_else(|| setting(run, agent, &temperatures).and_then(|t| t.0));
+        let max_tokens = patch
+            .and_then(|p| p.max_tokens)
+            .or_else(|| setting(run, agent, &max_tokens).and_then(|m| m.0));
+        let additional_params = merged_params.as_ref();
+        let tool_choice = patch
+            .and_then(|p| p.tool_choice.as_ref())
+            .or_else(|| setting(run, agent, &choices).and_then(|c| c.0.as_ref()));
         let output = setting(run, agent, &outputs).cloned().unwrap_or_default();
 
         let granted_names: Vec<&str> = tools
@@ -438,13 +494,19 @@ pub fn assemble(
             .clone()
             .unwrap_or_else(|| policy::output_tool_name(&granted_names));
         let callable = policy::output_tool_callable(tool_choice, &output_tool);
-        let resolved = policy::resolve_output(
-            output.mode,
-            output.schema.is_some(),
-            granted_names.len(),
-            callable,
-            composes,
-        );
+        // A committed output tool (minted on an earlier turn) stays the
+        // mode whatever this turn's choice says (CONTRACT §9.3).
+        let resolved = if minted.0.is_some() {
+            OutputKind::Tool
+        } else {
+            policy::resolve_output(
+                output.mode,
+                output.schema.is_some(),
+                granted_names.len(),
+                callable,
+                composes,
+            )
+        };
         if let Some(name) = &minted.0
             && granted_names.contains(&name.as_str())
         {
@@ -467,7 +529,10 @@ pub fn assemble(
 
         let graph = RequestGraph {
             preamble,
-            utterances: history.iter().map(|(_, parts)| &parts.0).collect(),
+            utterances: match &patched_history {
+                Some(patched) => patched.iter().collect(),
+                None => history.iter().map(|(_, parts)| &parts.0).collect(),
+            },
             documents: attached,
             tools: tools.iter().map(|bound| &bound.descriptor).collect(),
             temperature,
@@ -491,7 +556,7 @@ pub fn assemble(
         ));
         commands
             .entity(turn)
-            .remove::<Fresh>()
+            .remove::<(Fresh, RequestPatch)>()
             .insert((Folded(resolved), Outputs::default()));
         commands
             .entity(run)
@@ -812,8 +877,8 @@ fn invalid_verdict(pending: &[(Entity, InvalidCall, Resolution)]) -> InvalidVerd
 )]
 pub fn materialise(
     mut commands: Commands,
-    mut turns: Query<(Entity, &ChildOf, &mut Outputs, &Folded), Unread>,
-    effects: Query<(&ChildOf, &EffectOutcome), With<PendingEffect>>,
+    mut turns: Query<(Entity, &ChildOf, &mut Outputs, &Folded, Option<&Retry>), Unread>,
+    effects: Query<(&ChildOf, &EffectOutcome, Option<&BusStreamed>), With<PendingEffect>>,
     runs: Query<AwaitingView, With<AwaitingModel>>,
     children: Query<&Children>,
     adverts: Query<(&Advert, &Order)>,
@@ -828,7 +893,7 @@ pub fn materialise(
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
-    for (turn, turn_of, mut outs, Folded(mode)) in &mut turns {
+    for (turn, turn_of, mut outs, Folded(mode), retry) in &mut turns {
         let run = turn_of.parent();
         let Ok((RunOf(agent), cursor, retries, invalid_retries, minted, usage)) = runs.get(run)
         else {
@@ -869,9 +934,16 @@ pub fn materialise(
                 }
                 InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
                     let retried = matches!(invalid_verdict(&pending), InvalidVerdict::Retry(..));
+                    // A streamed turn is abandoned where the call surfaced.
+                    let events = effects
+                        .iter()
+                        .find(|(child_of, _, _)| child_of.parent() == turn)
+                        .and_then(|(_, _, streamed)| streamed)
+                        .map(|streamed| streamed.events.as_slice());
+                    let content = policy::partial_turn_at(&outs.content, events, &call.id);
                     let assistant = MessageParts::Assistant {
                         id: outs.message_id.clone(),
-                        content: outs.content.clone(),
+                        content: content.clone(),
                     };
                     commands.spawn((
                         Utterance,
@@ -880,7 +952,7 @@ pub fn materialise(
                         next_order_in(&mut orders),
                         ChildOf(run),
                     ));
-                    let results = policy::invalid_peer_results(&outs.content, &call.id, &feedback);
+                    let results = policy::invalid_peer_results(&content, &call.id, &feedback);
                     commands.spawn((
                         Utterance,
                         results.role(),
@@ -935,9 +1007,9 @@ pub fn materialise(
         if !outs.done {
             continue;
         }
-        let Some((_, EffectOutcome(outcome))) = effects
+        let Some((_, EffectOutcome(outcome), _)) = effects
             .iter()
-            .find(|(child_of, _)| child_of.parent() == turn)
+            .find(|(child_of, _, _)| child_of.parent() == turn)
         else {
             continue;
         };
@@ -1039,6 +1111,50 @@ pub fn materialise(
                     ChildOf(turn),
                 ));
             }
+            progress.mark();
+            continue;
+        }
+
+        // A retry written on the turn (CONTRACT §9.4): tool-free turns only.
+        if let Some(Retry { feedback }) = retry {
+            commands.entity(turn).remove::<Retry>();
+            if !calls.is_empty() {
+                commands
+                    .entity(run)
+                    .remove::<AwaitingModel>()
+                    .insert(Failed(Failure::Unsupported(
+                        "a retry of a tool-bearing turn: steer the tool calls instead".to_owned(),
+                    )));
+                progress.mark();
+                continue;
+            }
+            if let Some(feedback) = feedback {
+                let assistant = MessageParts::Assistant {
+                    id: response.message_id.clone(),
+                    content: content.clone(),
+                };
+                commands.spawn((
+                    Utterance,
+                    assistant.role(),
+                    Parts(assistant),
+                    next_order_in(&mut orders),
+                    ChildOf(run),
+                ));
+                let user = MessageParts::User {
+                    content: vec![UserContent::text(feedback)],
+                };
+                commands.spawn((
+                    Utterance,
+                    user.role(),
+                    Parts(user),
+                    next_order_in(&mut orders),
+                    ChildOf(run),
+                ));
+            }
+            commands
+                .entity(run)
+                .remove::<AwaitingModel>()
+                .insert(Assembling);
             progress.mark();
             continue;
         }
@@ -1236,4 +1352,65 @@ pub fn effect_cancelled(
             .remove::<AwaitingModel>()
             .insert(cancelled);
     }
+}
+
+/// `Cancelled(reason)` written on a run (CONTRACT §9.1): the run ends
+/// `Failed(Cancelled)` with the reason, its current turn is read, and every
+/// effect of the run never issued — a completion folded and not yet
+/// dispatched, a tool child held or pending, a hook's own dispatch — is
+/// despawned before the bus sees it (no record). An effect in flight is
+/// left to its handler: the record is the handler's.
+pub fn run_cancelled(
+    added: On<Add, Cancelled>,
+    reasons: Query<&Cancelled>,
+    children: Query<&Children>,
+    turns: Query<(), With<Turn>>,
+    effects: Query<Has<Issued>, With<PendingEffect>>,
+    mut commands: Commands,
+) {
+    let run = added.event().entity;
+    let Ok(Cancelled(reason)) = reasons.get(run) else {
+        return;
+    };
+    let mut pending: Vec<Entity> = Vec::new();
+    let mut unread: Vec<Entity> = Vec::new();
+    for child in children
+        .get(run)
+        .map(|c| c.iter().collect::<Vec<_>>())
+        .unwrap_or_default()
+    {
+        if let Ok(issued) = effects.get(child) {
+            if !issued {
+                pending.push(child);
+            }
+            continue;
+        }
+        if turns.get(child).is_ok() {
+            unread.push(child);
+            for effect in children
+                .get(child)
+                .map(|c| c.iter().collect::<Vec<_>>())
+                .unwrap_or_default()
+            {
+                if let Ok(false) = effects.get(effect) {
+                    pending.push(effect);
+                }
+            }
+        }
+    }
+    for effect in pending {
+        commands.entity(effect).despawn();
+    }
+    for turn in unread {
+        commands
+            .entity(turn)
+            .insert(Materialised)
+            .remove::<(Batch, Fresh, RequestPatch)>();
+    }
+    commands
+        .entity(run)
+        .remove::<(Assembling, AwaitingModel, ResolvingTools)>()
+        .insert(Failed(Failure::Cancelled(
+            rig_core::error::ErrorReport::new(ErrorKind::Cancelled, reason.clone()),
+        )));
 }
