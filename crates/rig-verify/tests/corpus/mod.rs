@@ -20,15 +20,16 @@
 //! | tool shape | none · one call then answer · two calls in one turn · two turns · zero-arg tool · a tool that errors |
 //! | tool id wire | provider id (anthropic) · id-less, minted `tool-<n>` (gemini) · dual `call_id`/`item_id` (openai) |
 //! | serving | `serial_per_handler` false · true; `tool_concurrency` 1 · 2; capacities default · 1 |
-//! | memory | none · `Load` + `Append` · `Load` of an empty conversation |
+//! | memory | none · `Load` + `Append` · `Load` of an empty conversation · `Clear` from a hook (after the load, or after the append) · two runs in one log · explicit history (bypassed) · a `Load` or `Append` that fails |
 //! | retrieval | none · `dynamic_context(n, index)` (`TopN`) · `retrieved_tools(n, index, toolset)` (`TopNIds`) · both |
-//! | embedding, rerank | never dispatched by the agent: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a host dispatches those families over its own bus |
-//! | hooks | none · observe-only · `on_dispatch` → `Patch` · `Deny` · `on_outcome` → `Replace` · `on_invalid_tool_call` → `Retry` · `on_completion_call` → request patch · a hook that dispatches through `HookContext` |
+//! | embedding, rerank, custom | never dispatched by the agent itself: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a hook dispatches `Embed` and a host's `Custom<E>` over the host's bus (Matrix I); `Rerank` has no keyed cassette suite |
+//! | hooks | none · observe-only · `on_dispatch` → `Patch` · `Deny` · `on_outcome` → `Replace` · `on_invalid_tool_call` → `Retry` · `Repair` · `Skip` · `on_completion_call` → request patch · a hook that dispatches through `HookContext` · a stop at every point (`on_run_start`, `on_model_select`, `on_completion_call`, `on_dispatch`, `on_outcome`, `on_model_turn`, a delta) |
 //! | model routing | one model · `model_route` with `on_model_select` choosing the other |
-//! | output | text · `output_schema` |
+//! | output | text · `output_schema` under `Native` · `Tool` (the output tool's call, reprompted when missing or incomplete) · `Prompted` |
 //! | bus ownership | own bus (`bus` in the header) · a host's bus via `over_bus` (`bus: None`) |
 //! | run continuation | one run · serialize mid-run, resume on a fresh bus |
 //! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
+//! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
 //!
 //! # What the original ten goldens cover
 //!
