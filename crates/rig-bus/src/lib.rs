@@ -147,18 +147,11 @@
 //!   sizes (and the dispatcher's, the registrar's, a key's) are budgeted at
 //!   compile time, so a field that grows one past its budget fails to
 //!   compile rather than quietly costing every dispatch.
-//! - No handler survives a driver. [`Bus::reopen`] gives a bus whose driver
-//!   is gone a new one with an empty handler table; the handles bound
-//!   before keep working, the handlers do not come back on their own. A
-//!   host that restarts its driver (a state transition) keeps every
-//!   [`ErasedHandler`](rig_core::serve::ErasedHandler) it registered — an
-//!   erased handler is `Clone` — and registers it again through the new
-//!   registrar; that is the plugin's rule, not the bus's.
-//! - A ticking host probes what ended, not everything in flight:
-//!   [`Dispatcher::take_resolved`] drains the completion inbox — the id of
-//!   every dispatch that ended since the last drain — so a tick polls only
-//!   those values; the inbox is bounded and [`Dispatcher::inbox_dropped`]
-//!   says when a host fell behind.
+//! - No handler survives a driver, and a driver's death is the end of the
+//!   bus: every dispatch minted against it answers `BusClosed`, and a
+//!   program that wants to run again builds a new bus. A runtime that
+//!   restarts is not a client of this driver — it is a world whose driver
+//!   is a system (`rig_ecs::bus`), where nothing dies and nothing reopens.
 //!
 //! # Layers
 //!
@@ -277,35 +270,6 @@ impl Bus {
         let driver = BusDriver::new(shared, mailbox, config);
         let registrar = driver.registrar();
         (dispatcher, registrar, driver)
-    }
-
-    /// A new driver for a bus whose driver is gone: the plugin's driver task
-    /// was cancelled, the entity holding it despawned on a state change,
-    /// the pool torn down. Every `Dispatcher` and `Handle` over the bus
-    /// works again once the new driver is driven; nothing in flight is
-    /// resurrected — a `Pending`/`EffectStream` minted against the old
-    /// driver still answers `BusClosed` — and the handlers died with the
-    /// old driver, so the returned driver's table is empty and the caller
-    /// re-registers (on the driver in hand, or through the new
-    /// `Registrar`; registrars minted before the restart post to nothing).
-    /// Refused with a `Request` report while a driver is alive — including
-    /// one whose task was cancelled but not yet dropped by its executor, so
-    /// a host that just despawned the task retries on a later tick.
-    pub fn reopen(
-        dispatcher: &Dispatcher,
-    ) -> Result<(Registrar, BusDriver), rig_core::error::ErrorReport> {
-        let shared = Arc::clone(&dispatcher.shared);
-        if !shared.reopen() {
-            return Err(rig_core::error::ErrorReport::new(
-                rig_core::error::ErrorKind::Request,
-                "the bus cannot be reopened: a driver is alive",
-            )
-            .with_retryable(true));
-        }
-        let mailbox = Arc::new(registrar::Mailbox::new());
-        let driver = BusDriver::new(shared, mailbox, dispatcher.shared.config());
-        let registrar = driver.registrar();
-        Ok((registrar, driver))
     }
 
     /// A bus whose driver is handed to `spawn` after `register` has filled

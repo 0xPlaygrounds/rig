@@ -135,11 +135,15 @@ async fn a_unary_dispatch_resolves_through_a_spawn_local_driver() {
     assert!(matches!(outcome, Outcome::Custom(ref v) if v["n"] == 7));
     assert_eq!(served.get(), 1);
 
-    // Probe-style too: a frame-ticked host's spelling.
+    // Polled once per yield with a no-op waker too: what a frame-ticked
+    // host did before it held effects as entities.
     let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(8));
     let mut probes = 0;
     let outcome = loop {
-        if let Some(outcome) = pending.poll_outcome() {
+        let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+        if let std::task::Poll::Ready(outcome) =
+            futures::FutureExt::poll_unpin(&mut pending, &mut cx)
+        {
             break outcome;
         }
         probes += 1;

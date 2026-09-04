@@ -136,7 +136,6 @@ impl fmt::Debug for BusDriver {
 
 impl BusDriver {
     pub(super) fn new(shared: Arc<Shared>, mailbox: Arc<Mailbox>, config: ServingPolicy) -> Self {
-        shared.driver_born();
         Self {
             shared,
             mailbox,
@@ -292,19 +291,16 @@ impl BusDriver {
         } = command;
         if cancel.try_recv().is_err() {
             drop(reply);
-            self.shared.resolved(id);
             return false;
         }
         let Some(handler) = self.handlers.get(&key).cloned() else {
             reply.fail(handler_unavailable(&key));
-            self.shared.resolved(id);
             return false;
         };
         // A dispatch whose ancestor was cancelled while it was queued is
         // dropped unserved: no handler poll, no record.
         let Ok(flag) = self.shared.begin_in_flight(id, key.clone(), parent) else {
             reply.fail(rig_core::serve::cancelled());
-            self.shared.resolved(id);
             return false;
         };
         if self.config.serial_per_handler {
@@ -392,7 +388,6 @@ impl BusDriver {
     /// answered on the spot and the loop moves on — a key never strands
     /// its queue behind a command that will not be served.
     fn release(&mut self, key: HandlerKey, id: EffectId) {
-        self.shared.resolved(id);
         if self.shared.end_in_flight(id) {
             // Cancelled: the children it still has here are dropped unserved
             // — no handler poll, no record — and answered as cancelled.
@@ -402,9 +397,7 @@ impl BusDriver {
                     .partition(|command| command.parent == Some(id));
                 *queue = kept.into();
                 for orphan in orphans {
-                    let id = orphan.id;
                     orphan.reply.fail(rig_core::serve::cancelled());
-                    self.shared.resolved(id);
                 }
             }
             self.shared.fail_buffered_children(id);
@@ -440,9 +433,7 @@ impl BusDriver {
         for key in orphaned {
             if let Some(queue) = self.queued.remove(&key) {
                 for command in queue {
-                    let id = command.id;
                     command.reply.fail(handler_unavailable(&key));
-                    self.shared.resolved(id);
                 }
             }
         }
@@ -530,7 +521,7 @@ impl Drop for BusDriver {
         // The guard: after this every reply the channel loses is `BusClosed`,
         // and handlers posted but never installed go with the driver. The
         // descriptor table goes too — it described handlers this driver
-        // held — and the bus is free for `Bus::reopen`.
+        // held.
         self.shared.mark_closed();
         self.mailbox.clear();
         self.shared.driver_died();
