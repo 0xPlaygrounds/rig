@@ -83,25 +83,30 @@ pub struct RunScene {
 }
 
 macro_rules! take {
-    ($world:expr, $entity:expr, $components:expr, $($ty:ty => $name:literal),* $(,)?) => {
+    ($world:expr, $entity:expr, $components:expr, $errors:expr, $($ty:ty => $name:literal),* $(,)?) => {
         $(
             if let Some(value) = $world.get::<$ty>($entity) {
-                $components.insert(
-                    $name.to_owned(),
-                    serde_json::to_value(value).unwrap_or(serde_json::Value::Null),
-                );
+                match serde_json::to_value(value) {
+                    Ok(json) => {
+                        $components.insert($name.to_owned(), json);
+                    }
+                    Err(error) => $errors.push(format!("{}: {error}", $name)),
+                }
             }
         )*
     };
 }
 
 macro_rules! give {
-    ($world:expr, $entity:expr, $components:expr, $($ty:ty => $name:literal),* $(,)?) => {
+    ($world:expr, $entity:expr, $components:expr, $errors:expr, $($ty:ty => $name:literal),* $(,)?) => {
         $(
-            if let Some(value) = $components.get($name)
-                && let Ok(component) = serde_json::from_value::<$ty>(value.clone())
-            {
-                $world.entity_mut($entity).insert(component);
+            if let Some(value) = $components.get($name) {
+                match serde_json::from_value::<$ty>(value.clone()) {
+                    Ok(component) => {
+                        $world.entity_mut($entity).insert(component);
+                    }
+                    Err(error) => $errors.push(format!("{}: {error}", $name)),
+                }
             }
         )*
     };
@@ -111,7 +116,7 @@ impl RunScene {
     /// Take the graph of `world`: agents and documents first, then their
     /// links, then runs, then utterances, turns and invalid calls, each
     /// after its parent.
-    pub fn save(world: &mut World) -> Self {
+    pub fn save(world: &mut World) -> Result<Self, rig_core::error::ErrorReport> {
         let mut order: Vec<(u8, Entity)> = Vec::new();
         for (entity, _) in world.query::<(Entity, &Owner)>().iter(world) {
             order.push((0, entity));
@@ -168,7 +173,8 @@ impl RunScene {
                 _ => SceneKind::InvalidCall,
             };
             let mut components = serde_json::Map::new();
-            take!(world, entity, components,
+            let mut errors: Vec<String> = Vec::new();
+            take!(world, entity, components, errors,
                 Owner => "owner", Preamble => "preamble", Temperature => "temperature",
                 MaxTokens => "max_tokens", AdditionalParams => "additional_params",
                 ToolChoiceSpec => "tool_choice", Output => "output", MaxTurns => "max_turns",
@@ -184,6 +190,16 @@ impl RunScene {
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
             );
+            if !errors.is_empty() {
+                return Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Internal,
+                    format!(
+                        "a component of entity {} did not serialize: {}",
+                        saved.len(),
+                        errors.join("; ")
+                    ),
+                ));
+            }
             if world.get::<crate::systems::Fresh>(entity).is_some() {
                 components.insert("fresh".to_owned(), serde_json::Value::Bool(true));
             }
@@ -238,11 +254,11 @@ impl RunScene {
                 relations,
             });
         }
-        Self {
+        Ok(Self {
             entities: saved,
             next_order: world.get_resource::<OrderCounter>().map_or(0, |c| c.0),
             next_run: world.get_resource::<RunCounter>().map_or(0, |c| c.0),
-        }
+        })
     }
 
     /// Spawn the graph into `world`. Handlers are the host's to bind first:
@@ -272,7 +288,8 @@ impl RunScene {
                 continue;
             };
             let components = &saved.components;
-            give!(world, entity, components,
+            let mut errors: Vec<String> = Vec::new();
+            give!(world, entity, components, errors,
                 Owner => "owner", Preamble => "preamble", Temperature => "temperature",
                 MaxTokens => "max_tokens", AdditionalParams => "additional_params",
                 ToolChoiceSpec => "tool_choice", Output => "output", MaxTurns => "max_turns",
@@ -288,6 +305,15 @@ impl RunScene {
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
             );
+            if !errors.is_empty() {
+                return Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Internal,
+                    format!(
+                        "a component of scene entity {index} did not deserialize: {}",
+                        errors.join("; ")
+                    ),
+                ));
+            }
             if components.get("fresh").is_some() {
                 world.entity_mut(entity).insert(crate::systems::Fresh);
             }

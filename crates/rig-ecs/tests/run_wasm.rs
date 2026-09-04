@@ -26,7 +26,8 @@ use rig_ecs::{
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use wasm_bindgen_test::wasm_bindgen_test;
 
-const SMOKE: &str = include_str!("../../rig-verify/fixtures/anthropic_completion_smoke.effects.json");
+const SMOKE: &str =
+    include_str!("../../rig-verify/fixtures/anthropic_completion_smoke.effects.json");
 const REPROMPT: &str =
     include_str!("../../rig-verify/fixtures/mock_output_tool_text_reprompt.effects.json");
 
@@ -103,7 +104,9 @@ async fn the_smoke_golden_replays_through_the_graph_on_wasm() {
         .world_mut()
         .spawn((
             Owner("golden".to_owned()),
-            Preamble(Some("You are a concise assistant. Answer directly.".to_owned())),
+            Preamble(Some(
+                "You are a concise assistant. Answer directly.".to_owned(),
+            )),
             Temperature(None),
             MaxTokens(None),
             AdditionalParams(None),
@@ -136,7 +139,9 @@ async fn the_text_reprompt_golden_replays_through_the_graph_on_wasm() {
         .world_mut()
         .spawn((
             Owner("golden".to_owned()),
-            Preamble(Some("You are a concise assistant. Answer directly.".to_owned())),
+            Preamble(Some(
+                "You are a concise assistant. Answer directly.".to_owned(),
+            )),
             Temperature(None),
             MaxTokens(None),
             AdditionalParams(None),

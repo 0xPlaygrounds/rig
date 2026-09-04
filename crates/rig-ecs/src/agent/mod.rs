@@ -12,7 +12,7 @@
 //! | Agent | an entity with [`Owner`], [`Preamble`], [`Temperature`], [`MaxTokens`], [`AdditionalParams`], [`ToolChoiceSpec`], [`Output`], [`MaxTurns`], [`InvalidCalls`]; [`UsesModel`] → the model's handler entity; [`Grant`] link entities → tool handler entities; [`Context`] link entities → document entities |
 //! | Model, Tool | the bus module's handler entities (`Bound`) |
 //! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
-//! | Utterance | [`Utterance`] + [`Role`] + content parts ([`Text`], [`Reasoning`], [`ToolCallPart`], [`ToolResultPart`]), [`Order`]; `ChildOf` the run |
+//! | Utterance | [`Utterance`] + [`Role`] + [`Parts`] (the message's parts, verbatim), [`Order`]; `ChildOf` the run |
 //! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a phase marker ([`Assembling`], [`AwaitingModel`], [`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings |
 //! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`] |
 //! | Effect | the bus module's, `ChildOf` the turn |
@@ -377,6 +377,11 @@ pub enum Failure {
     /// The run needs what a later stage brings (a tool dispatch, a
     /// resolution kind); named, never silent.
     Unsupported(String),
+    /// A granted tool took the output tool's name after it was minted.
+    OutputToolCollision {
+        /// The name.
+        name: String,
+    },
 }
 
 /// The run's answer.

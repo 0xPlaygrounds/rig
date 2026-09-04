@@ -138,7 +138,7 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
         .iter(app.world())
         .count();
     assert_eq!(utterances, 3, "prompt, the text answer, the reprompt");
-    let saved = RunScene::save(app.world_mut());
+    let saved = RunScene::save(app.world_mut()).expect("every component serializes");
     let json = serde_json::to_string(&saved).expect("serde");
     assert!(!json.contains("Entity"), "no entity ids in a scene");
     let head = app.world().resource::<EffectLogResource>().log();

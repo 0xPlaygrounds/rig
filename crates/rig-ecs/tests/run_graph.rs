@@ -275,3 +275,45 @@ fn a_system_before_assemble_rewrites_an_utterance() {
     };
     assert_eq!(content.len(), 1);
 }
+
+fn stop_the_run(effects: Query<Entity, Added<PendingEffect>>, mut commands: Commands) {
+    for effect in &effects {
+        commands.entity(effect).despawn();
+    }
+}
+
+/// A system in `Patch` that despawns the folded effect stops the run: the
+/// record says `Cancelled`, and so does the run (the README's spelling of
+/// `on_completion_call` — stop).
+#[test]
+fn despawning_the_effect_in_patch_fails_the_run_cancelled() {
+    let mut app = app();
+    let (model, requests) = Capturing::new("t/model:default", "ok");
+    let model = register(&mut app, "t/model:default", model);
+    EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
+    app.world_mut()
+        .resource_mut::<Schedules>()
+        .add_systems(RigSchedule, stop_the_run.in_set(RigSet::Patch));
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    let run = spawn_run(app.world_mut(), agent, &[], "one", false, Some(1));
+    tick_until(&mut app, "cancelled", |world| {
+        world.get::<rig_ecs::agent::Failed>(run).is_some()
+    });
+    let failed = app
+        .world()
+        .get::<rig_ecs::agent::Failed>(run)
+        .expect("failed");
+    assert!(
+        matches!(&failed.0, rig_ecs::agent::Failure::Cancelled(report) if report.kind == rig_core::error::ErrorKind::Cancelled),
+        "{failed:?}"
+    );
+    assert!(
+        requests.lock().expect("requests").is_empty(),
+        "the handler never saw it"
+    );
+    let log = app.world().resource::<EffectLogResource>().log();
+    assert!(
+        log.records.is_empty(),
+        "despawned before dispatch: no record"
+    );
+}

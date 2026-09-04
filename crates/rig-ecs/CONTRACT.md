@@ -2,7 +2,7 @@
 
 The bytes rig-ecs's agent modules are held to, extracted from the corpus (`crates/rig-verify/fixtures/*.effects.json`) and from `rig_agent::run`'s docs read as a specification. Every row cites the golden(s) that pin it by fixture name and JSON pointer; every `policy::text` constant has a test in `src/policy/tests.rs` that compares it to its golden. Nothing here is read off a function body of the frozen crate.
 
-The set this stage covers: every golden whose records are all `completion` and whose header `hooks` is empty — 43 at 207 goldens (`crates/rig-verify/tests/corpus/world.rs::unsupported` derives the set; `anthropic_memory_history_bypass` is among the 43 but waits for stage 5's memory, since its required row names `golden/memory`).
+The set this stage covers: every golden whose records are all `completion` and whose header `hooks` is empty — 43 at 207 goldens (the superseded prompt counted 32 at an older head; the set is derived, never listed) (`crates/rig-verify/tests/corpus/world.rs::unsupported` derives the set; `anthropic_memory_history_bypass` is among the 43 but waits for stage 5's memory, since its required row names `golden/memory`).
 
 ## 1. The request: a walk over the graph
 
@@ -64,6 +64,8 @@ The fold is the only constructor of a `CompletionRequest` in the crate (`tests/c
 | the output tool called with every required field | the assistant utterance is history; the run settles with the call's arguments serialised | `anthropic_output_tool_unary`; `golden_answer` in the corpus |
 | the output tool called without a required field, reprompts left (`OutputRetries < 1`) and turns left | history gains the assistant call and a user tool result (the missing-field reprompt); another turn | `mock_output_tool_missing_field_reprompt` |
 | text where the output tool was due, reprompts left | history gains the assistant text and the user reprompt; another turn | `mock_output_tool_text_reprompt` |
+| the output tool called with a missing field, or text where it was due, with **no reprompt left** | the run settles with what it has (the partial arguments, or the text) — unpinned: no golden exhausts the budget; rig-agent's docs accept a text that already satisfies the schema and are silent on the rest | (none) |
+| a granted tool named like the minted output tool | `Failed(OutputToolCollision)` | `rig_agent::run::prepare` docs |
 | a call to a tool neither granted nor the output tool | an `InvalidCall` entity `ChildOf` the turn; `resolve_invalid_defaults` writes the run's `InvalidCalls.unhandled` unless a system wrote a `Resolution` first; `Fail` → `Failed(UnknownToolCall)`; `Ignore` → the call is dropped, what is left is the answer (an empty rest settles as `""`) | `mock_outcome_invalid_call_unhandled`, `mock_invalid_mixed_fail` (`Fail`); `mock_invalid_ignore_unary`, `mock_delta_ignore` (`Ignore`) |
 | a call to a granted tool | `Failed(Unsupported)`: tool dispatch is stage 3's | (no golden in this set) |
 | `Retry`, `Repair`, `Skip` written as a resolution | `Failed(Unsupported)`, named | (stage 4) |

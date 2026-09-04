@@ -164,9 +164,9 @@ fn the_output_tool_name_numbers_from_one() {
 /// (`anthropic_request_shape_tool_choice_none` `/records/0/outcome`).
 #[test]
 fn an_empty_turn_is_not_history() {
-    assert!(is_empty_assistant_turn(&[]));
-    assert!(is_empty_assistant_turn(&[AssistantContent::text("")]));
-    assert!(!is_empty_assistant_turn(&[AssistantContent::text("x")]));
+    assert!(turn_is_empty(&[]));
+    assert!(turn_is_empty(&[AssistantContent::text("")]));
+    assert!(!turn_is_empty(&[AssistantContent::text("x")]));
 }
 
 /// CONTRACT §derivation: the fold over the smoke golden's graph is the

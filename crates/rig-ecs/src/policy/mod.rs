@@ -150,7 +150,7 @@ pub fn reprompt_missing_fields(name: &str, missing: &[String]) -> String {
 
 /// Whether an assistant turn belongs in history: not when it has no parts,
 /// or exactly one unannotated empty text part.
-pub fn is_empty_assistant_turn(content: &[AssistantContent]) -> bool {
+pub fn turn_is_empty(content: &[AssistantContent]) -> bool {
     match content {
         [] => true,
         [AssistantContent::Text(text)] => text.text.is_empty() && text.additional_params.is_none(),
@@ -212,7 +212,8 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
 
     let output_schema = match (graph.output, graph.schema) {
         (OutputKind::Native, Some(schema)) => schemars::Schema::try_from(schema.clone()).ok(),
-        _ => None,
+        (OutputKind::Native, None)
+        | (OutputKind::Auto | OutputKind::Tool | OutputKind::Prompted, _) => None,
     };
 
     CompletionRequest {
@@ -237,7 +238,9 @@ fn system_message(graph: &RequestGraph<'_>) -> Option<String> {
         (OutputKind::Prompted, _, Some(schema)) => {
             Some(text::prompted_augmentation(&to_canonical_string(schema)))
         }
-        _ => None,
+        (OutputKind::Tool, None, _)
+        | (OutputKind::Prompted, _, None)
+        | (OutputKind::Auto | OutputKind::Native, _, _) => None,
     };
     match (graph.preamble, augmentation) {
         (None, None) => None,

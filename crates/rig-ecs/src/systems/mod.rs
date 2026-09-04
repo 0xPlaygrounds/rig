@@ -104,6 +104,7 @@ impl Plugin for AgentPlugin {
         );
         app.init_resource::<OrderCounter>()
             .init_resource::<RunCounter>();
+        app.add_observer(effect_cancelled);
         let mut schedules = app.world_mut().resource_mut::<Schedules>();
         let Some(schedule) = schedules.get_mut(RigSchedule) else {
             return;
@@ -426,6 +427,20 @@ pub fn assemble(
             callable,
             composes,
         );
+        if let Some(name) = &minted.0
+            && granted_names.contains(&name.as_str())
+        {
+            // A tool granted after the mint took the output tool's name: a
+            // request that advertised both would be ambiguous, so the run
+            // fails here, named, as rig-agent's docs say it must.
+            commands.entity(turn).remove::<Fresh>();
+            commands
+                .entity(run)
+                .remove::<Assembling>()
+                .insert(Failed(Failure::OutputToolCollision { name: name.clone() }));
+            progress.mark();
+            continue;
+        }
         if resolved == OutputKind::Tool && minted.0.is_none() {
             commands
                 .entity(run)
@@ -668,7 +683,7 @@ pub fn materialise(
         let content = &response.choice;
 
         // An empty turn is not history, and answers nothing.
-        if policy::is_empty_assistant_turn(content) {
+        if policy::turn_is_empty(content) {
             commands
                 .entity(run)
                 .remove::<AwaitingModel>()
@@ -835,7 +850,8 @@ pub fn materialise(
                     }
                 }
             }
-            _ => {
+            (OutputKind::Tool, None)
+            | (OutputKind::Auto | OutputKind::Native | OutputKind::Prompted, _) => {
                 commands
                     .entity(run)
                     .remove::<AwaitingModel>()
@@ -844,4 +860,33 @@ pub fn materialise(
         }
         progress.mark();
     }
+}
+
+/// An effect despawned while its turn was unread — a system in `Patch`
+/// stopping the run, a host cancelling — ends the run `Cancelled`: the
+/// record says so (the bus's cancel observer), and so does the run.
+pub fn effect_cancelled(
+    removed: On<bevy_ecs::lifecycle::Remove, PendingEffect>,
+    effects: Query<&ChildOf, With<PendingEffect>>,
+    turns: Query<&ChildOf, (With<Turn>, Without<Materialised>)>,
+    runs: Query<(), With<AwaitingModel>>,
+    mut commands: Commands,
+) {
+    let effect = removed.event().entity;
+    let Ok(turn_of) = effects.get(effect) else {
+        return;
+    };
+    let turn = turn_of.parent();
+    let Ok(run_of) = turns.get(turn) else {
+        return;
+    };
+    let run = run_of.parent();
+    if runs.get(run).is_err() {
+        return;
+    }
+    commands.entity(turn).insert(Materialised);
+    commands
+        .entity(run)
+        .remove::<AwaitingModel>()
+        .insert(Failed(Failure::Cancelled(rig_core::serve::cancelled())));
 }

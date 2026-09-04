@@ -62,6 +62,12 @@ pub fn unsupported(program: &Program) -> Option<&'static str> {
     if program.second_prompt.is_some() {
         return Some("two runs on one agent (stage 5)");
     }
+    if program.invalid_retries > 0 {
+        return Some("invalid-call retries as systems (stage 4)");
+    }
+    if matches!(program.ending, Ending::Cancelled(_) | Ending::MemoryError) {
+        return Some("a hook's stop or a memory failure (stage 4 and 5)");
+    }
     let log = golden(program.fixture);
     if log
         .records
@@ -150,14 +156,6 @@ pub fn world_agent_reproduces(program: &Program) {
         if world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some() {
             break;
         }
-        if program.cancel_after_first_delta
-            && world.get::<rig_ecs::agent::AwaitingModel>(run).is_some()
-            && cancel_if_delivered(app.world_mut(), run)
-        {
-            // The effect is despawned mid-stream: the record is `Cancelled`.
-            tick(&mut app, 3);
-            break;
-        }
         assert!(
             start.elapsed() < GUARD,
             "{}: the run did not end within {GUARD:?}",
@@ -172,7 +170,10 @@ pub fn world_agent_reproduces(program: &Program) {
         world.get::<Failed>(run).cloned(),
     );
     match (&ending, program.ending) {
-        (_, _) if program.cancel_after_first_delta => {}
+        // The producer dropped its stream at the first delta; the replayer
+        // answers the record as the cancel it was, and the run ends there.
+        ((None, Some(Failed(Failure::Cancelled(report)))), _)
+            if program.cancel_after_first_delta && report.kind == ErrorKind::Cancelled => {}
         ((Some(result), None), Ending::Answer) => {
             assert_eq!(
                 result.0,
@@ -195,10 +196,11 @@ pub fn world_agent_reproduces(program: &Program) {
         ),
     }
 
+    // The world's log is in begin order, as rig-bus's; the oracle asserts
+    // it is dispatch order. The records carry the run's `Scope`, which the
+    // goldens do not have and `as_data` does not compare.
     let replayed = world.resource::<EffectLogResource>().log();
-    let mut replayed_sorted = replayed.clone();
-    replayed_sorted.records.sort_by_key(|record| record.id);
-    assert_same_records(&replayed_sorted, &log, "world agent");
+    assert_same_records(&replayed, &log, "world agent");
     assert_eq!(
         replayed.header.run_spec, log.header.run_spec,
         "{}: the header's spec hash is this program's",
@@ -309,33 +311,4 @@ fn spawn_agent(world: &mut World, program: &Program, handlers: &[(HandlerKey, En
     }
     world.resource_mut::<rig_ecs::agent::OrderCounter>().0 = order;
     agent
-}
-
-/// Despawn the run's streaming effect once its first delta landed: the
-/// producer's `cancel_after_first_delta`. Returns whether it did.
-fn cancel_if_delivered(world: &mut World, run: Entity) -> bool {
-    let mut delivered = None;
-    let mut query = world.query::<(Entity, &ChildOf, &rig_ecs::bus::Streamed)>();
-    let turns: Vec<Entity> = world
-        .get::<Children>(run)
-        .map(|children| children.iter().collect())
-        .unwrap_or_default();
-    for (effect, child_of, streamed) in query.iter(world) {
-        if turns.contains(&child_of.parent()) && !streamed.events.is_empty() {
-            delivered = Some(effect);
-        }
-    }
-    match delivered {
-        Some(effect) => {
-            world.despawn(effect);
-            true
-        }
-        None => false,
-    }
-}
-
-fn tick(app: &mut App, n: usize) {
-    for _ in 0..n {
-        app.update();
-    }
 }
