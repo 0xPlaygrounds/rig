@@ -56,7 +56,7 @@ use rig_agent::{
     agent::{
         CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent, ModelTurnAction,
         ModelTurnFinished, MultiTurnStreamItem, OutcomeAction, OutcomeEvent, RequestPatch,
-        RetryRequest, RunStart, RunStartAction, StepEventKind, StreamingError,
+        RetryRequest, RunSettled, RunStart, RunStartAction, StepEventKind, StreamingError,
     },
     completion::PromptError,
     run::{
@@ -131,6 +131,20 @@ pub enum Hook {
     RepairToAdd,
     /// `on_invalid_tool_call` → `Skip { reason }`.
     SkipUnknown,
+    /// `on_run_start` → a host note (Matrix I).
+    NoteAtStart,
+    /// `on_completion_call` → a host note before every completion.
+    NoteAtCompletionCall,
+    /// `on_outcome` → a host note after every tool answer.
+    NoteAtOutcome,
+    /// `on_run_settled` → a host note after the answer.
+    NoteAtSettled,
+    /// `on_run_start` → two host notes dispatched together.
+    NoteTwice,
+    /// `on_run_start` → a bind the host refuses; the run goes on.
+    NoteUnserved,
+    /// `on_run_start` → the prompt embedded through the host's model.
+    EmbedPrompt,
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -659,6 +673,143 @@ pub fn with_hooks<S>(builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S
     add_hooks(builder, hooks)
 }
 
+// ---------------------------------------------------------------------------
+// Matrix I: a host's own effect, the same type the producer dispatched.
+
+/// The host's key for its custom handler.
+pub const NOTE_KEY: &str = "host/note";
+/// The host's key for its embedding model.
+pub const EMBED_KEY: &str = "host/embed";
+
+/// A host-defined effect: a note of where in the run it was taken. The
+/// producer's type of the same kind label; the payload is data.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct Note {
+    pub at: String,
+}
+
+/// The host's answer to a [`Note`].
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct NoteAck {
+    pub accepted: bool,
+    pub at: String,
+}
+
+impl rig_core::effect::CustomEffect for Note {
+    const KIND: &'static str = "corpus:note";
+    type Answer = NoteAck;
+}
+
+pub fn note_key() -> rig_core::effect::Key<rig_core::effect::family::Custom<Note>> {
+    rig_core::effect::Key::new_unchecked(HandlerKey::from(NOTE_KEY))
+}
+
+pub fn embed_key() -> rig_core::effect::Key<rig_core::effect::family::Embed> {
+    rig_core::effect::Key::new_unchecked(HandlerKey::from(EMBED_KEY))
+}
+
+async fn take_note(ctx: &HookContext, at: &str) {
+    let host = ctx.bind(&note_key()).expect("the host serves notes");
+    let ack = host
+        .dispatch(Note { at: at.to_owned() })
+        .await
+        .expect("the host acknowledges");
+    assert!(ack.accepted && ack.at == at, "{ack:?}");
+}
+
+struct NoteAtStart;
+
+impl AgentHook for NoteAtStart {
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        take_note(ctx, "start").await;
+        RunStartAction::continue_run()
+    }
+}
+
+struct NoteAtCompletionCall;
+
+impl AgentHook for NoteAtCompletionCall {
+    async fn on_completion_call(
+        &self,
+        ctx: &HookContext,
+        _event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        take_note(ctx, "completion_call").await;
+        CompletionCallAction::Continue
+    }
+}
+
+struct NoteAtOutcome;
+
+impl AgentHook for NoteAtOutcome {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.kind.family() == EffectFamily::Tool {
+            take_note(ctx, "outcome").await;
+        }
+        OutcomeAction::proceed()
+    }
+}
+
+struct NoteAtSettled;
+
+impl AgentHook for NoteAtSettled {
+    async fn on_run_settled(&self, ctx: &HookContext, _event: RunSettled<'_>) {
+        take_note(ctx, "settled").await;
+    }
+}
+
+struct NoteTwice;
+
+impl AgentHook for NoteTwice {
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        let host = ctx.bind(&note_key()).expect("the host serves notes");
+        let first = host.dispatch(Note {
+            at: "first".to_owned(),
+        });
+        let second = host.dispatch(Note {
+            at: "second".to_owned(),
+        });
+        let (first, second) = futures::join!(first, second);
+        assert_eq!(first.expect("acknowledged").at, "first");
+        assert_eq!(second.expect("acknowledged").at, "second");
+        RunStartAction::continue_run()
+    }
+}
+
+struct NoteUnserved;
+
+impl AgentHook for NoteUnserved {
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        let refused = ctx.bind(&note_key()).expect_err("no host serves notes");
+        assert_eq!(
+            refused.kind,
+            rig_core::error::ErrorKind::HandlerUnavailable,
+            "{refused:?}"
+        );
+        RunStartAction::continue_run()
+    }
+}
+
+struct EmbedPrompt;
+
+impl AgentHook for EmbedPrompt {
+    async fn on_run_start(&self, ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+        let host = ctx.bind(&embed_key()).expect("the host serves embeddings");
+        let text = event.prompt.rag_text().expect("a text prompt");
+        let outputs = host
+            .dispatch(rig_core::effect::EmbedInputs::Texts(vec![text]))
+            .await
+            .expect("the host embeds");
+        match outputs {
+            rig_core::effect::EmbedOutputs::Texts(response) => {
+                assert_eq!(response.embeddings.len(), 1, "{response:?}")
+            }
+            rig_core::effect::EmbedOutputs::Images(_) => panic!("a text embedding"),
+        }
+        RunStartAction::continue_run()
+    }
+}
+
 fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
@@ -686,6 +837,13 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::RecordSettled => builder.add_hook(RecordSettled),
             Hook::RepairToAdd => builder.add_hook(RepairToAdd),
             Hook::SkipUnknown => builder.add_hook(SkipUnknown),
+            Hook::NoteAtStart => builder.add_hook(NoteAtStart),
+            Hook::NoteAtCompletionCall => builder.add_hook(NoteAtCompletionCall),
+            Hook::NoteAtOutcome => builder.add_hook(NoteAtOutcome),
+            Hook::NoteAtSettled => builder.add_hook(NoteAtSettled),
+            Hook::NoteTwice => builder.add_hook(NoteTwice),
+            Hook::NoteUnserved => builder.add_hook(NoteUnserved),
+            Hook::EmbedPrompt => builder.add_hook(EmbedPrompt),
         };
     }
     builder
@@ -811,6 +969,24 @@ impl Replay {
         } else {
             EffectLogRecorder::new()
         };
+        // The host's own handlers — a custom effect, an embedding model —
+        // are in the signature (the trace's row), never in the required
+        // row (the agent's); the host registers them as it did when it
+        // recorded, from the log, before the agent is built.
+        let host_keys: Vec<HandlerKey> = log
+            .header
+            .signature
+            .keys()
+            .filter(|key| key.as_str().starts_with("host/"))
+            .cloned()
+            .collect();
+        for key in host_keys {
+            let replayer =
+                EffectLogReplayer::for_key(&log, &key).expect("the host handler's records");
+            driver
+                .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
+                .expect("a fresh key");
+        }
         driver.record_to(recorder.clone());
         let driver = tokio::spawn(driver);
         Self {
@@ -1206,6 +1382,13 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::RecordSettled => "RecordSettled",
         Hook::RepairToAdd => "RepairToAdd",
         Hook::SkipUnknown => "SkipUnknown",
+        Hook::NoteAtStart => "NoteAtStart",
+        Hook::NoteAtCompletionCall => "NoteAtCompletionCall",
+        Hook::NoteAtOutcome => "NoteAtOutcome",
+        Hook::NoteAtSettled => "NoteAtSettled",
+        Hook::NoteTwice => "NoteTwice",
+        Hook::NoteUnserved => "NoteUnserved",
+        Hook::EmbedPrompt => "EmbedPrompt",
     }
 }
 
@@ -1362,6 +1545,75 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expect("the replayer answered the hook's call");
         assert_eq!(answer.result.output().render(), "3");
     }
+    // The host's handler the note hooks dispatch to, bound as the hooks
+    // bind it (a refused bind is the unserved program's point).
+    let notes = program
+        .hooks
+        .iter()
+        .any(|hook| {
+            matches!(
+                hook,
+                Hook::NoteAtStart
+                    | Hook::NoteAtCompletionCall
+                    | Hook::NoteAtOutcome
+                    | Hook::NoteAtSettled
+                    | Hook::NoteTwice
+            )
+        })
+        .then(|| {
+            replay
+                .dispatcher
+                .bind(&note_key())
+                .expect("the host serves notes")
+        });
+    let note = |at: &'static str| {
+        let notes = notes.as_ref();
+        async move {
+            let ack = within(
+                notes
+                    .expect("a note hook")
+                    .dispatch(Note { at: at.to_owned() }),
+            )
+            .await
+            .expect("the replayer acknowledged");
+            assert!(ack.accepted && ack.at == at, "{ack:?}");
+        }
+    };
+    if program.hooks.contains(&Hook::NoteUnserved) {
+        let refused = replay
+            .dispatcher
+            .bind(&note_key())
+            .expect_err("no host serves notes");
+        assert_eq!(refused.kind, rig_core::error::ErrorKind::HandlerUnavailable);
+    }
+    // The run-start hooks' dispatches, before the first completion.
+    if program.hooks.contains(&Hook::NoteAtStart) {
+        note("start").await;
+    }
+    if program.hooks.contains(&Hook::NoteTwice) {
+        let host = notes.as_ref().expect("a note hook");
+        let first = within(host.dispatch(Note {
+            at: "first".to_owned(),
+        }));
+        let second = within(host.dispatch(Note {
+            at: "second".to_owned(),
+        }));
+        let (first, second) = futures::join!(first, second);
+        assert_eq!(first.expect("acknowledged").at, "first");
+        assert_eq!(second.expect("acknowledged").at, "second");
+    }
+    if program.hooks.contains(&Hook::EmbedPrompt) {
+        let host = replay
+            .dispatcher
+            .bind(&embed_key())
+            .expect("the host serves embeddings");
+        let outputs = within(host.dispatch(rig_core::effect::EmbedInputs::Texts(vec![
+            program.prompt.to_owned(),
+        ])))
+        .await
+        .expect("the replayer embedded");
+        assert!(matches!(outputs, rig_core::effect::EmbedOutputs::Texts(_)));
+    }
     let patch = program
         .hooks
         .contains(&Hook::PreambleOverride)
@@ -1460,6 +1712,10 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 let request = prepared
                     .apply(CompletionRequestBuilder::unbound(prompt))
                     .build();
+                // The completion-call hook's dispatch, before the completion.
+                if program.hooks.contains(&Hook::NoteAtCompletionCall) {
+                    note("completion_call").await;
+                }
                 let turn = if program.streamed {
                     let mut stream = model.stream(request);
                     let mut assembler = StreamedTurnAssembler::new(executable, allowed);
@@ -1716,6 +1972,12 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         break None;
                     }
                 };
+                // The outcome hook's dispatch, once per tool answer.
+                if program.hooks.contains(&Hook::NoteAtOutcome) {
+                    for _ in &results {
+                        note("outcome").await;
+                    }
+                }
                 run.tool_results(results).expect("results for every call");
             }
             AgentRunStep::Done(response) => break Some(response),
@@ -1748,7 +2010,11 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)
     );
-    drop((model, route, tools, memory, context));
+    // The settled hook's dispatch, after the answer.
+    if program.hooks.contains(&Hook::NoteAtSettled) {
+        note("settled").await;
+    }
+    drop((model, route, tools, memory, context, notes));
     let log = replay.log.clone();
     let replayed = replay.close().await;
     assert_same_records(&replayed, &log, "hand driver");

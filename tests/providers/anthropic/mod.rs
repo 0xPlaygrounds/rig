@@ -5,6 +5,7 @@ mod cassette {
     mod boxed_transport;
     mod corpus_endings;
     mod corpus_hooks;
+    mod corpus_host;
     mod corpus_outcome;
     mod corpus_output;
     mod corpus_request_shape;

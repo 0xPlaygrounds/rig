@@ -24,6 +24,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_cassette",
             "with_openai_corpus_retrieval_cassette",
             "with_openai_corpus_output_cassette",
+            "with_openai_corpus_host_cassette",
             "with_openai_lifecycle_cassette",
             "with_openai_prompt_caching_cassette",
             "with_openai_completions_prompt_caching_cassette",
@@ -86,6 +87,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_anthropic_corpus_outcome_cassette",
             "with_anthropic_corpus_endings_cassette",
             "with_anthropic_corpus_output_cassette",
+            "with_anthropic_corpus_host_cassette",
         ],
     },
     ProviderCassetteSuite {

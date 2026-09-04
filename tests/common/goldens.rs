@@ -796,3 +796,230 @@ impl rig::agent::AgentHook for SkipUnknown {
         })
     }
 }
+
+// ---------------------------------------------------------------------------
+// Matrix I: a host's own effect, dispatched by hooks over the host's bus.
+
+/// The host's key for its custom handler.
+#[allow(dead_code)]
+pub(crate) const NOTE_KEY: &str = "host/note";
+/// The host's key for its embedding model.
+#[allow(dead_code)]
+pub(crate) const EMBED_KEY: &str = "host/embed";
+
+/// A host-defined effect: a note of where in the run it was taken.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct Note {
+    pub at: String,
+}
+
+/// The host's answer to a [`Note`].
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct NoteAck {
+    pub accepted: bool,
+    pub at: String,
+}
+
+impl rig::effect::CustomEffect for Note {
+    const KIND: &'static str = "corpus:note";
+    type Answer = NoteAck;
+}
+
+/// The host's handler for [`Note`]: acknowledges every note with where
+/// it was taken.
+#[allow(dead_code)]
+pub(crate) struct NoteTaker;
+
+impl rig::serve::Serve for NoteTaker {
+    type Family = rig::effect::family::Custom<Note>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(NOTE_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <Note as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+        }
+    }
+
+    async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        let outcome = match kind {
+            rig::effect::EffectKind::Custom { payload, .. } => {
+                match serde_json::from_value::<Note>(payload) {
+                    Ok(note) => Ok(rig::effect::Outcome::Custom(
+                        serde_json::to_value(NoteAck {
+                            accepted: true,
+                            at: note.at,
+                        })
+                        .expect("an ack serializes"),
+                    )),
+                    Err(error) => Err(rig::error::ErrorReport::new(
+                        rig::error::ErrorKind::Request,
+                        format!("not a note: {error}"),
+                    )),
+                }
+            }
+            other => Err(rig::error::ErrorReport::new(
+                rig::error::ErrorKind::Request,
+                format!("a note, not {other:?}"),
+            )),
+        };
+        sink.resolve(outcome).await;
+    }
+}
+
+#[allow(dead_code)]
+fn note_key() -> rig::effect::Key<rig::effect::family::Custom<Note>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(NOTE_KEY))
+}
+
+/// Dispatch a note from a hook, asserting the host acknowledged it.
+#[allow(dead_code)]
+async fn take_note(ctx: &rig::agent::HookContext, at: &str) {
+    let host = ctx.bind(&note_key()).expect("the host serves notes");
+    let ack = host
+        .dispatch(Note { at: at.to_owned() })
+        .await
+        .expect("the host acknowledges");
+    assert!(ack.accepted && ack.at == at, "{ack:?}");
+}
+
+/// `on_run_start` → a note, before the first completion.
+#[allow(dead_code)]
+pub(crate) struct NoteAtStart;
+
+impl rig::agent::AgentHook for NoteAtStart {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        take_note(ctx, "start").await;
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_completion_call` → a note before every completion.
+#[allow(dead_code)]
+pub(crate) struct NoteAtCompletionCall;
+
+impl rig::agent::AgentHook for NoteAtCompletionCall {
+    async fn on_completion_call(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionCallAction {
+        take_note(ctx, "completion_call").await;
+        rig::agent::CompletionCallAction::Continue
+    }
+}
+
+/// `on_outcome` → a note after every tool answer (a completion's answer
+/// is left alone).
+#[allow(dead_code)]
+pub(crate) struct NoteAtOutcome;
+
+impl rig::agent::AgentHook for NoteAtOutcome {
+    async fn on_outcome(
+        &self,
+        ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        if event.kind.family() == rig::effect::EffectFamily::Tool {
+            take_note(ctx, "outcome").await;
+        }
+        rig::agent::OutcomeAction::Proceed
+    }
+}
+
+/// `on_run_settled` → a note after the run's answer: the last dispatch
+/// the run makes, after the record that answered it.
+#[allow(dead_code)]
+pub(crate) struct NoteAtSettled;
+
+impl rig::agent::AgentHook for NoteAtSettled {
+    async fn on_run_settled(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunSettled<'_>,
+    ) {
+        take_note(ctx, "settled").await;
+    }
+}
+
+/// `on_run_start` → two notes dispatched together (their order is the
+/// bus's).
+#[allow(dead_code)]
+pub(crate) struct NoteTwice;
+
+impl rig::agent::AgentHook for NoteTwice {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let host = ctx.bind(&note_key()).expect("the host serves notes");
+        let first = host.dispatch(Note {
+            at: "first".to_owned(),
+        });
+        let second = host.dispatch(Note {
+            at: "second".to_owned(),
+        });
+        let (first, second) = futures::join!(first, second);
+        assert_eq!(first.expect("acknowledged").at, "first");
+        assert_eq!(second.expect("acknowledged").at, "second");
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` → a bind to a key the host never registered: the hook
+/// sees the refusal and lets the run go on; nothing is dispatched.
+#[allow(dead_code)]
+pub(crate) struct NoteUnserved;
+
+impl rig::agent::AgentHook for NoteUnserved {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let refused = ctx.bind(&note_key()).expect_err("no host serves notes");
+        assert_eq!(
+            refused.kind,
+            rig::error::ErrorKind::HandlerUnavailable,
+            "{refused:?}"
+        );
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` → the prompt's text embedded through the host's
+/// embedding model.
+#[allow(dead_code)]
+pub(crate) struct EmbedPrompt;
+
+impl rig::agent::AgentHook for EmbedPrompt {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let key: rig::effect::Key<rig::effect::family::Embed> =
+            rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(EMBED_KEY));
+        let host = ctx.bind(&key).expect("the host serves embeddings");
+        let text = event.prompt.rag_text().expect("a text prompt");
+        let outputs = host
+            .dispatch(rig::effect::EmbedInputs::Texts(vec![text]))
+            .await
+            .expect("the host embeds");
+        match outputs {
+            rig::effect::EmbedOutputs::Texts(response) => {
+                assert_eq!(response.embeddings.len(), 1, "{response:?}")
+            }
+            rig::effect::EmbedOutputs::Images(_) => panic!("a text embedding"),
+        }
+        rig::agent::RunStartAction::continue_run()
+    }
+}
