@@ -1,0 +1,593 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 9072754608376111302,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": "fc_REDACTED_1",
+              "provider": {
+                "call_id": "fc_REDACTED_1"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 102,
+            "output_tokens": 20,
+            "total_tokens": 197,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 75
+          },
+          "message_id": null,
+          "response_id": "v1_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage": {
+              "total_input_tokens": 102,
+              "total_output_tokens": 20,
+              "total_tokens": 197,
+              "total_cached_tokens": 0,
+              "total_thought_tokens": 75,
+              "total_tool_use_tokens": 0
+            },
+            "interaction": {
+              "id": "v1_REDACTED_1",
+              "model": "gemini-2.5-flash",
+              "status": "requires_action",
+              "object": "interaction",
+              "created": "1970-01-01T00:00:00Z",
+              "updated": "1970-01-01T00:00:00Z",
+              "steps": [],
+              "usage": {
+                "total_input_tokens": 102,
+                "total_output_tokens": 20,
+                "total_tokens": 197,
+                "total_cached_tokens": 0,
+                "total_thought_tokens": 75,
+                "total_tool_use_tokens": 0
+              }
+            },
+            "model_version": "gemini-2.5-flash"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "signature": "signature_REDACTED_1",
+            "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "",
+                  "signature": "signature_REDACTED_1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:fc_REDACTED_1",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "add"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:fc_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\"x\":17,\"y\":25}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:fc_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "fc_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": "fc_REDACTED_1",
+            "provider": {
+              "call_id": "fc_REDACTED_1"
+            },
+            "function": {
+              "name": "add",
+              "arguments": {
+                "x": 17,
+                "y": 25
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 102,
+            "output_tokens": 20,
+            "total_tokens": 197,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 75
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "v1_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage": {
+              "total_input_tokens": 102,
+              "total_output_tokens": 20,
+              "total_tokens": 197,
+              "total_cached_tokens": 0,
+              "total_thought_tokens": 75,
+              "total_tool_use_tokens": 0
+            },
+            "interaction": {
+              "id": "v1_REDACTED_1",
+              "model": "gemini-2.5-flash",
+              "status": "requires_action",
+              "object": "interaction",
+              "created": "1970-01-01T00:00:00Z",
+              "updated": "1970-01-01T00:00:00Z",
+              "steps": [],
+              "usage": {
+                "total_input_tokens": 102,
+                "total_output_tokens": 20,
+                "total_tokens": 197,
+                "total_cached_tokens": 0,
+                "total_thought_tokens": 75,
+                "total_tool_use_tokens": 0
+              }
+            },
+            "model_version": "gemini-2.5-flash"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":17,\"y\":25}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 42
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "",
+                        "signature": "signature_REDACTED_1"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": "fc_REDACTED_1",
+                  "provider": {
+                    "call_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "fc_REDACTED_1",
+                  "provider": {
+                    "call_id": "fc_REDACTED_1"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 42
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_2"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 211,
+            "output_tokens": 2,
+            "total_tokens": 213,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "v1_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage": {
+              "total_input_tokens": 211,
+              "total_output_tokens": 2,
+              "total_tokens": 213,
+              "total_cached_tokens": 0,
+              "total_thought_tokens": 0,
+              "total_tool_use_tokens": 0
+            },
+            "interaction": {
+              "id": "v1_REDACTED_2",
+              "model": "gemini-2.5-flash",
+              "status": "completed",
+              "object": "interaction",
+              "created": "1970-01-01T00:00:00Z",
+              "updated": "1970-01-01T00:00:00Z",
+              "steps": [],
+              "usage": {
+                "total_input_tokens": 211,
+                "total_output_tokens": 2,
+                "total_tokens": 213,
+                "total_cached_tokens": 0,
+                "total_thought_tokens": 0,
+                "total_tool_use_tokens": 0
+              }
+            },
+            "model_version": "gemini-2.5-flash"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "signature": "signature_REDACTED_2",
+            "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "",
+                  "signature": "signature_REDACTED_2"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "42"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 211,
+            "output_tokens": 2,
+            "total_tokens": 213,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "v1_REDACTED_2",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage": {
+              "total_input_tokens": 211,
+              "total_output_tokens": 2,
+              "total_tokens": 213,
+              "total_cached_tokens": 0,
+              "total_thought_tokens": 0,
+              "total_tool_use_tokens": 0
+            },
+            "interaction": {
+              "id": "v1_REDACTED_2",
+              "model": "gemini-2.5-flash",
+              "status": "completed",
+              "object": "interaction",
+              "created": "1970-01-01T00:00:00Z",
+              "updated": "1970-01-01T00:00:00Z",
+              "steps": [],
+              "usage": {
+                "total_input_tokens": 211,
+                "total_output_tokens": 2,
+                "total_tokens": 213,
+                "total_cached_tokens": 0,
+                "total_thought_tokens": 0,
+                "total_tool_use_tokens": 0
+              }
+            },
+            "model_version": "gemini-2.5-flash"
+          }
+        }
+      ]
+    }
+  ]
+}

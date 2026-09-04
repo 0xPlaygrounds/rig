@@ -1147,3 +1147,45 @@ impl rig::memory::ConversationMemory for FailingMemory {
         self.inner.clear(conversation_id)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Matrix K: the delta wire.
+
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TOOL_NAME_DELTA: &str = "stop on the tool's name delta";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
+
+/// `on_tool_call_delta` → `Stop` on the delta that names the tool.
+#[allow(dead_code)]
+pub(crate) struct StopOnToolNameDelta;
+impl rig::agent::AgentHook for StopOnToolNameDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        if event.tool_name.is_some() {
+            rig::agent::ObservationAction::stop(STOP_ON_TOOL_NAME_DELTA)
+        } else {
+            rig::agent::ObservationAction::continue_run()
+        }
+    }
+}
+
+/// `on_tool_call_delta` → `Stop` on the first arguments delta.
+#[allow(dead_code)]
+pub(crate) struct StopOnToolArgumentsDelta;
+impl rig::agent::AgentHook for StopOnToolArgumentsDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        if event.tool_name.is_none() && !event.delta.is_empty() {
+            rig::agent::ObservationAction::stop(STOP_ON_TOOL_ARGUMENTS_DELTA)
+        } else {
+            rig::agent::ObservationAction::continue_run()
+        }
+    }
+}

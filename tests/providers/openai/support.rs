@@ -89,6 +89,18 @@ pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
     with_openai_cassette(spec, test_body).await;
 }
 
+/// The effect corpus's delta-wire matrix (Matrix K):
+/// `tests/cassettes/openai/corpus_delta/`.
+pub(super) async fn with_openai_corpus_delta_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
 /// The effect corpus's host-families matrix (Matrix I):
 /// `tests/cassettes/openai/corpus_host/`.
 pub(super) async fn with_openai_corpus_host_cassette<F, Fut>(

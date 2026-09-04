@@ -150,6 +150,10 @@ pub enum Hook {
     ClearAtStart,
     /// `on_run_settled` → `Clear` after the run's `Append`.
     ClearAtSettled,
+    /// `on_tool_call_delta` → `Stop` on the delta naming the tool (Matrix K).
+    StopOnToolNameDelta,
+    /// `on_tool_call_delta` → `Stop` on the first arguments delta.
+    StopOnToolArgumentsDelta,
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -861,6 +865,44 @@ impl AgentHook for ClearAtSettled {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Matrix K: stops on the delta wire.
+
+pub const STOP_ON_TOOL_NAME_DELTA: &str = "stop on the tool's name delta";
+pub const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
+
+struct StopOnToolNameDelta;
+
+impl AgentHook for StopOnToolNameDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &HookContext,
+        event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        if event.tool_name.is_some() {
+            ObservationAction::stop(STOP_ON_TOOL_NAME_DELTA)
+        } else {
+            ObservationAction::continue_run()
+        }
+    }
+}
+
+struct StopOnToolArgumentsDelta;
+
+impl AgentHook for StopOnToolArgumentsDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &HookContext,
+        event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        if event.tool_name.is_none() && !event.delta.is_empty() {
+            ObservationAction::stop(STOP_ON_TOOL_ARGUMENTS_DELTA)
+        } else {
+            ObservationAction::continue_run()
+        }
+    }
+}
+
 fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
@@ -897,6 +939,8 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::EmbedPrompt => builder.add_hook(EmbedPrompt),
             Hook::ClearAtStart => builder.add_hook(ClearAtStart),
             Hook::ClearAtSettled => builder.add_hook(ClearAtSettled),
+            Hook::StopOnToolNameDelta => builder.add_hook(StopOnToolNameDelta),
+            Hook::StopOnToolArgumentsDelta => builder.add_hook(StopOnToolArgumentsDelta),
         };
     }
     builder
@@ -930,7 +974,19 @@ pub fn as_data(record: &EffectRecord) -> serde_json::Value {
     })
 }
 
+/// The oracle: the replayed log is the golden, record by record, in the
+/// log's order — which is dispatch order across every key (ids are minted
+/// at dispatch and the recorder keeps them in that order), so a dispatch
+/// at the wrong point between two keys is a divergence, not a per-key
+/// match. Both logs' ids must be strictly increasing for that to hold.
 pub fn assert_same_records(replayed: &EffectLog, log: &EffectLog, interpreter: &str) {
+    for (name, which) in [("the golden", log), ("the replay", replayed)] {
+        let ids: Vec<u64> = which.iter().map(|record| record.id.as_u64()).collect();
+        assert!(
+            ids.windows(2).all(|pair| pair[0] < pair[1]),
+            "{interpreter}: {name}'s records are in dispatch order: {ids:?}"
+        );
+    }
     let replayed: Vec<_> = replayed.iter().map(as_data).collect();
     let recorded: Vec<_> = log.iter().map(as_data).collect();
     for (position, (got, want)) in replayed.iter().zip(&recorded).enumerate() {
@@ -1466,6 +1522,8 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::EmbedPrompt => "EmbedPrompt",
         Hook::ClearAtStart => "ClearAtStart",
         Hook::ClearAtSettled => "ClearAtSettled",
+        Hook::StopOnToolNameDelta => "StopOnToolNameDelta",
+        Hook::StopOnToolArgumentsDelta => "StopOnToolArgumentsDelta",
     }
 }
 
@@ -1867,6 +1925,19 @@ pub async fn hand_driver_reproduces(program: &Program) {
                                         if program.hooks.contains(&Hook::StopOnToolCallDelta) =>
                                     {
                                         Some(STOP_ON_TOOL_CALL_DELTA)
+                                    }
+                                    rig_core::streaming::Delta::ToolName { .. }
+                                        if program.hooks.contains(&Hook::StopOnToolNameDelta) =>
+                                    {
+                                        Some(STOP_ON_TOOL_NAME_DELTA)
+                                    }
+                                    rig_core::streaming::Delta::ToolArguments { arguments }
+                                        if program
+                                            .hooks
+                                            .contains(&Hook::StopOnToolArgumentsDelta)
+                                            && !arguments.is_empty() =>
+                                    {
+                                        Some(STOP_ON_TOOL_ARGUMENTS_DELTA)
                                     }
                                     rig_core::streaming::Delta::Reasoning { .. }
                                         if program.hooks.contains(&Hook::StopOnReasoningDelta) =>
