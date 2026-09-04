@@ -419,7 +419,7 @@ jobs:
   # poorly behind the default-feature sweep above.
   # The bus's wait/wake protocols under the loom model checker: every
   # interleaving of the small models in rig-bus's `loom_models.rs`
-  # and rig-agent's `agent/bus/loom_models.rs`. Stable toolchain;
+  # and rig-agent's `agent/drive/loom_models.rs`. Stable toolchain;
   # `--cfg rig_loom` selects the sync shims. A failing model is a
   # protocol bug.
   loom:

@@ -16,7 +16,7 @@ use rig_core::effect::{HandlerDescriptor, Key, family};
 use rig_core::id::ConversationId;
 use rig_effect_log::EffectLog;
 
-use super::bus::AgentBus;
+use super::drive::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -260,7 +260,7 @@ pub(crate) struct AgentConfig {
     /// The anonymous model this value selected ([`Agent::set_model`],
     /// [`AgentRunner::using_model_value`]); its registration lives as long
     /// as the values sharing it.
-    pub(crate) anonymous_model: Option<std::sync::Arc<super::bus::AnonymousModel>>,
+    pub(crate) anonymous_model: Option<std::sync::Arc<super::drive::AnonymousModel>>,
 }
 
 impl AgentConfig {

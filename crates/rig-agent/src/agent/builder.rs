@@ -41,7 +41,7 @@ use crate::{
     },
 };
 
-use super::{Agent, OutputMode, bus::AgentBus, completion::AgentConfig};
+use super::{Agent, OutputMode, completion::AgentConfig, drive::AgentBus};
 
 /// The `dynamic_context` hook: retrieves documents for the prompt through
 /// the agent's bus (an `IndexHandle` bound to the index registered at
@@ -481,7 +481,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         // for replay elsewhere needs), else a per-process counter.
         let owner = owner
             .or_else(|| config.name.clone())
-            .unwrap_or_else(crate::agent::bus::default_owner);
+            .unwrap_or_else(crate::agent::drive::default_owner);
         config.bus = match bus {
             BusSource::Owned(bus_config) => {
                 let (dispatcher, registrar, driver) = Bus::channel_with(bus_config);
@@ -515,7 +515,7 @@ impl<ToolState> AgentBuilder<ToolState> {
         };
         for (suffix, handler) in pending {
             let key = config.bus.raw_key(&suffix);
-            crate::agent::bus::register_generated(config.bus.register_erased(key, handler));
+            crate::agent::drive::register_generated(config.bus.register_erased(key, handler));
         }
         for (suffix, slot) in dynamic_contexts {
             // The slot is this builder's own, filled exactly once.
@@ -531,7 +531,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             config.memory_key = Some(config.bus.key("memory"));
         }
         if record_effects {
-            crate::agent::bus::register_generated(config.bus.enable_recording(record_events));
+            crate::agent::drive::register_generated(config.bus.enable_recording(record_events));
         }
         let tool_server_handle = handle(tool_state, config.bus.owner());
         tool_server_handle.attach(config.bus.registrar());
