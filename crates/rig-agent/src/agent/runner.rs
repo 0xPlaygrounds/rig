@@ -556,7 +556,19 @@ impl AgentRunner {
             match item {
                 Ok(DriveItem::Done(done)) => response = Some(*done),
                 Ok(DriveItem::Item(_)) => {}
-                Err(err) => return Err(streaming_error_into_prompt(err)),
+                Err(err) => {
+                    // The engine settles an error ending *after* yielding
+                    // it (`on_run_settled` with `SettledOutcome::Error`),
+                    // so the fold drains the engine before returning: a
+                    // fold that returned here dropped the engine at the
+                    // yield and the settled hook never fired for a
+                    // blocking run that a hook stopped or a provider
+                    // refused, while the streaming surface's consumer,
+                    // polling to the end, saw it fire.
+                    let error = streaming_error_into_prompt(err);
+                    while driver.next().await.is_some() {}
+                    return Err(error);
+                }
             }
         }
 
@@ -579,6 +591,8 @@ impl std::future::IntoFuture for AgentRunner {
     }
 }
 
+#[cfg(test)]
+mod settled_tests;
 #[cfg(test)]
 mod tests;
 
