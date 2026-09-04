@@ -89,7 +89,7 @@ fn target_dir() -> PathBuf {
 }
 
 #[test]
-fn bevy_host_runs_the_ten_proofs() -> Result<(), Box<dyn std::error::Error>> {
+fn bevy_host_runs_the_fourteen_proofs() -> Result<(), Box<dyn std::error::Error>> {
     let child = fixture_cargo()
         .args(["run", "--quiet", "--locked", "--manifest-path"])
         .arg(fixture_manifest())
@@ -102,7 +102,7 @@ fn bevy_host_runs_the_ten_proofs() -> Result<(), Box<dyn std::error::Error>> {
     if !status.success() {
         return Err(format!("bevy bus host fixture failed:\n{stdout}\n{stderr}").into());
     }
-    for proof in 3..=10 {
+    for proof in 3..=14 {
         if !stdout.contains(&format!("proof {proof}:")) {
             return Err(format!("fixture did not report proof {proof}:\n{stdout}").into());
         }

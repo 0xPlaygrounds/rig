@@ -99,6 +99,7 @@ fn descriptor_variant_is_the_family() {
         let descriptor = HandlerDescriptor {
             key: HandlerKey::from("k"),
             family,
+            layers: Vec::new(),
         };
         let back = round_trip(&descriptor);
         assert_eq!(back.family.family(), expected);
@@ -368,7 +369,7 @@ fn custom_kind_label_is_a_plain_string_on_the_wire() {
 
 #[test]
 fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
-    let completion = family::Completion::wrap(request());
+    let completion = family::Completion::wrap(request()).expect("a request has a wire form");
     assert_eq!(completion.family(), EffectFamily::Completion);
     let response =
         CompletionResponse::new(vec![AssistantContent::text("hi")], Usage::new(), "mock");
@@ -380,7 +381,8 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
         name: "add".into(),
         args: "{}".into(),
         context: ToolContext::new(),
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(tool.family(), EffectFamily::Tool);
     let answer = family::Tool::unwrap(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text("3")),
@@ -391,7 +393,8 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
 
     let memory = family::Memory::wrap(MemoryOp::Clear {
         conversation: crate::id::ConversationId::new("c"),
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(memory.family(), EffectFamily::Memory);
     assert!(matches!(
         family::Memory::unwrap(Outcome::Memory(MemoryOutcome::Cleared)),
@@ -404,7 +407,8 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
             .samples(1)
             .build()
             .map_filter(Filter::interpret),
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(retrieve.family(), EffectFamily::Retrieve);
     assert!(matches!(
         family::Retrieve::unwrap(Outcome::Documents(RetrievedDocuments::Ids(vec![]))),
@@ -414,14 +418,16 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     let rerank = family::Rerank::wrap(RerankRequest {
         query: "q".into(),
         documents: vec!["a".into()],
-    });
+    })
+    .expect("a request has a wire form");
     assert_eq!(rerank.family(), EffectFamily::Rerank);
     assert!(matches!(
         family::Rerank::unwrap(Outcome::Reranked(RerankResponse::new(vec![], "mock"))),
         Ok(response) if response.provider == "mock"
     ));
 
-    let embed = family::Embed::wrap(EmbedInputs::Texts(vec!["a".into()]));
+    let embed = family::Embed::wrap(EmbedInputs::Texts(vec!["a".into()]))
+        .expect("a request has a wire form");
     assert_eq!(embed.family(), EffectFamily::Embed);
     assert!(
         family::Embed::unwrap(Outcome::Embeddings(EmbedOutputs::Texts(
@@ -469,7 +475,8 @@ impl CustomEffect for AskUser {
 fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
     let kind = family::Custom::<AskUser>::wrap(AskUser {
         prompt: "name?".into(),
-    });
+    })
+    .expect("a request has a wire form");
     match &kind {
         EffectKind::Custom { kind, payload } => {
             assert_eq!(&**kind, AskUser::KIND);
@@ -499,4 +506,124 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
     let copied = marker;
     assert_eq!(marker, copied);
     assert_eq!(format!("{marker:?}"), "Custom<test:ask_user>");
+}
+
+/// A custom effect whose `Serialize` fails.
+#[derive(Debug, Deserialize)]
+struct Unserializable;
+
+impl Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("no wire form"))
+    }
+}
+
+impl CustomEffect for Unserializable {
+    const KIND: &'static str = "test:unserializable";
+    type Answer = serde_json::Value;
+}
+
+/// A custom effect that does not serialize has no wire form: the wrap is
+/// a `Request` report naming the kind and the serde error, never a
+/// dispatch carrying the error as its payload.
+#[test]
+fn a_custom_effect_that_does_not_serialize_is_refused_at_wrap() {
+    let report = family::Custom::<Unserializable>::wrap(Unserializable).expect_err("no wire form");
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(
+        report.message.contains("test:unserializable") && report.message.contains("no wire form"),
+        "{report:?}"
+    );
+}
+
+// ---- the effect row ----
+
+fn descriptor(key: &str, family: FamilyDescriptor) -> HandlerDescriptor {
+    HandlerDescriptor {
+        key: HandlerKey::from(key),
+        family,
+        layers: Vec::new(),
+    }
+}
+
+/// A row is a subset of a handler table when every key it names is served
+/// as the family it needs; the first gap names the key, the family needed
+/// and what serves it instead.
+#[test]
+fn a_row_is_checked_against_a_handler_table_and_names_its_first_gap() {
+    let row: EffectRow = [
+        (
+            HandlerKey::from("a/model:default"),
+            EffectFamily::Completion,
+        ),
+        (HandlerKey::from("a/tool:add#0"), EffectFamily::Tool),
+    ]
+    .into_iter()
+    .collect();
+    let served = vec![
+        descriptor(
+            "a/model:default",
+            FamilyDescriptor::Completion {
+                model: ModelRef::new("m"),
+                capabilities: ProviderCapabilities::default(),
+            },
+        ),
+        descriptor(
+            "a/tool:add#0",
+            FamilyDescriptor::Tool {
+                name: "add".into(),
+                description: String::new(),
+                parameters: json!({}),
+                embedding: None,
+            },
+        ),
+        descriptor("host/note", FamilyDescriptor::Custom { kind: "n".into() }),
+    ];
+    assert_eq!(row.is_subset_of(&served), Ok(()));
+    let gap = row
+        .is_subset_of(&served[..1])
+        .expect_err("the tool is not served");
+    assert_eq!(gap.key, HandlerKey::from("a/tool:add#0"));
+    assert_eq!(gap.needed, EffectFamily::Tool);
+    assert_eq!(gap.served, None);
+    assert_eq!(gap.to_string(), "`a/tool:add#0` (tool_call) is not served");
+    let wrong = vec![descriptor("a/model:default", FamilyDescriptor::Memory {})];
+    let gap = row
+        .is_subset_of(&wrong)
+        .expect_err("served as another family");
+    assert_eq!(gap.served, Some(EffectFamily::Memory));
+    assert_eq!(
+        gap.to_string(),
+        "`a/model:default` is needed as completion but served as memory"
+    );
+}
+
+/// A diff names what the other row lacks, what it has extra, and the keys
+/// both name as different families, in key order.
+#[test]
+fn a_row_diff_names_every_difference() {
+    let this: EffectRow = [
+        (HandlerKey::from("a"), EffectFamily::Completion),
+        (HandlerKey::from("b"), EffectFamily::Tool),
+    ]
+    .into_iter()
+    .collect();
+    let other: EffectRow = [
+        (HandlerKey::from("b"), EffectFamily::Memory),
+        (HandlerKey::from("c"), EffectFamily::Retrieve),
+    ]
+    .into_iter()
+    .collect();
+    let diffs: Vec<String> = this.diff(&other).iter().map(ToString::to_string).collect();
+    assert_eq!(
+        diffs,
+        [
+            "`a` (completion) is missing",
+            "`b` is tool_call here and memory there",
+            "`c` (retrieve) is extra",
+        ]
+    );
+    assert!(this.diff(&this).is_empty());
+    let wire = serde_json::to_value(&this).expect("serializes");
+    assert_eq!(wire, json!({ "a": "completion", "b": "tool" }));
 }

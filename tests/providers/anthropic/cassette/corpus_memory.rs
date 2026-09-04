@@ -7,11 +7,12 @@
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
-use rig::bus::{Bus, BusConfig};
+use rig::bus::Bus;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, MemoryOp};
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::serve::ServingPolicy;
 
 use super::super::support::with_anthropic_corpus_memory_cassette;
 use crate::goldens::{CONVERSATION, ClearAtSettled, ClearAtStart, FailingMemory, families};
@@ -310,9 +311,9 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
         let agent = client
             .agent(CLAUDE_SONNET_4_6)
             .name("golden")
-            .configure_bus(BusConfig {
+            .configure_bus(ServingPolicy {
                 serial_per_handler: true,
-                ..BusConfig::default()
+                ..ServingPolicy::default()
             })
             .preamble(TWO_TOOL_STREAM_PREAMBLE)
             .temperature(0.0)

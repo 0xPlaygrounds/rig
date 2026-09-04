@@ -2,14 +2,12 @@
 //! into an [`EffectLog`].
 
 use std::{
-    collections::BTreeMap,
     fmt,
     sync::{Arc, Mutex, PoisonError},
 };
 
-use rig_core::serve::Recorder;
+use rig_core::serve::{Origin, Recorder};
 use rig_core::{
-    effect::EffectFamily,
     effect::{EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
@@ -28,6 +26,9 @@ use super::{EffectLog, LogHeader};
 pub struct EffectLogRecorder {
     slots: Arc<Mutex<Vec<RecordSlot>>>,
     header: Arc<Mutex<LogHeader>>,
+    /// Records per key, taken or not: the signature names a key while one
+    /// exists, and forgets it when a layer's decision discards the last.
+    touched: Arc<Mutex<std::collections::BTreeMap<HandlerKey, usize>>>,
     /// Keep a streamed dispatch's events verbatim (see
     /// [`Self::keeping_stream_events`]).
     keep_events: bool,
@@ -37,6 +38,7 @@ pub struct EffectLogRecorder {
 /// resolution.
 struct RecordSlot {
     id: EffectId,
+    origin: Origin,
     key: HandlerKey,
     kind: EffectKind,
     outcome: Option<Result<Outcome, ErrorReport>>,
@@ -46,6 +48,8 @@ struct RecordSlot {
 impl RecordSlot {
     fn record(&self) -> Option<EffectRecord> {
         self.outcome.as_ref().map(|outcome| EffectRecord {
+            parent: self.origin.parent,
+            scope: self.origin.scope.clone(),
             id: self.id,
             key: self.key.clone(),
             kind: self.kind.clone(),
@@ -96,8 +100,8 @@ impl EffectLogRecorder {
     pub fn set_program(
         &self,
         hooks: Vec<String>,
-        required: BTreeMap<HandlerKey, EffectFamily>,
-        bus: Option<rig_bus::BusConfig>,
+        required: rig_core::effect::EffectRow,
+        bus: Option<rig_core::serve::ServingPolicy>,
     ) {
         let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
         header.hooks = hooks;
@@ -169,19 +173,25 @@ impl EffectLogRecorder {
             .count()
     }
 
-    fn begin_slot(&self, id: EffectId, key: HandlerKey, kind: EffectKind) {
+    fn begin_slot(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
         self.header
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .signature
+            .insert_if_absent(key.clone(), kind.family());
+        *self
+            .touched
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
             .entry(key.clone())
-            .or_insert_with(|| kind.family());
+            .or_insert(0) += 1;
         let events = (self.keep_events && kind.streams()).then(Vec::new);
         self.slots
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(RecordSlot {
                 id,
+                origin,
                 key,
                 kind,
                 outcome: None,
@@ -189,18 +199,57 @@ impl EffectLogRecorder {
             });
     }
 
+    // The open slot is almost always the last one begun: a stream's events
+    // and a dispatch's outcome land on the newest slots, and every resolved
+    // slot before them is dead weight to a scan from the front. Searching
+    // from the back makes a long streamed run linear in its events rather
+    // than in its records times its events.
     fn event_slot(&self, id: EffectId, event: &StreamEvent) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id)
+        if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id)
             && let Some(events) = slot.events.as_mut()
         {
             events.push(event.clone());
         }
     }
 
+    /// A layer decided the dispatch before any handler served it: no
+    /// record. The slot is the newest for the id, as `resolve_slot` finds it.
+    fn discard_slot(&self, id: EffectId) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(position) = slots.iter().rposition(|slot| slot.id == id) else {
+            return;
+        };
+        let key = slots.remove(position).key;
+        drop(slots);
+        // The signature is the trace's row: a key with no record left —
+        // none taken, none in flight — is not in it.
+        let mut touched = self.touched.lock().unwrap_or_else(PoisonError::into_inner);
+        let remaining = touched.get(&key).copied().unwrap_or(0).saturating_sub(1);
+        if remaining == 0 {
+            touched.remove(&key);
+            self.header
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .signature
+                .remove(&key);
+        } else {
+            touched.insert(key, remaining);
+        }
+    }
+
+    /// A layer served `kind` in place of what began: the record's request
+    /// is what the innermost handler served.
+    fn patch_slot(&self, id: EffectId, kind: EffectKind) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id) {
+            slot.kind = kind;
+        }
+    }
+
     fn resolve_slot(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id) {
+        if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id) {
             slot.outcome = Some(outcome);
         }
     }
@@ -222,8 +271,16 @@ impl Recorder for EffectLogRecorder {
         self.set_handlers(handlers);
     }
 
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind) {
-        self.begin_slot(id, key, kind);
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
+        self.begin_slot(id, key, kind, origin);
+    }
+
+    fn discard(&self, id: EffectId) {
+        self.discard_slot(id);
+    }
+
+    fn patch(&self, id: EffectId, kind: EffectKind) {
+        self.patch_slot(id, kind);
     }
 
     fn keep_events(&self) -> bool {

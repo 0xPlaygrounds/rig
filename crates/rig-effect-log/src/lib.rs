@@ -30,9 +30,9 @@ mod log;
 mod recorder;
 mod replay;
 
-pub use log::{EFFECT_LOG_FORMAT, EffectLog, LogHeader, stable_hash};
+pub use log::{Checkpoint, EFFECT_LOG_FORMAT, EffectLog, LogHeader, stable_hash};
 pub use recorder::EffectLogRecorder;
-pub use replay::EffectLogReplayer;
+pub use replay::{EffectLogReplayer, RequestCheck};
 
 #[cfg(test)]
 mod bus_tests;

@@ -74,6 +74,12 @@ pub enum ErrorKind {
     /// after the log ran out. Never retryable; the run that meets it fails
     /// rather than continuing on an answer the record never gave.
     Divergence,
+    /// A policy denied the dispatch before any handler served it: a bus
+    /// `Layer`'s `Decision::deny`, a host's interception. Never retryable
+    /// on the same policy; a runtime shows it as "blocked" without parsing
+    /// a message, an engine turns it into the skipped result the model
+    /// sees. Distinct from `Cancelled`, which is how a program stops.
+    Denied,
     /// Anything else.
     Other,
 }
@@ -466,6 +472,7 @@ impl From<&EmbeddingError> for ErrorReport {
             | ErrorKind::BusClosed
             | ErrorKind::HandlerUnavailable
             | ErrorKind::Divergence
+            | ErrorKind::Denied
             | ErrorKind::Other => false,
         };
         ErrorReport {
@@ -521,6 +528,7 @@ impl From<&RerankError> for ErrorReport {
             | ErrorKind::BusClosed
             | ErrorKind::HandlerUnavailable
             | ErrorKind::Divergence
+            | ErrorKind::Denied
             | ErrorKind::Other => false,
         };
         ErrorReport {

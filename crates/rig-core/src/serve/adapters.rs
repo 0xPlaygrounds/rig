@@ -73,6 +73,7 @@ where
                 model: self.label.clone(),
                 capabilities: self.model.capabilities(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -174,14 +175,21 @@ where
                 parameters: self.tool.parameters(),
                 embedding: self.embedding.clone(),
             },
+            layers: Vec::new(),
         }
     }
 
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         match kind {
             EffectKind::ToolCall { args, context, .. } => {
-                let mut context = context;
+                // The tool reaches its runtime through the context's scope
+                // for the length of the call; the result carries data only.
+                let mut context = match sink.scope_any() {
+                    Some(scope) => context.with_scope(scope),
+                    None => context,
+                };
                 let result = ErasedTool::execute(&self.tool, args, &mut context).await;
+                context.clear_scope();
                 sink.resolve(Ok(Outcome::ToolResult { result, context }))
                     .await;
             }
@@ -271,16 +279,21 @@ where
                 parameters: self.parameters.clone(),
                 embedding: None,
             },
+            layers: Vec::new(),
         }
     }
 
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         match kind {
             EffectKind::ToolCall { args, context, .. } => {
-                let mut context = context;
+                let mut context = match sink.scope_any() {
+                    Some(scope) => context.with_scope(scope),
+                    None => context,
+                };
                 let result =
                     crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
                         .await;
+                context.clear_scope();
                 sink.resolve(Ok(Outcome::ToolResult { result, context }))
                     .await;
             }
@@ -333,6 +346,7 @@ where
                 max_documents: self.model.max_documents(),
                 modality: EmbedModality::Text,
             },
+            layers: Vec::new(),
         }
     }
 
@@ -405,6 +419,7 @@ where
                 model: self.label.clone(),
                 max_documents: self.model.max_documents(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -468,6 +483,7 @@ where
                 max_documents: self.model.max_documents(),
                 modality: EmbedModality::Image,
             },
+            layers: Vec::new(),
         }
     }
 
@@ -533,6 +549,7 @@ where
         HandlerDescriptor {
             key: HandlerKey::from("memory"),
             family: FamilyDescriptor::Memory {},
+            layers: Vec::new(),
         }
     }
 
@@ -604,6 +621,7 @@ where
         HandlerDescriptor {
             key: HandlerKey::from("retrieve"),
             family: FamilyDescriptor::Retrieve {},
+            layers: Vec::new(),
         }
     }
 

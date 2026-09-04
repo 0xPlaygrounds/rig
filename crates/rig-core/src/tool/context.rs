@@ -164,13 +164,29 @@ impl TypeMap {
 ///
 /// Slots are keyed by the value's type name, so the accessors stay keyless:
 /// one value per type per map.
-#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct ToolContext {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     inbound: BTreeMap<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     result: BTreeMap<String, serde_json::Value>,
+    /// The driver's scope for the call — not data: never on the wire, not
+    /// part of equality, dropped by the adapter before the result is
+    /// resolved. The adapter copies it from the sink it serves
+    /// (`OutcomeSink::scope`) so a tool can reach its runtime by type —
+    /// rig-bus hands a `Dispatcher` whose every dispatch, and every agent
+    /// built over it, descends from this call. Absent for an inline call.
+    #[serde(skip)]
+    scope: Option<std::sync::Arc<dyn Any + Send + Sync>>,
 }
+
+impl PartialEq for ToolContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.inbound == other.inbound && self.result == other.result
+    }
+}
+
+impl Eq for ToolContext {}
 
 /// A value that may be stored in a [`ToolContext`]: serde data under a key
 /// the type declares. The key is what survives a refactor, a persisted
@@ -239,6 +255,7 @@ impl ToolContext {
         Self {
             inbound: BTreeMap::new(),
             result: BTreeMap::new(),
+            scope: None,
         }
     }
 
@@ -303,7 +320,27 @@ impl ToolContext {
         Self {
             inbound: self.inbound.clone(),
             result: BTreeMap::new(),
+            scope: self.scope.clone(),
         }
+    }
+
+    /// Attach the driver's scope for the call (see the field).
+    pub fn with_scope(mut self, scope: std::sync::Arc<dyn Any + Send + Sync>) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+
+    /// The driver's scope for the call, as the type the driver attached;
+    /// `None` inline, or under another runtime.
+    pub fn scope<T: Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.scope
+            .clone()
+            .and_then(|scope| std::sync::Arc::downcast::<T>(scope).ok())
+    }
+
+    /// Drop the scope: the call is over and the context is data again.
+    pub fn clear_scope(&mut self) {
+        self.scope = None;
     }
 
     /// Publish the result metadata a dispatch produced (see
