@@ -44,7 +44,7 @@ where
     V: Serialize,
 {
     let mut entries: Vec<_> = map.iter().collect();
-    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    entries.sort_by_key(|(key, _)| *key);
     serializer.collect_map(entries)
 }
 
@@ -80,7 +80,7 @@ pub fn to_canonical_string(value: &serde_json::Value) -> String {
         match value {
             serde_json::Value::Object(map) => {
                 let mut entries: Vec<_> = map.iter().collect();
-                entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+                entries.sort_by_key(|(key, _)| *key);
                 let mut out = serde_json::Map::new();
                 for (key, value) in entries {
                     out.insert(key.clone(), sorted(value));

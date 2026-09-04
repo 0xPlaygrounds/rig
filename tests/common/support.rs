@@ -658,11 +658,9 @@ pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named(
             StreamEvent::BlockEnd {
                 block: Some(AssistantContent::ToolCall(tool_call)),
                 ..
-            } => {
-                if tool_call.function.name == expected_name {
-                    assert_eq!(tool_call.function.arguments, json!({}));
-                    saw_matching_tool_call = true;
-                }
+            } if tool_call.function.name == expected_name => {
+                assert_eq!(tool_call.function.arguments, json!({}));
+                saw_matching_tool_call = true;
             }
             _ => {}
         }
