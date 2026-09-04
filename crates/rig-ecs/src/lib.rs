@@ -29,6 +29,12 @@
 //! answered, beside the graph, and [`agent::scene::load_world`] in a fresh
 //! world over the log's tail).
 //!
+//! [`prelude`] names the sets and the components a user's systems write
+//! and read, and nothing else. Behind features: `reflect` — every
+//! component derives `Reflect`, [`reflect::ReflectPlugin`] registers them,
+//! [`reflect::ReflectedScene`] is the world as reflected data beside the
+//! serde scene.
+//!
 //! The `bus` module is written as if it were already its own crate (every
 //! item `pub` or private to its file, no import from a sibling module, no
 //! agent-shaped item, its tests in `tests/bus_*.rs`): the agent modules
@@ -38,5 +44,8 @@
 pub mod agent;
 pub mod bus;
 pub mod policy;
+pub mod prelude;
+#[cfg(feature = "reflect")]
+pub mod reflect;
 pub mod replay;
 pub mod systems;

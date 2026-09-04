@@ -27,10 +27,13 @@ use super::effect::{Answer, Asked, EffectOutcome, WorldEffect};
 /// twin of the handler; what a scene saves and what a typed key is checked
 /// against. One per handler entity; a key is bound to at most one entity.
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Bound {
     /// The key the handler serves.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::HandlerKeyReflect))]
     pub key: HandlerKey,
     /// What it is: the descriptor, with `key` as its key.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::HandlerDescriptorReflect))]
     pub descriptor: HandlerDescriptor,
 }
 

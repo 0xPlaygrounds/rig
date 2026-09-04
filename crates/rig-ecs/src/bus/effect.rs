@@ -24,10 +24,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
 #[require(Seq)]
 #[component(on_add = stamp_seq)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct PendingEffect {
     /// The handler key the effect is routed to.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::HandlerKeyReflect))]
     pub key: HandlerKey,
     /// The effect.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::EffectKindReflect))]
     pub kind: EffectKind,
 }
 
@@ -94,10 +97,12 @@ impl PendingEffect {
     Serialize,
     Deserialize,
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Seq(pub u64);
 
 /// The world's one dispatch-order counter (see [`Seq`]).
 #[derive(Resource, Debug, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Resource))]
 pub struct SeqCounter(pub u64);
 
 fn stamp_seq(mut world: DeferredWorld<'_>, context: HookContext) {
@@ -120,6 +125,7 @@ fn stamp_seq(mut world: DeferredWorld<'_>, context: HookContext) {
 /// host's own) bumps it past that id, so a minted id never collides with
 /// a saved one.
 #[derive(Resource, Debug, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Resource))]
 pub struct IdCounter(pub u64);
 
 /// An id the effect must be dispatched under: a scene's saved id, a
@@ -127,7 +133,11 @@ pub struct IdCounter(pub u64);
 /// past it so a minted id never collides with a reserved one.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_insert = bump_ids_past_reserved)]
-pub struct Reserved(pub EffectId);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct Reserved(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::EffectIdReflect))]
+    pub  EffectId,
+);
 
 fn bump_ids_past_reserved(mut world: DeferredWorld<'_>, context: HookContext) {
     if let Some(Reserved(id)) = world.get::<Reserved>(context.entity).copied() {
@@ -148,13 +158,18 @@ fn bump_ids_past_issued(mut world: DeferredWorld<'_>, context: HookContext) {
 /// a scene saves.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_insert = bump_ids_past_issued)]
-pub struct Issued(pub EffectId);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct Issued(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::EffectIdReflect))]
+    pub  EffectId,
+);
 
 /// A pending effect a user system is still deciding about: `Dispatch`
 /// leaves it alone until the marker is removed (approve), the effect is
 /// denied (`EffectOutcome(Err(..))` inserted) or the entity despawned. The
 /// world-side spelling of a layer that suspends in `before`.
 #[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Held;
 
 /// The effect was taken: a handler is serving it. Present from `Dispatch`
@@ -162,8 +177,10 @@ pub struct Held;
 /// channel closes. Carries the key it occupies so serial serving is a
 /// query over this component. Never serialized: a scene stores intent.
 #[derive(Component, Debug, Clone)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct InFlight {
     /// The key the effect occupies.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::HandlerKeyReflect))]
     pub key: HandlerKey,
 }
 
@@ -192,13 +209,16 @@ pub struct Streaming {
 /// when the handler's channel closes, so a serial key stays busy until the
 /// handler is done, as it does on rig-bus.
 #[derive(Component, Debug, Default, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Streamed {
     /// Every event, in order.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::StreamEventsReflect))]
     pub events: Vec<StreamEvent>,
     /// The text deltas concatenated.
     pub text: String,
     /// The fold's outcome at the terminal record, or the error that ended
     /// the stream.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::StreamedOutcomeReflect))]
     pub outcome: Option<Result<Outcome, ErrorReport>>,
 }
 
@@ -206,7 +226,11 @@ pub struct Streamed {
 /// finished, by a `Gate` system that denies, or by a `Judge` system that
 /// replaces. Serde, so a scene keeps answered effects answered.
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
-pub struct EffectOutcome(pub Result<Outcome, ErrorReport>);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct EffectOutcome(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::OutcomeReflect))]
+    pub  Result<Outcome, ErrorReport>,
+);
 
 impl EffectOutcome {
     /// The answer as the family's typed answer.
@@ -240,13 +264,21 @@ impl EffectOutcome {
 /// effect entity. `Dispatch` attaches it to the handler's sink; absent,
 /// the tool runs under an empty context. A scene saves it.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolInputs(pub ToolContext);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ToolInputs(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::ToolContextReflect))]
+    pub ToolContext,
+);
 
 /// What the tool published into its context: read off the sink's
 /// [`PublishedContext`] when the outcome lands (`Collect`), or inserted by
 /// the system that answers an open tool key. Data, beside the outcome.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolOutputs(pub ToolContext);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ToolOutputs(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::ToolContextReflect))]
+    pub ToolContext,
+);
 
 /// The slot a task-served tool call publishes into, shared with its sink
 /// for the length of the call; `Collect` reads it into [`ToolOutputs`].
@@ -260,6 +292,7 @@ pub struct Publishing(pub Arc<PublishedContext>);
 /// the record's `scope`, so one log written by several programs in one
 /// world reads per program.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Scope(pub String);
 
 /// A [`CustomEffect`] a system can serve: its payload and its answer live

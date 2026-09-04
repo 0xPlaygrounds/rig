@@ -84,6 +84,8 @@ pub mod effect;
 pub mod handlers;
 pub mod plugin;
 pub mod record;
+#[cfg(feature = "reflect")]
+pub mod reflect;
 pub mod scene;
 
 #[cfg(feature = "replay")]

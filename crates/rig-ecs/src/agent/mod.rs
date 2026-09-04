@@ -19,9 +19,13 @@
 //! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
 //! | Invalid call | [`InvalidCall`] + [`Resolution`], `ChildOf` the turn |
 
+#[cfg(feature = "reflect")]
+pub mod reflect;
 pub mod scene;
 
 use bevy_ecs::prelude::*;
+#[cfg(feature = "reflect")]
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use rig_core::{
     completion::{
         Usage as WireUsage,
@@ -38,33 +42,46 @@ use serde::{Deserialize, Serialize};
 /// The agent's name: the owner of every key it mints (`<owner>/model:..`),
 /// the scope of every run's records.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Owner(pub String);
 
 /// The system prompt: `None` is "no system message" (a run without a
 /// preamble), `Some("")` an empty one that is still sent.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Preamble(pub Option<String>);
 
 /// Sampling temperature, if the request names one.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Temperature(pub Option<f64>);
 
 /// The answer's token budget, if the request names one.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct MaxTokens(pub Option<u64>);
 
 /// Provider-specific parameters the request carries verbatim.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AdditionalParams(pub Option<serde_json::Value>);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct AdditionalParams(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::OptionalJsonReflect))]
+    pub Option<serde_json::Value>,
+);
 
 /// The program's tool choice: what the request's `tool_choice` starts
 /// from before the output mode has its say.
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ToolChoiceSpec(pub Option<ToolChoice>);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ToolChoiceSpec(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::ToolChoiceReflect))]
+    pub Option<ToolChoice>,
+);
 
 /// How the run's answer is asked for and read.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum OutputKind {
     /// Resolve at request time: `Tool` when there is a schema and at least
     /// one tool and the tool choice permits it, else `Native`.
@@ -81,21 +98,25 @@ pub enum OutputKind {
 
 /// The output mode and its schema, if any.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Output {
     /// The mode.
     pub mode: OutputKind,
     /// The JSON schema of the answer, raw.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::OptionalJsonReflect))]
     pub schema: Option<serde_json::Value>,
 }
 
 /// The model-call budget of a run.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct MaxTurns(pub usize);
 
 /// What to do with a tool call the program does not advertise when no
 /// system resolved it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum Unhandled {
     /// The run fails at the record.
     #[default]
@@ -106,6 +127,7 @@ pub enum Unhandled {
 
 /// The invalid-call policy: how many retries before `unhandled` applies.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct InvalidCalls {
     /// Retries the program allows an invalid call.
     pub retries: usize,
@@ -117,6 +139,7 @@ pub struct InvalidCalls {
 /// default) runs them one after another in call order; N keeps N going.
 /// The run's, else the agent's.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct ToolPolicy {
     /// Calls in flight at once; 0 reads as 1.
     pub concurrency: usize,
@@ -132,22 +155,29 @@ impl Default for ToolPolicy {
 /// effect, never in it): its `for_dispatch` snapshot becomes the call's
 /// `bus::ToolInputs`. The run's, else the agent's, else empty.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolContextSpec(pub ToolContext);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ToolContextSpec(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::ToolContextReflect))]
+    pub ToolContext,
+);
 
 /// The default `max_turns` the agent was built with, part of its identity
 /// (a run-level override is not).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct DefaultMaxTurns(pub Option<usize>);
 
 /// The agent uses this model: a relationship to the model's handler
 /// entity (the bus module's `Bound`). A run may carry its own to override.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = ModelOf)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct UsesModel(pub Entity);
 
 /// The agents and runs using this model.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = UsesModel)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct ModelOf(Vec<Entity>);
 
 impl ModelOf {
@@ -162,28 +192,34 @@ impl ModelOf {
 /// and appends what it said when it settles (CONTRACT §11).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = RememberedBy)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Remembers(pub Entity);
 
 /// The agents remembering through this handler.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = Remembers)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct RememberedBy(Vec<Entity>);
 
 /// The conversation a run loads and appends under (the run's, else the
 /// agent's).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Conversation(pub String);
 
 /// An utterance that came from memory: not appended again.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Remembered;
 
 /// The run loaded its conversation and will append to it when it settles.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Remembering;
 
 /// The run's memory load is out; its first turn waits for it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct LoadingMemory;
 
 /// A retrieval the agent makes before every turn: a link entity, `ChildOf`
@@ -191,15 +227,18 @@ pub struct LoadingMemory;
 /// what for (CONTRACT §12).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = RetrievedBy)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Retrieves(pub Entity);
 
 /// The retrieval links naming this index.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = Retrieves)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct RetrievedBy(Vec<Entity>);
 
 /// What a [`Retrieves`] link retrieves.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Retrieval {
     /// How many results are asked for.
     pub samples: u64,
@@ -210,6 +249,7 @@ pub struct Retrieval {
 /// The two retrievals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum RetrievalKind {
     /// Scored documents, attached to the turn after its static ones.
     Documents,
@@ -219,10 +259,12 @@ pub enum RetrievalKind {
 
 /// A grant advertised only when a tool retrieval names it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Retrievable;
 
 /// A fresh turn whose retrievals are out: folded once they land.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Retrieving;
 
 /// A route: a link entity, `ChildOf` the agent, naming another model the
@@ -230,33 +272,39 @@ pub struct Retrieving;
 /// the required row names it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = RoutedTo)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Route(pub Entity);
 
 /// The routes naming this model.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = Route)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct RoutedTo(Vec<Entity>);
 
 /// A grant: a link entity, `ChildOf` the agent, naming one tool the agent
 /// advertises. Advertisement order is [`Order`].
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = Grants)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Grant(pub Entity);
 
 /// The grants naming this tool.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = Grant)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Grants(Vec<Entity>);
 
 /// A context link: a link entity, `ChildOf` the agent, naming one document
 /// every turn carries as static context, in [`Order`].
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = ContextOf)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Context(pub Entity);
 
 /// The context links naming this document.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = Context)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct ContextOf(Vec<Entity>);
 
 /// The order of a link, an utterance or a turn among its siblings: the
@@ -276,10 +324,12 @@ pub struct ContextOf(Vec<Entity>);
     Serialize,
     Deserialize,
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Order(pub u64);
 
 /// The world's one order counter for [`Order`].
 #[derive(Resource, Debug, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Resource))]
 pub struct OrderCounter(pub u64);
 
 // ---------------------------------------------------------------------------
@@ -287,25 +337,30 @@ pub struct OrderCounter(pub u64);
 
 /// The document's stable id.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct DocumentId(pub String);
 
 /// The document's text.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct DocumentText(pub String);
 
 /// The document's string metadata, rendered before its text.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct DocumentProps(pub std::collections::HashMap<String, String>);
 
 /// An attachment: a link entity, `ChildOf` a turn, naming one document the
 /// turn's request carries, in [`Order`].
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = AttachedTo)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Attachment(pub Entity);
 
 /// The attachments naming this document.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = Attachment)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct AttachedTo(Vec<Entity>);
 
 impl AttachedTo {
@@ -321,11 +376,13 @@ impl AttachedTo {
 /// An utterance: one message of the conversation, `ChildOf` its run, in
 /// [`Order`]. Its parts are content components.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Utterance;
 
 /// Who spoke.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub enum Role {
     /// The user, or a tool result the user side reports.
     User,
@@ -336,11 +393,17 @@ pub enum Role {
 /// The utterance's parts, in order, as the wire's content: kept as the
 /// wire type so the fold writes the message verbatim.
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Parts(pub MessageParts);
 
 /// The content of one message, by role.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "snake_case")]
+#[cfg_attr(
+    feature = "reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(opaque, Debug, PartialEq, Serialize, Deserialize)
+)]
 pub enum MessageParts {
     /// A user message's parts.
     User {
@@ -399,16 +462,19 @@ impl MessageParts {
 
 /// A run: one prompt through the agent to an answer or a failure.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Run;
 
 /// The run's agent.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = Runs)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct RunOf(pub Entity);
 
 /// The agent's runs.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = RunOf)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Runs(Vec<Entity>);
 
 impl Runs {
@@ -424,18 +490,22 @@ impl Runs {
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct RunSeq(pub u64);
 
 /// The world's one run counter.
 #[derive(Resource, Debug, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Resource))]
 pub struct RunCounter(pub u64);
 
 /// Whether the model is asked for a stream.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Streamed(pub bool);
 
 /// Where the run is: the turn it is on.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Cursor {
     /// Turns begun so far (the next turn's index).
     pub turn: usize,
@@ -443,20 +513,24 @@ pub struct Cursor {
 
 /// The run wants a turn: `Advance` spawns one and `Assemble` folds it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Assembling;
 
 /// The run's current turn has an effect in flight.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct AwaitingModel;
 
 /// The run's current turn has its tool batch out: one effect per call,
 /// `ChildOf` the turn; the run goes on when every one has landed.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct ResolvingTools;
 
 /// A turn whose batch is out: how many calls it holds. Removed when the
 /// batch lands and the results are history.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Batch {
     /// Calls in the batch.
     pub calls: usize,
@@ -465,12 +539,15 @@ pub struct Batch {
 /// Which of the turn's calls a tool effect entity is: what the result is
 /// shaped with. On the effect entity, beside the bus module's components.
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct ToolCallSlot {
     /// The call's index among the turn's calls, the result's order.
     pub index: usize,
     /// The call's id, as the model gave it.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::ToolCallIdReflect))]
     pub id: ToolCallId,
     /// The provider's ids for the call, when the wire had them.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::ProviderCallIdReflect))]
     pub provider: Option<ProviderCallId>,
     /// The tool's name, as dispatched (a repaired call carries its repair).
     pub name: String,
@@ -478,15 +555,22 @@ pub struct ToolCallSlot {
 
 /// The run ended with an answer.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Settled;
 
 /// The run ended without one.
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Failed(pub Failure);
 
 /// Why a run failed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "failure", rename_all = "snake_case")]
+#[cfg_attr(
+    feature = "reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(opaque, Debug, PartialEq, Serialize, Deserialize)
+)]
 pub enum Failure {
     /// The model-call budget ran out.
     MaxTurns {
@@ -523,44 +607,57 @@ pub enum Failure {
 
 /// The run's answer.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct RunResult(pub String);
 
 /// The run's token usage, summed over its completions.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Usage(pub WireUsage);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct Usage(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::UsageReflect))]
+    pub  WireUsage,
+);
 
 /// Output-tool reprompts spent.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct OutputRetries(pub usize);
 
 /// Invalid-call retries spent.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct InvalidRetries(pub usize);
 
 /// The name the run's output tool was minted under, once a turn minted it.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct OutputToolName(pub Option<String>);
 
 /// A turn: one model call of a run, `ChildOf` the run, in [`Order`].
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Turn;
 
 /// An advert: a link entity, `ChildOf` a turn, naming one tool the turn's
 /// request advertised, in [`Order`].
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[relationship(relationship_target = AdvertisedOn)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Advert(pub Entity);
 
 /// The adverts naming this tool.
 #[derive(Component, Debug, Default)]
 #[relationship_target(relationship = Advert)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct AdvertisedOn(Vec<Entity>);
 
 /// The turn's folded assistant content, as it lands (per tick for a
 /// stream).
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Outputs {
     /// The parts so far.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::AssistantContentsReflect))]
     pub content: Vec<AssistantContent>,
     /// The provider's message id, when the answer carried one.
     pub message_id: Option<String>,
@@ -574,6 +671,7 @@ pub struct Outputs {
 /// (CONTRACT §9.1). Serde: a scene saved between the write and the read
 /// restores the decision.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Cancelled(pub String);
 
 /// A retry of a complete, tool-free turn, written on the turn before
@@ -581,6 +679,7 @@ pub struct Cancelled(pub String);
 /// feedback become history and another turn begins; without, nothing
 /// becomes history and another turn begins.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Retry {
     /// What the model is told, if anything.
     pub feedback: Option<String>,
@@ -591,6 +690,11 @@ pub struct Retry {
 /// changed about one model call, as data. Two systems patching one turn
 /// [`merge`](Self::merge) in schedule order.
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(opaque, Debug, PartialEq, Serialize, Deserialize)
+)]
 pub struct RequestPatch {
     /// The preamble the system message is built from, instead of the
     /// agent's.
@@ -646,17 +750,23 @@ impl RequestPatch {
 /// A reprompt the next turn carries as its last user message: the output
 /// tool was not called, or was called without a required field.
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Reprompt(pub Message);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct Reprompt(
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::MessageReflect))]
+    pub  Message,
+);
 
 /// A tool call the program does not advertise, `ChildOf` the turn that
 /// made it, awaiting a [`Resolution`].
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct InvalidCall {
     /// The call's id.
     pub id: String,
     /// The tool's name.
     pub name: String,
     /// The arguments, verbatim.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::JsonReflect))]
     pub arguments: serde_json::Value,
 }
 
@@ -665,6 +775,7 @@ pub struct InvalidCall {
 /// run's [`InvalidCalls`].
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "resolution", rename_all = "snake_case")]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub enum Resolution {
     /// The run fails with `UnknownToolCall`.
     Fail,

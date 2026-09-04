@@ -134,14 +134,17 @@ pub type TurnState = (&'static ChildOf, Has<Materialised>, Has<Batch>);
 
 /// A fresh turn: spawned by `Advance`, not yet folded by `Assemble`.
 #[derive(Component, Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Fresh;
 
 /// The output mode the turn was folded under, pinned.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Folded(pub OutputKind);
 
 /// A turn `Materialise` has read.
 #[derive(Component, Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Materialised;
 
 /// The agent runtime: [`BusPlugin`] must be added first (it owns the
