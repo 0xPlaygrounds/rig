@@ -38,10 +38,11 @@ impl EffectLogReplayer {
     /// order. A key the header's required row names but the log never
     /// dispatched — a tool the program advertised and the model never
     /// called — is served too, from its advertised definition, and answers
-    /// any dispatch with a divergence. `None` when neither the records nor
-    /// the required row know the key — there is nothing to describe the
-    /// handler by.
-    pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Option<Self> {
+    /// any dispatch with a divergence. Refused by name when neither the
+    /// records nor the required row know the key, or when the row names a
+    /// key of a family only the handler table can describe and the table
+    /// has no entry for it — there is nothing to describe the handler by.
+    pub fn for_key(log: &EffectLog, key: &HandlerKey) -> Result<Self, ErrorReport> {
         // Dispatch order, whatever order the log was assembled in: ids are
         // minted at dispatch and strictly increasing.
         let mut records: Vec<EffectRecord> = log
@@ -54,7 +55,14 @@ impl EffectLogReplayer {
         let (family, described) = match records.front() {
             Some(first) => (first.kind.family(), describe(key, &first.kind, log)),
             None => {
-                let family = *log.header.required.get(key)?;
+                let family = *log.header.required.get(key).ok_or_else(|| {
+                    ErrorReport::new(
+                        ErrorKind::HandlerUnavailable,
+                        format!(
+                            "`{key}` has no records in the log and is not in its required row: nothing describes it"
+                        ),
+                    )
+                })?;
                 (family, describe_required(key, family, log)?)
             }
         };
@@ -62,7 +70,7 @@ impl EffectLogReplayer {
             key: key.clone(),
             family: described,
         };
-        Some(Self {
+        Ok(Self {
             key: key.clone(),
             family,
             descriptor,
@@ -73,7 +81,7 @@ impl EffectLogReplayer {
     /// Every key the log mentions, in first-appearance order, then every
     /// key the required row names that no record does, each with its
     /// replayer.
-    pub fn for_log(log: &EffectLog) -> Vec<Self> {
+    pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
         let mut keys: Vec<HandlerKey> = Vec::new();
         for record in log {
             if !keys.contains(&record.key) {
@@ -85,9 +93,7 @@ impl EffectLogReplayer {
                 keys.push(key.clone());
             }
         }
-        keys.iter()
-            .filter_map(|key| Self::for_key(log, key))
-            .collect()
+        keys.iter().map(|key| Self::for_key(log, key)).collect()
     }
 
     /// Register a replayer for every key in `log` on `driver`. Refuses a
@@ -99,7 +105,7 @@ impl EffectLogReplayer {
         driver: &mut rig_bus::BusDriver,
     ) -> Result<(), ErrorReport> {
         Self::check_header(log)?;
-        for replayer in Self::for_log(log) {
+        for replayer in Self::for_log(log)? {
             let key = replayer.key.clone();
             driver.register_erased(key, rig_core::serve::ErasedHandler::new(replayer))?;
         }
@@ -250,39 +256,51 @@ fn describe_required(
     key: &HandlerKey,
     family: EffectFamily,
     log: &EffectLog,
-) -> Option<FamilyDescriptor> {
+) -> Result<FamilyDescriptor, ErrorReport> {
     if let Some(installed) = log
         .header
         .handlers
         .iter()
         .find(|descriptor| &descriptor.key == key && descriptor.family.family() == family)
     {
-        return Some(installed.family.clone());
+        return Ok(installed.family.clone());
     }
+    let gap = |what: &str| {
+        ErrorReport::new(
+            ErrorKind::HandlerUnavailable,
+            format!(
+                "the required key `{key}` ({family}) cannot be described: {what}; the log's handler table has no entry for it"
+            ),
+        )
+    };
     match family {
         EffectFamily::Tool => {
             let name = key
                 .as_str()
                 .rsplit_once("tool:")
-                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))?;
-            let advertised = advertised_tool(name, log)?;
-            Some(FamilyDescriptor::Tool {
+                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))
+                .ok_or_else(|| gap("the key does not name a tool"))?;
+            let advertised = advertised_tool(name, log)
+                .ok_or_else(|| gap("no recorded request advertises the tool"))?;
+            Ok(FamilyDescriptor::Tool {
                 name: advertised.name,
                 description: advertised.description,
                 parameters: advertised.parameters,
                 embedding: None,
             })
         }
-        EffectFamily::Completion => Some(FamilyDescriptor::Completion {
+        EffectFamily::Completion => Ok(FamilyDescriptor::Completion {
             model: ModelRef::new(format!("replay:{key}")),
             capabilities: ProviderCapabilities::default(),
         }),
-        EffectFamily::Memory => Some(FamilyDescriptor::Memory {}),
-        EffectFamily::Retrieve => Some(FamilyDescriptor::Retrieve {}),
+        EffectFamily::Memory => Ok(FamilyDescriptor::Memory {}),
+        EffectFamily::Retrieve => Ok(FamilyDescriptor::Retrieve {}),
         // An embedding or rerank descriptor names a modality or a document
-        // cap the row does not carry; a custom kind its label. None of
-        // them is in an agent's required row.
-        EffectFamily::Embed | EffectFamily::Rerank | EffectFamily::Custom => None,
+        // cap the row does not carry; a custom kind its label. Only the
+        // handler table has them, and a log without it is refused by name.
+        EffectFamily::Embed | EffectFamily::Rerank | EffectFamily::Custom => Err(gap(
+            "a descriptor of this family is not derivable from the row",
+        )),
     }
 }
 

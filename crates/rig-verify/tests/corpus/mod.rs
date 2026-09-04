@@ -1344,7 +1344,11 @@ impl Replay {
         // The host's own handlers — a custom effect, an embedding model —
         // are in the signature (the trace's row), never in the required
         // row (the agent's); the host registers them as it did when it
-        // recorded, from the log, before the agent is built.
+        // recorded, from the log, before the agent is built. The `host/`
+        // prefix decides *which* signature keys are the host's to register
+        // (the builder registers the agent's own); describing them is the
+        // replayer's, from the handler table, and a key it cannot describe
+        // is refused by name rather than skipped.
         let host_keys: Vec<HandlerKey> = log
             .header
             .signature
