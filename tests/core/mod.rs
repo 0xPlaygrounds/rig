@@ -14,6 +14,7 @@ mod golden_endings;
 mod golden_hooks;
 mod golden_invalid;
 mod golden_outcome;
+mod golden_output;
 mod golden_pairing;
 mod golden_recovery;
 mod loaders;

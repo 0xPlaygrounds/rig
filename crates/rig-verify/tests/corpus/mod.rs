@@ -50,7 +50,7 @@ use rig_agent::agent::{
     ModelSelection, ModelSelectionAction, ObservationAction, ReasoningDelta, TextDelta,
     ToolCallDelta,
 };
-use rig_agent::run::UnhandledInvalidToolCall;
+use rig_agent::run::{OutputMode, UnhandledInvalidToolCall};
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
     agent::{
@@ -134,6 +134,24 @@ pub enum Hook {
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
+
+/// The builder's `output_mode`, as data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Output {
+    Native,
+    Tool,
+    Prompted,
+}
+
+impl Output {
+    pub fn mode(self) -> OutputMode {
+        match self {
+            Self::Native => OutputMode::Native,
+            Self::Tool => OutputMode::Tool,
+            Self::Prompted => OutputMode::Prompted,
+        }
+    }
+}
 
 /// The runner's policy for an invalid call no hook resolves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -263,6 +281,8 @@ pub struct Program {
     pub retrievable: &'static [&'static str],
     /// The runner's `unhandled_invalid_tool_call` policy.
     pub unhandled: Unhandled,
+    /// `output_mode(mode)`; `None` is the builder's `Auto`.
+    pub output_mode: Option<Output>,
 }
 
 impl Program {
@@ -294,6 +314,7 @@ impl Program {
         retrieved_tools: None,
         retrievable: &[],
         unhandled: Unhandled::Fail,
+        output_mode: None,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -720,20 +741,36 @@ pub fn keeps_events(log: &EffectLog) -> bool {
     log.iter().any(|record| record.events.is_some())
 }
 
+/// The run's output as the golden's last completion gives it: its text,
+/// or — in Tool output mode — the output tool's arguments serialized as
+/// the run serializes them (`final_result`, or the collision-safe name
+/// the run picked).
 pub fn golden_answer(log: &EffectLog) -> String {
     log.iter()
         .rev()
         .find_map(|record| match &record.outcome {
-            Ok(rig_core::effect::Outcome::Completion(response)) => Some(
-                response
-                    .choice
-                    .iter()
-                    .filter_map(|content| match content {
-                        rig_core::message::AssistantContent::Text(text) => Some(text.text.clone()),
-                        _ => None,
-                    })
-                    .collect::<String>(),
-            ),
+            Ok(rig_core::effect::Outcome::Completion(response)) => {
+                let output_call = response.choice.iter().find_map(|content| match content {
+                    AssistantContent::ToolCall(call)
+                        if call.function.name.starts_with("final_result") =>
+                    {
+                        Some(rig_core::json_utils::serialize_json_value(
+                            &call.function.arguments,
+                        ))
+                    }
+                    _ => None,
+                });
+                Some(output_call.unwrap_or_else(|| {
+                    response
+                        .choice
+                        .iter()
+                        .filter_map(|content| match content {
+                            AssistantContent::Text(text) => Some(text.text.clone()),
+                            _ => None,
+                        })
+                        .collect::<String>()
+                }))
+            }
             _ => None,
         })
         .expect("the golden ends in a completion")
@@ -894,6 +931,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
         builder = builder.output_schema_raw(
             serde_json::from_value(schema()).expect("the producer's schema is a schema"),
         );
+    }
+    if let Some(mode) = program.output_mode {
+        builder = builder.output_mode(mode.mode());
     }
     if let Some(default_max_turns) = program.default_max_turns {
         builder = builder.default_max_turns(default_max_turns);
@@ -1244,6 +1284,7 @@ pub fn run_spec(program: &Program) -> RunSpec {
         max_turns: program.max_turns.or(program.default_max_turns),
         max_invalid_tool_call_retries: program.invalid_retries,
         output_schema: program.output_schema.map(|schema| schema()),
+        output_mode: program.output_mode.map_or(OutputMode::Auto, Output::mode),
         unhandled_invalid_tool_call: unhandled_policy(program),
         ..RunSpec::new()
     }
