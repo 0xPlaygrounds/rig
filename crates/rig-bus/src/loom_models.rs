@@ -125,6 +125,7 @@ impl Serve for Nothing {
         HandlerDescriptor {
             key: HandlerKey::from("k"),
             family: FamilyDescriptor::Custom { kind: "m".into() },
+            layers: Vec::new(),
         }
     }
 
@@ -286,6 +287,7 @@ impl Serve for Counted {
         HandlerDescriptor {
             key: HandlerKey::from("k"),
             family: FamilyDescriptor::Custom { kind: "m".into() },
+            layers: Vec::new(),
         }
     }
 
@@ -328,6 +330,8 @@ impl rig_core::serve::Recorder for Begun {
     ) {
         self.begun.fetch_add(1, StdOrdering::SeqCst);
     }
+    fn discard(&self, _id: EffectId) {}
+    fn patch(&self, _id: EffectId, _kind: EffectKind) {}
     fn keep_events(&self) -> bool {
         false
     }

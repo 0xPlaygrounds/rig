@@ -148,6 +148,22 @@
 //!   compile time, so a field that grows one past its budget fails to
 //!   compile rather than quietly costing every dispatch.
 //!
+//! # Layers
+//!
+//! Interception is handler composition: an
+//! [`ErasedHandler::layered`](rig_core::serve::ErasedHandler::layered)
+//! wraps a handler in an [`Intercept`](rig_core::serve::Intercept) — a
+//! policy that sees every dispatch before the handler
+//! ([`Decision`](rig_core::serve::Decision): proceed, patch, deny) and
+//! every answer after ([`Verdict`](rig_core::serve::Verdict): keep,
+//! replace) — and the result registers like any handler, under the inner
+//! descriptor with the layer's name in `layers`. Decisions are program,
+//! never record: the recorder taps the innermost hop, so a denial
+//! (`ErrorKind::Denied` on the consumer's outcome) leaves no record and a
+//! replacement leaves the handler's real answer in it. A layer that
+//! suspends in `before` — an approval answered by a system next tick —
+//! keeps the dispatch in flight and its serial slot busy until it decides.
+//!
 //! # Causal dispatch
 //!
 //! A handler's way back onto the bus is its sink's dispatcher

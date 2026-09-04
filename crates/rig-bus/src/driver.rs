@@ -17,7 +17,7 @@ use tracing::Instrument;
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    serve::{OnEvent, OnOutcome, Origin, OutcomeSink, Recorder},
+    serve::{OnDiscard, OnEvent, OnOutcome, OnPatch, Origin, OutcomeSink, Recorder},
     streaming::StreamEvent,
     wasm_compat::WasmBoxedFuture,
 };
@@ -53,11 +53,16 @@ impl Recording {
                 let recorder = recorder.clone();
                 Box::new(move |event: &StreamEvent| recorder.event(id, event)) as OnEvent
             });
-            let recorder = recorder.clone();
+            let for_outcome = recorder.clone();
             let on_outcome: OnOutcome = Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
-                recorder.resolve(id, outcome.clone());
+                for_outcome.resolve(id, outcome.clone());
             });
-            sink.with_tap(on_outcome, on_event)
+            let for_discard = recorder.clone();
+            let on_discard: OnDiscard = Box::new(move || for_discard.discard(id));
+            let for_patch = recorder.clone();
+            let on_patch: OnPatch =
+                Box::new(move |kind: &EffectKind| for_patch.patch(id, kind.clone()));
+            sink.with_tap(on_outcome, on_event, on_discard, on_patch)
         });
         Self {
             handlers,
@@ -191,9 +196,11 @@ impl BusDriver {
     /// here, with no lock held — its `Drop` may touch this bus.
     fn install(&mut self, key: HandlerKey, handler: ErasedHandler) {
         if let Some(recording) = &self.recorder {
+            let described = handler.descriptor();
             (recording.handlers)(vec![HandlerDescriptor {
                 key: key.clone(),
-                family: handler.descriptor().family,
+                family: described.family,
+                layers: described.layers,
             }]);
         }
         let displaced = self.handlers.insert(key, handler);
@@ -221,9 +228,13 @@ impl BusDriver {
         recorder.handlers(
             self.handlers
                 .iter()
-                .map(|(key, handler)| HandlerDescriptor {
-                    key: key.clone(),
-                    family: handler.descriptor().family,
+                .map(|(key, handler)| {
+                    let described = handler.descriptor();
+                    HandlerDescriptor {
+                        key: key.clone(),
+                        family: described.family,
+                        layers: described.layers,
+                    }
                 })
                 .collect(),
         );

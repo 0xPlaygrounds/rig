@@ -133,6 +133,14 @@ impl ErasedHandler {
         Self(Arc::new(handler))
     }
 
+    /// Wrap this handler in a [`Layer`](super::Layer): `intercept` sees
+    /// every dispatch before this handler does and every answer after.
+    /// `handler.layered(a).layered(b)` puts `b` outermost — `b.before`
+    /// first, `a.after` first.
+    pub fn layered(self, intercept: impl super::Intercept) -> Self {
+        Self::new(super::Layer::new(self, intercept))
+    }
+
     /// What the erased handler is.
     pub fn descriptor(&self) -> HandlerDescriptor {
         self.0.descriptor()
@@ -320,11 +328,22 @@ pub type OnOutcome = Box<dyn Fn(&Result<Outcome, ErrorReport>) + Send + Sync>;
 /// What a bus tap observes of a stream: each event, as it is sent.
 pub type OnEvent = Box<dyn Fn(&StreamEvent) + Send + Sync>;
 
+/// What a bus tap observes when a dispatch is decided before any handler
+/// served it: the record it opened is forgotten.
+pub type OnDiscard = Box<dyn Fn() + Send + Sync>;
+
+/// What a bus tap observes when a layer serves another effect of the same
+/// family in place of the one that began: the record's request is what
+/// the innermost handler served.
+pub type OnPatch = Box<dyn Fn(&EffectKind) + Send + Sync>;
+
 /// A bus tap installed by the driver: observes the outcome as it resolves,
 /// and each streamed event when asked to.
-struct Tap {
+pub(crate) struct Tap {
     on_outcome: OnOutcome,
     on_event: Option<OnEvent>,
+    on_discard: OnDiscard,
+    on_patch: OnPatch,
     stream: StreamTap,
     fired: bool,
 }
@@ -507,14 +526,59 @@ impl OutcomeSink {
         DetachedSink(self)
     }
 
-    pub fn with_tap(mut self, on_outcome: OnOutcome, on_event: Option<OnEvent>) -> Self {
+    pub fn with_tap(
+        mut self,
+        on_outcome: OnOutcome,
+        on_event: Option<OnEvent>,
+        on_discard: OnDiscard,
+        on_patch: OnPatch,
+    ) -> Self {
         self.tap = Some(Tap {
             on_outcome,
             on_event,
+            on_discard,
+            on_patch,
             stream: StreamTap::new(),
             fired: false,
         });
         self
+    }
+
+    /// The layer seam: a layer serves `kind` in place of what began, so the
+    /// record's request is what the handler beneath will see.
+    pub(crate) fn patched(&self, kind: &EffectKind) {
+        if let Some(tap) = &self.tap {
+            (tap.on_patch)(kind);
+        }
+    }
+
+    /// The layer seam: the tap moves to the innermost hop, so the record
+    /// holds what the handler answered, never a layer's verdict.
+    pub(crate) fn take_tap(&mut self) -> Option<Tap> {
+        self.tap.take()
+    }
+
+    pub(crate) fn with_tap_slot(mut self, tap: Option<Tap>) -> Self {
+        self.tap = tap;
+        self
+    }
+
+    /// The layer seam: an inner sink carries the outer's scope and cancel
+    /// marker, so a nested dispatch from the inner handler descends from the
+    /// same dispatch and a cancel from above reaches it.
+    pub(crate) fn inheriting(mut self, outer: &Self) -> Self {
+        self.scope = outer.scope.clone();
+        self.cancelled = outer.cancelled.clone();
+        self
+    }
+
+    /// The layer seam: the dispatch was decided before any handler served
+    /// it, so it is no record — the tap is told and dropped; what the sink
+    /// then resolves reaches the consumer only.
+    pub(crate) fn discard(&mut self) {
+        if let Some(tap) = self.tap.take() {
+            (tap.on_discard)();
+        }
     }
 
     fn tap_outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {

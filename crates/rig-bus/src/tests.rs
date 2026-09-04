@@ -104,6 +104,7 @@ impl Serve for Echo {
             family: FamilyDescriptor::Custom {
                 kind: "test:echo".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -141,6 +142,7 @@ impl Serve for Ordered {
             family: FamilyDescriptor::Custom {
                 kind: "test:ordered".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -595,6 +597,7 @@ impl Serve for SelfCaller {
             family: FamilyDescriptor::Custom {
                 kind: "test:self-caller".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -839,6 +842,7 @@ async fn dropping_the_stream_cancels_the_handler() {
                     model: "chatty".into(),
                     capabilities: Default::default(),
                 },
+                layers: Vec::new(),
             }
         }
         async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
@@ -1109,6 +1113,7 @@ impl Serve for Hanging {
             family: FamilyDescriptor::Custom {
                 kind: "test:hanging".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1291,6 +1296,7 @@ impl Serve for RegistersOnDrop {
             family: FamilyDescriptor::Custom {
                 kind: "test:echo".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1349,6 +1355,7 @@ impl Serve for DropCounter {
             family: FamilyDescriptor::Custom {
                 kind: "test:flag".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1422,6 +1429,7 @@ impl Serve for AskUserHandler {
             family: FamilyDescriptor::Custom {
                 kind: AskUser::KIND.into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1631,6 +1639,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
                     model: "writer".into(),
                     capabilities: Default::default(),
                 },
+                layers: Vec::new(),
             }
         }
 
@@ -1836,6 +1845,7 @@ async fn a_non_clone_rerank_model_registers_and_its_error_is_a_report() {
 struct Counting {
     begun: Arc<AtomicUsize>,
     resolved: Arc<AtomicUsize>,
+    discarded: Arc<AtomicUsize>,
 }
 
 impl rig_core::serve::Recorder for Counting {
@@ -1849,6 +1859,10 @@ impl rig_core::serve::Recorder for Counting {
     ) {
         self.begun.fetch_add(1, Ordering::SeqCst);
     }
+    fn discard(&self, _id: rig_core::effect::EffectId) {
+        self.discarded.fetch_add(1, Ordering::SeqCst);
+    }
+    fn patch(&self, _id: rig_core::effect::EffectId, _kind: EffectKind) {}
     fn keep_events(&self) -> bool {
         false
     }
@@ -2051,6 +2065,7 @@ impl Serve for Detaching {
             family: FamilyDescriptor::Custom {
                 kind: "test:world".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -2278,6 +2293,7 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
             model: "gpt".into(),
             capabilities: Default::default(),
         },
+        layers: Vec::new(),
     };
     let handle: ModelHandle = super::Handle::rebind(dispatcher.clone(), stored.clone());
     assert_eq!(handle.key(), &HandlerKey::from("model"));
@@ -2423,6 +2439,7 @@ impl Serve for Parent {
             family: FamilyDescriptor::Custom {
                 kind: "test:parent".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -2723,4 +2740,186 @@ fn a_parent_cancel_reaches_a_child_still_queued() {
     );
     assert_eq!(driver.in_flight(), 0);
     assert_eq!(driver.queued(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Layers on the bus: a suspending layer keeps its serial slot and observes
+// cancellation; the world side's channel closing is the layer's failure.
+
+/// An approval gate: `before` sends the dispatch to the "world" and waits
+/// for its decision on a oneshot.
+struct Approval {
+    asks: std::sync::mpsc::Sender<(EffectId, oneshot::Sender<rig_core::serve::Decision>)>,
+}
+
+impl rig_core::serve::Intercept for Approval {
+    fn name(&self) -> String {
+        "approval".to_owned()
+    }
+
+    async fn before(&self, id: EffectId, _kind: &EffectKind) -> rig_core::serve::Decision {
+        let (decide, decided) = oneshot::channel();
+        self.asks.send((id, decide)).expect("the world listens");
+        match decided.await {
+            Ok(decision) => decision,
+            Err(oneshot::Canceled) => rig_core::serve::Decision::Deny(ErrorReport::new(
+                ErrorKind::Internal,
+                "layer `approval`: the world closed the answer channel without deciding",
+            )),
+        }
+    }
+
+    async fn after(
+        &self,
+        _id: EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Outcome, ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+use rig_core::effect::EffectId;
+
+#[test]
+fn a_suspending_layer_keeps_its_serial_slot_and_observes_cancellation() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    });
+    let (asks, world) = std::sync::mpsc::channel();
+    let (echo, served) = Echo::new();
+    driver
+        .register_erased(
+            HandlerKey::from("echo"),
+            rig_core::serve::ErasedHandler::new(echo).layered(Approval { asks }),
+        )
+        .expect("register");
+    assert_eq!(
+        dispatcher
+            .descriptor(&HandlerKey::from("echo"))
+            .expect("published")
+            .layers,
+        ["approval"],
+        "the descriptor names the layer"
+    );
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let key = HandlerKey::from("echo");
+    let mut first = dispatcher.dispatch(&key, custom(json!(1)));
+    assert!(first.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    // Suspended in `before`: the dispatch is in flight, the key busy.
+    let (id, decide) = world.try_recv().expect("the world was asked");
+    assert_eq!(id, first.id());
+    assert_eq!(driver.in_flight(), 1);
+    let mut second = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(second.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(
+        driver.queued(),
+        1,
+        "the second waits for the suspended first"
+    );
+    assert_eq!(served.load(Ordering::SeqCst), 0, "nothing served yet");
+    // The consumer goes: the world side sees its channel closed, and must
+    // not panic on it; the slot frees and the second is served.
+    drop(first);
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(
+        decide.is_canceled(),
+        "the world sees the cancel on its sender"
+    );
+    assert!(decide.send(rig_core::serve::Decision::Proceed).is_err());
+    let (_, decide_second) = world.try_recv().expect("the second was asked");
+    decide_second
+        .send(rig_core::serve::Decision::Proceed)
+        .expect("the layer listens");
+    let outcome = drive_to_outcome(&mut driver, &mut second)
+        .expect("resolved")
+        .expect("served");
+    assert!(matches!(&outcome, Outcome::Custom(payload) if *payload == json!(2)));
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert_eq!(driver.in_flight(), 0);
+}
+
+#[test]
+fn a_suspending_layer_whose_world_closes_the_channel_resolves_internal_naming_the_layer() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (asks, world) = std::sync::mpsc::channel();
+    let (echo, served) = Echo::new();
+    driver
+        .register_erased(
+            HandlerKey::from("echo"),
+            rig_core::serve::ErasedHandler::new(echo).layered(Approval { asks }),
+        )
+        .expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let (_, decide) = world.try_recv().expect("asked");
+    drop(decide);
+    let report = drive_to_outcome(&mut driver, &mut pending)
+        .expect("resolved")
+        .expect_err("the world never decided");
+    assert_eq!(report.kind, ErrorKind::Internal);
+    assert!(
+        report.message.contains("layer `approval`"),
+        "{}",
+        report.message
+    );
+    assert_eq!(served.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_denied_dispatch_is_denied_on_the_consumers_pending_and_leaves_no_record() {
+    struct Wall;
+    impl rig_core::serve::Intercept for Wall {
+        fn name(&self) -> String {
+            "wall".to_owned()
+        }
+        async fn before(&self, _id: EffectId, _kind: &EffectKind) -> rig_core::serve::Decision {
+            rig_core::serve::Decision::deny("blocked by policy")
+        }
+        async fn after(
+            &self,
+            _id: EffectId,
+            _kind: &EffectKind,
+            _outcome: &Result<Outcome, ErrorReport>,
+        ) -> rig_core::serve::Verdict {
+            rig_core::serve::Verdict::Keep
+        }
+    }
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver
+        .register_erased(
+            HandlerKey::from("echo"),
+            rig_core::serve::ErasedHandler::new(echo).layered(Wall),
+        )
+        .expect("register");
+    let counting = Counting::default();
+    driver.record_to(counting.clone());
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    let report = drive_to_outcome(&mut driver, &mut pending)
+        .expect("resolved")
+        .expect_err("denied");
+    assert_eq!(report.kind, ErrorKind::Denied);
+    assert!(!report.retryable);
+    assert_eq!(served.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        counting.begun.load(Ordering::SeqCst),
+        1,
+        "the dispatch began"
+    );
+    assert_eq!(
+        counting.discarded.load(Ordering::SeqCst),
+        1,
+        "and was discarded"
+    );
+    assert_eq!(
+        counting.resolved.load(Ordering::SeqCst),
+        0,
+        "never resolved: no record"
+    );
 }

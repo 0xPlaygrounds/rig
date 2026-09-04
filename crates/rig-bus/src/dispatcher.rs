@@ -379,6 +379,7 @@ impl Shared {
             HandlerDescriptor {
                 key,
                 family: descriptor.family,
+                layers: descriptor.layers,
             },
         );
         Ok(())

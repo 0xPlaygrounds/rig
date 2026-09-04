@@ -18,13 +18,16 @@
 
 pub mod adapters;
 mod handler;
+mod layer;
 mod recorder;
 mod writer;
 
 pub use handler::{
-    DetachedSink, ErasedHandler, HandlerFuture, OnEvent, OnOutcome, OutcomeSink, Serve, SinkClosed,
-    StreamTap, cancelled, events_from_response, finish_unary, serve_inline, stream_truncated,
+    DetachedSink, ErasedHandler, HandlerFuture, OnDiscard, OnEvent, OnOutcome, OnPatch,
+    OutcomeSink, Serve, SinkClosed, StreamTap, cancelled, events_from_response, finish_unary,
+    serve_inline, stream_truncated,
 };
+pub use layer::{Decision, Intercept, Layer, Verdict};
 pub use recorder::{Origin, Recorder};
 pub use writer::StreamWriter;
 

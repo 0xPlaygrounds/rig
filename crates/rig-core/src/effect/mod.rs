@@ -523,6 +523,13 @@ pub struct HandlerDescriptor {
     pub key: HandlerKey,
     /// The family and its advertised metadata.
     pub family: FamilyDescriptor,
+    /// The layers wrapped around the handler, outermost first: each
+    /// [`Intercept`](crate::serve::Intercept)'s name. Part of what serves
+    /// the key — a log's handler table names them, and a program recorded
+    /// under one layer stack refuses a replay under another, as it refuses
+    /// another hook stack. Empty for a bare handler.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<String>,
 }
 
 /// The family-keyed description of a handler. The variant *is* the family:

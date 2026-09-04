@@ -204,6 +204,24 @@ impl EffectLogRecorder {
         }
     }
 
+    /// A layer decided the dispatch before any handler served it: no
+    /// record. The slot is the newest for the id, as `resolve_slot` finds it.
+    fn discard_slot(&self, id: EffectId) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(position) = slots.iter().rposition(|slot| slot.id == id) {
+            slots.remove(position);
+        }
+    }
+
+    /// A layer served `kind` in place of what began: the record's request
+    /// is what the innermost handler served.
+    fn patch_slot(&self, id: EffectId, kind: EffectKind) {
+        let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id) {
+            slot.kind = kind;
+        }
+    }
+
     fn resolve_slot(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id) {
@@ -230,6 +248,14 @@ impl Recorder for EffectLogRecorder {
 
     fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
         self.begin_slot(id, key, kind, origin);
+    }
+
+    fn discard(&self, id: EffectId) {
+        self.discard_slot(id);
+    }
+
+    fn patch(&self, id: EffectId, kind: EffectKind) {
+        self.patch_slot(id, kind);
     }
 
     fn keep_events(&self) -> bool {

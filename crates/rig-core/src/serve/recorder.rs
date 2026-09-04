@@ -39,6 +39,15 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// A dispatch begins: its id, the key it was routed to, the effect, and
     /// where it came from (its parent and scope).
     fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin);
+    /// A dispatch that began is not a record after all: a layer decided it
+    /// before any handler served it (a denial, a patch of the wrong
+    /// family). Decisions are program, never record — a replay re-makes
+    /// them — so the recorder forgets the slot `begin` opened.
+    fn discard(&self, id: EffectId);
+    /// A layer serves `kind` in place of the effect that began — a patch of
+    /// the same family — so the record's request is what the innermost
+    /// handler served, never what a layer saw first.
+    fn patch(&self, id: EffectId, kind: EffectKind);
     /// Whether streamed events are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
     /// One streamed event of `id`.

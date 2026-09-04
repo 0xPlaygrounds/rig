@@ -536,7 +536,7 @@ impl Agent {
     /// the log here before committing it as a golden.
     pub fn stamp(&self, mut log: EffectLog) -> EffectLog {
         log.header.run_spec = Some(self.run_spec_hash());
-        log.header.hooks = self.config.hooks.names();
+        log.header.hooks = self.program_names();
         log.header.required = self.required_row();
         log.header.bus = self.config.bus.config();
         log
@@ -590,7 +590,8 @@ impl Agent {
             }
         }
         // Hooks are program: a different stack re-makes different decisions.
-        let mine = self.config.hooks.names();
+        // So are the layers on the bus's keys.
+        let mine = self.program_names();
         if log.header.hooks != mine {
             return Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Internal,
@@ -656,6 +657,18 @@ impl Agent {
             ));
         }
         Ok(())
+    }
+
+    /// What decides on this agent's behalf: its hook stack's names, then
+    /// every layer on the bus's handlers (the handler table's order,
+    /// outermost in). The log's `hooks`; a replay under another stack of
+    /// either is refused.
+    pub fn program_names(&self) -> Vec<String> {
+        let mut names = self.config.hooks.names();
+        for descriptor in self.config.bus.dispatcher().descriptors() {
+            names.extend(descriptor.layers);
+        }
+        names
     }
 
     /// The policy this agent's own bus runs under; `None` over a host's bus.

@@ -46,6 +46,7 @@ impl Serve for Echo {
             family: FamilyDescriptor::Custom {
                 kind: "wasm:echo".into(),
             },
+            layers: Vec::new(),
         }
     }
 

@@ -123,6 +123,7 @@ impl Serve for MockModel {
                 model: ModelRef::new("mock"),
                 capabilities: ProviderCapabilities::default(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -307,6 +308,7 @@ impl Serve for WorldTool {
             family: FamilyDescriptor::Custom {
                 kind: "host:world-tool".into(),
             },
+            layers: Vec::new(),
         }
     }
 

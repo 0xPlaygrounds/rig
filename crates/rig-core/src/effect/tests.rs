@@ -99,6 +99,7 @@ fn descriptor_variant_is_the_family() {
         let descriptor = HandlerDescriptor {
             key: HandlerKey::from("k"),
             family,
+            layers: Vec::new(),
         };
         let back = round_trip(&descriptor);
         assert_eq!(back.family.family(), expected);
@@ -541,6 +542,7 @@ fn descriptor(key: &str, family: FamilyDescriptor) -> HandlerDescriptor {
     HandlerDescriptor {
         key: HandlerKey::from(key),
         family,
+        layers: Vec::new(),
     }
 }
 

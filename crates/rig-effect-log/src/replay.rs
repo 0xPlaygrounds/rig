@@ -69,6 +69,7 @@ impl EffectLogReplayer {
         let descriptor = HandlerDescriptor {
             key: key.clone(),
             family: described,
+            layers: Vec::new(),
         };
         Ok(Self {
             key: key.clone(),

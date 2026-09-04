@@ -841,6 +841,7 @@ impl rig::serve::Serve for NoteTaker {
             family: rig::effect::FamilyDescriptor::Custom {
                 kind: <Note as rig::effect::CustomEffect>::KIND.to_owned(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1644,6 +1645,7 @@ impl rig::serve::Serve for Lookup {
                 parameters: lookup_parameters(),
                 embedding: None,
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1699,6 +1701,7 @@ impl rig::serve::Serve for Relay {
             family: rig::effect::FamilyDescriptor::Custom {
                 kind: <RelayNote as rig::effect::CustomEffect>::KIND.to_owned(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1748,6 +1751,7 @@ impl rig::serve::Serve for Never {
             family: rig::effect::FamilyDescriptor::Custom {
                 kind: <Hold as rig::effect::CustomEffect>::KIND.to_owned(),
             },
+            layers: Vec::new(),
         }
     }
 

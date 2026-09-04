@@ -1096,6 +1096,7 @@ impl rig_core::serve::Serve for Lookup {
                 parameters: lookup_parameters(),
                 embedding: None,
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1153,6 +1154,7 @@ impl rig_core::serve::Serve for Relay {
             family: rig_core::effect::FamilyDescriptor::Custom {
                 kind: <RelayNote as rig_core::effect::CustomEffect>::KIND.to_owned(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1201,6 +1203,7 @@ impl rig_core::serve::Serve for Never {
             family: rig_core::effect::FamilyDescriptor::Custom {
                 kind: <Hold as rig_core::effect::CustomEffect>::KIND.to_owned(),
             },
+            layers: Vec::new(),
         }
     }
 

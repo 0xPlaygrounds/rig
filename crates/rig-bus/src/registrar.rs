@@ -256,6 +256,7 @@ const _: fn(&Registrar) = |registrar| {
                 family: rig_core::effect::FamilyDescriptor::Custom {
                     kind: "local".into(),
                 },
+                layers: Vec::new(),
             }
         }
 

@@ -73,6 +73,7 @@ where
                 model: self.label.clone(),
                 capabilities: self.model.capabilities(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -174,6 +175,7 @@ where
                 parameters: self.tool.parameters(),
                 embedding: self.embedding.clone(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -277,6 +279,7 @@ where
                 parameters: self.parameters.clone(),
                 embedding: None,
             },
+            layers: Vec::new(),
         }
     }
 
@@ -343,6 +346,7 @@ where
                 max_documents: self.model.max_documents(),
                 modality: EmbedModality::Text,
             },
+            layers: Vec::new(),
         }
     }
 
@@ -415,6 +419,7 @@ where
                 model: self.label.clone(),
                 max_documents: self.model.max_documents(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -478,6 +483,7 @@ where
                 max_documents: self.model.max_documents(),
                 modality: EmbedModality::Image,
             },
+            layers: Vec::new(),
         }
     }
 
@@ -543,6 +549,7 @@ where
         HandlerDescriptor {
             key: HandlerKey::from("memory"),
             family: FamilyDescriptor::Memory {},
+            layers: Vec::new(),
         }
     }
 
@@ -614,6 +621,7 @@ where
         HandlerDescriptor {
             key: HandlerKey::from("retrieve"),
             family: FamilyDescriptor::Retrieve {},
+            layers: Vec::new(),
         }
     }
 

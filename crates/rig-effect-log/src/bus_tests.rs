@@ -98,6 +98,7 @@ impl Serve for Echo {
             family: FamilyDescriptor::Custom {
                 kind: "test:echo".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -135,6 +136,7 @@ impl Serve for Ordered {
             family: FamilyDescriptor::Custom {
                 kind: "test:ordered".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -192,6 +194,7 @@ impl Serve for CutShort {
                 model: rig_core::completion::ModelRef::new("cut"),
                 capabilities: rig_core::completion::ProviderCapabilities::default(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -215,6 +218,7 @@ impl Serve for WrongFamilyAnswer {
                 model: rig_core::completion::ModelRef::new("wrong"),
                 capabilities: rig_core::completion::ProviderCapabilities::default(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -625,6 +629,7 @@ impl Serve for Held {
             family: FamilyDescriptor::Custom {
                 kind: "test:held".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -851,6 +856,7 @@ impl Serve for Nesting {
             family: FamilyDescriptor::Custom {
                 kind: "test:nesting".into(),
             },
+            layers: Vec::new(),
         }
     }
 
