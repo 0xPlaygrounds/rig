@@ -59,6 +59,10 @@
 //!     fresh bus with replayers for the tail; re-dispatch from the
 //!     position resolves to the records.
 //!
+//! 14. The completion inbox, measured: ten thousand dispatches in flight
+//!     with three resolving per tick, a tick that probes every one against
+//!     a tick that probes only what `Dispatcher::take_resolved` named.
+//!
 //! Every proof runs under a wall-clock guard; a hang is a failure, never a
 //! wait.
 
@@ -661,6 +665,66 @@ fn finish_nested(
     }
 }
 
+// ---- proof 14: the inbox, measured ----
+
+/// The dispatches the measurement holds, by id, and the sinks the world
+/// answers three per tick.
+#[derive(Resource, Default)]
+struct Measured {
+    by_id: std::collections::HashMap<rig_core::effect::EffectId, Entity>,
+    sinks: Vec<DetachedSink>,
+    resolved: usize,
+}
+
+fn answer_three(mut measured: ResMut<Measured>) {
+    for _ in 0..3 {
+        let Some(sink) = measured.sinks.pop() else {
+            break;
+        };
+        block_on(sink.resolve(Ok(Outcome::Custom(serde_json::json!({ "ok": true })))));
+    }
+}
+
+/// Tick A: probe every dispatch in flight.
+fn probe_all(
+    mut commands: Commands,
+    mut in_flight: Query<(Entity, &mut InFlight)>,
+    mut measured: ResMut<Measured>,
+) {
+    for (entity, mut pending) in &mut in_flight {
+        if let Some(outcome) = pending.0.poll_outcome() {
+            commands
+                .entity(entity)
+                .remove::<InFlight>()
+                .insert(Answered(outcome));
+            measured.resolved += 1;
+        }
+    }
+}
+
+/// Tick B: probe only what the inbox named.
+fn probe_inbox(
+    mut commands: Commands,
+    bus: Res<BusRes>,
+    mut in_flight: Query<&mut InFlight>,
+    mut measured: ResMut<Measured>,
+) {
+    for id in bus.0.take_resolved() {
+        let Some(entity) = measured.by_id.get(&id).copied() else {
+            continue;
+        };
+        let Ok(mut pending) = in_flight.get_mut(entity) else {
+            continue;
+        };
+        if let Some(outcome) = pending.0.poll_outcome() {
+            commands
+                .entity(entity)
+                .remove::<InFlight>()
+                .insert(Answered(outcome));
+            measured.resolved += 1;
+        }
+    }
+}
 
 fn guarded<T>(label: &str, mut step: impl FnMut() -> Option<T>) -> T {
     let started = Instant::now();
@@ -1596,6 +1660,90 @@ fn main() {
         println!(
             "proof 13: a checkpointed scene re-dispatched {total} record(s) from position {} and they resolved",
             checkpoint.at
+        );
+    }
+
+    // ---- proof 14: the inbox, measured ----
+    {
+        const N: usize = 10_000;
+        let measure = |use_inbox: bool| -> Duration {
+            let mailbox = WorldToolMailbox::default();
+            let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+                command_capacity: N,
+                ..ServingPolicy::default()
+            });
+            driver
+                .register(
+                    "world-tool",
+                    WorldTool {
+                        mailbox: mailbox.clone(),
+                    },
+                )
+                .expect("register");
+            let _driver_task = pool.spawn(driver);
+            let mut world = World::new();
+            world.insert_resource(BusRes(dispatcher.clone()));
+            world.insert_resource(Measured::default());
+            let key = HandlerKey::from("world-tool");
+            let mut by_id = std::collections::HashMap::new();
+            for n in 0..N as u64 {
+                let pending = dispatcher.dispatch(
+                    &key,
+                    EffectKind::Custom {
+                        kind: Arc::from("host:measure"),
+                        payload: serde_json::json!({ "n": n }),
+                    },
+                );
+                let id = pending.id();
+                let entity = world.spawn(InFlight(pending)).id();
+                by_id.insert(id, entity);
+            }
+            world.resource_mut::<Measured>().by_id = by_id;
+            // Every dispatch sent and with the world: probe until the
+            // mailbox holds them all (the sends happen on the first polls).
+            let mut warm = Schedule::default();
+            warm.add_systems(probe_all);
+            guarded("proof 14", || {
+                tick(&mut world, &mut warm);
+                (mailbox.0.lock().expect("mailbox").len() == N).then_some(())
+            });
+            let sinks: Vec<DetachedSink> = mailbox
+                .0
+                .lock()
+                .expect("mailbox")
+                .drain(..)
+                .map(|(_, sink)| sink)
+                .collect();
+            world.resource_mut::<Measured>().sinks = sinks;
+            let _ = dispatcher.take_resolved();
+            let mut schedule = Schedule::default();
+            if use_inbox {
+                schedule.add_systems((answer_three, probe_inbox).chain());
+            } else {
+                schedule.add_systems((answer_three, probe_all).chain());
+            }
+            // Twenty ticks, three answers each; the answered ones resolve
+            // on the driver's next poll, so a tick may see the previous
+            // tick's three. What is timed is the probing.
+            let started = Instant::now();
+            for _ in 0..20 {
+                tick(&mut world, &mut schedule);
+            }
+            let elapsed = started.elapsed();
+            guarded("proof 14", || {
+                tick(&mut world, &mut schedule);
+                (world.resource::<Measured>().resolved >= 60).then_some(())
+            });
+            elapsed / 20
+        };
+        let probing = measure(false);
+        let inbox = measure(true);
+        println!(
+            "proof 14: {N} in flight, three resolving per tick: probing every value {probing:?} per tick, probing the inbox {inbox:?} per tick"
+        );
+        assert!(
+            inbox < probing,
+            "proof 14: the inbox is not cheaper than probing everything ({inbox:?} vs {probing:?})"
         );
     }
 

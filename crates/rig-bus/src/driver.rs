@@ -356,6 +356,7 @@ impl BusDriver {
     /// answered on the spot and the loop moves on — a key never strands
     /// its queue behind a command that will not be served.
     fn release(&mut self, key: HandlerKey, id: EffectId) {
+        self.shared.resolved(id);
         if self.shared.end_in_flight(id) {
             // Cancelled: the children it still has here are dropped unserved
             // — no handler poll, no record — and answered as cancelled.

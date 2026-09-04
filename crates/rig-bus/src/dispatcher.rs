@@ -60,6 +60,12 @@ pub(super) struct Shared {
     /// a cancelled dispatch reaches its descendants (`cancel_descendants`).
     /// What a thread id used to approximate, as data.
     causality: Mutex<Causality>,
+    /// The completion inbox: every dispatch that ended (answered,
+    /// cancelled, failed) pushes its id once, for a host that probes only
+    /// what resolved this tick ([`Dispatcher::take_resolved`]) instead of
+    /// every value in flight. Bounded: a host that never drains it pays
+    /// `command_capacity * 64` ids, then the oldest are dropped and counted.
+    inbox: Mutex<Inbox>,
     /// Set by the driver's drop guard: every reply that comes back
     /// `Canceled` after this is `BusClosed`, not a handler defect. Cleared
     /// by [`Shared::reopen`].
@@ -130,6 +136,11 @@ impl Shared {
         Self {
             serial_per_handler: config.serial_per_handler,
             causality: Mutex::new(Causality::default()),
+            inbox: Mutex::new(Inbox {
+                ids: Vec::new(),
+                cap: config.command_capacity.saturating_mul(64).max(1),
+                dropped: 0,
+            }),
             next_id: AtomicU64::new(1),
             descriptors: RwLock::new(BTreeMap::new()),
             queue: Mutex::new(CommandQueue {
@@ -443,6 +454,34 @@ impl Shared {
         Ok(flag)
     }
 
+    /// A dispatch ended: its id goes to the inbox, the oldest going when
+    /// the host has not drained it.
+    pub(super) fn resolved(&self, id: EffectId) {
+        let mut inbox = self.inbox.lock().unwrap_or_else(PoisonError::into_inner);
+        if inbox.ids.len() >= inbox.cap {
+            inbox.ids.remove(0);
+            inbox.dropped += 1;
+        }
+        inbox.ids.push(id);
+    }
+
+    pub(super) fn take_resolved(&self) -> Vec<EffectId> {
+        std::mem::take(
+            &mut self
+                .inbox
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .ids,
+        )
+    }
+
+    pub(super) fn inbox_dropped(&self) -> usize {
+        self.inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .dropped
+    }
+
     /// A dispatch left the driver. Returns whether it had been cancelled
     /// from above or below — its consumer's, or an ancestor's, departure —
     /// in which case the driver sweeps the children it still holds
@@ -560,6 +599,13 @@ fn wake_parked(senders: Vec<Weak<AtomicWaker>>) {
 }
 
 /// One command on the channel: a dispatch and its reply half.
+/// The ids of dispatches that ended, waiting for the host's next drain.
+pub(super) struct Inbox {
+    ids: Vec<EffectId>,
+    cap: usize,
+    dropped: usize,
+}
+
 /// The dispatches in flight and the cancels they descend from.
 #[derive(Default)]
 pub(super) struct Causality {
@@ -782,6 +828,23 @@ impl Dispatcher {
     /// The scope every dispatch made through this value carries, if any.
     pub fn scope(&self) -> Option<&Arc<str>> {
         self.scope.as_ref()
+    }
+
+    /// The completion inbox, drained: the id of every dispatch that ended
+    /// since the last drain — answered, failed or cancelled — in the order
+    /// the driver saw them end. A ticking host probes those values only
+    /// (`poll_outcome`/`poll_item` on the ones it maps the ids to) instead
+    /// of every value in flight. Bounded at `command_capacity * 64`: past
+    /// it the oldest ids are dropped and [`Dispatcher::inbox_dropped`]
+    /// counts them, so a host that never drains pays a bounded vector and
+    /// can tell it fell behind.
+    pub fn take_resolved(&self) -> Vec<EffectId> {
+        self.shared.take_resolved()
+    }
+
+    /// How many inbox ids were dropped for want of a drain.
+    pub fn inbox_dropped(&self) -> usize {
+        self.shared.inbox_dropped()
     }
 }
 

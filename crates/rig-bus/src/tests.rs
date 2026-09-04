@@ -2923,3 +2923,73 @@ fn a_denied_dispatch_is_denied_on_the_consumers_pending_and_leaves_no_record() {
         "never resolved: no record"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The completion inbox: what ended since the last drain, bounded.
+
+#[test]
+fn the_inbox_names_every_dispatch_that_ended_since_the_last_drain() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(dispatcher.take_resolved().is_empty());
+    let mut a = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    let mut b = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(2)));
+    assert!(a.poll_unpin(&mut cx).is_pending());
+    assert!(b.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(
+        dispatcher.take_resolved(),
+        [a.id(), b.id()],
+        "in the order they ended"
+    );
+    assert!(dispatcher.take_resolved().is_empty(), "drained");
+    assert!(a.poll_unpin(&mut cx).is_ready());
+    assert!(b.poll_unpin(&mut cx).is_ready());
+    // A cancelled dispatch ends too; an unknown key's answers at once.
+    let c = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(3)));
+    let c_id = c.id();
+    let mut c = c;
+    assert!(c.poll_unpin(&mut cx).is_pending());
+    drop(c);
+    let _ = driver.poll_unpin(&mut cx);
+    let mut d = dispatcher.dispatch(&HandlerKey::from("nope"), custom(json!(4)));
+    assert!(d.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let ended = dispatcher.take_resolved();
+    assert!(
+        !ended.contains(&c_id),
+        "dropped before it was served: never began, never ended"
+    );
+    assert!(
+        !ended.contains(&d.id()),
+        "answered on the spot, never in flight: not the inbox's to name"
+    );
+    assert_eq!(dispatcher.inbox_dropped(), 0);
+}
+
+#[test]
+fn the_inbox_is_bounded_and_counts_what_it_dropped() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        command_capacity: 1,
+        ..ServingPolicy::default()
+    });
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    // The cap is command_capacity * 64 = 64: the 65th push drops the oldest.
+    let mut first = None;
+    for n in 0..65u64 {
+        let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(n)));
+        first.get_or_insert(pending.id());
+        while pending.poll_unpin(&mut cx).is_pending() {
+            let _ = driver.poll_unpin(&mut cx);
+        }
+    }
+    assert_eq!(dispatcher.inbox_dropped(), 1);
+    let ended = dispatcher.take_resolved();
+    assert_eq!(ended.len(), 64);
+    assert!(!ended.contains(&first.expect("a first")), "the oldest went");
+}
