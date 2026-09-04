@@ -6,8 +6,8 @@ publish = false
 
 [workspace]
 
-# A Bevy-shaped host over the effect bus: rig-core (default features off) and
-# rig-bus on the rig side, `bevy_ecs` + `bevy_tasks` only on the host side — never the
+# A Bevy-shaped host over the effect bus: rig-core (default features off),
+# rig-bus and rig-effect-log on the rig side, `bevy_ecs` + `bevy_tasks` only on the host side — never the
 # `bevy` facade, no tokio, no reqwest. `tests/core/bevy_bus_host.rs` runs this
 # binary and checks its dependency graph. Bevy comes from crates.io at the
 # latest release, never from git: the version here is the one the proofs
@@ -16,6 +16,10 @@ publish = false
 [dependencies]
 rig-core = { path = "../../../crates/rig-core", default-features = false }
 rig-bus = { path = "../../../crates/rig-bus" }
+# The replayer is a handler like any other; hosting one (`--replay <golden>`)
+# is what the effect corpus's third interpreter is. rig-effect-log depends on
+# rig-core and rig-bus only.
+rig-effect-log = { path = "../../../crates/rig-effect-log" }
 bevy_ecs = { version = "0.19.1", default-features = false }
 bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
 serde = { version = "1", features = ["derive"] }

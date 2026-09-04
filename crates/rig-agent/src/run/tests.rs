@@ -1694,3 +1694,18 @@ fn with_validated_history_gates_construction() {
             .is_ok()
     );
 }
+
+/// The model a run last asked survives a suspension: a resumed run's
+/// selection hook is shown it as `previous_model`, as a fresh run's is.
+#[test]
+fn serde_round_trip_keeps_the_previous_model() {
+    let mut run = AgentRun::new("add things").max_turns(3);
+    assert!(run.previous_model().is_none());
+    run.set_previous_model(rig_core::completion::ModelRef::new("fast"));
+    let state = serde_json::to_string(&run).expect("the run serializes");
+    let restored: AgentRun = serde_json::from_str(&state).expect("the run restores");
+    assert_eq!(
+        restored.previous_model().map(|model| model.as_str()),
+        Some("fast")
+    );
+}

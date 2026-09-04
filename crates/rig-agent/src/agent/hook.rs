@@ -1210,6 +1210,16 @@ impl ObservationAction {
 
 /// Per-run lifecycle observer and steerer.
 pub trait AgentHook: WasmCompatSend + WasmCompatSync {
+    /// The name the hook stack records for this hook — what an effect
+    /// log's header names as the program's hook stack, compared on replay.
+    /// `None` (the default) is the hook's type name, which is the whole
+    /// identity of a stateless hook. A hook whose decisions depend on a
+    /// value it carries names that value here, so two of the same type
+    /// with different state are two programs and not one.
+    fn name(&self) -> Option<String> {
+        None
+    }
+
     /// Runs once before the run's first model call, seeing the initial prompt.
     ///
     /// The hook may rewrite the prompt or stop the run before any provider
@@ -1534,9 +1544,10 @@ where
 #[derive(Clone, Default)]
 pub struct HookStack {
     hooks: Vec<Arc<dyn DynAgentHook>>,
-    /// The type name of every hook, in registration order, nested stacks
-    /// flattened: what an effect log's header records as the program.
-    names: Vec<&'static str>,
+    /// The name of every hook ([`AgentHook::name`], else its type name),
+    /// in registration order, nested stacks flattened: what an effect
+    /// log's header records as the program.
+    names: Vec<String>,
 }
 
 impl std::fmt::Debug for HookStack {
@@ -1583,16 +1594,20 @@ impl HookStack {
         // A nested stack contributes its members' names, flattened in
         // order, so two stacks that run the same hooks name the same program.
         match (&hook as &dyn std::any::Any).downcast_ref::<HookStack>() {
-            Some(nested) => self.names.extend(nested.names.iter().copied()),
-            None => self.names.push(short_type_name::<H>()),
+            Some(nested) => self.names.extend(nested.names.iter().cloned()),
+            None => self.names.push(
+                hook.name()
+                    .unwrap_or_else(|| short_type_name::<H>().to_owned()),
+            ),
         }
         self.hooks.push(Arc::new(hook));
     }
 
-    /// The type names of the hooks in registration order (nested stacks
-    /// flattened) — the program identity an effect log records.
+    /// Every hook's name ([`AgentHook::name`], else its type name), in
+    /// registration order (nested stacks flattened) — the program
+    /// identity an effect log records.
     pub fn names(&self) -> Vec<String> {
-        self.names.iter().map(|name| (*name).to_owned()).collect()
+        self.names.clone()
     }
 
     /// Returns `true` when the stack contains no hooks.

@@ -1147,3 +1147,272 @@ impl rig::memory::ConversationMemory for FailingMemory {
         self.inner.clear(conversation_id)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Matrix K: the delta wire.
+
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TOOL_NAME_DELTA: &str = "stop on the tool's name delta";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
+
+/// `on_tool_call_delta` → `Stop` on the delta that names the tool.
+#[allow(dead_code)]
+pub(crate) struct StopOnToolNameDelta;
+impl rig::agent::AgentHook for StopOnToolNameDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        if event.tool_name.is_some() {
+            rig::agent::ObservationAction::stop(STOP_ON_TOOL_NAME_DELTA)
+        } else {
+            rig::agent::ObservationAction::continue_run()
+        }
+    }
+}
+
+/// `on_tool_call_delta` → `Stop` on the first arguments delta.
+#[allow(dead_code)]
+pub(crate) struct StopOnToolArgumentsDelta;
+impl rig::agent::AgentHook for StopOnToolArgumentsDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ToolCallDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        if event.tool_name.is_none() && !event.delta.is_empty() {
+            rig::agent::ObservationAction::stop(STOP_ON_TOOL_ARGUMENTS_DELTA)
+        } else {
+            rig::agent::ObservationAction::continue_run()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix M: per-turn shaping through `on_completion_call` and `on_model_select`.
+
+#[allow(dead_code)]
+pub(crate) const SHAPING_CONTEXT_ID: &str = "shaping-context";
+#[allow(dead_code)]
+pub(crate) const SHAPING_CONTEXT: &str =
+    "Definition of a glarb-glarb: an ancient farming tool from planet Jiro.";
+#[allow(dead_code)]
+pub(crate) const LATE_ROUTE: &str = "late";
+
+#[allow(dead_code)]
+fn shaping_document() -> rig::completion::Document {
+    rig::completion::Document {
+        id: SHAPING_CONTEXT_ID.to_owned(),
+        text: SHAPING_CONTEXT.to_owned(),
+        additional_props: Default::default(),
+    }
+}
+
+/// A patch applied on one turn only, or on every turn.
+macro_rules! patch_hook {
+    ($(#[$doc:meta])* $name:ident, |$turn:ident| $patch:expr) => {
+        $(#[$doc])*
+        #[allow(dead_code)]
+        pub(crate) struct $name;
+
+        impl rig::agent::AgentHook for $name {
+            async fn on_completion_call(
+                &self,
+                _ctx: &rig::agent::HookContext,
+                event: rig::agent::CompletionCallEvent<'_>,
+            ) -> rig::agent::CompletionCallAction {
+                let $turn = event.turn;
+                match $patch {
+                    Some(patch) => rig::agent::CompletionCallAction::patch(patch),
+                    None => rig::agent::CompletionCallAction::Continue,
+                }
+            }
+        }
+    };
+}
+
+patch_hook!(
+    /// `tool_choice: Required` on the first turn only.
+    PatchToolChoiceRequiredFirst,
+    |turn| (turn == 1).then(|| rig::agent::RequestPatch::new().tool_choice(rig::message::ToolChoice::Required))
+);
+patch_hook!(
+    /// `tool_choice: None` on the second turn only.
+    PatchToolChoiceNoneSecond,
+    |turn| (turn == 2).then(|| rig::agent::RequestPatch::new().tool_choice(rig::message::ToolChoice::None))
+);
+patch_hook!(
+    /// A context document on every turn.
+    PatchExtraContext,
+    |_turn| Some(rig::agent::RequestPatch::new().context(shaping_document()))
+);
+patch_hook!(
+    /// `max_tokens: 5` on the second turn only.
+    PatchMaxTokensSecond,
+    |turn| (turn == 2).then(|| rig::agent::RequestPatch::new().max_tokens(5))
+);
+patch_hook!(
+    /// Extended thinking (and the temperature it needs) on the second turn only.
+    PatchThinkingSecond,
+    |turn| (turn == 2).then(|| {
+        rig::agent::RequestPatch::new()
+            .temperature(1.0)
+            .additional_params(serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }))
+    })
+);
+patch_hook!(
+    /// The pirate preamble on the second turn only.
+    PatchPreambleSecond,
+    |turn| (turn == 2).then(|| rig::agent::RequestPatch::new().preamble(PIRATE_PREAMBLE))
+);
+patch_hook!(
+    /// No tools advertised on the second turn.
+    PatchActiveToolsNoneSecond,
+    |turn| (turn == 2).then(|| rig::agent::RequestPatch::new().active_tools(Vec::<String>::new()))
+);
+patch_hook!(
+    /// A prior exchange as the first turn's history.
+    PatchHistoryFirst,
+    |turn| (turn == 1).then(|| {
+        rig::agent::RequestPatch::new().history(vec![
+            rig::message::Message::user("My name is Ada."),
+            rig::message::Message::assistant("Hello, Ada."),
+        ])
+    })
+);
+
+/// `on_model_select` → `Select("fast")` on the first turn (no model asked
+/// yet), `Continue` after: the reverse of `RouteAfterFirstTurn`.
+#[allow(dead_code)]
+pub(crate) struct RouteOnFirstTurn;
+
+impl rig::agent::AgentHook for RouteOnFirstTurn {
+    fn on_model_select(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelSelection<'_>,
+    ) -> rig::agent::ModelSelectionAction {
+        if event.previous_model.is_none() {
+            rig::agent::ModelSelectionAction::select("fast")
+        } else {
+            rig::agent::ModelSelectionAction::continue_run()
+        }
+    }
+}
+
+/// `on_model_select` → `Select("late")` on every turn: a route the agent
+/// registered after build (`register_model`), which the required row does
+/// not name.
+#[allow(dead_code)]
+pub(crate) struct SelectLate;
+
+impl rig::agent::AgentHook for SelectLate {
+    fn on_model_select(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ModelSelection<'_>,
+    ) -> rig::agent::ModelSelectionAction {
+        rig::agent::ModelSelectionAction::select(LATE_ROUTE)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix O: the oracle and the header.
+
+/// `on_model_turn_finished` → `Stop` after turn `n`, named by `n`: a
+/// stateful hook whose header name carries its state.
+#[allow(dead_code)]
+pub(crate) struct StopAfterTurnN(pub usize);
+
+#[allow(dead_code)]
+pub(crate) fn stop_after_turn_reason(n: usize) -> String {
+    format!("stopped after turn {n}")
+}
+
+impl rig::agent::AgentHook for StopAfterTurnN {
+    fn name(&self) -> Option<String> {
+        Some(format!("StopAfterTurn({})", self.0))
+    }
+
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        if event.turn == self.0 {
+            rig::agent::ModelTurnAction::stop(stop_after_turn_reason(self.0))
+        } else {
+            rig::agent::ModelTurnAction::continue_run()
+        }
+    }
+}
+
+/// The host's key for its reranker.
+#[allow(dead_code)]
+pub(crate) const RERANK_KEY: &str = "host/rerank";
+#[allow(dead_code)]
+pub(crate) const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
+
+/// A reranker that ranks by document length, longest first: a mock behind
+/// a `RerankAdapter`, since no keyed provider in the tree has a rerank
+/// cassette suite.
+#[allow(dead_code)]
+pub(crate) struct MockRerank;
+
+impl rig::rerank::RerankModel for MockRerank {
+    fn max_documents(&self) -> usize {
+        16
+    }
+
+    async fn rerank(
+        &self,
+        _query: &str,
+        documents: Vec<String>,
+    ) -> Result<rig::rerank::RerankResponse, rig::rerank::RerankError> {
+        let mut results: Vec<rig::rerank::RerankResult> = documents
+            .iter()
+            .enumerate()
+            .map(|(index, document)| rig::rerank::RerankResult {
+                index,
+                document: Some(document.clone()),
+                relevance_score: document.len() as f64 / 100.0,
+            })
+            .collect();
+        results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
+        let mut response = rig::rerank::RerankResponse::new(results, "mock");
+        response.model = Some("mock-rerank".to_owned());
+        Ok(response)
+    }
+}
+
+/// `on_run_start` → the prompt reranks two documents through the host's
+/// reranker.
+#[allow(dead_code)]
+pub(crate) struct RerankDocs;
+
+impl rig::agent::AgentHook for RerankDocs {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let key: rig::effect::Key<rig::effect::family::Rerank> =
+            rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(RERANK_KEY));
+        let host = ctx.bind(&key).expect("the host serves reranking");
+        let query = event.prompt.rag_text().expect("a text prompt");
+        let ranked = host
+            .dispatch(rig::effect::RerankRequest {
+                query,
+                documents: RERANK_DOCUMENTS
+                    .iter()
+                    .map(|doc| (*doc).to_owned())
+                    .collect(),
+            })
+            .await
+            .expect("the host reranks");
+        assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        rig::agent::RunStartAction::continue_run()
+    }
+}
