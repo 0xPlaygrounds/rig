@@ -17,7 +17,7 @@ use tracing::Instrument;
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    serve::{OnDiscard, OnEvent, OnOutcome, OnPatch, Origin, OutcomeSink, Recorder},
+    serve::{Observe, Origin, OutcomeSink, Recorder},
     streaming::StreamEvent,
     wasm_compat::WasmBoxedFuture,
 };
@@ -34,12 +34,41 @@ use rig_core::serve::ServingPolicy;
 type InFlight = WasmBoxedFuture<'static, (HandlerKey, EffectId)>;
 type InFlightServing = Pin<Box<Serving>>;
 
-/// The driver's hold on a recorder: closures, like the sink's taps, so the
-/// driver names no recorder type.
+/// The driver's hold on a recorder: closures, so the driver names no
+/// recorder type, and one observer per dispatch — the driver is not on the
+/// reply path (the consumer holds the reply channel), so the sink tells it.
 struct Recording {
     handlers: Box<dyn Fn(Vec<HandlerDescriptor>) + Send + Sync>,
     begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind, Origin) + Send + Sync>,
-    tap: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
+    observe: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
+}
+
+/// The record's view of one dispatch: the recorder, told by id.
+struct Recorded<R> {
+    recorder: R,
+    id: EffectId,
+}
+
+impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
+    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        self.recorder.resolve(self.id, outcome.clone());
+    }
+
+    fn keep_events(&self) -> bool {
+        self.recorder.keep_events()
+    }
+
+    fn event(&mut self, event: &StreamEvent) {
+        self.recorder.event(self.id, event);
+    }
+
+    fn discard(&mut self) {
+        self.recorder.discard(self.id);
+    }
+
+    fn patch(&mut self, kind: &EffectKind) {
+        self.recorder.patch(self.id, kind.clone());
+    }
 }
 
 impl Recording {
@@ -48,26 +77,16 @@ impl Recording {
         let handlers = Box::new(move |described| for_handlers.handlers(described));
         let for_begin = recorder.clone();
         let begin = Box::new(move |id, key, kind, origin| for_begin.begin(id, key, kind, origin));
-        let tap = Box::new(move |sink: OutcomeSink, id: EffectId| {
-            let on_event: Option<OnEvent> = recorder.keep_events().then(|| {
-                let recorder = recorder.clone();
-                Box::new(move |event: &StreamEvent| recorder.event(id, event)) as OnEvent
-            });
-            let for_outcome = recorder.clone();
-            let on_outcome: OnOutcome = Box::new(move |outcome: &Result<Outcome, ErrorReport>| {
-                for_outcome.resolve(id, outcome.clone());
-            });
-            let for_discard = recorder.clone();
-            let on_discard: OnDiscard = Box::new(move || for_discard.discard(id));
-            let for_patch = recorder.clone();
-            let on_patch: OnPatch =
-                Box::new(move |kind: &EffectKind| for_patch.patch(id, kind.clone()));
-            sink.with_tap(on_outcome, on_event, on_discard, on_patch)
+        let observe = Box::new(move |sink: OutcomeSink, id: EffectId| {
+            sink.with_observer(Box::new(Recorded {
+                recorder: recorder.clone(),
+                id,
+            }))
         });
         Self {
             handlers,
             begin,
-            tap,
+            observe,
         }
     }
 }
@@ -308,7 +327,7 @@ impl BusDriver {
         let sink = match &self.recorder {
             Some(recorder) => {
                 (recorder.begin)(id, key.clone(), kind.clone(), Origin { parent, scope });
-                (recorder.tap)(sink, id)
+                (recorder.observe)(sink, id)
             }
             None => sink,
         };

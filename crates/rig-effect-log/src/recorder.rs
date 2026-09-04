@@ -15,7 +15,7 @@ use rig_core::{
 
 use super::{EffectLog, LogHeader};
 
-/// A bus tap: every dispatch the driver serves is recorded, as an
+/// A bus observer: every dispatch the driver serves is recorded, as an
 /// [`EffectRecord`], **in dispatch order** — the slot is opened when the
 /// driver takes the command and filled when the dispatch resolves, so two
 /// concurrent dispatches to one key are logged in the order they were

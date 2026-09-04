@@ -170,7 +170,7 @@
 //! every answer after ([`Verdict`](rig_core::serve::Verdict): keep,
 //! replace) — and the result registers like any handler, under the inner
 //! descriptor with the layer's name in `layers`. Decisions are program,
-//! never record: the recorder taps the innermost hop, so a denial
+//! never record: the recorder observes the innermost hop, so a denial
 //! (`ErrorKind::Denied` on the consumer's outcome) leaves no record and a
 //! replacement leaves the handler's real answer in it. A layer that
 //! suspends in `before` — an approval answered by a system next tick —
