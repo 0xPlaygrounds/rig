@@ -145,6 +145,10 @@ pub enum Hook {
     NoteUnserved,
     /// `on_run_start` → the prompt embedded through the host's model.
     EmbedPrompt,
+    /// `on_run_start` → `Clear`, which lands after the run's `Load` (Matrix J).
+    ClearAtStart,
+    /// `on_run_settled` → `Clear` after the run's `Append`.
+    ClearAtSettled,
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -215,6 +219,9 @@ pub enum Ending {
     /// does not advertise and no hook resolved it; the run fails at the
     /// completion record.
     UnknownToolCall,
+    /// `PromptError::MemoryError`: the conversation's `Load` failed; the
+    /// run fails at the memory record before any completion.
+    MemoryError,
     /// `PromptError::PromptCancelled` with this reason: a hook stopped the
     /// run. The records are those the engine made before the stop.
     Cancelled(&'static str),
@@ -297,6 +304,9 @@ pub struct Program {
     pub unhandled: Unhandled,
     /// `output_mode(mode)`; `None` is the builder's `Auto`.
     pub output_mode: Option<Output>,
+    /// A second `prompt` on the same agent after the first run settles:
+    /// two runs, one log (Matrix J).
+    pub second_prompt: Option<&'static str>,
 }
 
 impl Program {
@@ -329,6 +339,7 @@ impl Program {
         retrievable: &[],
         unhandled: Unhandled::Fail,
         output_mode: None,
+        second_prompt: None,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -810,6 +821,45 @@ impl AgentHook for EmbedPrompt {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Matrix J: memory cleared from a hook.
+
+/// The conversation every memory program loads and saves under.
+pub const CONVERSATION: &str = "golden-conversation";
+
+async fn clear_conversation(ctx: &HookContext) {
+    let memory = ctx
+        .memory(&HandlerKey::from("golden/memory"))
+        .expect("the run's bus serves memory");
+    let outcome = memory
+        .dispatch(rig_core::effect::MemoryOp::Clear {
+            conversation: ConversationId::from(CONVERSATION),
+        })
+        .await
+        .expect("the memory clears");
+    assert!(
+        matches!(outcome, rig_core::effect::MemoryOutcome::Cleared),
+        "{outcome:?}"
+    );
+}
+
+struct ClearAtStart;
+
+impl AgentHook for ClearAtStart {
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        clear_conversation(ctx).await;
+        RunStartAction::continue_run()
+    }
+}
+
+struct ClearAtSettled;
+
+impl AgentHook for ClearAtSettled {
+    async fn on_run_settled(&self, ctx: &HookContext, _event: RunSettled<'_>) {
+        clear_conversation(ctx).await;
+    }
+}
+
 fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
@@ -844,6 +894,8 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::NoteTwice => builder.add_hook(NoteTwice),
             Hook::NoteUnserved => builder.add_hook(NoteUnserved),
             Hook::EmbedPrompt => builder.add_hook(EmbedPrompt),
+            Hook::ClearAtStart => builder.add_hook(ClearAtStart),
+            Hook::ClearAtSettled => builder.add_hook(ClearAtSettled),
         };
     }
     builder
@@ -1138,122 +1190,135 @@ pub async fn bus_engine_reproduces(program: &Program) {
         .check_replayable(&replay.log)
         .expect("the same program as the one recorded");
 
-    let output = if program.streamed {
-        let mut runner = agent.stream_prompt(program.prompt);
-        if let Some(history) = program.history {
-            runner = runner.history(history());
-        }
-        if let Some(max_turns) = program.max_turns {
-            runner = runner.max_turns(max_turns);
-        }
-        if let Some(concurrency) = program.tool_concurrency {
-            runner = runner.tool_concurrency(concurrency);
-        }
-        runner = runner
-            .max_invalid_tool_call_retries(program.invalid_retries)
-            .unhandled_invalid_tool_call(unhandled_policy(program));
-        let mut stream = runner.stream().await;
-        let mut output = None;
-        let mut failed_as_expected = false;
-        while let Some(item) = within(stream.next()).await {
-            match item {
-                Ok(MultiTurnStreamItem::FinalResponse(response)) => {
-                    output = Some(response.output);
+    let prompts: Vec<&str> = std::iter::once(program.prompt)
+        .chain(program.second_prompt)
+        .collect();
+    let mut output = None;
+    for prompt in prompts {
+        output = if program.streamed {
+            let mut runner = agent.stream_prompt(prompt);
+            if let Some(history) = program.history {
+                runner = runner.history(history());
+            }
+            if let Some(max_turns) = program.max_turns {
+                runner = runner.max_turns(max_turns);
+            }
+            if let Some(concurrency) = program.tool_concurrency {
+                runner = runner.tool_concurrency(concurrency);
+            }
+            runner = runner
+                .max_invalid_tool_call_retries(program.invalid_retries)
+                .unhandled_invalid_tool_call(unhandled_policy(program));
+            let mut stream = runner.stream().await;
+            let mut output = None;
+            let mut failed_as_expected = false;
+            while let Some(item) = within(stream.next()).await {
+                match item {
+                    Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                        output = Some(response.output);
+                    }
+                    Err(StreamingError::Report(report))
+                        if program.cancel_after_first_delta
+                            && report.kind == rig_core::error::ErrorKind::Cancelled =>
+                    {
+                        break;
+                    }
+                    Err(StreamingError::Prompt(error))
+                        if program.ending == Ending::MaxTurns
+                            && matches!(*error, PromptError::MaxTurnsError { .. }) =>
+                    {
+                        failed_as_expected = true;
+                    }
+                    Err(StreamingError::Prompt(error))
+                        if program.ending == Ending::UnknownToolCall
+                            && matches!(*error, PromptError::UnknownToolCall { .. }) =>
+                    {
+                        failed_as_expected = true;
+                    }
+                    Err(StreamingError::Prompt(error))
+                        if program.ending == Ending::MemoryError
+                            && matches!(*error, PromptError::MemoryError(_)) =>
+                    {
+                        failed_as_expected = true;
+                    }
+                    Err(StreamingError::Prompt(error))
+                        if matches!(
+                            (&*error, program.ending),
+                            (PromptError::PromptCancelled { reason, .. }, Ending::Cancelled(expected))
+                                if reason == expected
+                        ) =>
+                    {
+                        failed_as_expected = true;
+                    }
+                    Err(StreamingError::Report(report))
+                        if program.ending == Ending::ProviderError
+                            && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
+                    {
+                        failed_as_expected = true;
+                    }
+                    Err(StreamingError::Completion(error))
+                        if program.ending == Ending::ProviderError =>
+                    {
+                        let _ = error;
+                        failed_as_expected = true;
+                    }
+                    Err(error) => {
+                        panic!("the replayer answered every request it recognised: {error:?}")
+                    }
+                    Ok(_) => {}
                 }
-                Err(StreamingError::Report(report))
-                    if program.cancel_after_first_delta
-                        && report.kind == rig_core::error::ErrorKind::Cancelled =>
+            }
+            drop(stream);
+            if program.cancel_after_first_delta {
+                // The driver resolves the cancelled dispatch on its own task.
+                for _ in 0..64 {
+                    tokio::task::yield_now().await;
+                }
+                None
+            } else if program.ending != Ending::Answer {
+                assert!(failed_as_expected, "the run ends in {:?}", program.ending);
+                None
+            } else {
+                Some(output.expect("the stream yields a final response"))
+            }
+        } else {
+            let mut runner = agent.prompt(prompt);
+            if let Some(history) = program.history {
+                runner = runner.history(history());
+            }
+            if let Some(max_turns) = program.max_turns {
+                runner = runner.max_turns(max_turns);
+            }
+            if let Some(concurrency) = program.tool_concurrency {
+                runner = runner.tool_concurrency(concurrency);
+            }
+            runner = runner
+                .max_invalid_tool_call_retries(program.invalid_retries)
+                .unhandled_invalid_tool_call(unhandled_policy(program));
+            match (within(runner.run()).await, program.ending) {
+                (Ok(response), Ending::Answer) => Some(response.output),
+                (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+                | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall)
+                | (Err(PromptError::MemoryError(_)), Ending::MemoryError) => None,
+                (Err(PromptError::Report(report)), Ending::ProviderError)
+                    if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                 {
-                    break;
+                    None
                 }
-                Err(StreamingError::Prompt(error))
-                    if program.ending == Ending::MaxTurns
-                        && matches!(*error, PromptError::MaxTurnsError { .. }) =>
+                (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+                    if reason == expected =>
                 {
-                    failed_as_expected = true;
+                    None
                 }
-                Err(StreamingError::Prompt(error))
-                    if program.ending == Ending::UnknownToolCall
-                        && matches!(*error, PromptError::UnknownToolCall { .. }) =>
-                {
-                    failed_as_expected = true;
+                (Ok(response), ending) => {
+                    panic!("the run ends in {ending:?}, not an answer: {response:?}")
                 }
-                Err(StreamingError::Prompt(error))
-                    if matches!(
-                        (&*error, program.ending),
-                        (PromptError::PromptCancelled { reason, .. }, Ending::Cancelled(expected))
-                            if reason == expected
-                    ) =>
-                {
-                    failed_as_expected = true;
-                }
-                Err(StreamingError::Report(report))
-                    if program.ending == Ending::ProviderError
-                        && report.kind == rig_core::error::ErrorKind::ProviderResponse =>
-                {
-                    failed_as_expected = true;
-                }
-                Err(StreamingError::Completion(error))
-                    if program.ending == Ending::ProviderError =>
-                {
-                    let _ = error;
-                    failed_as_expected = true;
-                }
-                Err(error) => {
+                (Err(error), _) => {
                     panic!("the replayer answered every request it recognised: {error:?}")
                 }
-                Ok(_) => {}
             }
-        }
-        drop(stream);
-        if program.cancel_after_first_delta {
-            // The driver resolves the cancelled dispatch on its own task.
-            for _ in 0..64 {
-                tokio::task::yield_now().await;
-            }
-            None
-        } else if program.ending != Ending::Answer {
-            assert!(failed_as_expected, "the run ends in {:?}", program.ending);
-            None
-        } else {
-            Some(output.expect("the stream yields a final response"))
-        }
-    } else {
-        let mut runner = agent.prompt(program.prompt);
-        if let Some(history) = program.history {
-            runner = runner.history(history());
-        }
-        if let Some(max_turns) = program.max_turns {
-            runner = runner.max_turns(max_turns);
-        }
-        if let Some(concurrency) = program.tool_concurrency {
-            runner = runner.tool_concurrency(concurrency);
-        }
-        runner = runner
-            .max_invalid_tool_call_retries(program.invalid_retries)
-            .unhandled_invalid_tool_call(unhandled_policy(program));
-        match (within(runner.run()).await, program.ending) {
-            (Ok(response), Ending::Answer) => Some(response.output),
-            (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
-            | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => None,
-            (Err(PromptError::Report(report)), Ending::ProviderError)
-                if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
-            {
-                None
-            }
-            (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
-                if reason == expected =>
-            {
-                None
-            }
-            (Ok(response), ending) => {
-                panic!("the run ends in {ending:?}, not an answer: {response:?}")
-            }
-            (Err(error), _) => {
-                panic!("the replayer answered every request it recognised: {error:?}")
-            }
-        }
-    };
+        };
+    }
     if let Some(output) = output {
         assert_eq!(
             output,
@@ -1389,6 +1454,8 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::NoteTwice => "NoteTwice",
         Hook::NoteUnserved => "NoteUnserved",
         Hook::EmbedPrompt => "EmbedPrompt",
+        Hook::ClearAtStart => "ClearAtStart",
+        Hook::ClearAtSettled => "ClearAtSettled",
     }
 }
 
@@ -1525,26 +1592,6 @@ pub async fn hand_driver_reproduces(program: &Program) {
     assert_header_names_the_program(&replay, program);
     let spec = run_spec(program);
     // Explicit history bypasses memory for the run, as the runner does.
-    let history = match (program.history, &memory) {
-        (Some(history), _) => Some(history()),
-        (None, Some((handle, id))) => Some(
-            within(handle.load(id.clone()))
-                .await
-                .expect("the replayer answered the load"),
-        ),
-        (None, None) => None,
-    };
-    if program.hooks.contains(&Hook::LookupBeforeRun) {
-        // The hook's own dispatch, before the first completion.
-        let (_, add) = tools
-            .iter()
-            .find(|(tool, _)| tool == "add")
-            .expect("the program advertises add");
-        let answer = within(add.call("add", LOOKUP_ARGS, ToolContext::new()))
-            .await
-            .expect("the replayer answered the hook's call");
-        assert_eq!(answer.result.output().render(), "3");
-    }
     // The host's handler the note hooks dispatch to, bound as the hooks
     // bind it (a refused bind is the unserved program's point).
     let notes = program
@@ -1586,424 +1633,497 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expect_err("no host serves notes");
         assert_eq!(refused.kind, rig_core::error::ErrorKind::HandlerUnavailable);
     }
-    // The run-start hooks' dispatches, before the first completion.
-    if program.hooks.contains(&Hook::NoteAtStart) {
-        note("start").await;
-    }
-    if program.hooks.contains(&Hook::NoteTwice) {
-        let host = notes.as_ref().expect("a note hook");
-        let first = within(host.dispatch(Note {
-            at: "first".to_owned(),
-        }));
-        let second = within(host.dispatch(Note {
-            at: "second".to_owned(),
-        }));
-        let (first, second) = futures::join!(first, second);
-        assert_eq!(first.expect("acknowledged").at, "first");
-        assert_eq!(second.expect("acknowledged").at, "second");
-    }
-    if program.hooks.contains(&Hook::EmbedPrompt) {
-        let host = replay
-            .dispatcher
-            .bind(&embed_key())
-            .expect("the host serves embeddings");
-        let outputs = within(host.dispatch(rig_core::effect::EmbedInputs::Texts(vec![
-            program.prompt.to_owned(),
-        ])))
-        .await
-        .expect("the replayer embedded");
-        assert!(matches!(outputs, rig_core::effect::EmbedOutputs::Texts(_)));
-    }
-    let patch = program
-        .hooks
-        .contains(&Hook::PreambleOverride)
-        .then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE));
-    let mut run = AgentRun::from_spec(&spec, program.prompt, history);
-    // The routing hook selects the route once a model has been asked
-    // (`previous_model` is set): the first call goes to the default.
-    let mut asked_before = false;
-    // The hook that stopped the run, with its reason: the same decision at
-    // the same point the engine makes it.
-    let mut cancelled: Option<&'static str> = None;
-    // A stop before any dispatch: at run start, at model selection, or
-    // before the completion call.
-    let stop_before_any = [
-        (Hook::StopAtStart, STOP_AT_START),
-        (Hook::StopAtModelSelect, STOP_AT_MODEL_SELECT),
-        (Hook::StopAtCompletionCall, STOP_AT_COMPLETION_CALL),
-    ]
-    .into_iter()
-    .find(|(hook, _)| program.hooks.contains(hook))
-    .map(|(_, reason)| reason);
-    let response = loop {
-        if let Some(reason) = stop_before_any {
-            cancelled = Some(reason);
-            break None;
-        }
-        let step = match (run.next_step(), program.ending) {
-            (Ok(step), _) => step,
-            (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => break None,
-            (Err(error), _) => panic!("a step: {error:?}"),
+    let prompts: Vec<&str> = std::iter::once(program.prompt)
+        .chain(program.second_prompt)
+        .collect();
+    let mut last_response = None;
+    for prompt in prompts {
+        let mut load_failed = false;
+        let history = match (program.history, &memory) {
+            (Some(history), _) => Some(history()),
+            (None, Some((handle, id))) => match within(handle.load(id.clone())).await {
+                Ok(history) => Some(history),
+                Err(report) if program.ending == Ending::MemoryError => {
+                    assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
+                    load_failed = true;
+                    None
+                }
+                Err(report) => panic!("the replayer answered the load: {report:?}"),
+            },
+            (None, None) => None,
         };
-        match step {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
-                let model = match (&route, program.hooks.contains(&Hook::RouteAfterFirstTurn)) {
-                    (Some(route), true) if asked_before => route,
-                    _ => &model,
-                };
-                asked_before = true;
-                // The retrievals the engine performs at the boundary, in its
-                // order: the context (a completion-call hook), then the tool
-                // index; the query is the current prompt's text, else the
-                // last text in history, as the engine derives it.
-                let query = prompt
-                    .rag_text()
-                    .or_else(|| history.iter().rev().find_map(Message::rag_text))
-                    .unwrap_or_default();
-                let mut turn_patch = patch.clone();
-                if let (Some(context), Some(samples)) = (&context, program.dynamic_context) {
-                    let req = rig_core::vector_store::request::VectorSearchRequest::builder()
-                        .query(query.clone())
-                        .samples(samples as u64)
-                        .build();
-                    let results = within(context.top_n::<serde_json::Value>(req))
-                        .await
-                        .expect("the replayer answered the context query");
-                    let docs = results.into_iter().map(|(_, id, value)| Document {
-                        id,
-                        text: serde_json::to_string_pretty(&value)
-                            .unwrap_or_else(|_| value.to_string()),
-                        additional_props: Default::default(),
-                    });
-                    turn_patch = Some(turn_patch.unwrap_or_default().extra_context(docs));
-                }
-                let mut dynamic_tool_ids = Vec::new();
-                for (key, kind) in server.retrieval_effects(Some(query.clone())) {
-                    match within(replay.dispatcher.dispatch(&key, kind))
-                        .await
-                        .expect("the replayer answered the tool query")
-                    {
-                        rig_core::effect::Outcome::Documents(
-                            rig_core::effect::RetrievedDocuments::Ids(ids),
-                        ) => dynamic_tool_ids.extend(ids.into_iter().map(|(_, id)| id)),
-                        other => panic!("retrieved ids, not {other:?}"),
+        if load_failed {
+            // As the engine: the run fails at the load, before any completion.
+            drop((model, route, tools, memory, context));
+            let log = replay.log.clone();
+            let replayed = replay.close().await;
+            assert_same_records(&replayed, &log, "hand driver");
+            return;
+        }
+        // The run-start hook's clear: the hook fires after the load, so the
+        // clear lands between the load and the first completion.
+        if program.hooks.contains(&Hook::ClearAtStart) {
+            let (handle, id) = memory.as_ref().expect("a memory program");
+            within(handle.clear(id.clone()))
+                .await
+                .expect("the replayer answered the clear");
+        }
+        if program.hooks.contains(&Hook::LookupBeforeRun) {
+            // The hook's own dispatch, before the first completion.
+            let (_, add) = tools
+                .iter()
+                .find(|(tool, _)| tool == "add")
+                .expect("the program advertises add");
+            let answer = within(add.call("add", LOOKUP_ARGS, ToolContext::new()))
+                .await
+                .expect("the replayer answered the hook's call");
+            assert_eq!(answer.result.output().render(), "3");
+        }
+        // The run-start hooks' dispatches, before the first completion.
+        if program.hooks.contains(&Hook::NoteAtStart) {
+            note("start").await;
+        }
+        if program.hooks.contains(&Hook::NoteTwice) {
+            let host = notes.as_ref().expect("a note hook");
+            let first = within(host.dispatch(Note {
+                at: "first".to_owned(),
+            }));
+            let second = within(host.dispatch(Note {
+                at: "second".to_owned(),
+            }));
+            let (first, second) = futures::join!(first, second);
+            assert_eq!(first.expect("acknowledged").at, "first");
+            assert_eq!(second.expect("acknowledged").at, "second");
+        }
+        if program.hooks.contains(&Hook::EmbedPrompt) {
+            let host = replay
+                .dispatcher
+                .bind(&embed_key())
+                .expect("the host serves embeddings");
+            let outputs = within(host.dispatch(rig_core::effect::EmbedInputs::Texts(vec![
+                program.prompt.to_owned(),
+            ])))
+            .await
+            .expect("the replayer embedded");
+            assert!(matches!(outputs, rig_core::effect::EmbedOutputs::Texts(_)));
+        }
+        let patch = program
+            .hooks
+            .contains(&Hook::PreambleOverride)
+            .then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE));
+        let mut run = AgentRun::from_spec(&spec, prompt, history);
+        // The routing hook selects the route once a model has been asked
+        // (`previous_model` is set): the first call goes to the default.
+        let mut asked_before = false;
+        // The hook that stopped the run, with its reason: the same decision at
+        // the same point the engine makes it.
+        let mut cancelled: Option<&'static str> = None;
+        // A stop before any dispatch: at run start, at model selection, or
+        // before the completion call.
+        let stop_before_any = [
+            (Hook::StopAtStart, STOP_AT_START),
+            (Hook::StopAtModelSelect, STOP_AT_MODEL_SELECT),
+            (Hook::StopAtCompletionCall, STOP_AT_COMPLETION_CALL),
+        ]
+        .into_iter()
+        .find(|(hook, _)| program.hooks.contains(hook))
+        .map(|(_, reason)| reason);
+        let response = loop {
+            if let Some(reason) = stop_before_any {
+                cancelled = Some(reason);
+                break None;
+            }
+            let step = match (run.next_step(), program.ending) {
+                (Ok(step), _) => step,
+                (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns) => break None,
+                (Err(error), _) => panic!("a step: {error:?}"),
+            };
+            match step {
+                AgentRunStep::CallModel {
+                    prompt,
+                    history,
+                    turn,
+                } => {
+                    let model = match (&route, program.hooks.contains(&Hook::RouteAfterFirstTurn)) {
+                        (Some(route), true) if asked_before => route,
+                        _ => &model,
+                    };
+                    asked_before = true;
+                    // The retrievals the engine performs at the boundary, in its
+                    // order: the context (a completion-call hook), then the tool
+                    // index; the query is the current prompt's text, else the
+                    // last text in history, as the engine derives it.
+                    let query = prompt
+                        .rag_text()
+                        .or_else(|| history.iter().rev().find_map(Message::rag_text))
+                        .unwrap_or_default();
+                    let mut turn_patch = patch.clone();
+                    if let (Some(context), Some(samples)) = (&context, program.dynamic_context) {
+                        let req = rig_core::vector_store::request::VectorSearchRequest::builder()
+                            .query(query.clone())
+                            .samples(samples as u64)
+                            .build();
+                        let results = within(context.top_n::<serde_json::Value>(req))
+                            .await
+                            .expect("the replayer answered the context query");
+                        let docs = results.into_iter().map(|(_, id, value)| Document {
+                            id,
+                            text: serde_json::to_string_pretty(&value)
+                                .unwrap_or_else(|_| value.to_string()),
+                            additional_props: Default::default(),
+                        });
+                        turn_patch = Some(turn_patch.unwrap_or_default().extra_context(docs));
                     }
-                }
-                let definitions = server
-                    .snapshot_with_dynamic(&dynamic_tool_ids)
-                    .take_definitions();
-                let prepared = prepare_request(
-                    &spec,
-                    &model.capabilities(),
-                    &history,
-                    definitions,
-                    run.output_tool_name(),
-                    turn_patch.as_ref(),
-                )
-                .expect("prepared");
-                run.set_output_tool_name(prepared.output_tool_name.clone());
-                run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
-                    .build();
-                // The completion-call hook's dispatch, before the completion.
-                if program.hooks.contains(&Hook::NoteAtCompletionCall) {
-                    note("completion_call").await;
-                }
-                let turn = if program.streamed {
-                    let mut stream = model.stream(request);
-                    let mut assembler = StreamedTurnAssembler::new(executable, allowed);
-                    let mut provider_failed = false;
-                    let mut delta_stop: Option<&'static str> = None;
-                    let mut turn_abandoned = false;
-                    let mut unknown_tool_call = false;
-                    while let Some(event) = within(stream.next()).await {
-                        let event = match event {
-                            Ok(event) => event,
-                            Err(report)
-                                if program.cancel_after_first_delta
-                                    && report.kind == rig_core::error::ErrorKind::Cancelled =>
+                    let mut dynamic_tool_ids = Vec::new();
+                    for (key, kind) in server.retrieval_effects(Some(query.clone())) {
+                        match within(replay.dispatcher.dispatch(&key, kind))
+                            .await
+                            .expect("the replayer answered the tool query")
+                        {
+                            rig_core::effect::Outcome::Documents(
+                                rig_core::effect::RetrievedDocuments::Ids(ids),
+                            ) => dynamic_tool_ids.extend(ids.into_iter().map(|(_, id)| id)),
+                            other => panic!("retrieved ids, not {other:?}"),
+                        }
+                    }
+                    let definitions = server
+                        .snapshot_with_dynamic(&dynamic_tool_ids)
+                        .take_definitions();
+                    let prepared = prepare_request(
+                        &spec,
+                        &model.capabilities(),
+                        &history,
+                        definitions,
+                        run.output_tool_name(),
+                        turn_patch.as_ref(),
+                    )
+                    .expect("prepared");
+                    run.set_output_tool_name(prepared.output_tool_name.clone());
+                    run.advertise_tools(turn, prepared.tools.clone());
+                    let executable = prepared.executable_tool_names.clone();
+                    let allowed = prepared.allowed_tool_names.clone();
+                    let request = prepared
+                        .apply(CompletionRequestBuilder::unbound(prompt))
+                        .build();
+                    // The completion-call hook's dispatch, before the completion.
+                    if program.hooks.contains(&Hook::NoteAtCompletionCall) {
+                        note("completion_call").await;
+                    }
+                    let turn = if program.streamed {
+                        let mut stream = model.stream(request);
+                        let mut assembler = StreamedTurnAssembler::new(executable, allowed);
+                        let mut provider_failed = false;
+                        let mut delta_stop: Option<&'static str> = None;
+                        let mut turn_abandoned = false;
+                        let mut unknown_tool_call = false;
+                        while let Some(event) = within(stream.next()).await {
+                            let event = match event {
+                                Ok(event) => event,
+                                Err(report)
+                                    if program.cancel_after_first_delta
+                                        && report.kind == rig_core::error::ErrorKind::Cancelled =>
+                                {
+                                    break;
+                                }
+                                Err(report)
+                                    if program.ending == Ending::ProviderError
+                                        && report.kind
+                                            == rig_core::error::ErrorKind::ProviderResponse =>
+                                {
+                                    provider_failed = true;
+                                    break;
+                                }
+                                Err(report) => {
+                                    panic!(
+                                        "the replayer re-emitted the recorded stream: {report:?}"
+                                    )
+                                }
+                            };
+                            // The observe-only hooks' stops, at the delta they
+                            // fire on: the engine leaves the stream there.
+                            if let rig_core::streaming::StreamEvent::BlockDelta { delta, .. } =
+                                &event
                             {
+                                let stop = match delta {
+                                    rig_core::streaming::Delta::Text { .. }
+                                        if program.hooks.contains(&Hook::StopOnTextDelta) =>
+                                    {
+                                        Some(STOP_ON_TEXT_DELTA)
+                                    }
+                                    rig_core::streaming::Delta::ToolName { .. }
+                                    | rig_core::streaming::Delta::ToolArguments { .. }
+                                        if program.hooks.contains(&Hook::StopOnToolCallDelta) =>
+                                    {
+                                        Some(STOP_ON_TOOL_CALL_DELTA)
+                                    }
+                                    rig_core::streaming::Delta::Reasoning { .. }
+                                        if program.hooks.contains(&Hook::StopOnReasoningDelta) =>
+                                    {
+                                        Some(STOP_ON_REASONING_DELTA)
+                                    }
+                                    _ => None,
+                                };
+                                if stop.is_some() {
+                                    delta_stop = stop;
+                                    break;
+                                }
+                            }
+                            let events = assembler.ingest(&event).expect("a well-formed stream");
+                            // An invalid call surfaced mid-stream: resolved as the
+                            // engine resolves it — the hook's decision, else the
+                            // runner's policy — through the run's streamed seam.
+                            for streamed in events {
+                                let StreamedTurnEvent::InvalidToolCall(invalid) = streamed else {
+                                    continue;
+                                };
+                                let partial = assembler.partial_turn(stream.message_id.clone());
+                                let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
+                                    Some(retry_feedback(&invalid.tool_call.function.name))
+                                } else if program.hooks.contains(&Hook::RepairToAdd) {
+                                    Some(InvalidToolCallAction::repair("add"))
+                                } else if program.hooks.contains(&Hook::SkipUnknown) {
+                                    Some(InvalidToolCallAction::skip(SKIP_REASON))
+                                } else {
+                                    None
+                                };
+                                let resolved = match (action, program.unhandled) {
+                                    (Some(action), _) => run.resolve_streamed_invalid_tool_call(
+                                        &partial, &invalid, action,
+                                    ),
+                                    (None, Unhandled::Fail) => run
+                                        .resolve_streamed_invalid_tool_call(
+                                            &partial,
+                                            &invalid,
+                                            InvalidToolCallAction::fail(),
+                                        ),
+                                    (None, Unhandled::Ignore) => {
+                                        run.ignore_streamed_invalid_tool_call()
+                                    }
+                                };
+                                match resolved {
+                                    Ok(resolution @ StreamedResolution::Repaired { .. })
+                                    | Ok(resolution @ StreamedResolution::Ignored) => {
+                                        let replayed =
+                                            assembler.resolve_pending_invalid(&resolution);
+                                        assert!(
+                                            replayed.iter().all(|e| !matches!(
+                                                e,
+                                                StreamedTurnEvent::InvalidToolCall(_)
+                                            )),
+                                            "a repair names an allowed tool"
+                                        );
+                                    }
+                                    Ok(resolution @ StreamedResolution::TurnAbandoned { .. }) => {
+                                        assembler.resolve_pending_invalid(&resolution);
+                                        turn_abandoned = true;
+                                    }
+                                    Err(error) => {
+                                        assert!(
+                                            program.ending == Ending::UnknownToolCall
+                                                && matches!(
+                                                    error,
+                                                    PromptError::UnknownToolCall { .. }
+                                                ),
+                                            "{error:?}"
+                                        );
+                                        unknown_tool_call = true;
+                                    }
+                                }
+                            }
+                            if turn_abandoned || unknown_tool_call {
                                 break;
                             }
-                            Err(report)
-                                if program.ending == Ending::ProviderError
-                                    && report.kind
-                                        == rig_core::error::ErrorKind::ProviderResponse =>
-                            {
-                                provider_failed = true;
-                                break;
+                        }
+                        if unknown_tool_call {
+                            drop(stream);
+                            break None;
+                        }
+                        if turn_abandoned {
+                            // As the engine: the abandoned turn's stream is drained
+                            // for its usage, then the next model call is asked for.
+                            while within(stream.next()).await.is_some() {}
+                            drop(stream);
+                            continue;
+                        }
+                        if let Some(reason) = delta_stop {
+                            // As the engine: the model's stream is dropped at
+                            // the delta, so the dispatch is recorded as a cancel.
+                            drop(stream);
+                            for _ in 0..64 {
+                                tokio::task::yield_now().await;
                             }
-                            Err(report) => {
-                                panic!("the replayer re-emitted the recorded stream: {report:?}")
+                            cancelled = Some(reason);
+                            break None;
+                        }
+                        if program.cancel_after_first_delta {
+                            drop(stream);
+                            for _ in 0..64 {
+                                tokio::task::yield_now().await;
+                            }
+                            break None;
+                        }
+                        if program.ending == Ending::ProviderError {
+                            assert!(
+                                provider_failed,
+                                "the stream fails with the provider's error"
+                            );
+                            drop(stream);
+                            break None;
+                        }
+                        let usage = stream.usage();
+                        let snapshot = stream.snapshot();
+                        let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
+                        ModelTurn::new(
+                            streamed.message_id,
+                            streamed.choice,
+                            usage,
+                            streamed.executable_tool_names,
+                            streamed.allowed_tool_names,
+                        )
+                    } else {
+                        let response = match (within(model.complete(request)).await, program.ending)
+                        {
+                            (Ok(response), _) => response,
+                            (Err(report), Ending::ProviderError)
+                                if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
+                            {
+                                break None;
+                            }
+                            (Err(report), _) => {
+                                panic!("the replayer recognised the request: {report:?}")
                             }
                         };
-                        // The observe-only hooks' stops, at the delta they
-                        // fire on: the engine leaves the stream there.
-                        if let rig_core::streaming::StreamEvent::BlockDelta { delta, .. } = &event {
-                            let stop = match delta {
-                                rig_core::streaming::Delta::Text { .. }
-                                    if program.hooks.contains(&Hook::StopOnTextDelta) =>
-                                {
-                                    Some(STOP_ON_TEXT_DELTA)
-                                }
-                                rig_core::streaming::Delta::ToolName { .. }
-                                | rig_core::streaming::Delta::ToolArguments { .. }
-                                    if program.hooks.contains(&Hook::StopOnToolCallDelta) =>
-                                {
-                                    Some(STOP_ON_TOOL_CALL_DELTA)
-                                }
-                                rig_core::streaming::Delta::Reasoning { .. }
-                                    if program.hooks.contains(&Hook::StopOnReasoningDelta) =>
-                                {
-                                    Some(STOP_ON_REASONING_DELTA)
-                                }
-                                _ => None,
-                            };
-                            if stop.is_some() {
-                                delta_stop = stop;
+                        ModelTurn::from_response_parts(&response, executable, allowed)
+                    };
+                    let choice = turn.choice.clone();
+                    let mut outcome = run.model_response(turn).expect("a model turn");
+                    let mut unknown_tool_call = false;
+                    while let ModelTurnOutcome::NeedsResolution(invalid) = outcome {
+                        // The hook's decision, else the runner's policy — as
+                        // the engine resolves an invalid call.
+                        let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
+                            Some(retry_feedback(&invalid.tool_name))
+                        } else if program.hooks.contains(&Hook::RepairToAdd) {
+                            Some(InvalidToolCallAction::repair("add"))
+                        } else if program.hooks.contains(&Hook::SkipUnknown) {
+                            Some(InvalidToolCallAction::skip(SKIP_REASON))
+                        } else {
+                            None
+                        };
+                        let resolved = match action {
+                            Some(action) => run.resolve_invalid_tool_call(action),
+                            None => run.resolve_unhandled_invalid_tool_call(),
+                        };
+                        match resolved {
+                            Ok(next) => outcome = next,
+                            Err(error) => {
+                                assert!(
+                                    program.ending == Ending::UnknownToolCall
+                                        && matches!(error, PromptError::UnknownToolCall { .. }),
+                                    "{error:?}"
+                                );
+                                unknown_tool_call = true;
                                 break;
                             }
-                        }
-                        let events = assembler.ingest(&event).expect("a well-formed stream");
-                        // An invalid call surfaced mid-stream: resolved as the
-                        // engine resolves it — the hook's decision, else the
-                        // runner's policy — through the run's streamed seam.
-                        for streamed in events {
-                            let StreamedTurnEvent::InvalidToolCall(invalid) = streamed else {
-                                continue;
-                            };
-                            let partial = assembler.partial_turn(stream.message_id.clone());
-                            let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
-                                Some(retry_feedback(&invalid.tool_call.function.name))
-                            } else if program.hooks.contains(&Hook::RepairToAdd) {
-                                Some(InvalidToolCallAction::repair("add"))
-                            } else if program.hooks.contains(&Hook::SkipUnknown) {
-                                Some(InvalidToolCallAction::skip(SKIP_REASON))
-                            } else {
-                                None
-                            };
-                            let resolved = match (action, program.unhandled) {
-                                (Some(action), _) => run
-                                    .resolve_streamed_invalid_tool_call(&partial, &invalid, action),
-                                (None, Unhandled::Fail) => run.resolve_streamed_invalid_tool_call(
-                                    &partial,
-                                    &invalid,
-                                    InvalidToolCallAction::fail(),
-                                ),
-                                (None, Unhandled::Ignore) => {
-                                    run.ignore_streamed_invalid_tool_call()
-                                }
-                            };
-                            match resolved {
-                                Ok(resolution @ StreamedResolution::Repaired { .. })
-                                | Ok(resolution @ StreamedResolution::Ignored) => {
-                                    let replayed = assembler.resolve_pending_invalid(&resolution);
-                                    assert!(
-                                        replayed.iter().all(|e| !matches!(
-                                            e,
-                                            StreamedTurnEvent::InvalidToolCall(_)
-                                        )),
-                                        "a repair names an allowed tool"
-                                    );
-                                }
-                                Ok(resolution @ StreamedResolution::TurnAbandoned { .. }) => {
-                                    assembler.resolve_pending_invalid(&resolution);
-                                    turn_abandoned = true;
-                                }
-                                Err(error) => {
-                                    assert!(
-                                        program.ending == Ending::UnknownToolCall
-                                            && matches!(error, PromptError::UnknownToolCall { .. }),
-                                        "{error:?}"
-                                    );
-                                    unknown_tool_call = true;
-                                }
-                            }
-                        }
-                        if turn_abandoned || unknown_tool_call {
-                            break;
                         }
                     }
                     if unknown_tool_call {
-                        drop(stream);
                         break None;
                     }
-                    if turn_abandoned {
-                        // As the engine: the abandoned turn's stream is drained
-                        // for its usage, then the next model call is asked for.
-                        while within(stream.next()).await.is_some() {}
-                        drop(stream);
-                        continue;
-                    }
-                    if let Some(reason) = delta_stop {
-                        // As the engine: the model's stream is dropped at
-                        // the delta, so the dispatch is recorded as a cancel.
-                        drop(stream);
-                        for _ in 0..64 {
-                            tokio::task::yield_now().await;
-                        }
-                        cancelled = Some(reason);
+                    // The outcome and model-turn hooks, as the engine settles a
+                    // turn: a replacement of the accepted choice, then a retry.
+                    let has_tool_calls = choice
+                        .iter()
+                        .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+                    // The outcome hook's cancel on a text answer, then the
+                    // model-turn hooks' stops, as the engine settles a turn.
+                    if program.hooks.contains(&Hook::CancelAnswer) && !has_tool_calls {
+                        cancelled = Some(CANCEL_ANSWER);
                         break None;
                     }
-                    if program.cancel_after_first_delta {
-                        drop(stream);
-                        for _ in 0..64 {
-                            tokio::task::yield_now().await;
-                        }
+                    if program.hooks.contains(&Hook::StopAfterTurn) {
+                        cancelled = Some(STOP_AFTER_TURN);
                         break None;
                     }
-                    if program.ending == Ending::ProviderError {
-                        assert!(
-                            provider_failed,
-                            "the stream fails with the provider's error"
-                        );
-                        drop(stream);
+                    if program.hooks.contains(&Hook::StopAtAnswer) && !has_tool_calls {
+                        cancelled = Some(STOP_AT_ANSWER);
                         break None;
                     }
-                    let usage = stream.usage();
-                    let snapshot = stream.snapshot();
-                    let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
-                    ModelTurn::new(
-                        streamed.message_id,
-                        streamed.choice,
-                        usage,
-                        streamed.executable_tool_names,
-                        streamed.allowed_tool_names,
+                    if program.hooks.contains(&Hook::ReplaceAnswer) && !has_tool_calls {
+                        run.replace_accepted_turn_choice(vec![AssistantContent::text(
+                            REPLACED_ANSWER,
+                        )])
+                        .expect("a text turn is replaceable");
+                    }
+                    if program.hooks.contains(&Hook::DemandDone)
+                        && !has_tool_calls
+                        && !answer_text(&choice).contains("DONE")
+                    {
+                        run.retry_model_turn(RetryRequest::Feedback(DONE_FEEDBACK.to_owned()))
+                            .expect("a text turn is retryable");
+                    }
+                }
+                AgentRunStep::CallTools { calls } => {
+                    let results = match call_tools(
+                        calls,
+                        &tools,
+                        program.tool_concurrency.unwrap_or(1),
+                        program.hooks,
                     )
-                } else {
-                    let response = match (within(model.complete(request)).await, program.ending) {
-                        (Ok(response), _) => response,
-                        (Err(report), Ending::ProviderError)
-                            if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
-                        {
+                    .await
+                    {
+                        Ok(results) => results,
+                        Err(reason) => {
+                            cancelled = Some(reason);
                             break None;
                         }
-                        (Err(report), _) => {
-                            panic!("the replayer recognised the request: {report:?}")
-                        }
                     };
-                    ModelTurn::from_response_parts(&response, executable, allowed)
-                };
-                let choice = turn.choice.clone();
-                let mut outcome = run.model_response(turn).expect("a model turn");
-                let mut unknown_tool_call = false;
-                while let ModelTurnOutcome::NeedsResolution(invalid) = outcome {
-                    // The hook's decision, else the runner's policy — as
-                    // the engine resolves an invalid call.
-                    let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
-                        Some(retry_feedback(&invalid.tool_name))
-                    } else if program.hooks.contains(&Hook::RepairToAdd) {
-                        Some(InvalidToolCallAction::repair("add"))
-                    } else if program.hooks.contains(&Hook::SkipUnknown) {
-                        Some(InvalidToolCallAction::skip(SKIP_REASON))
-                    } else {
-                        None
-                    };
-                    let resolved = match action {
-                        Some(action) => run.resolve_invalid_tool_call(action),
-                        None => run.resolve_unhandled_invalid_tool_call(),
-                    };
-                    match resolved {
-                        Ok(next) => outcome = next,
-                        Err(error) => {
-                            assert!(
-                                program.ending == Ending::UnknownToolCall
-                                    && matches!(error, PromptError::UnknownToolCall { .. }),
-                                "{error:?}"
-                            );
-                            unknown_tool_call = true;
-                            break;
+                    // The outcome hook's dispatch, once per tool answer.
+                    if program.hooks.contains(&Hook::NoteAtOutcome) {
+                        for _ in &results {
+                            note("outcome").await;
                         }
                     }
+                    run.tool_results(results).expect("results for every call");
                 }
-                if unknown_tool_call {
-                    break None;
-                }
-                // The outcome and model-turn hooks, as the engine settles a
-                // turn: a replacement of the accepted choice, then a retry.
-                let has_tool_calls = choice
-                    .iter()
-                    .any(|content| matches!(content, AssistantContent::ToolCall(_)));
-                // The outcome hook's cancel on a text answer, then the
-                // model-turn hooks' stops, as the engine settles a turn.
-                if program.hooks.contains(&Hook::CancelAnswer) && !has_tool_calls {
-                    cancelled = Some(CANCEL_ANSWER);
-                    break None;
-                }
-                if program.hooks.contains(&Hook::StopAfterTurn) {
-                    cancelled = Some(STOP_AFTER_TURN);
-                    break None;
-                }
-                if program.hooks.contains(&Hook::StopAtAnswer) && !has_tool_calls {
-                    cancelled = Some(STOP_AT_ANSWER);
-                    break None;
-                }
-                if program.hooks.contains(&Hook::ReplaceAnswer) && !has_tool_calls {
-                    run.replace_accepted_turn_choice(vec![AssistantContent::text(REPLACED_ANSWER)])
-                        .expect("a text turn is replaceable");
-                }
-                if program.hooks.contains(&Hook::DemandDone)
-                    && !has_tool_calls
-                    && !answer_text(&choice).contains("DONE")
-                {
-                    run.retry_model_turn(RetryRequest::Feedback(DONE_FEEDBACK.to_owned()))
-                        .expect("a text turn is retryable");
-                }
+                AgentRunStep::Done(response) => break Some(response),
             }
-            AgentRunStep::CallTools { calls } => {
-                let results = match call_tools(
-                    calls,
-                    &tools,
-                    program.tool_concurrency.unwrap_or(1),
-                    program.hooks,
-                )
-                .await
-                {
-                    Ok(results) => results,
-                    Err(reason) => {
-                        cancelled = Some(reason);
-                        break None;
-                    }
-                };
-                // The outcome hook's dispatch, once per tool answer.
-                if program.hooks.contains(&Hook::NoteAtOutcome) {
-                    for _ in &results {
-                        note("outcome").await;
-                    }
-                }
-                run.tool_results(results).expect("results for every call");
-            }
-            AgentRunStep::Done(response) => break Some(response),
+        };
+        if let Ending::Cancelled(expected) = program.ending {
+            assert_eq!(
+                cancelled,
+                Some(expected),
+                "the driver stopped where the hook does"
+            );
+        } else {
+            assert_eq!(cancelled, None, "no hook stops this program");
         }
-    };
-    if let Ending::Cancelled(expected) = program.ending {
-        assert_eq!(
-            cancelled,
-            Some(expected),
-            "the driver stopped where the hook does"
-        );
-    } else {
-        assert_eq!(cancelled, None, "no hook stops this program");
+        let Some(response) = response else {
+            drop((model, route, tools, memory, context));
+            let log = replay.log.clone();
+            let replayed = replay.close().await;
+            assert_same_records(&replayed, &log, "hand driver");
+            return;
+        };
+        if let (Some((handle, id)), None) = (&memory, program.history) {
+            // As the engine: a failed append is logged and the answer stands.
+            if let Err(report) =
+                within(handle.append(id.clone(), response.messages.clone().unwrap_or_default()))
+                    .await
+            {
+                assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
+            }
+        }
+        // The settled hook's clear, after the append.
+        if program.hooks.contains(&Hook::ClearAtSettled) {
+            let (handle, id) = memory.as_ref().expect("a memory program");
+            within(handle.clear(id.clone()))
+                .await
+                .expect("the replayer answered the clear");
+        }
+        last_response = Some(response);
     }
-    let Some(response) = response else {
-        drop((model, route, tools, memory, context));
-        let log = replay.log.clone();
-        let replayed = replay.close().await;
-        assert_same_records(&replayed, &log, "hand driver");
-        return;
-    };
-    if let (Some((handle, id)), None) = (&memory, program.history) {
-        within(handle.append(id.clone(), response.messages.clone().unwrap_or_default()))
-            .await
-            .expect("the replayer answered the append");
-    }
+    let response = last_response.expect("a run");
     assert_eq!(
         response.output,
         program

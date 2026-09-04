@@ -360,6 +360,18 @@ pub(super) async fn with_anthropic_corpus_endings_cassette<F, Fut>(
     with_anthropic_cassette(spec, test_body).await;
 }
 
+/// The effect corpus's memory matrix (Matrix J):
+/// `tests/cassettes/anthropic/corpus_memory/`.
+pub(super) async fn with_anthropic_corpus_memory_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
 /// The effect corpus's host-families matrix (Matrix I):
 /// `tests/cassettes/anthropic/corpus_host/`.
 pub(super) async fn with_anthropic_corpus_host_cassette<F, Fut>(

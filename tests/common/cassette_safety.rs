@@ -88,6 +88,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_anthropic_corpus_endings_cassette",
             "with_anthropic_corpus_output_cassette",
             "with_anthropic_corpus_host_cassette",
+            "with_anthropic_corpus_memory_cassette",
         ],
     },
     ProviderCassetteSuite {
