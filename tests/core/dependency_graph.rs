@@ -108,6 +108,42 @@ fn rig_effect_log_needs_rig_bus_only_for_replay() {
     );
 }
 
+/// rig-ecs is the bus in a Bevy `World`: on the rig side exactly rig-core
+/// and rig-effect-log (the `replay` feature), never rig-bus — its driver is
+/// a system, not a client of the bus's — never rig-agent (a rewrite, held
+/// to rig-agent's bytes by the corpus alone), never the `bevy` facade, no
+/// runtime, no transport, no MCP, no reflection yet.
+#[test]
+fn rig_ecs_is_rig_core_and_bevy_only() {
+    let forbidden = [
+        "rig-bus",
+        "rig-agent",
+        "rig-rmcp",
+        "rmcp",
+        "bevy",
+        "bevy_reflect",
+        "bevy_asset",
+        "tokio",
+        "reqwest",
+    ];
+    assert_absent("rig-ecs", &[], &forbidden);
+    assert_absent("rig-ecs", &["--all-features"], &forbidden);
+    assert_absent("rig-ecs", &["--no-default-features"], &["rig-effect-log"]);
+    let names = normal_dependency_names("rig-ecs", &[]);
+    for required in [
+        "rig-core",
+        "rig-effect-log",
+        "bevy_ecs",
+        "bevy_tasks",
+        "bevy_app",
+    ] {
+        assert!(
+            names.iter().any(|name| name == required),
+            "`rig-ecs` must depend on `{required}`"
+        );
+    }
+}
+
 /// With default features on, and — the shape a host that steps `AgentRun`
 /// itself depends on — with them off: rig-agent is a runtime-free crate.
 #[test]

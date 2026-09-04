@@ -232,6 +232,12 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
         ),
     ),
     (
+        "rig-ecs",
+        Exempt(
+            "the bus in a Bevy World — effects, handlers and the driver as entities and systems; no provider, no wire",
+        ),
+    ),
+    (
         "rig-verify",
         Exempt(
             "the bus's behavioural verification suite — tests over rig-core and rig-agent's public API, no provider, no wire",
