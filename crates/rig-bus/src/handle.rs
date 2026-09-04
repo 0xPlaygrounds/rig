@@ -228,6 +228,11 @@ pub struct Typed<F: Family, T = <F as Family>::Answer> {
 }
 
 impl<F: Family, T> Typed<F, T> {
+    /// The dispatch this one was made from, if a handler made it.
+    pub const fn parent(&self) -> Option<EffectId> {
+        self.pending.parent()
+    }
+
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.pending.id()
@@ -627,10 +632,33 @@ const _: () = {
     // Raised 64 → 80 with `Bus::reopen`: a `Pending` carries its bus
     // generation (8 bytes) and its parked-sender slot (8 bytes).
     assert!(
-        size_of::<Typed<family::Completion>>() <= 80,
-        "Typed<Completion> budget: 80 bytes (measured 72 natively)"
+        size_of::<Typed<family::Completion>>() <= 96,
+        "Typed<Completion> budget: 96 bytes (measured 88 natively)"
     );
 };
 
 #[cfg(test)]
 mod tests;
+
+/// A handler's way back onto the bus that is serving it: the dispatcher the
+/// driver attached to the sink, whose every dispatch — and every
+/// [`Handle`] bound from it — carries the served dispatch's id as its
+/// parent. Causality as data: the record names the chain, a host parents
+/// the effect's entity at dispatch, and a nested dispatch that would wait
+/// on its own serial key is refused rather than hung.
+pub trait SinkDispatch {
+    /// The scoped dispatcher, or `None` for a sink no bus driver served.
+    fn dispatcher(&self) -> Option<Dispatcher>;
+}
+
+impl SinkDispatch for rig_core::serve::OutcomeSink {
+    fn dispatcher(&self) -> Option<Dispatcher> {
+        self.scope::<Dispatcher>().map(|scoped| (*scoped).clone())
+    }
+}
+
+impl SinkDispatch for rig_core::serve::DetachedSink {
+    fn dispatcher(&self) -> Option<Dispatcher> {
+        self.scope::<Dispatcher>().map(|scoped| (*scoped).clone())
+    }
+}

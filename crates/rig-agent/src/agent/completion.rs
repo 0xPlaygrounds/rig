@@ -691,7 +691,7 @@ impl Agent {
                 },
             }),
             Err(bus) => {
-                config.bus = bus;
+                config.bus = *bus;
                 Err(Box::new(Agent {
                     config,
                     tool_server_handle,

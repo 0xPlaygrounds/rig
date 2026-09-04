@@ -220,6 +220,22 @@ pub struct OutcomeSink {
     /// sink's dispatch in flight — its serial slot, its `in_flight` count
     /// — after the handler future that detached it has returned.
     done: Option<oneshot::Sender<()>>,
+    /// The driver's scope for dispatches the handler makes while serving
+    /// this one: an opaque value the driver attaches ([`with_scope`]) and a
+    /// runtime crate reads back by type — rig-bus hands a `Dispatcher` whose
+    /// dispatches carry this dispatch's id as their parent. rig-core names
+    /// no runtime, so the slot is `Any`; a handler served inline or by a
+    /// driver that attached none has no scope.
+    ///
+    /// [`with_scope`]: OutcomeSink::with_scope
+    scope: Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+    /// Set by the driver when the dispatch is cancelled from above — its
+    /// parent's consumer went away — so the sink is closed to the handler
+    /// (`is_closed`) and a drop reports a cancellation, exactly as when the
+    /// dispatch's own consumer left. Attached with [`with_cancel`].
+    ///
+    /// [`with_cancel`]: OutcomeSink::with_cancel
+    cancelled: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 /// An [`OutcomeSink`] that has left its handler: the external-resolver seam.
@@ -257,6 +273,11 @@ impl std::fmt::Debug for DetachedSink {
 }
 
 impl DetachedSink {
+    /// The driver's scope for nested dispatches; see [`OutcomeSink::scope`].
+    pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.0.scope::<T>()
+    }
+
     /// The dispatch this sink answers.
     pub const fn id(&self) -> EffectId {
         self.0.id()
@@ -360,6 +381,25 @@ impl Drop for OutcomeSink {
             };
             self.tap_outcome(&Err(report));
         }
+        // Cancelled from above with a consumer still listening (a child whose
+        // `Pending` outlived its parent's handler): that consumer is told the
+        // dispatch was cancelled, not that a handler misbehaved.
+        let cancelled_from_above = self
+            .cancelled
+            .as_ref()
+            .is_some_and(|cancelled| cancelled.load(std::sync::atomic::Ordering::SeqCst));
+        if unanswered && cancelled_from_above {
+            match &mut self.inner {
+                SinkInner::Unary { reply, .. } => {
+                    if let Some(reply) = reply.take() {
+                        let _ = reply.send(Err(cancelled()));
+                    }
+                }
+                SinkInner::Stream { events, .. } => {
+                    let _ = events.try_send(Err(cancelled()));
+                }
+            }
+        }
     }
 }
 
@@ -405,6 +445,8 @@ impl OutcomeSink {
             },
             tap: None,
             done: None,
+            scope: None,
+            cancelled: None,
         }
     }
 
@@ -417,6 +459,8 @@ impl OutcomeSink {
             },
             tap: None,
             done: None,
+            scope: None,
+            cancelled: None,
         }
     }
 
@@ -427,6 +471,34 @@ impl OutcomeSink {
     pub fn with_done(mut self, done: oneshot::Sender<()>) -> Self {
         self.done = Some(done);
         self
+    }
+
+    /// Attach the driver's cancel marker (see the field): once set, the
+    /// sink is closed.
+    pub fn with_cancel(mut self, cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.cancelled = Some(cancelled);
+        self
+    }
+
+    /// Attach the driver's scope for nested dispatches (see the field).
+    pub fn with_scope(mut self, scope: std::sync::Arc<dyn std::any::Any + Send + Sync>) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+
+    /// The driver's scope for nested dispatches, read back as the type the
+    /// driver attached; `None` when no driver attached one or it is another
+    /// runtime's.
+    pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.scope
+            .clone()
+            .and_then(|scope| std::sync::Arc::downcast::<T>(scope).ok())
+    }
+
+    /// The driver's scope untyped, for an adapter that passes it on (to a
+    /// tool's [`ToolContext`](crate::tool::ToolContext)).
+    pub fn scope_any(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+        self.scope.clone()
     }
 
     /// Leave the handler: the dispatch stays in flight until the returned
@@ -475,10 +547,15 @@ impl OutcomeSink {
 
     /// Whether the consumer is still listening.
     pub fn is_closed(&self) -> bool {
-        match &self.inner {
-            SinkInner::Unary { reply, .. } => reply.as_ref().is_none_or(|r| r.is_canceled()),
-            SinkInner::Stream { events, finished } => *finished || events.is_closed(),
-        }
+        let cancelled_from_above = self
+            .cancelled
+            .as_ref()
+            .is_some_and(|cancelled| cancelled.load(std::sync::atomic::Ordering::SeqCst));
+        cancelled_from_above
+            || match &self.inner {
+                SinkInner::Unary { reply, .. } => reply.as_ref().is_none_or(|r| r.is_canceled()),
+                SinkInner::Stream { events, finished } => *finished || events.is_closed(),
+            }
     }
 
     /// Resolve a unary dispatch. On a streaming dispatch a completion is

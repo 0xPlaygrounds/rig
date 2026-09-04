@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex, PoisonError},
 };
 
-use rig_core::serve::Recorder;
+use rig_core::serve::{Origin, Recorder};
 use rig_core::{
     effect::{EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
@@ -35,6 +35,7 @@ pub struct EffectLogRecorder {
 /// resolution.
 struct RecordSlot {
     id: EffectId,
+    origin: Origin,
     key: HandlerKey,
     kind: EffectKind,
     outcome: Option<Result<Outcome, ErrorReport>>,
@@ -44,7 +45,8 @@ struct RecordSlot {
 impl RecordSlot {
     fn record(&self) -> Option<EffectRecord> {
         self.outcome.as_ref().map(|outcome| EffectRecord {
-            parent: None,
+            parent: self.origin.parent,
+            scope: self.origin.scope.clone(),
             id: self.id,
             key: self.key.clone(),
             kind: self.kind.clone(),
@@ -168,7 +170,7 @@ impl EffectLogRecorder {
             .count()
     }
 
-    fn begin_slot(&self, id: EffectId, key: HandlerKey, kind: EffectKind) {
+    fn begin_slot(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
         self.header
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -180,6 +182,7 @@ impl EffectLogRecorder {
             .unwrap_or_else(PoisonError::into_inner)
             .push(RecordSlot {
                 id,
+                origin,
                 key,
                 kind,
                 outcome: None,
@@ -225,8 +228,8 @@ impl Recorder for EffectLogRecorder {
         self.set_handlers(handlers);
     }
 
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind) {
-        self.begin_slot(id, key, kind);
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
+        self.begin_slot(id, key, kind, origin);
     }
 
     fn keep_events(&self) -> bool {

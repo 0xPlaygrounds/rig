@@ -17,7 +17,7 @@ use tracing::Instrument;
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    serve::{OnEvent, OnOutcome, OutcomeSink, Recorder},
+    serve::{OnEvent, OnOutcome, Origin, OutcomeSink, Recorder},
     streaming::StreamEvent,
     wasm_compat::WasmBoxedFuture,
 };
@@ -25,20 +25,20 @@ use rig_core::{
 use rig_core::serve::{ErasedHandler, Serve};
 
 use super::{
-    dispatcher::{Command, Shared, handler_unavailable},
+    dispatcher::{Command, Dispatcher, Shared, handler_unavailable},
     registrar::{Mailbox, Registrar, Registration},
 };
 
 use rig_core::serve::ServingPolicy;
 
-type InFlight = WasmBoxedFuture<'static, HandlerKey>;
+type InFlight = WasmBoxedFuture<'static, (HandlerKey, EffectId)>;
 type InFlightServing = Pin<Box<Serving>>;
 
 /// The driver's hold on a recorder: closures, like the sink's taps, so the
 /// driver names no recorder type.
 struct Recording {
     handlers: Box<dyn Fn(Vec<HandlerDescriptor>) + Send + Sync>,
-    begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind) + Send + Sync>,
+    begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind, Origin) + Send + Sync>,
     tap: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
 }
 
@@ -47,7 +47,7 @@ impl Recording {
         let for_handlers = recorder.clone();
         let handlers = Box::new(move |described| for_handlers.handlers(described));
         let for_begin = recorder.clone();
-        let begin = Box::new(move |id, key, kind| for_begin.begin(id, key, kind));
+        let begin = Box::new(move |id, key, kind, origin| for_begin.begin(id, key, kind, origin));
         let tap = Box::new(move |sink: OutcomeSink, id: EffectId| {
             let on_event: Option<OnEvent> = recorder.keep_events().then(|| {
                 let recorder = recorder.clone();
@@ -240,6 +240,11 @@ impl BusDriver {
         self.in_flight.len()
     }
 
+    /// Dispatches accepted but waiting for their key under serial serving.
+    pub fn queued(&self) -> usize {
+        self.queued.values().map(VecDeque::len).sum()
+    }
+
     /// Start serving `command`. Returns whether it went in flight; a command
     /// with no handler is answered `HandlerUnavailable` on the spot and
     /// never occupies its key, and a command whose consumer is already gone
@@ -249,15 +254,12 @@ impl BusDriver {
             id,
             key,
             kind,
+            parent,
+            scope,
             reply,
             span,
             mut cancel,
         } = command;
-        // A `Pending`/`EffectStream` dropped between its send and this poll
-        // (a host despawning in the frame it dispatched) has already
-        // resolved `cancel`. Serving it would give the handler one poll —
-        // enough to start a provider request — and open a record nobody
-        // asked for; a dispatch nobody wants is never served.
         if cancel.try_recv().is_err() {
             drop(reply);
             return false;
@@ -266,54 +268,64 @@ impl BusDriver {
             reply.fail(handler_unavailable(&key));
             return false;
         };
+        // A dispatch whose ancestor was cancelled while it was queued is
+        // dropped unserved: no handler poll, no record.
+        let Ok(flag) = self.shared.begin_in_flight(id, key.clone(), parent) else {
+            reply.fail(rig_core::serve::cancelled());
+            return false;
+        };
         if self.config.serial_per_handler {
             self.busy.insert(key.clone());
         }
-        // The dispatch is over when the *sink* has answered or been dropped
-        // — not when the handler future ends: a handler may detach its
-        // sink and hand it to a system that answers later, and until then
-        // the key stays busy and the dispatch in flight.
         let (done, sink_done) = futures::channel::oneshot::channel();
-        let sink = reply.into_sink(id).with_done(done);
+        // The handler's way back onto this bus: a dispatcher whose dispatches
+        // descend from this one.
+        let scoped = Dispatcher::parented(
+            Arc::clone(&self.shared),
+            self.config.stream_capacity,
+            id,
+            scope.clone(),
+        );
+        let sink = reply
+            .into_sink(id)
+            .with_done(done)
+            .with_cancel(flag.marker())
+            .with_scope(Arc::new(scoped));
         let sink = match &self.recorder {
             Some(recorder) => {
-                // The record's place in the log is its place in the serve
-                // order; the outcome fills it in when the dispatch resolves.
-                (recorder.begin)(id, key.clone(), kind.clone());
+                (recorder.begin)(id, key.clone(), kind.clone(), Origin { parent, scope });
                 (recorder.tap)(sink, id)
             }
             None => sink,
         };
         let task_key = key.clone();
+        let shared = Arc::clone(&self.shared);
         let task = Box::pin(
             async move {
-                // Cancellation is drop: the consumer dropping its `Pending` or
-                // `EffectStream` resolves `cancel`, which drops the handler
-                // future — and with it the provider call or stream inside.
-                // The handler is polled first on purpose: a handler in
-                // flight observes the cancel on its own next poll (its send
-                // answers `SinkClosed`) before the future is dropped, which
-                // is how a streaming adapter stops cleanly. A cancel that
-                // arrived *before* serving never gets here (`serve` above).
-                // The handler future is a `Pin<Box<_>>` and moves into the
-                // select by value; the select's result owns whichever side
-                // lost and drops it here, with the sink inside — unless the
-                // handler detached the sink first.
                 let serving = handler.handle(kind, sink);
-                drop(futures::future::select(serving, cancel).await);
-                // Ended or dropped: if the handler detached its sink, wait
-                // for whoever holds it. (Undetached, the sink went with the
-                // future and this is already resolved.)
+                let ancestor_cancelled = flag.wait();
+                // The handler races the consumer's cancel and an ancestor's:
+                // either drops the handler future (and the sink, which
+                // reports the cancel); the consumer's also reaches every
+                // descendant of this dispatch.
+                match futures::future::select(
+                    serving,
+                    futures::future::select(cancel, ancestor_cancelled),
+                )
+                .await
+                {
+                    futures::future::Either::Left(_) => {}
+                    futures::future::Either::Right((futures::future::Either::Left(_), _)) => {
+                        shared.cancel_descendants(id)
+                    }
+                    futures::future::Either::Right((futures::future::Either::Right(_), _)) => {}
+                }
                 let _ = sink_done.await;
-                task_key
+                (task_key, id)
             }
             .instrument(span),
         );
-        self.in_flight.push(Box::pin(Serving {
-            key,
-            shared: Arc::clone(&self.shared),
-            task,
-        }));
+        self.in_flight.push(Box::pin(Serving { task }));
         true
     }
 
@@ -332,7 +344,21 @@ impl BusDriver {
     /// that can go in flight. A queued command whose handler is gone is
     /// answered on the spot and the loop moves on — a key never strands
     /// its queue behind a command that will not be served.
-    fn release(&mut self, key: HandlerKey) {
+    fn release(&mut self, key: HandlerKey, id: EffectId) {
+        if self.shared.end_in_flight(id) {
+            // Cancelled: the children it still has here are dropped unserved
+            // — no handler poll, no record — and answered as cancelled.
+            for queue in self.queued.values_mut() {
+                let (orphans, kept): (Vec<_>, Vec<_>) = std::mem::take(queue)
+                    .into_iter()
+                    .partition(|command| command.parent == Some(id));
+                *queue = kept.into();
+                for orphan in orphans {
+                    orphan.reply.fail(rig_core::serve::cancelled());
+                }
+            }
+            self.shared.fail_buffered_children(id);
+        }
         if !self.config.serial_per_handler {
             return;
         }
@@ -374,20 +400,14 @@ impl BusDriver {
 /// An in-flight task that tells the bus which key is being polled, so a
 /// dispatch made from inside the handler can be recognised as re-entrant.
 struct Serving {
-    key: HandlerKey,
-    shared: Arc<Shared>,
     task: InFlight,
 }
 
 impl Future for Serving {
-    type Output = HandlerKey;
+    type Output = (HandlerKey, EffectId);
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<HandlerKey> {
-        let this = self.get_mut();
-        this.shared.set_serving(Some(this.key.clone()));
-        let polled = this.task.as_mut().poll(cx);
-        this.shared.set_serving(None);
-        polled
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<(HandlerKey, EffectId)> {
+        self.get_mut().task.as_mut().poll(cx)
     }
 }
 
@@ -434,9 +454,9 @@ impl Future for BusDriver {
                     break;
                 }
                 match this.in_flight.poll_next_unpin(cx) {
-                    Poll::Ready(Some(key)) => {
+                    Poll::Ready(Some((key, id))) => {
                         progressed = true;
-                        this.release(key);
+                        this.release(key, id);
                     }
                     Poll::Ready(None) | Poll::Pending => break,
                 }

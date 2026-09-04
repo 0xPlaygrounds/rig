@@ -180,8 +180,14 @@ where
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         match kind {
             EffectKind::ToolCall { args, context, .. } => {
-                let mut context = context;
+                // The tool reaches its runtime through the context's scope
+                // for the length of the call; the result carries data only.
+                let mut context = match sink.scope_any() {
+                    Some(scope) => context.with_scope(scope),
+                    None => context,
+                };
                 let result = ErasedTool::execute(&self.tool, args, &mut context).await;
+                context.clear_scope();
                 sink.resolve(Ok(Outcome::ToolResult { result, context }))
                     .await;
             }
@@ -277,10 +283,14 @@ where
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         match kind {
             EffectKind::ToolCall { args, context, .. } => {
-                let mut context = context;
+                let mut context = match sink.scope_any() {
+                    Some(scope) => context.with_scope(scope),
+                    None => context,
+                };
                 let result =
                     crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
                         .await;
+                context.clear_scope();
                 sink.resolve(Ok(Outcome::ToolResult { result, context }))
                     .await;
             }

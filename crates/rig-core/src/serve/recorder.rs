@@ -11,6 +11,16 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
+/// Where a dispatch came from, as data: the dispatch it was made from, if
+/// a handler made it, and the scope of the program that made it — a
+/// stable serde id of the dispatching run or agent (never a runtime
+/// handle), stamped by a scoped dispatcher. Both ride the record.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Origin {
+    pub parent: Option<EffectId>,
+    pub scope: Option<std::sync::Arc<str>>,
+}
+
 /// What a driver tells about the dispatches it serves. A driver calls
 /// [`handlers`](Self::handlers) once when recording starts,
 /// [`begin`](Self::begin) as each dispatch is handed to its handler,
@@ -26,8 +36,9 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// again is the same handler re-registered; the latest description
     /// stands.
     fn handlers(&self, handlers: Vec<HandlerDescriptor>);
-    /// A dispatch is about to be served.
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind);
+    /// A dispatch begins: its id, the key it was routed to, the effect, and
+    /// where it came from (its parent and scope).
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin);
     /// Whether streamed events are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
     /// One streamed event of `id`.

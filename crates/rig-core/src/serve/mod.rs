@@ -25,7 +25,7 @@ pub use handler::{
     DetachedSink, ErasedHandler, HandlerFuture, OnEvent, OnOutcome, OutcomeSink, Serve, SinkClosed,
     StreamTap, cancelled, events_from_response, finish_unary, serve_inline, stream_truncated,
 };
-pub use recorder::Recorder;
+pub use recorder::{Origin, Recorder};
 pub use writer::StreamWriter;
 
 /// A driver's sizing and serving policy: what a program was recorded

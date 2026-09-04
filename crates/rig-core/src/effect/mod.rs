@@ -167,6 +167,30 @@ mod arc_str {
     }
 }
 
+/// `Option<Arc<str>>` as an optional string on the wire.
+mod opt_arc_str {
+    use std::sync::Arc;
+
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(
+        value: &Option<Arc<str>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(value) => serializer.serialize_some(&**value),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Arc<str>>, D::Error> {
+        let value = <Option<std::borrow::Cow<'de, str>>>::deserialize(deserializer)?;
+        Ok(value.map(|value| Arc::from(&*value)))
+    }
+}
+
 /// The families of effect — the discriminant a typed view checks at bind
 /// time and the label a log line prints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -855,6 +879,13 @@ pub struct EffectRecord {
     /// the effect's entity by it, a replay reads the chain off the record.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<EffectId>,
+    /// The scope of the program that made the dispatch: a stable serde id
+    /// of the dispatching run or agent — never a runtime handle — stamped
+    /// by a scoped dispatcher, so one log written by several programs in
+    /// one world can be read per program. `None` when the dispatcher had
+    /// no scope, which is every record today.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_arc_str")]
+    pub scope: Option<std::sync::Arc<str>>,
 }
 
 /// The effect row of a program: which keys it can dispatch to, and of

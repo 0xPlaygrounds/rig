@@ -148,6 +148,37 @@
 //!   compile time, so a field that grows one past its budget fails to
 //!   compile rather than quietly costing every dispatch.
 //!
+//! # Causal dispatch
+//!
+//! A handler's way back onto the bus is its sink's dispatcher
+//! ([`SinkDispatch::dispatcher`]): every dispatch made through it — and
+//! every [`Handle`] bound from it — carries the served dispatch's id as its
+//! **parent**, readable on the [`Pending`]/[`EffectStream`]/[`Typed`]
+//! (`parent()`) and passed to the recorder, so a record names the dispatch
+//! it was made from and a host can parent the effect's entity at dispatch.
+//! Two rules follow from the chain, as data rather than from the thread the
+//! driver happens to poll on:
+//!
+//! - Under serial serving, a dispatch that descends from a dispatch in
+//!   flight on its own key would queue behind that ancestor and wait on
+//!   itself; it is refused (`ErrorKind::Request`, "re-entrant") — from a
+//!   spawned task exactly as from the handler's own poll.
+//! - A cancel reaches the chain: dropping a [`Pending`] whose handler
+//!   dispatched children flags every descendant in flight (its handler is
+//!   dropped, its sink reads closed, its record and any consumer still
+//!   holding it say `Cancelled`) and drops the ones still queued or
+//!   buffered unserved — no handler poll, no record.
+//!
+//! A consumer's dispatcher holds the bus open for commands; the scoped one
+//! a handler reads off its sink does not — the dispatch it serves does.
+//!
+//! Beside the parent, a dispatch carries a **scope**: [`Dispatcher::scoped`]
+//! stamps every dispatch made through the clone it returns — and every
+//! nested dispatch a handler makes while serving one — with a stable id of
+//! the program dispatching (a run id, an agent name; never a runtime
+//! handle), recorded as `EffectRecord::scope`, so a log several programs
+//! write in one world reads per program. `None` when nothing set it.
+//!
 //! # Writing a handler
 //!
 //! Provider and tool authors keep implementing the impl-side traits exactly
@@ -173,7 +204,7 @@ pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
 pub use driver::BusDriver;
 pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
-    Retrieval, ToolCall, ToolHandle, Typed, wrap_stream,
+    Retrieval, SinkDispatch, ToolCall, ToolHandle, Typed, wrap_stream,
 };
 pub use registrar::Registrar;
 use rig_core::serve::ServingPolicy;

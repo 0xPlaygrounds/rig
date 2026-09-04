@@ -27,6 +27,7 @@ fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
             parent: None,
+            scope: None,
             id: EffectId::from_raw(1),
             key: HandlerKey::from("model"),
             kind: EffectKind::Completion {
@@ -42,6 +43,7 @@ fn effect_record_and_log_round_trip() {
         },
         EffectRecord {
             parent: None,
+            scope: None,
             id: EffectId::from_raw(2),
             key: HandlerKey::from("tool:add"),
             kind: EffectKind::ToolCall {
@@ -79,8 +81,18 @@ fn the_recorder_finds_the_newest_slot_first() {
         payload: serde_json::Value::Null,
     };
     let id = EffectId::from_raw(7);
-    recorder.begin(id, HandlerKey::from("k"), kind());
-    recorder.begin(id, HandlerKey::from("k"), kind());
+    recorder.begin(
+        id,
+        HandlerKey::from("k"),
+        kind(),
+        rig_core::serve::Origin::default(),
+    );
+    recorder.begin(
+        id,
+        HandlerKey::from("k"),
+        kind(),
+        rig_core::serve::Origin::default(),
+    );
     recorder.resolve(id, Ok(Outcome::Custom(serde_json::json!("newest"))));
     let log = recorder.take();
     assert_eq!(log.records.len(), 1, "one slot resolved");

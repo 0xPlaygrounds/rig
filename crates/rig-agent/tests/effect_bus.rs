@@ -642,10 +642,19 @@ async fn a_nested_agent_call_from_a_tool_is_served_by_the_driving_run() {
 }
 
 /// A tool that, from inside its own execution, runs a nested prompt whose
-/// model calls this same tool again.
+/// model calls this same tool again. The nested agent is built over the
+/// call's scope (`ToolContext::scope`, a dispatcher parented by this
+/// call), so its dispatches descend from the outer call: causality as
+/// data, which is what the serial re-entrancy rule reads.
 #[derive(Clone, Default)]
 struct NestedSameTool {
-    agent: Arc<OnceLock<Agent>>,
+    host: Arc<
+        OnceLock<(
+            rig_bus::Registrar,
+            HandlerKey,
+            rig_agent::tool::server::ToolServerHandle,
+        )>,
+    >,
     inner_outputs: Arc<Mutex<Vec<String>>>,
 }
 
@@ -665,11 +674,22 @@ impl Tool for NestedSameTool {
 
     async fn call(
         &self,
-        _context: &mut ToolContext,
+        context: &mut ToolContext,
         _args: serde_json::Value,
     ) -> Result<String, Self::Error> {
-        let agent = self.agent.get().expect("set after build").clone();
-        let response = agent
+        let (registrar, model_key, tools) = self.host.get().expect("set after build").clone();
+        let scoped = context
+            .scope::<rig_bus::Dispatcher>()
+            .expect("served over a bus: the call has a scope");
+        assert!(
+            scoped.parent().is_some(),
+            "the scope is parented by this call"
+        );
+        let nested = AgentBuilder::over_bus((*scoped).clone(), registrar, "golden", model_key)
+            .name("golden")
+            .tool_server_handle(tools)
+            .build();
+        let response = nested
             .prompt("nested")
             .max_turns(2)
             .run()
@@ -689,8 +709,9 @@ impl Tool for NestedSameTool {
 async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
     // Outer turn: call `same`. Inside it the nested run's model calls `same`
     // again — under serial serving that would queue behind the outer call
-    // that waits on it, so the bus refuses it and the nested model sees a
-    // skipped tool result, answers, and the outer run completes.
+    // that waits on it, so the bus refuses it (the nested run descends from
+    // the outer call), the nested model sees a skipped tool result,
+    // answers, and the outer run completes.
     let tool = NestedSameTool::default();
     let call_same = || {
         MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
@@ -700,22 +721,34 @@ async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
             ),
         )])
     };
-    let agent = AgentBuilder::with_bus_config(
-        ServingPolicy {
-            serial_per_handler: true,
-            ..ServingPolicy::default()
-        },
-        "default",
-        MockCompletionModel::from_turns([
-            call_same(),
-            call_same(),
-            MockTurn::text("inner-done"),
-            MockTurn::text("done"),
-        ]),
-    )
-    .tool(tool.clone())
-    .build();
-    tool.agent.set(agent.clone()).ok().expect("unset");
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    });
+    let model_key = HandlerKey::from("golden/model:default");
+    driver
+        .register_erased(
+            model_key.clone(),
+            rig_core::serve::ErasedHandler::new(CompletionAdapter::new(
+                "default",
+                MockCompletionModel::from_turns([
+                    call_same(),
+                    call_same(),
+                    MockTurn::text("inner-done"),
+                    MockTurn::text("done"),
+                ]),
+            )),
+        )
+        .expect("a fresh key");
+    let driving = tokio::spawn(driver);
+    let agent = AgentBuilder::over_bus(dispatcher, registrar.clone(), "golden", model_key.clone())
+        .name("golden")
+        .tool(tool.clone())
+        .build();
+    tool.host
+        .set((registrar, model_key, agent.tool_server_handle().clone()))
+        .ok()
+        .expect("unset");
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("the outer run completes: the re-entrant call was refused, not queued");
@@ -724,6 +757,8 @@ async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
         *tool.inner_outputs.lock().expect("lock"),
         vec!["inner-done".to_string()]
     );
+    drop((agent, tool));
+    within(driving).await.expect("the driver ends");
 }
 
 // ---------------------------------------------------------------------------

@@ -454,3 +454,37 @@ fn bus_has_no_unsafe() {
         offenders.join("\n")
     );
 }
+
+/// The bus reads no thread identity: re-entrancy is a chain of parent ids on
+/// the commands (causal dispatch), so a nested dispatch made from a spawned
+/// task is refused like one made inline, and nothing depends on which thread
+/// polls the driver. `loom::thread` in the models is spawning, not identity.
+#[test]
+fn bus_reads_no_thread_identity() {
+    let mut offenders = Vec::new();
+    for source in sources() {
+        if source.krate != "rig-bus" {
+            continue;
+        }
+        for (line_number, line) in source.text.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            if line.contains("thread::current") || line.contains("ThreadId") {
+                offenders.push(format!(
+                    "{}/{}:{}: {}",
+                    source.krate,
+                    source.relative,
+                    line_number + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "thread identity read in the bus:\n{}",
+        offenders.join("\n")
+    );
+}
