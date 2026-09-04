@@ -1317,3 +1317,102 @@ impl rig::agent::AgentHook for SelectLate {
         rig::agent::ModelSelectionAction::select(LATE_ROUTE)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Matrix O: the oracle and the header.
+
+/// `on_model_turn_finished` → `Stop` after turn `n`, named by `n`: a
+/// stateful hook whose header name carries its state.
+#[allow(dead_code)]
+pub(crate) struct StopAfterTurnN(pub usize);
+
+#[allow(dead_code)]
+pub(crate) fn stop_after_turn_reason(n: usize) -> String {
+    format!("stopped after turn {n}")
+}
+
+impl rig::agent::AgentHook for StopAfterTurnN {
+    fn name(&self) -> Option<String> {
+        Some(format!("StopAfterTurn({})", self.0))
+    }
+
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        if event.turn == self.0 {
+            rig::agent::ModelTurnAction::stop(stop_after_turn_reason(self.0))
+        } else {
+            rig::agent::ModelTurnAction::continue_run()
+        }
+    }
+}
+
+/// The host's key for its reranker.
+#[allow(dead_code)]
+pub(crate) const RERANK_KEY: &str = "host/rerank";
+#[allow(dead_code)]
+pub(crate) const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
+
+/// A reranker that ranks by document length, longest first: a mock behind
+/// a `RerankAdapter`, since no keyed provider in the tree has a rerank
+/// cassette suite.
+#[allow(dead_code)]
+pub(crate) struct MockRerank;
+
+impl rig::rerank::RerankModel for MockRerank {
+    fn max_documents(&self) -> usize {
+        16
+    }
+
+    async fn rerank(
+        &self,
+        _query: &str,
+        documents: Vec<String>,
+    ) -> Result<rig::rerank::RerankResponse, rig::rerank::RerankError> {
+        let mut results: Vec<rig::rerank::RerankResult> = documents
+            .iter()
+            .enumerate()
+            .map(|(index, document)| rig::rerank::RerankResult {
+                index,
+                document: Some(document.clone()),
+                relevance_score: document.len() as f64 / 100.0,
+            })
+            .collect();
+        results.sort_by(|left, right| right.relevance_score.total_cmp(&left.relevance_score));
+        let mut response = rig::rerank::RerankResponse::new(results, "mock");
+        response.model = Some("mock-rerank".to_owned());
+        Ok(response)
+    }
+}
+
+/// `on_run_start` → the prompt reranks two documents through the host's
+/// reranker.
+#[allow(dead_code)]
+pub(crate) struct RerankDocs;
+
+impl rig::agent::AgentHook for RerankDocs {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let key: rig::effect::Key<rig::effect::family::Rerank> =
+            rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(RERANK_KEY));
+        let host = ctx.bind(&key).expect("the host serves reranking");
+        let query = event.prompt.rag_text().expect("a text prompt");
+        let ranked = host
+            .dispatch(rig::effect::RerankRequest {
+                query,
+                documents: RERANK_DOCUMENTS
+                    .iter()
+                    .map(|doc| (*doc).to_owned())
+                    .collect(),
+            })
+            .await
+            .expect("the host reranks");
+        assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        rig::agent::RunStartAction::continue_run()
+    }
+}

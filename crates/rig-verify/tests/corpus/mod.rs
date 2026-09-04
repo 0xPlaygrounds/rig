@@ -16,18 +16,21 @@
 //!
 //! | axis | values |
 //! |---|---|
-//! | completion transport | unary · streamed, events dropped · streamed, events kept |
+//! | completion transport | unary · streamed, events dropped · streamed, events kept · streamed on a delta wire (tool names and arguments as deltas) |
 //! | tool shape | none · one call then answer · two calls in one turn · two turns · zero-arg tool · a tool that errors |
 //! | tool id wire | provider id (anthropic) · id-less, minted `tool-<n>` (gemini) · dual `call_id`/`item_id` (openai) |
 //! | serving | `serial_per_handler` false · true; `tool_concurrency` 1 · 2; capacities default · 1 |
 //! | memory | none · `Load` + `Append` · `Load` of an empty conversation · `Clear` from a hook (after the load, or after the append) · two runs in one log · explicit history (bypassed) · a `Load` or `Append` that fails |
 //! | retrieval | none · `dynamic_context(n, index)` (`TopN`) · `retrieved_tools(n, index, toolset)` (`TopNIds`) · both |
-//! | embedding, rerank, custom | never dispatched by the agent itself: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a hook dispatches `Embed` and a host's `Custom<E>` over the host's bus (Matrix I); `Rerank` has no keyed cassette suite |
+//! | embedding, rerank, custom | never dispatched by the agent itself: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a hook dispatches `Embed`, `Rerank` (a mock reranker: no keyed cassette suite) and a host's `Custom<E>` over the host's bus (Matrices I, N, O) |
 //! | hooks | none · observe-only · `on_dispatch` → `Patch` · `Deny` · `on_outcome` → `Replace` · `on_invalid_tool_call` → `Retry` · `Repair` · `Skip` · `on_completion_call` → request patch · a hook that dispatches through `HookContext` · a stop at every point (`on_run_start`, `on_model_select`, `on_completion_call`, `on_dispatch`, `on_outcome`, `on_model_turn`, a delta) |
 //! | model routing | one model · `model_route` with `on_model_select` choosing the other |
 //! | output | text · `output_schema` under `Native` · `Tool` (the output tool's call, reprompted when missing or incomplete) · `Prompted` |
 //! | bus ownership | own bus (`bus` in the header) · a host's bus via `over_bus` (`bus: None`) |
-//! | run continuation | one run · serialize mid-run, resume on a fresh bus |
+//! | run continuation | one run · serialize after the first tool turn, resume on the same replay bus (every kind of program: hooks, memory, a committed output tool, a route, an ignored call, a streamed head) |
+//! | per-turn shaping | none · a request patch on one turn (`tool_choice`, `extra_context`, `preamble`, `max_tokens`, `additional_params`, `active_tools`, `history`) · patches merged from several hooks · a route on the first turn · a route registered after build |
+//! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
+//! | interpreters | the bus engine · the hand driver · the resumed engine · the Bevy host replaying the log as a script |
 //! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
 //! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
 //!
@@ -175,6 +178,12 @@ pub enum Hook {
     /// `on_model_select` → `Select("late")` on every turn: a route
     /// registered after build.
     SelectLate,
+    /// `on_model_turn_finished` → `Stop` after turn `n`, named by `n`
+    /// (Matrix O: a stateful hook).
+    StopAfterTurnN(usize),
+    /// `on_run_start` → two documents reranked through the host's
+    /// reranker.
+    RerankDocs,
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -1011,7 +1020,9 @@ fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
         | Hook::StopOnToolNameDelta
         | Hook::StopOnToolArgumentsDelta
         | Hook::RouteOnFirstTurn
-        | Hook::SelectLate => None,
+        | Hook::SelectLate
+        | Hook::StopAfterTurnN(_)
+        | Hook::RerankDocs => None,
     }
 }
 
@@ -1084,6 +1095,65 @@ impl AgentHook for SelectLate {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Matrix O: a stateful hook, a host's reranker.
+
+pub fn stop_after_turn_reason(n: usize) -> String {
+    format!("stopped after turn {n}")
+}
+
+struct StopAfterTurnN(usize);
+
+impl AgentHook for StopAfterTurnN {
+    fn name(&self) -> Option<String> {
+        Some(format!("StopAfterTurn({})", self.0))
+    }
+
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        event: ModelTurnFinished<'_>,
+    ) -> ModelTurnAction {
+        if event.turn == self.0 {
+            ModelTurnAction::stop(stop_after_turn_reason(self.0))
+        } else {
+            ModelTurnAction::continue_run()
+        }
+    }
+}
+
+pub const RERANK_KEY: &str = "host/rerank";
+pub const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
+
+pub fn rerank_key() -> rig_core::effect::Key<rig_core::effect::family::Rerank> {
+    rig_core::effect::Key::new_unchecked(HandlerKey::from(RERANK_KEY))
+}
+
+pub fn rerank_request(query: &str) -> rig_core::effect::RerankRequest {
+    rig_core::effect::RerankRequest {
+        query: query.to_owned(),
+        documents: RERANK_DOCUMENTS
+            .iter()
+            .map(|doc| (*doc).to_owned())
+            .collect(),
+    }
+}
+
+struct RerankDocs;
+
+impl AgentHook for RerankDocs {
+    async fn on_run_start(&self, ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+        let host = ctx.bind(&rerank_key()).expect("the host serves reranking");
+        let query = event.prompt.rag_text().expect("a text prompt");
+        let ranked = host
+            .dispatch(rerank_request(&query))
+            .await
+            .expect("the host reranks");
+        assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        RunStartAction::continue_run()
+    }
+}
+
 fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
@@ -1132,6 +1202,8 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::PatchHistoryFirst => builder.add_hook(PatchHistoryFirst),
             Hook::RouteOnFirstTurn => builder.add_hook(RouteOnFirstTurn),
             Hook::SelectLate => builder.add_hook(SelectLate),
+            Hook::StopAfterTurnN(n) => builder.add_hook(StopAfterTurnN(*n)),
+            Hook::RerankDocs => builder.add_hook(RerankDocs),
         };
     }
     builder
@@ -1713,8 +1785,8 @@ pub async fn call_tools(
 }
 
 /// The name the header records for a hook: its type's last path segment.
-fn hook_name(hook: Hook) -> &'static str {
-    match hook {
+fn hook_name(hook: Hook) -> String {
+    let name = match hook {
         Hook::RetryUnknownTool => "RetryUnknownTool",
         Hook::ObserveEverything => "ObserveEverything",
         Hook::PatchAddArgs => "PatchAddArgs",
@@ -1760,7 +1832,10 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::PatchHistoryFirst => "PatchHistoryFirst",
         Hook::RouteOnFirstTurn => "RouteOnFirstTurn",
         Hook::SelectLate => "SelectLate",
-    }
+        Hook::StopAfterTurnN(n) => return format!("StopAfterTurn({n})"),
+        Hook::RerankDocs => "RerankDocs",
+    };
+    name.to_owned()
 }
 
 /// What the bus engine's `check_replayable` checks, for the hand driver:
@@ -1783,9 +1858,9 @@ pub fn assert_header_names_the_program(replay: &Replay, program: &Program) {
     // `dynamic_context` is a hook of the builder's own (`DynamicContext`),
     // named in the header like any other; the producers register it
     // before their own hooks.
-    let hooks: Vec<&str> = program
+    let hooks: Vec<String> = program
         .dynamic_context
-        .map(|_| "DynamicContext")
+        .map(|_| "DynamicContext".to_owned())
         .into_iter()
         .chain(program.hooks.iter().map(|hook| hook_name(*hook)))
         .collect();
@@ -2136,6 +2211,16 @@ async fn hand_drive(program: &Program, resume: bool) {
             assert_eq!(first.expect("acknowledged").at, "first");
             assert_eq!(second.expect("acknowledged").at, "second");
         }
+        if program.hooks.contains(&Hook::RerankDocs) {
+            let host = replay
+                .dispatcher
+                .bind(&rerank_key())
+                .expect("the host serves reranking");
+            let ranked = within(host.dispatch(rerank_request(prompt)))
+                .await
+                .expect("the replayer reranked");
+            assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        }
         if program.hooks.contains(&Hook::EmbedPrompt) {
             let host = replay
                 .dispatcher
@@ -2183,6 +2268,9 @@ async fn hand_drive(program: &Program, resume: bool) {
                     history,
                     turn,
                 } => {
+                    // The step's turn number, before `turn` is rebound to
+                    // the model's turn below.
+                    let turn_number = turn;
                     // The selection hook's choice: a route after the first
                     // turn, on the first turn only, or on every turn.
                     let (model, label) = match &route {
@@ -2516,6 +2604,19 @@ async fn hand_drive(program: &Program, resume: bool) {
                     }
                     if program.hooks.contains(&Hook::StopAfterTurn) {
                         cancelled = Some(STOP_AFTER_TURN);
+                        break None;
+                    }
+                    // The stateful stop, at its turn: the reason the hook formats is
+                    // the program's ending, a literal.
+                    if let Some(n) = program.hooks.iter().find_map(|hook| match hook {
+                        Hook::StopAfterTurnN(n) if *n == turn_number => Some(*n),
+                        _ => None,
+                    }) {
+                        let Ending::Cancelled(expected) = program.ending else {
+                            panic!("a stateful stop ends the run");
+                        };
+                        assert_eq!(stop_after_turn_reason(n), expected);
+                        cancelled = Some(expected);
                         break None;
                     }
                     if program.hooks.contains(&Hook::StopAtAnswer) && !has_tool_calls {

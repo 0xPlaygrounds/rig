@@ -15,6 +15,7 @@ mod golden_endings;
 mod golden_hooks;
 mod golden_invalid;
 mod golden_memory;
+mod golden_oracle;
 mod golden_outcome;
 mod golden_output;
 mod golden_pairing;

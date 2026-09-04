@@ -360,6 +360,18 @@ pub(super) async fn with_anthropic_corpus_endings_cassette<F, Fut>(
     with_anthropic_cassette(spec, test_body).await;
 }
 
+/// The effect corpus's oracle matrix (Matrix O):
+/// `tests/cassettes/anthropic/corpus_oracle/`.
+pub(super) async fn with_anthropic_corpus_oracle_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
 /// The effect corpus's per-turn shaping matrix (Matrix M):
 /// `tests/cassettes/anthropic/corpus_shaping/`.
 pub(super) async fn with_anthropic_corpus_shaping_cassette<F, Fut>(

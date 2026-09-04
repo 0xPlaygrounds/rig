@@ -44,6 +44,11 @@
 //! | H, output modes | `corpus_output.rs` | 14 goldens, `Tool` and `Prompted` |
 //! | I, a host's own families | `corpus_host.rs` | 12 goldens, custom and embedding over a host's bus |
 //! | J, memory operations | `corpus_memory.rs` | 12 goldens, clears, two runs, failures |
+//! | K, the delta wire | `corpus_delta.rs` | 13 goldens, name and argument deltas |
+//! | L, resumption under everything | `corpus_resume.rs` | 18 existing goldens resumed |
+//! | M, per-turn shaping | `corpus_shaping.rs` | 12 goldens, request patches and routes |
+//! | N, provider breadth | `corpus_breadth.rs` | 12 goldens, gemini and openai |
+//! | O, the oracle and the header | `corpus_oracle.rs` | 4 goldens and the corpus-wide assertions |
 //!
 //! Every golden is replayed by both interpreters (a cancelled stream by
 //! both too: the replayer answers the record as the cancel it was, after
