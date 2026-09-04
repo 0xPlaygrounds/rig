@@ -400,14 +400,6 @@ impl PublishedContext {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take()
     }
-
-    /// Whether the tool published.
-    pub fn is_published(&self) -> bool {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
-    }
 }
 
 /// A [`ToolContext`] slot could not be read or written.

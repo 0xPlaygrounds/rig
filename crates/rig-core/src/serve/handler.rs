@@ -783,7 +783,7 @@ fn finish_unary(
 /// Re-emit a completed response as the events a stream consumer expects:
 /// one block per content item, then `Final`. Used when a unary answer meets
 /// a streaming dispatch (a replayed log, a unary-only custom handler).
-pub fn events_from_response(
+pub(crate) fn events_from_response(
     response: &CompletionResponse,
 ) -> Vec<Result<StreamEvent, ErrorReport>> {
     use crate::{

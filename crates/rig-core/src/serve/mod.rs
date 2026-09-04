@@ -25,7 +25,7 @@ mod writer;
 
 pub use handler::{
     DetachedSink, ErasedHandler, HandlerFuture, Observe, OutcomeSink, Serve, SinkClosed, StreamTap,
-    cancelled, events_from_response, serve_inline, serve_inline_with, stream_truncated,
+    cancelled, serve_inline, serve_inline_with, stream_truncated,
 };
 pub use layer::{Decision, Intercept, Layer, Verdict};
 pub use recorder::{Origin, Recorder};

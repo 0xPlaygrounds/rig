@@ -10533,7 +10533,6 @@ dependencies = [
  "pin-project-lite",
  "proptest",
  "quick-xml",
- "rayon",
  "redis",
  "rig-core",
  "rig-derive",

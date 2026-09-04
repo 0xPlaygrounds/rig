@@ -16,10 +16,10 @@ help: the trait `Serve` is not implemented for `NotAHandler`
              CompletionAdapter<M>
              EmbedAdapter<E>
              ErasedHandler
-             ImageEmbedAdapter<E>
              Layer<I>
              MemoryAdapter<M>
              RerankAdapter<M>
+             RetrieveAdapter<I>
            and $N others
 note: required by a bound in `Registrar::register`
   --> $WORKSPACE/crates/rig-agent/src/bus/registrar.rs

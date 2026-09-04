@@ -117,18 +117,8 @@ pub struct Layer<I: Intercept> {
 
 impl<I: Intercept> Layer<I> {
     /// `intercept` around `inner`.
-    pub fn new(inner: ErasedHandler, intercept: I) -> Self {
+    pub(crate) fn new(inner: ErasedHandler, intercept: I) -> Self {
         Self { inner, intercept }
-    }
-
-    /// The policy.
-    pub fn intercept(&self) -> &I {
-        &self.intercept
-    }
-
-    /// The handler beneath.
-    pub fn inner(&self) -> &ErasedHandler {
-        &self.inner
     }
 
     fn internal(&self, message: String) -> ErrorReport {

@@ -15,7 +15,7 @@ use crate::{
         HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
         RetrievedDocuments, ToolEmbeddingDescriptor,
     },
-    embeddings::{EmbeddingModel, ImageEmbeddingModel},
+    embeddings::EmbeddingModel,
     error::{ErrorKind, ErrorReport},
     memory::ConversationMemory,
     rerank::RerankModel,
@@ -451,81 +451,6 @@ where
             | EffectKind::Retrieve { .. }
             | EffectKind::Custom { .. }) => {
                 sink.resolve(Err(wrong_family(EffectFamily::Rerank, &other)))
-                    .await;
-            }
-        }
-    }
-}
-
-/// An [`ImageEmbeddingModel`] as a handler.
-pub struct ImageEmbedAdapter<E> {
-    label: String,
-    model: E,
-}
-
-impl<E> ImageEmbedAdapter<E> {
-    /// Wrap `model` under `label`.
-    pub fn new(label: impl Into<String>, model: E) -> Self {
-        Self {
-            label: label.into(),
-            model,
-        }
-    }
-
-    /// The wrapped model.
-    pub fn model(&self) -> &E {
-        &self.model
-    }
-}
-
-impl<E> Serve for ImageEmbedAdapter<E>
-where
-    E: ImageEmbeddingModel + 'static,
-{
-    type Family = family::Embed;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: HandlerKey::from(format!("embed:{}", self.label)),
-            family: FamilyDescriptor::Embed {
-                model: self.label.clone(),
-                dims: Some(self.model.ndims()),
-                max_documents: self.model.max_documents(),
-                modality: EmbedModality::Image,
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        match kind {
-            EffectKind::Embed {
-                inputs: EmbedInputs::Images(images),
-            } => {
-                let outcome = self
-                    .model
-                    .embed_images_response(images)
-                    .await
-                    .map(|response| Outcome::Embeddings(EmbedOutputs::Images(response)))
-                    .map_err(ErrorReport::from);
-                sink.resolve(outcome).await;
-            }
-            EffectKind::Embed {
-                inputs: EmbedInputs::Texts(_),
-            } => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    "an image embedding handler cannot embed text",
-                )))
-                .await;
-            }
-            other @ (EffectKind::Completion { .. }
-            | EffectKind::ToolCall { .. }
-            | EffectKind::Memory { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Rerank { .. }
-            | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
                     .await;
             }
         }
