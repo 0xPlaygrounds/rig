@@ -166,6 +166,8 @@ jobs:
             test: wasm
           - package: rig-ecs
             test: bus_wasm
+          - package: rig-ecs
+            test: run_wasm
     steps:
       - name: Checkout
         uses: actions/checkout@v5

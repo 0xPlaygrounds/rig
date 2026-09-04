@@ -247,7 +247,7 @@ fn no_serde_type_holds_an_entity() {
                     if body_line.contains('{') {
                         opened = true;
                     }
-                    if body_line.contains("Entity") {
+                    if mentions_word(body_line, "Entity") {
                         offenders.push(format!(
                             "{}:{}: {}",
                             relative(&path),
@@ -273,19 +273,87 @@ fn no_serde_type_holds_an_entity() {
 }
 
 /// The crate's tests live where the module guard can find them: every
-/// integration test file is a `bus_*` file (the substrate's own suite) —
-/// until a later module adds its own.
+/// integration test file is a `bus_*` file (the substrate's own suite) or
+/// a `run_*` file (the agent's), and no `bus_*` file imports an agent
+/// module — the substrate's suite is the future rig-bevy suite verbatim.
 #[test]
-fn every_test_file_belongs_to_the_bus_suite() {
+fn every_test_file_belongs_to_a_suite_and_the_bus_suite_is_agent_free() {
     let tests = crate_root().join("tests");
     let offenders: Vec<String> = std::fs::read_dir(&tests)
         .expect("rig-ecs has tests")
         .flatten()
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| !name.starts_with("bus_"))
+        .filter(|name| !name.starts_with("bus_") && !name.starts_with("run_"))
         .collect();
     assert!(
         offenders.is_empty(),
-        "a test file outside the bus suite: {offenders:?}"
+        "a test file outside the bus and run suites: {offenders:?}"
+    );
+    let mut imports = Vec::new();
+    for path in rust_files(&tests) {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !name.starts_with("bus_") && !path.to_string_lossy().contains("bus_support") {
+            continue;
+        }
+        let text = read(&path);
+        for (number, line) in code_lines(&text) {
+            for module in [
+                "rig_ecs::agent",
+                "rig_ecs::systems",
+                "rig_ecs::policy",
+                "rig_ecs::replay",
+            ] {
+                if line.contains(module) {
+                    imports.push(format!("{}:{number}: {module}", relative(&path)));
+                }
+            }
+        }
+    }
+    assert!(
+        imports.is_empty(),
+        "the bus suite imports an agent module:\n{}",
+        imports.join("\n")
+    );
+}
+
+/// The agent modules' discipline: nothing from the frozen crate, no
+/// history vector or document vector outside the fold, no
+/// `CompletionRequest` built outside the fold, and (with the bus module's
+/// rules) no clock, no random draw, no `Entity` in a serde payload.
+#[test]
+fn the_agent_modules_hold_the_discipline() {
+    let src = crate_root().join("src");
+    let mut offenders = Vec::new();
+    for path in rust_files(&src) {
+        let relative_path = relative(&path);
+        let is_fold =
+            relative_path == "src/policy/mod.rs" || relative_path == "src/policy/tests.rs";
+        let text = read(&path);
+        for (number, line) in code_lines(&text) {
+            for needle in ["rig_agent", "rig::agent"] {
+                if line.contains(needle) {
+                    offenders.push(format!(
+                        "{relative_path}:{number}: `{needle}` — nothing from the frozen crate"
+                    ));
+                }
+            }
+            if !is_fold {
+                for needle in ["Vec<Message>", "Vec<Document>", "CompletionRequest {"] {
+                    if line.contains(needle) {
+                        offenders.push(format!(
+                            "{relative_path}:{number}: `{needle}` — the fold is the only place a request or a history vector exists"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "the agent modules break the discipline:\n{}",
+        offenders.join("\n")
     );
 }
