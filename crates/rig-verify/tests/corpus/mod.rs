@@ -62,8 +62,8 @@ use rig_agent::{
     completion::PromptError,
     run::{
         AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
-        ModelTurnOutcome, PendingToolCall, RunSpec, StreamedResolution, StreamedTurnAssembler,
-        StreamedTurnEvent, prepare_request,
+        ModelTurnOutcome, PendingToolCall, PromptResponse, RunSpec, StreamedResolution,
+        StreamedTurnAssembler, StreamedTurnEvent, prepare_request,
     },
     tool::{RegisteredTool, server::ToolServer},
 };
@@ -1179,9 +1179,31 @@ impl Replay {
 // ---------------------------------------------------------------------------
 // The bus engine.
 
-pub async fn bus_engine_reproduces(program: &Program) {
-    let replay = Replay::open(program);
-    let server = replay.tool_server_for(program);
+/// The program's agent over the replay bus, its memory, route and
+/// context handlers replaying from `source` (the whole golden for a
+/// fresh run; the golden's tail for a resumed one, whose head the hand
+/// driver's handlers answered).
+pub fn build_agent(
+    replay: &Replay,
+    program: &Program,
+    server: rig_agent::tool::server::ToolServerHandle,
+    source: &EffectLog,
+) -> rig_agent::Agent {
+    let agent = build_agent_unchecked(replay, program, server, source);
+    agent
+        .check_replayable(&replay.log)
+        .expect("the same program as the one recorded");
+    agent
+}
+
+/// [`build_agent`] without the replay check, for a row that pins the
+/// refusal.
+pub fn build_agent_unchecked(
+    replay: &Replay,
+    program: &Program,
+    server: rig_agent::tool::server::ToolServerHandle,
+    source: &EffectLog,
+) -> rig_agent::Agent {
     let mut builder = AgentBuilder::over_bus(
         replay.dispatcher.clone(),
         replay.registrar.clone(),
@@ -1225,7 +1247,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
     }
     builder = add_hooks(builder, program.hooks);
     if let Some(conversation) = program.conversation {
-        let memory = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
+        let memory = EffectLogReplayer::for_key(source, &replay.memory_key)
             .expect("the conversation's records");
         builder = builder.memory_handler(memory).conversation(conversation);
     }
@@ -1233,19 +1255,22 @@ pub async fn bus_engine_reproduces(program: &Program) {
     // producer's `model_route` was; the host bus serves only the default
     // model, as the producer's client did.
     if let Some(label) = program.route {
-        let route = EffectLogReplayer::for_key(&replay.log, &replay.route_key(label))
+        let route = EffectLogReplayer::for_key(source, &replay.route_key(label))
             .expect("the route is in the required row");
         builder = builder.model_route_handler(label, route);
     }
     if let Some(samples) = program.dynamic_context {
-        let index = EffectLogReplayer::for_key(&replay.log, &replay.context_key())
+        let index = EffectLogReplayer::for_key(source, &replay.context_key())
             .expect("the context index's records");
         builder = builder.dynamic_context_handler(samples, index);
     }
-    let agent = builder.build();
-    agent
-        .check_replayable(&replay.log)
-        .expect("the same program as the one recorded");
+    builder.build()
+}
+
+pub async fn bus_engine_reproduces(program: &Program) {
+    let replay = Replay::open(program);
+    let server = replay.tool_server_for(program);
+    let agent = build_agent(&replay, program, server, &replay.log);
 
     let prompts: Vec<&str> = std::iter::once(program.prompt)
         .chain(program.second_prompt)
@@ -1608,7 +1633,125 @@ pub fn run_spec(program: &Program) -> RunSpec {
     }
 }
 
+/// The id of the last record the hand-driven head consumes: the end of
+/// the first run of tool records (and the custom notes a hook dispatches
+/// inside them) after a completion. Everything after it is the tail the
+/// resumed engine replays.
+fn head_end_id(log: &EffectLog) -> u64 {
+    let records = &log.records;
+    let first_tool = records
+        .iter()
+        .position(|record| record.kind.family() == EffectFamily::Tool)
+        .expect("a resumed program has a tool turn");
+    let mut end = first_tool;
+    while end + 1 < records.len()
+        && matches!(
+            records[end + 1].kind.family(),
+            EffectFamily::Tool | EffectFamily::Custom
+        )
+    {
+        end += 1;
+    }
+    records[end].id.as_u64()
+}
+
+/// The resumed engine's tail: the persisted run resumed on the replay bus
+/// by the program's agent, whose memory, route and context handlers are
+/// re-registered from the golden's tail (the head's handlers answered the
+/// rest). `Ok(Some)` is the answer, `Ok(None)` a non-answer ending the
+/// program expects, `Err` the hook's cancel reason.
+async fn resumed_tail(
+    replay: &Replay,
+    program: &Program,
+    server: rig_agent::tool::server::ToolServerHandle,
+    state: String,
+) -> Result<Option<PromptResponse>, &'static str> {
+    let head_end = head_end_id(&replay.log);
+    let tail_log = EffectLog {
+        header: replay.log.header.clone(),
+        records: replay
+            .log
+            .records
+            .iter()
+            .filter(|record| record.id.as_u64() > head_end)
+            .cloned()
+            .collect(),
+    };
+    if program.conversation.is_some() {
+        replay.registrar.deregister(&replay.memory_key);
+    }
+    if let Some(label) = program.route {
+        replay.registrar.deregister(&replay.route_key(label));
+    }
+    if program.dynamic_context.is_some() {
+        replay.registrar.deregister(&replay.context_key());
+    }
+    let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
+    let agent = build_agent(replay, program, server, &tail_log);
+    let mut runner = agent.runner("ignored").resume(restored);
+    if let Some(max_turns) = program.max_turns {
+        runner = runner.max_turns(max_turns);
+    }
+    if let Some(concurrency) = program.tool_concurrency {
+        runner = runner.tool_concurrency(concurrency);
+    }
+    runner = runner
+        .max_invalid_tool_call_retries(program.invalid_retries)
+        .unhandled_invalid_tool_call(unhandled_policy(program));
+    let outcome = if program.streamed {
+        let mut stream = runner.stream().await;
+        let mut output = None;
+        let mut failure = None;
+        while let Some(item) = within(stream.next()).await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
+                Ok(_) => {}
+                Err(StreamingError::Prompt(error)) => failure = Some(*error),
+                Err(error) => panic!("the resumed stream: {error:?}"),
+            }
+        }
+        drop(stream);
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(output.expect("the resumed stream yields a final response")),
+        }
+    } else {
+        within(runner.run()).await
+    };
+    drop(agent);
+    match (outcome, program.ending) {
+        (Ok(response), Ending::Answer) => Ok(Some(response)),
+        (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+        | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => Ok(None),
+        (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+            if reason == expected =>
+        {
+            Err(expected)
+        }
+        (Ok(response), ending) => {
+            panic!("the resumed run ends in {ending:?}, not an answer: {response:?}")
+        }
+        (Err(error), _) => panic!("the resumed run: {error:?}"),
+    }
+}
+
 pub async fn hand_driver_reproduces(program: &Program) {
+    hand_drive(program, false).await;
+}
+
+/// The run continued: the hand driver takes the program up to and
+/// including its first tool turn's results, serializes the `AgentRun`, and
+/// the bus engine resumes it on the same replay bus — whose replayers have
+/// answered the head and hold the tail — to the golden's ending. The
+/// recorded log is the whole golden: the head by hand, the tail by the
+/// engine, one record sequence. A resumed run loads no memory and saves
+/// none (the runner skips both on `resume`), so the head loads and the
+/// driver appends; the resumed engine fires the settled hooks itself.
+pub async fn resume_reproduces(program: &Program) {
+    hand_drive(program, true).await;
+}
+
+async fn hand_drive(program: &Program, resume: bool) {
     let replay = Replay::open(program);
     let server = replay.tool_server_for(program);
     server.attach(&replay.registrar);
@@ -1701,6 +1844,19 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expect_err("no host serves notes");
         assert_eq!(refused.kind, rig_core::error::ErrorKind::HandlerUnavailable);
     }
+    assert!(
+        !(resume && program.second_prompt.is_some()),
+        "a resumed program is one run"
+    );
+    let mut resumed: Option<String> = None;
+    // The default model's label, as the engine names it to the selection
+    // hook: the key's label.
+    let default_label = replay
+        .model_key
+        .as_str()
+        .rsplit_once("model:")
+        .map(|(_, label)| label.to_owned())
+        .expect("the model key names its label");
     let prompts: Vec<&str> = std::iter::once(program.prompt)
         .chain(program.second_prompt)
         .collect();
@@ -1814,11 +1970,15 @@ pub async fn hand_driver_reproduces(program: &Program) {
                     history,
                     turn,
                 } => {
-                    let model = match (&route, program.hooks.contains(&Hook::RouteAfterFirstTurn)) {
-                        (Some(route), true) if asked_before => route,
-                        _ => &model,
-                    };
+                    let (model, label) =
+                        match (&route, program.hooks.contains(&Hook::RouteAfterFirstTurn)) {
+                            (Some(route), true) if asked_before => (route, ROUTE),
+                            _ => (&model, default_label.as_str()),
+                        };
                     asked_before = true;
+                    // The driver's routing state, persisted on the run as the engine
+                    // persists it, so a resumed engine's selection hook sees it.
+                    run.set_previous_model(rig_core::completion::ModelRef::new(label));
                     // The retrievals the engine performs at the boundary, in its
                     // order: the context (a completion-call hook), then the tool
                     // index; the query is the current prompt's text, else the
@@ -2163,9 +2323,26 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         }
                     };
                     run.tool_results(results).expect("results for every call");
+                    if resume && resumed.is_none() {
+                        // The suspension: the state a driver persists between
+                        // steps, with the next model call pending.
+                        resumed =
+                            Some(serde_json::to_string(&run).expect("the run state serializes"));
+                        break None;
+                    }
                 }
                 AgentRunStep::Done(response) => break Some(response),
             }
+        };
+        let response = match resumed.take() {
+            None => response,
+            Some(state) => match resumed_tail(&replay, program, server.clone(), state).await {
+                Ok(response) => response,
+                Err(reason) => {
+                    cancelled = Some(reason);
+                    None
+                }
+            },
         };
         if let Ending::Cancelled(expected) = program.ending {
             assert_eq!(
@@ -2194,13 +2371,13 @@ pub async fn hand_driver_reproduces(program: &Program) {
         }
         // The settled hooks, once per run, after the append: the clear,
         // the host note.
-        if program.hooks.contains(&Hook::ClearAtSettled) {
+        if program.hooks.contains(&Hook::ClearAtSettled) && !resume {
             let (handle, id) = memory.as_ref().expect("a memory program");
             within(handle.clear(id.clone()))
                 .await
                 .expect("the replayer answered the clear");
         }
-        if program.hooks.contains(&Hook::NoteAtSettled) {
+        if program.hooks.contains(&Hook::NoteAtSettled) && !resume {
             note("settled").await;
         }
         last_response = Some(response);
@@ -2216,153 +2393,6 @@ pub async fn hand_driver_reproduces(program: &Program) {
     let log = replay.log.clone();
     let replayed = replay.close().await;
     assert_same_records(&replayed, &log, "hand driver");
-}
-
-/// The run continued: the hand driver takes the program up to and
-/// including its first tool call's result, serializes the `AgentRun`, and
-/// the bus engine resumes it on the same replay bus — whose replayers have
-/// answered the head and hold the tail — to the golden's answer. The
-/// recorded log is the whole golden: the head by hand, the tail by the
-/// engine, one record sequence.
-pub async fn resume_reproduces(program: &Program) {
-    assert!(
-        program.hooks.is_empty() && program.conversation.is_none() && program.route.is_none(),
-        "resume rows are plain tool programs"
-    );
-    let replay = Replay::open(program);
-    let server = replay.tool_server();
-    server.attach(&replay.registrar);
-    let tools = tool_handles(&replay);
-    let model: ModelHandle = replay
-        .dispatcher
-        .handle(&replay.model_key)
-        .expect("the model");
-    assert_header_names_the_program(&replay, program);
-    let spec = run_spec(program);
-    let definitions = server.static_tool_defs();
-    let mut run = AgentRun::from_spec(&spec, program.prompt, None);
-    // Up to and including the first tool turn's results; then suspended
-    // with the next model call pending, the state a driver persists
-    // between steps.
-    loop {
-        match run.next_step().expect("a step") {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
-                let prepared = prepare_request(
-                    &spec,
-                    &model.capabilities(),
-                    &history,
-                    definitions.clone(),
-                    run.output_tool_name(),
-                    None,
-                )
-                .expect("prepared");
-                run.set_output_tool_name(prepared.output_tool_name.clone());
-                run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
-                    .build();
-                let turn = if program.streamed {
-                    let mut stream = model.stream(request);
-                    let mut assembler = StreamedTurnAssembler::new(executable, allowed);
-                    while let Some(event) = within(stream.next()).await {
-                        let event = event.expect("the replayer re-emitted the recorded stream");
-                        assembler.ingest(&event).expect("a well-formed stream");
-                    }
-                    let usage = stream.usage();
-                    let snapshot = stream.snapshot();
-                    let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
-                    ModelTurn::new(
-                        streamed.message_id,
-                        streamed.choice,
-                        usage,
-                        streamed.executable_tool_names,
-                        streamed.allowed_tool_names,
-                    )
-                } else {
-                    let response = within(model.complete(request))
-                        .await
-                        .expect("the replayer recognised the request");
-                    ModelTurn::from_response_parts(&response, executable, allowed)
-                };
-                run.model_response(turn).expect("a model turn");
-            }
-            AgentRunStep::CallTools { calls } => {
-                let results = call_tools(
-                    calls,
-                    &tools,
-                    program.tool_concurrency.unwrap_or(1),
-                    &[],
-                    None,
-                )
-                .await
-                .expect("no hook stops a resume row");
-                run.tool_results(results).expect("results for every call");
-                break;
-            }
-            AgentRunStep::Done(_) => panic!("the program has a tool turn"),
-        }
-    }
-    let state = serde_json::to_string(&run).expect("the run state serializes");
-    drop((model, tools));
-    let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
-
-    let mut builder = AgentBuilder::over_bus(
-        replay.dispatcher.clone(),
-        replay.registrar.clone(),
-        program.owner,
-        replay.model_key.clone(),
-    )
-    .name(program.owner)
-    .tool_server_handle(server);
-    builder = match program.preamble {
-        Some(preamble) => builder.preamble(preamble),
-        None => builder.without_preamble(),
-    };
-    if let Some(temperature) = program.temperature {
-        builder = builder.temperature(temperature);
-    }
-    if let Some(default_max_turns) = program.default_max_turns {
-        builder = builder.default_max_turns(default_max_turns);
-    }
-    let agent = builder.build();
-    agent
-        .check_replayable(&replay.log)
-        .expect("the same program as the one recorded");
-    let mut runner = agent.runner("ignored").resume(restored);
-    if let Some(max_turns) = program.max_turns {
-        runner = runner.max_turns(max_turns);
-    }
-    if let Some(concurrency) = program.tool_concurrency {
-        runner = runner.tool_concurrency(concurrency);
-    }
-    // The medium the producer ran on: a streamed program's tail asks the
-    // model for a stream, as its record says.
-    let output = if program.streamed {
-        let mut stream = runner.stream().await;
-        let mut output = None;
-        while let Some(item) = within(stream.next()).await {
-            match item {
-                Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
-                Ok(_) => {}
-                Err(error) => panic!("the resumed stream: {error:?}"),
-            }
-        }
-        drop(stream);
-        output.expect("the resumed stream yields a final response")
-    } else {
-        within(runner.run()).await.expect("the resumed run").output
-    };
-    assert_eq!(output, golden_answer(&replay.log));
-    drop(agent);
-    let log = replay.log.clone();
-    let replayed = replay.close().await;
-    assert_same_records(&replayed, &log, "hand driver head, bus engine tail");
 }
 
 /// Both interpreters, as two tests each, for the rows named: `test: PROGRAM`.
