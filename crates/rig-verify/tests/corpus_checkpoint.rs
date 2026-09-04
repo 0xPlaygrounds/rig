@@ -56,6 +56,11 @@
 //! `a_tail_that_does_not_begin_at_the_checkpoint_is_refused`;
 //! `a_resumed_memory_program_appends_once_and_loads_nothing`.
 //!
+//! Every cell is also a world cell (`world_payload`, `world_hash`,
+//! `world_full_log_refused`): the checkpoint's `state` is the world's
+//! `WorldScene`, the continuation is loaded into a fresh world
+//! (`corpus::world_resume`).
+//!
 //! # What the matrix found
 //!
 //! - Nothing moved in the goldens: a checkpoint is a cut of the log, and
@@ -249,6 +254,48 @@ macro_rules! checkpointed {
                         $crate::corpus::Against::FullLog,
                     )
                     .await;
+                }
+            )*
+        }
+        /// The same cells through the world interpreter: the checkpoint's
+        /// `state` is the `WorldScene`, the continuation is loaded into a
+        /// fresh world (`corpus::world_resume`).
+        mod world_payload {
+            $(
+                #[test]
+                fn $name() {
+                    $crate::corpus::world_resume::world_resume_reproduces(
+                        &super::$program,
+                        $turns,
+                        rig_effect_log::RequestCheck::Payload,
+                        $crate::corpus::Against::Tail,
+                    );
+                }
+            )*
+        }
+        mod world_hash {
+            $(
+                #[test]
+                fn $name() {
+                    $crate::corpus::world_resume::world_resume_reproduces(
+                        &super::$program,
+                        $turns,
+                        rig_effect_log::RequestCheck::Hash,
+                        $crate::corpus::Against::Tail,
+                    );
+                }
+            )*
+        }
+        mod world_full_log_refused {
+            $(
+                #[test]
+                fn $name() {
+                    $crate::corpus::world_resume::world_resume_reproduces(
+                        &super::$program,
+                        $turns,
+                        rig_effect_log::RequestCheck::Payload,
+                        $crate::corpus::Against::FullLog,
+                    );
                 }
             )*
         }

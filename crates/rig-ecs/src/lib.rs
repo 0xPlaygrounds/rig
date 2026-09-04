@@ -24,8 +24,10 @@
 //! [`agent::Remembers`] loads its [`agent::Conversation`] before the first
 //! turn and appends what the run said at the settle); retrieval as
 //! [`agent::Retrieves`] links whose effects run before every fold and
-//! attach documents and tools to the turn. Not yet: resume as a scene load
-//! across processes (stage 5's last cell).
+//! attach documents and tools to the turn; resume as a scene load
+//! ([`agent::scene::save_world`] with the run's effects, in flight or
+//! answered, beside the graph, and [`agent::scene::load_world`] in a fresh
+//! world over the log's tail).
 //!
 //! The `bus` module is written as if it were already its own crate (every
 //! item `pub` or private to its file, no import from a sibling module, no

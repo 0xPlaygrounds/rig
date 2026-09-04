@@ -42,9 +42,13 @@ pub fn install(world: &mut World, nesting: Nesting, owner: &str) {
     world.insert_resource(NestingSpec { nesting, model_key });
     world.resource_mut::<Schedules>().add_systems(
         RigSchedule,
+        // Between `Dispatch` and `Collect`: an answer a system gives is
+        // recorded by `settle` in the same pass, so a scene saved when the
+        // run wants its next turn has no open record (`world_resume`).
         (serve_lookup, serve_relay, finish_relay, finish_lookup)
             .chain()
-            .after(BusSet::Judge),
+            .after(BusSet::Dispatch)
+            .before(BusSet::Collect),
     );
 }
 
