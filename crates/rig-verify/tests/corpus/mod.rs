@@ -4124,8 +4124,7 @@ macro_rules! both_interpreters {
             )*
         }
         /// The third interpreter: the program as an agent graph in a Bevy
-        /// world. A program the world does not support yet prints its
-        /// reason and passes (`corpus::world::unsupported`).
+        /// world.
         mod world_agent {
             $(
                 #[test]

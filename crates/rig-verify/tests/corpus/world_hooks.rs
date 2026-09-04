@@ -13,8 +13,9 @@
 
 use bevy_ecs::prelude::*;
 use rig_core::{
-    effect::{EffectKind, HandlerKey, Outcome},
+    effect::{EffectKind, HandlerKey, MemoryOp, Outcome},
     error::{ErrorKind, ErrorReport},
+    id::ConversationId,
     message::AssistantContent,
     streaming::{Delta, StreamEvent},
     tool::ToolOutput,
@@ -73,6 +74,7 @@ pub fn install(world: &mut World, program: &Program) {
     world.add_observer(at_run_start);
     world.add_observer(at_settled);
     world.add_observer(at_tool_outcome);
+    world.add_observer(at_memory_loaded);
     world.resource_mut::<Schedules>().add_systems(
         RigSchedule,
         (
@@ -87,6 +89,7 @@ pub fn install(world: &mut World, program: &Program) {
             resolve_invalid
                 .before(RigSet::Materialise)
                 .after(RigSet::Judge),
+            after_settled.after(RigSet::Settle),
         ),
     );
 }
@@ -188,6 +191,74 @@ fn at_settled(
             note(&mut commands, &bound, run, "settled");
         }
     }
+}
+
+/// `on_run_start` for `ClearAtStart`: the producer's hook ran after the
+/// conversation was loaded and before the first turn — here, when the
+/// run's `Load` lands, a `Clear` is dispatched `ChildOf` the run.
+fn at_memory_loaded(
+    added: On<Add, EffectOutcome>,
+    hooks: Res<Hooks>,
+    effects: Query<(&PendingEffect, &ChildOf)>,
+    runs: Query<(), With<Run>>,
+    mut commands: Commands,
+) {
+    if !hooks.has(Hook::ClearAtStart) {
+        return;
+    }
+    let entity = added.event().entity;
+    let Ok((effect, child_of)) = effects.get(entity) else {
+        return;
+    };
+    let EffectKind::Memory {
+        op: MemoryOp::Load { conversation },
+    } = &effect.kind
+    else {
+        return;
+    };
+    let run = child_of.parent();
+    if runs.get(run).is_err() {
+        return;
+    }
+    clear(&mut commands, &effect.key, conversation.clone(), run);
+}
+
+/// `on_run_settled` for `ClearAtSettled`: after the run's `Append` went
+/// out (the producer's hook ran after the memory was appended), a `Clear`.
+fn after_settled(
+    appended: Query<(&PendingEffect, &ChildOf), Added<PendingEffect>>,
+    runs: Query<(), (With<Run>, With<Settled>)>,
+    hooks: Res<Hooks>,
+    mut commands: Commands,
+) {
+    if !hooks.has(Hook::ClearAtSettled) {
+        return;
+    }
+    for (effect, child_of) in &appended {
+        let EffectKind::Memory {
+            op: MemoryOp::Append { conversation, .. },
+        } = &effect.kind
+        else {
+            continue;
+        };
+        let run = child_of.parent();
+        if runs.get(run).is_err() {
+            continue;
+        }
+        clear(&mut commands, &effect.key, conversation.clone(), run);
+    }
+}
+
+fn clear(commands: &mut Commands, key: &HandlerKey, conversation: ConversationId, run: Entity) {
+    commands.spawn((
+        PendingEffect::new(
+            key.clone(),
+            EffectKind::Memory {
+                op: MemoryOp::Clear { conversation },
+            },
+        ),
+        ChildOf(run),
+    ));
 }
 
 fn run_of_effect(

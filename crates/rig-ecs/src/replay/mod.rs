@@ -8,8 +8,8 @@ use rig_effect_log::{EffectLogRecorder, stable_hash};
 use crate::{
     agent::{
         AdditionalParams, Context, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Grant,
-        MaxTokens, Order, Output, OutputKind, Preamble, Route, RunOf, Temperature, ToolChoiceSpec,
-        UsesModel,
+        MaxTokens, Order, Output, OutputKind, Preamble, Remembers, Retrieves, Route, RunOf,
+        Temperature, ToolChoiceSpec, UsesModel,
     },
     bus::{Bound, Scope},
 };
@@ -91,8 +91,9 @@ pub fn spec_hash(world: &mut World, agent: Entity) -> Option<u64> {
     stable_hash(&spec_json(world, agent)).ok()
 }
 
-/// The agent's required effect row: its model, every route, and every
-/// tool it grants, by their bound keys.
+/// The agent's required effect row: its model, every route, every tool it
+/// grants (retrievable or not), every index it retrieves from, and its
+/// memory, by their bound keys.
 pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     let mut row = EffectRow::new();
     let model = world.get::<UsesModel>(agent).map(|uses| uses.0);
@@ -118,6 +119,18 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
         {
             row.insert(bound.key.clone(), EffectFamily::Completion);
         }
+        let index = world.get::<Retrieves>(link).map(|retrieves| retrieves.0);
+        if let Some(index) = index
+            && let Some(bound) = world.get::<Bound>(index)
+        {
+            row.insert(bound.key.clone(), EffectFamily::Retrieve);
+        }
+    }
+    let memory = world.get::<Remembers>(agent).map(|remembers| remembers.0);
+    if let Some(memory) = memory
+        && let Some(bound) = world.get::<Bound>(memory)
+    {
+        row.insert(bound.key.clone(), EffectFamily::Memory);
     }
     row
 }

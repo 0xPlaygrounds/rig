@@ -157,6 +157,74 @@ impl ModelOf {
     }
 }
 
+/// The agent remembers: a relationship to the memory handler entity. A run
+/// spawned with no history loads the conversation before its first turn
+/// and appends what it said when it settles (CONTRACT §11).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[relationship(relationship_target = RememberedBy)]
+pub struct Remembers(pub Entity);
+
+/// The agents remembering through this handler.
+#[derive(Component, Debug, Default)]
+#[relationship_target(relationship = Remembers)]
+pub struct RememberedBy(Vec<Entity>);
+
+/// The conversation a run loads and appends under (the run's, else the
+/// agent's).
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Conversation(pub String);
+
+/// An utterance that came from memory: not appended again.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Remembered;
+
+/// The run loaded its conversation and will append to it when it settles.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Remembering;
+
+/// The run's memory load is out; its first turn waits for it.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadingMemory;
+
+/// A retrieval the agent makes before every turn: a link entity, `ChildOf`
+/// the agent, naming the index handler entity, with [`Retrieval`] saying
+/// what for (CONTRACT §12).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[relationship(relationship_target = RetrievedBy)]
+pub struct Retrieves(pub Entity);
+
+/// The retrieval links naming this index.
+#[derive(Component, Debug, Default)]
+#[relationship_target(relationship = Retrieves)]
+pub struct RetrievedBy(Vec<Entity>);
+
+/// What a [`Retrieves`] link retrieves.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retrieval {
+    /// How many results are asked for.
+    pub samples: u64,
+    /// Documents to attach, or tools to advertise.
+    pub what: RetrievalKind,
+}
+
+/// The two retrievals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetrievalKind {
+    /// Scored documents, attached to the turn after its static ones.
+    Documents,
+    /// Tool ids, advertised first among the turn's tools.
+    Tools,
+}
+
+/// A grant advertised only when a tool retrieval names it.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retrievable;
+
+/// A fresh turn whose retrievals are out: folded once they land.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retrieving;
+
 /// A route: a link entity, `ChildOf` the agent, naming another model the
 /// agent may be steered to (a system inserting [`UsesModel`] on the run);
 /// the required row names it.
@@ -448,6 +516,9 @@ pub enum Failure {
     /// a replay divergence — and the run fails with the report rather
     /// than telling the model its tool failed.
     Tool(ErrorReport),
+    /// The conversation could not be loaded: the run fails at the memory
+    /// record, before any completion.
+    Memory(ErrorReport),
 }
 
 /// The run's answer.
@@ -641,4 +712,6 @@ const _: () = {
     assert_serde::<Cancelled>();
     assert_serde::<Retry>();
     assert_serde::<RequestPatch>();
+    assert_serde::<Conversation>();
+    assert_serde::<Retrieval>();
 };

@@ -446,6 +446,17 @@ pub fn partial_turn_at(
     kept
 }
 
+/// The query a retrieval asks with (CONTRACT §12): the last utterance with
+/// text, from the end — the prompt on the first turn, still the prompt
+/// after a tool turn whose last utterance is a result.
+pub fn retrieval_query(utterances: &[MessageParts]) -> String {
+    utterances
+        .iter()
+        .rev()
+        .find_map(|parts| parts.to_message().rag_text())
+        .unwrap_or_default()
+}
+
 /// The text of an assistant answer: its text parts concatenated.
 pub fn answer_text(content: &[AssistantContent]) -> String {
     content

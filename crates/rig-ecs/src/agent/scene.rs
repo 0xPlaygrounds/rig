@@ -12,12 +12,13 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
-    Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant, InvalidCall,
-    InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, Order, OrderCounter, Output, OutputRetries,
-    OutputToolName, Outputs, Owner, Parts, Preamble, Reprompt, RequestPatch, Resolution,
-    ResolvingTools, Retry, Role, Route, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
-    Streamed, Temperature, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage,
-    UsesModel, Utterance,
+    Conversation, Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant,
+    InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns, Order,
+    OrderCounter, Output, OutputRetries, OutputToolName, Outputs, Owner, Parts, Preamble,
+    Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools,
+    Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run, RunCounter, RunOf,
+    RunResult, RunSeq, Settled, Streamed, Temperature, ToolCallSlot, ToolChoiceSpec,
+    ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
 use crate::bus::{Bound, Scope};
 
@@ -208,7 +209,7 @@ impl RunScene {
             order.push((1, entity));
         }
         for entity in world
-            .query_filtered::<Entity, Or<(With<Grant>, With<Context>, With<Route>)>>()
+            .query_filtered::<Entity, Or<(With<Grant>, With<Context>, With<Route>, With<Retrieves>)>>()
             .iter(world)
         {
             order.push((2, entity));
@@ -275,6 +276,9 @@ impl RunScene {
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
                 ResolvingTools => "resolving_tools", Batch => "batch",
                 Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
+                Conversation => "conversation", Remembered => "remembered",
+                Remembering => "remembering", LoadingMemory => "loading_memory",
+                Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
@@ -322,6 +326,16 @@ impl RunScene {
                 && let Some(target) = target_of(world, *model)
             {
                 relations.push(("route".to_owned(), target));
+            }
+            if let Some(Remembers(memory)) = world.get::<Remembers>(entity)
+                && let Some(target) = target_of(world, *memory)
+            {
+                relations.push(("remembers".to_owned(), target));
+            }
+            if let Some(Retrieves(index)) = world.get::<Retrieves>(entity)
+                && let Some(target) = target_of(world, *index)
+            {
+                relations.push(("retrieves".to_owned(), target));
             }
             if let Some(Context(document)) = world.get::<Context>(entity)
                 && let Some(target) = target_of(world, *document)
@@ -401,6 +415,9 @@ impl RunScene {
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
                 ResolvingTools => "resolving_tools", Batch => "batch",
                 Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
+                Conversation => "conversation", Remembered => "remembered",
+                Remembering => "remembering", LoadingMemory => "loading_memory",
+                Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
@@ -452,6 +469,12 @@ impl RunScene {
                     }
                     "route" => {
                         entity.insert(Route(to));
+                    }
+                    "remembers" => {
+                        entity.insert(Remembers(to));
+                    }
+                    "retrieves" => {
+                        entity.insert(Retrieves(to));
                     }
                     "context" => {
                         entity.insert(Context(to));

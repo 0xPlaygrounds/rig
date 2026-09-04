@@ -22,10 +22,10 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        AdditionalParams, Context, DefaultMaxTurns, DocumentId, DocumentText, Failed, Failure,
-        Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind, Owner,
-        Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, ToolPolicy,
-        Unhandled as WorldUnhandled, UsesModel,
+        AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentText, Failed,
+        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind,
+        Owner, Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult,
+        Settled, Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
     },
     bus::{BusPlugin, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect},
     replay::stamp_header,
@@ -40,40 +40,9 @@ use super::{
 
 const GUARD: Duration = Duration::from_secs(30);
 
-/// Why a program is not this interpreter's yet: the set or entity it waits
-/// for, by stage.
-pub fn unsupported(program: &Program) -> Option<&'static str> {
-    if program.conversation.is_some() {
-        return Some("conversation memory (stage 5)");
-    }
-    if program.dynamic_context.is_some() || program.retrieved_tools.is_some() {
-        return Some("retrieval (stage 4)");
-    }
-    if program.second_prompt.is_some() {
-        return Some("two runs on one agent (stage 5)");
-    }
-    if matches!(program.ending, Ending::MemoryError) {
-        return Some("a memory failure (stage 5)");
-    }
-    let log = golden(program.fixture);
-    if log.records.iter().any(|record| {
-        matches!(
-            record.kind.family(),
-            EffectFamily::Memory | EffectFamily::Retrieve
-        )
-    }) {
-        return Some("memory or retrieval dispatches (stage 5)");
-    }
-    None
-}
-
-/// The world interpreter's cell: replays `program` through a world, or
-/// reports why it cannot yet.
+/// The world interpreter's cell: replays `program` through a world — every
+/// program of the corpus, the two-run ones as two runs on one agent.
 pub fn world_agent_reproduces(program: &Program) {
-    if let Some(why) = unsupported(program) {
-        eprintln!("world_agent: {} — unsupported: {why}", program.fixture);
-        return;
-    }
     let log = golden(program.fixture);
     EffectLogReplayer::check_header(&log).expect("a current format");
     // A host-bus golden names no policy: the replay's host runs the
@@ -203,20 +172,62 @@ pub fn world_agent_reproduces(program: &Program) {
                 .collect()
         })
         .unwrap_or_default();
-    let run = spawn_run(
-        world,
-        agent,
-        &history,
-        program.prompt,
-        program.streamed,
-        program.max_turns,
-    );
-    if let Some(concurrency) = program.tool_concurrency {
-        world.entity_mut(run).insert(ToolPolicy { concurrency });
-    }
-    rig_ecs::replay::stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone());
-
+    let prompts: Vec<&str> = std::iter::once(program.prompt)
+        .chain(program.second_prompt)
+        .collect();
+    let last = prompts.len() - 1;
     let start = Instant::now();
+    for (n, prompt) in prompts.into_iter().enumerate() {
+        let world = app.world_mut();
+        let run = spawn_run(
+            world,
+            agent,
+            &history,
+            prompt,
+            program.streamed,
+            program.max_turns,
+        );
+        if let Some(concurrency) = program.tool_concurrency {
+            world.entity_mut(run).insert(ToolPolicy { concurrency });
+        }
+        rig_ecs::replay::stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone());
+        if !drive(&mut app, program, run, start, &log, &reached) {
+            return;
+        }
+        // The first of two runs answers; the program's ending is the last's.
+        if n < last {
+            let result = app.world().get::<RunResult>(run).cloned();
+            assert!(
+                result.is_some(),
+                "{}: the first run answers, the world says {:?}",
+                program.fixture,
+                app.world().get::<Failed>(run)
+            );
+        } else {
+            assert_ending(&app, program, run, &log);
+        }
+    }
+
+    let world = app.world();
+    // The world's log is in begin order, as rig-bus's; the oracle asserts
+    // it is dispatch order. The records carry the run's `Scope`, which the
+    // goldens do not have and `as_data` does not compare.
+    let replayed = world.resource::<EffectLogResource>().log();
+    assert_same_records(&replayed, &log, "world agent");
+    assert_header(&replayed, &log, program);
+}
+
+/// Tick the app until `run` ends and the world is quiescent. `false` when
+/// the program's cancel-when-reached dropped the run (the records were
+/// asserted; nothing more runs).
+fn drive(
+    app: &mut App,
+    program: &Program,
+    run: Entity,
+    start: Instant,
+    log: &rig_effect_log::EffectLog,
+    reached: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> bool {
     loop {
         app.update();
         if program.cancel_when_reached
@@ -231,8 +242,8 @@ pub fn world_agent_reproduces(program: &Program) {
             app.update();
             app.update();
             let replayed = app.world().resource::<EffectLogResource>().log();
-            assert_same_records(&replayed, &log, "world agent");
-            return;
+            assert_same_records(&replayed, log, "world agent");
+            return false;
         }
         let world = app.world();
         if world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some() {
@@ -264,7 +275,11 @@ pub fn world_agent_reproduces(program: &Program) {
         );
         std::thread::yield_now();
     }
+    true
+}
 
+/// The run ended as the program says.
+fn assert_ending(app: &App, program: &Program, run: Entity, log: &rig_effect_log::EffectLog) {
     let world = app.world();
     let ending = (
         world.get::<RunResult>(run).cloned(),
@@ -283,13 +298,14 @@ pub fn world_agent_reproduces(program: &Program) {
                 result.0,
                 program
                     .expected_output
-                    .map_or_else(|| golden_answer(&log), str::to_owned),
+                    .map_or_else(|| golden_answer(log), str::to_owned),
                 "{}: the answer",
                 program.fixture
             );
         }
         ((None, Some(Failed(Failure::MaxTurns { .. }))), Ending::MaxTurns)
-        | ((None, Some(Failed(Failure::UnknownToolCall { .. }))), Ending::UnknownToolCall) => {}
+        | ((None, Some(Failed(Failure::UnknownToolCall { .. }))), Ending::UnknownToolCall)
+        | ((None, Some(Failed(Failure::Memory(_)))), Ending::MemoryError) => {}
         ((None, Some(Failed(Failure::Provider(report)))), Ending::ProviderError)
             if report.kind == ErrorKind::ProviderResponse => {}
         ((None, Some(Failed(Failure::Provider(report)))), Ending::Failed(kind))
@@ -301,12 +317,15 @@ pub fn world_agent_reproduces(program: &Program) {
             program.fixture
         ),
     }
+}
 
-    // The world's log is in begin order, as rig-bus's; the oracle asserts
-    // it is dispatch order. The records carry the run's `Scope`, which the
-    // goldens do not have and `as_data` does not compare.
-    let replayed = world.resource::<EffectLogResource>().log();
-    assert_same_records(&replayed, &log, "world agent");
+/// The replayed header is the golden's: spec hash, hooks, required row,
+/// signature; and the world's identity computation agrees with the harness.
+fn assert_header(
+    replayed: &rig_effect_log::EffectLog,
+    log: &rig_effect_log::EffectLog,
+    program: &Program,
+) {
     assert_eq!(
         replayed.header.run_spec, log.header.run_spec,
         "{}: the header's spec hash is this program's",
@@ -412,8 +431,67 @@ fn spawn_agent(world: &mut World, program: &Program, handlers: &[(HandlerKey, En
             .find(|(bound, _)| bound == key)
             .map(|(_, entity)| *entity)
             .expect("the golden describes every required tool");
-        world.spawn((Grant(tool), Order(order), ChildOf(agent)));
+        let name = key
+            .as_str()
+            .rsplit_once('/')
+            .and_then(|(_, tail)| tail.strip_prefix("tool:"))
+            .and_then(|tail| tail.rsplit_once('#'))
+            .map(|(name, _)| name)
+            .expect("a tool key names its tool");
+        let mut grant = world.spawn((Grant(tool), Order(order), ChildOf(agent)));
+        if program.retrievable.contains(&name) {
+            grant.insert(Retrievable);
+        }
         order += 1;
+    }
+    // The indexes, in the producer's order: the context index first, then
+    // the tool index (`dynamic_context` before `retrieved_tools`).
+    let handler = |key: HandlerKey| {
+        handlers
+            .iter()
+            .find(|(bound, _)| *bound == key)
+            .map(|(_, entity)| *entity)
+    };
+    if let Some(samples) = program.dynamic_context {
+        let index = handler(HandlerKey::from(format!(
+            "{}/retrieve:context#0",
+            program.owner
+        )))
+        .expect("the golden serves the context index");
+        world.spawn((
+            Retrieves(index),
+            Retrieval {
+                samples: samples as u64,
+                what: RetrievalKind::Documents,
+            },
+            Order(order),
+            ChildOf(agent),
+        ));
+        order += 1;
+    }
+    if let Some(samples) = program.retrieved_tools {
+        let index = handler(HandlerKey::from(format!(
+            "{}/retrieve:tools#0",
+            program.owner
+        )))
+        .expect("the golden serves the tool index");
+        world.spawn((
+            Retrieves(index),
+            Retrieval {
+                samples: samples as u64,
+                what: RetrievalKind::Tools,
+            },
+            Order(order),
+            ChildOf(agent),
+        ));
+        order += 1;
+    }
+    if let Some(conversation) = program.conversation {
+        let memory = handler(HandlerKey::from(format!("{}/memory", program.owner)))
+            .expect("the golden serves the memory");
+        world
+            .entity_mut(agent)
+            .insert((Remembers(memory), Conversation(conversation.to_owned())));
     }
     if let Some(label) = program.route {
         let key = HandlerKey::from(format!("{}/model:{label}", program.owner));
