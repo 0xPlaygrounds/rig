@@ -348,6 +348,18 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 #[derive(Eq, PartialEq)]
 struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
 
+/// The ranking's items best first — highest score, then document id for
+/// equal scores. A `BinaryHeap` iterates in heap order, which depends on
+/// the order its items arrived in (a `HashMap`'s iteration order, so a
+/// process's hash seed): a search that consumed the heap unsorted put the
+/// same documents into a request in a different order from one run to the
+/// next, and a recorded request replayed as a different one.
+fn ranked<D: Serialize + Eq>(docs: EmbeddingRanking<'_, D>) -> Vec<RankingItem<'_, D>> {
+    let mut items: Vec<RankingItem<'_, D>> = docs.into_iter().map(|Reverse(item)| item).collect();
+    items.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(right.1)));
+    items
+}
+
 impl<D: Serialize + Eq> Ord for RankingItem<'_, D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.cmp(&other.0)
@@ -434,10 +446,10 @@ impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq, M: EmbeddingModel> Vec
             req.threshold(),
         )?;
 
-        // Return n best
-        docs.into_iter()
-            // The distance should always be between 0 and 1, so distance should be fine to use as an absolute value
-            .map(|Reverse(RankingItem(distance, id, doc, _))| {
+        // The n best, best first.
+        ranked(docs)
+            .into_iter()
+            .map(|RankingItem(distance, id, doc, _)| {
                 Ok((
                     distance.0,
                     id.clone(),
@@ -463,8 +475,9 @@ impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq, M: EmbeddingModel> Vec
             req.threshold(),
         )?;
 
-        docs.into_iter()
-            .map(|Reverse(RankingItem(distance, id, _, _))| Ok((distance.0, id.clone())))
+        ranked(docs)
+            .into_iter()
+            .map(|RankingItem(distance, id, _, _)| Ok((distance.0, id.clone())))
             .collect::<Result<Vec<_>, _>>()
     }
 }

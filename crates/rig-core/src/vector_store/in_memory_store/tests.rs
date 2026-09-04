@@ -437,3 +437,46 @@ async fn top_n_ranks_document_by_best_finite_embedding() {
     assert_eq!(results[0].1, "mixed");
     assert!(results[0].0.is_finite());
 }
+
+/// A search returns its documents best first, and documents of one score in
+/// id order, whatever order the store iterated them in: the ranking heap
+/// is sorted before it is read, so a request built from the results is the
+/// same request on every run.
+#[tokio::test]
+async fn top_n_returns_documents_best_first_then_by_id() {
+    use crate::test_utils::MockEmbeddingModel;
+    use crate::vector_store::VectorStoreIndex;
+    use crate::vector_store::request::VectorSearchRequest;
+
+    // The mock embeds every query as this fixed vector: a document with the
+    // same vector scores 1.0, the reversed one scores less.
+    let query = vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    let far = vec![0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0];
+    let embedding = |doc: &str, vec: &[f64]| {
+        vec![Embedding {
+            document: doc.to_string(),
+            vec: vec.to_vec(),
+        }]
+    };
+    for _ in 0..8 {
+        let index = InMemoryVectorStore::from_documents_with_ids(vec![
+            ("c", "c".to_string(), embedding("c", &query)),
+            ("a", "a".to_string(), embedding("a", &query)),
+            ("z", "z".to_string(), embedding("z", &far)),
+            ("b", "b".to_string(), embedding("b", &query)),
+        ])
+        .index(MockEmbeddingModel);
+        let request = VectorSearchRequest::builder()
+            .query("q")
+            .samples(10)
+            .build();
+        let ids: Vec<String> = index
+            .top_n_ids(request)
+            .await
+            .expect("a search")
+            .into_iter()
+            .map(|(_, id)| id)
+            .collect();
+        assert_eq!(ids, ["a", "b", "c", "z"], "best first, ties by id");
+    }
+}
