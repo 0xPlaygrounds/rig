@@ -9,6 +9,7 @@
 //! | 5 the intake bound blocks nobody | `the_intake_bound_leaves_the_rest_pending_and_blocks_nobody` |
 //! | 6 a stream lands per tick; drop mid-stream cancels | `a_stream_accumulates_per_tick`, `despawning_mid_stream_cancels_the_handler` |
 //! | 7 register, dispatch, deregister from systems | `handlers_are_registered_and_removed_from_systems` |
+//! | — a tool call's context beside the effect (format 5): `ToolInputs` reaches the tool, what it publishes lands as `ToolOutputs` | `a_tool_calls_context_travels_beside_the_effect_and_its_published_values_land_as_outputs` |
 
 #![allow(
     clippy::expect_used,
@@ -33,8 +34,8 @@ use rig_core::{
     serve::ServingPolicy,
 };
 use rig_ecs::bus::{
-    Bound, BusSet, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, RigSchedule, Seq,
-    Serving, Streamed, Streaming,
+    Bound, BusSet, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Publishing,
+    RigSchedule, Seq, Serving, Streamed, Streaming, ToolInputs, ToolOutputs,
 };
 
 #[test]
@@ -375,4 +376,122 @@ fn two_registrations_of_one_key_in_one_system_bind_one_entity() {
         .filter(|bound| bound.key == key)
         .count();
     assert_eq!(left, 0, "deregistered the one entity");
+}
+
+/// A value a driver hands a tool, and one the tool hands back.
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+struct Session(String);
+
+impl rig_core::tool::ContextValue for Session {
+    const KEY: &'static str = "session";
+}
+
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+struct Audit(String);
+
+impl rig_core::tool::ContextValue for Audit {
+    const KEY: &'static str = "audit";
+}
+
+/// A tool served as a task: reads its inbound context off the sink's
+/// scope, publishes a result value beside the sink, answers data only.
+struct Echo;
+
+impl rig_core::serve::Serve for Echo {
+    type Family = rig_core::effect::family::Tool;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: HandlerKey::from("tool:echo"),
+            family: rig_core::effect::FamilyDescriptor::Tool {
+                name: "echo".to_owned(),
+                description: "echoes the session it was given".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
+        let inbound = sink
+            .scope::<rig_core::tool::ToolContext>()
+            .expect("the driver attached the context");
+        let session = inbound
+            .get::<Session>()
+            .expect("decodes")
+            .map(|session| session.0)
+            .unwrap_or_default();
+        let mut context = inbound.for_dispatch();
+        context
+            .insert_result(Audit(format!("saw {session}")))
+            .expect("encodes");
+        if let Some(published) = sink.scope::<rig_core::tool::PublishedContext>() {
+            published.publish(context);
+        }
+        sink.resolve(Ok(rig_core::effect::Outcome::ToolResult {
+            result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text(session)),
+        }))
+        .await;
+    }
+}
+
+#[test]
+fn a_tool_calls_context_travels_beside_the_effect_and_its_published_values_land_as_outputs() {
+    let mut app = app();
+    rig_ecs::bus::EffectLogResource::install(
+        app.world_mut(),
+        rig_effect_log::EffectLogRecorder::new(),
+    );
+    register(&mut app, "tool:echo", Echo);
+    let mut inputs = rig_core::tool::ToolContext::new();
+    inputs.insert(Session("s-7".to_owned())).expect("encodes");
+    let call = app
+        .world_mut()
+        .spawn((
+            PendingEffect::new(
+                "tool:echo",
+                rig_core::effect::EffectKind::ToolCall {
+                    name: "echo".to_owned(),
+                    args: "{}".to_owned(),
+                },
+            ),
+            ToolInputs(inputs),
+        ))
+        .id();
+    tick_until(&mut app, "answered", |world| {
+        world.get::<EffectOutcome>(call).is_some()
+    });
+    let world = app.world();
+    let Some(EffectOutcome(Ok(rig_core::effect::Outcome::ToolResult { result }))) =
+        world.get::<EffectOutcome>(call)
+    else {
+        panic!("a tool result");
+    };
+    assert_eq!(
+        result.output().render(),
+        "s-7",
+        "the inbound value reached the tool"
+    );
+    let outputs = world
+        .get::<ToolOutputs>(call)
+        .expect("what the tool published");
+    assert_eq!(
+        outputs.0.result::<Audit>().expect("decodes"),
+        Some(Audit("saw s-7".to_owned()))
+    );
+    assert!(
+        outputs.0.get::<Session>().expect("decodes").is_some(),
+        "the published context keeps the inbound values"
+    );
+    assert!(
+        world.get::<Publishing>(call).is_none(),
+        "the slot leaves the entity with the flight"
+    );
+    // Never on the wire: the record's request and answer carry no context.
+    let log = world.resource::<rig_ecs::bus::EffectLogResource>().log();
+    let kind = serde_json::to_value(&log.records[0].kind).expect("serde");
+    assert!(kind.get("context").is_none(), "{kind}");
+    let outcome = serde_json::to_value(&log.records[0].outcome).expect("serde");
+    assert!(outcome["Ok"].get("context").is_none(), "{outcome}");
 }

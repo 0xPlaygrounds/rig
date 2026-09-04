@@ -9,6 +9,7 @@ use rig_core::{
     effect::{CustomEffect, EffectId, EffectKind, Family, HandlerKey, Key, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
+    tool::{PublishedContext, ToolContext},
 };
 use serde::{Deserialize, Serialize};
 
@@ -234,6 +235,25 @@ impl EffectOutcome {
     }
 }
 
+/// The context a tool call runs with: the inbound values the driver hands
+/// the tool beside the effect (format 5: never in it), as data on the
+/// effect entity. `Dispatch` attaches it to the handler's sink; absent,
+/// the tool runs under an empty context. A scene saves it.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolInputs(pub ToolContext);
+
+/// What the tool published into its context: read off the sink's
+/// [`PublishedContext`] when the outcome lands (`Collect`), or inserted by
+/// the system that answers an open tool key. Data, beside the outcome.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolOutputs(pub ToolContext);
+
+/// The slot a task-served tool call publishes into, shared with its sink
+/// for the length of the call; `Collect` reads it into [`ToolOutputs`].
+/// Never serialized: in-flight state.
+#[derive(Component, Clone)]
+pub struct Publishing(pub Arc<PublishedContext>);
+
 /// The scope of a program, as data: a stable serde id of the run or agent
 /// an effect entity descends from — never a runtime handle. `Dispatch` reads
 /// the nearest `Scope` up the `ChildOf` chain (the entity's own first) into
@@ -299,5 +319,8 @@ const _: () = {
     assert_send_sync::<Streamed>();
     assert_send_sync::<EffectOutcome>();
     assert_send_sync::<Scope>();
+    assert_send_sync::<ToolInputs>();
+    assert_send_sync::<ToolOutputs>();
+    assert_send_sync::<Publishing>();
     assert_send_sync::<Typed<rig_core::effect::family::Completion>>();
 };

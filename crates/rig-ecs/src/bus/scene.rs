@@ -10,9 +10,12 @@ use rig_core::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    effect::{EffectOutcome, Held, Issued, PendingEffect, Reserved, Scope, Seq},
+    effect::{
+        EffectOutcome, Held, Issued, PendingEffect, Reserved, Scope, Seq, ToolInputs, ToolOutputs,
+    },
     handlers::Bound,
 };
+use rig_core::tool::ToolContext;
 
 /// One effect entity as data: intent, order, id, answer, causality (the
 /// index of its parent in the scene), scope, and whether it was held.
@@ -50,6 +53,12 @@ pub struct SceneEffect {
     /// Whether a `Gate` system was holding it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub held: bool,
+    /// The context a tool call runs with ([`ToolInputs`]), when it carried one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_inputs: Option<ToolContext>,
+    /// What the tool published ([`ToolOutputs`]), when it had answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_outputs: Option<ToolContext>,
 }
 
 /// The bus half of a scene: what served each key, and every effect entity
@@ -120,6 +129,12 @@ impl Scene {
                 parent_ref,
                 scope: entity_ref.get::<Scope>().map(|scope| scope.0.clone()),
                 held: entity_ref.contains::<Held>(),
+                tool_inputs: entity_ref
+                    .get::<ToolInputs>()
+                    .map(|inputs| inputs.0.clone()),
+                tool_outputs: entity_ref
+                    .get::<ToolOutputs>()
+                    .map(|outputs| outputs.0.clone()),
             });
         }
         Self { handlers, effects }
@@ -167,6 +182,12 @@ impl Scene {
             }
             if effect.held {
                 entity.insert(Held);
+            }
+            if let Some(inputs) = &effect.tool_inputs {
+                entity.insert(ToolInputs(inputs.clone()));
+            }
+            if let Some(outputs) = &effect.tool_outputs {
+                entity.insert(ToolOutputs(outputs.clone()));
             }
             spawned.push(entity.id());
         }

@@ -29,7 +29,7 @@ use rig_core::{
     effect::{CustomEffect, EffectId, EffectKind, FamilyDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     serve::Decision,
-    tool::{ToolContext, ToolOutput, ToolResult},
+    tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::bus::{
     Answer, Asked, BusSet, EffectLogResource, EffectOutcome, Handlers, Held, InFlight, Issued,
@@ -551,7 +551,6 @@ fn finish_lookup(
                         "looked up: {}",
                         text_of(&outcome.0)
                     ))),
-                    context: ToolContext::new(),
                 })));
         }
     }
@@ -594,7 +593,6 @@ fn a_system_serves_an_open_tool_key_and_nests_a_completion_under_it() {
             EffectKind::ToolCall {
                 name: "lookup".to_owned(),
                 args: "{}".to_owned(),
-                context: ToolContext::new(),
             },
         ))
         .id();

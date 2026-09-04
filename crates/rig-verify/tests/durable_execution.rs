@@ -35,13 +35,10 @@ use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer
 use serde::Deserialize;
 use serde_json::json;
 
-/// A record as data, the tool context stripped (the one field a hand
-/// driver and the engine legitimately fill differently).
+/// A record as data: the request and the answer (the tool context is not
+/// on the wire since format 5, so nothing is stripped).
 fn as_data(record: &rig_core::effect::EffectRecord) -> (serde_json::Value, serde_json::Value) {
-    let mut kind = serde_json::to_value(&record.kind).expect("a kind serializes");
-    if let Some(object) = kind.as_object_mut() {
-        object.remove("context");
-    }
+    let kind = serde_json::to_value(&record.kind).expect("a kind serializes");
     (
         kind,
         serde_json::to_value(&record.outcome).expect("an outcome serializes"),
@@ -418,11 +415,10 @@ impl rig_agent::agent::AgentHook for PatchesTag {
         event: rig_agent::agent::DispatchEvent<'_>,
     ) -> rig_agent::agent::DispatchAction {
         match event.kind {
-            rig_core::effect::EffectKind::ToolCall { name, context, .. } if name == "tag" => {
+            rig_core::effect::EffectKind::ToolCall { name, .. } if name == "tag" => {
                 rig_agent::agent::DispatchAction::patch(rig_core::effect::EffectKind::ToolCall {
                     name: name.clone(),
                     args: json!({"tag": "patched"}).to_string(),
-                    context: context.clone(),
                 })
             }
             _ => rig_agent::agent::DispatchAction::proceed(),

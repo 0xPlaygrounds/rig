@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 4,
+    "format": 5,
     "run_spec": 16853303954472180534,
     "handlers": [
       {
@@ -167,8 +167,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "lookup",
-        "args": "{\"q\":\"What is the capital of France?\"}",
-        "context": {}
+        "args": "{\"q\":\"What is the capital of France?\"}"
       },
       "outcome": {
         "Err": {

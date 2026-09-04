@@ -2,7 +2,6 @@ use rig_core::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Message, Usage},
     effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
-    tool::ToolContext,
 };
 
 use super::*;
@@ -49,7 +48,6 @@ fn effect_record_and_log_round_trip() {
             kind: EffectKind::ToolCall {
                 name: "add".into(),
                 args: "{}".into(),
-                context: ToolContext::new(),
             },
             outcome: Err(ErrorReport::new(ErrorKind::Timeout, "slow")),
             events: None,
@@ -234,14 +232,14 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     let refused = EffectLog::from_checkpoint(&old, tail.clone()).expect_err("format 3");
     assert_eq!(
         refused.message,
-        "resume refused: the checkpoint is format 3, this rig reads format 4"
+        "resume refused: the checkpoint is format 3, this rig reads format 5"
     );
     let mut old_tail = tail;
     old_tail.header.format = 3;
     let refused = EffectLog::from_checkpoint(&checkpoint, old_tail).expect_err("format 3");
     assert_eq!(
         refused.message,
-        "resume refused: the tail is format 3, this rig reads format 4"
+        "resume refused: the tail is format 3, this rig reads format 5"
     );
 }
 

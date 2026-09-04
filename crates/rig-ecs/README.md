@@ -86,6 +86,7 @@ fn print_the_answer(answered: On<Add, EffectOutcome>, outcomes: Query<&EffectOut
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, text, outcome }` |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
+| a tool call's context (format 5: beside the effect, never in it) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's sink by `Dispatch`; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
 | a handler | an entity with `Bound { key, descriptor }`; the erased handler in the `NonSend` `HandlerTable` |
 | the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |

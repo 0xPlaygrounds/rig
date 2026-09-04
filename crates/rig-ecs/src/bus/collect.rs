@@ -9,25 +9,33 @@ use rig_core::{
 };
 
 use super::{
-    effect::{EffectOutcome, InFlight, Issued, Serving, Streamed, Streaming},
+    effect::{
+        EffectOutcome, InFlight, Issued, Publishing, Serving, Streamed, Streaming, ToolOutputs,
+    },
     plugin::Progress,
     record::Recording,
 };
 
 /// A unary handler's task finished: its outcome lands as [`EffectOutcome`]
-/// and the task leaves the entity. A non-blocking check per in-flight task
+/// and the task leaves the entity; a tool call's published context lands
+/// beside it as [`ToolOutputs`]. A non-blocking check per in-flight task
 /// (`check_ready`), no waker kept, nothing awaited.
 pub fn collect_tasks(
     mut commands: Commands,
-    mut serving: Query<(Entity, &mut Serving), With<InFlight>>,
+    mut serving: Query<(Entity, &mut Serving, Option<&Publishing>), With<InFlight>>,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, mut serving) in &mut serving {
+    for (entity, mut serving, publishing) in &mut serving {
         if let Some(outcome) = check_ready(&mut serving.0) {
-            commands
-                .entity(entity)
+            let mut entity_commands = commands.entity(entity);
+            entity_commands
                 .remove::<Serving>()
                 .insert(EffectOutcome(outcome));
+            if let Some(Publishing(published)) = publishing {
+                entity_commands
+                    .remove::<Publishing>()
+                    .insert(ToolOutputs(published.take().unwrap_or_default()));
+            }
             progress.mark();
         }
     }
