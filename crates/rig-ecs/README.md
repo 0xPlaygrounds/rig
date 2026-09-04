@@ -82,12 +82,12 @@ fn print_the_answer(answered: On<Add, EffectOutcome>, outcomes: Query<&EffectOut
 | dispatch order | `Seq`, stamped on add from `SeqCounter` (global, reserved) |
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a scene's or a log's id |
 | taken, in flight | `InFlight { key }` plus `Serving(Task)` (unary) or `Streaming { task, events, fold }` (stream) |
-| a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` |
+| a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by inserting `EffectOutcome` |
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, text, outcome }` |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
 | a handler | an entity with `Bound { key, descriptor }`; the erased handler in the `NonSend` `HandlerTable` |
-| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
+| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
 | interception | user systems in `BusSet::Gate` (patch, deny, hold) and `BusSet::Judge` (replace) |
@@ -115,7 +115,7 @@ Under `ServingPolicy::serial_per_handler`, `Dispatch` takes a key only when noth
 
 ## Handlers that are systems
 
-`Handlers::register_world::<E>(key)` binds a `WorldEffect` (a `CustomEffect` whose payload and answer are `Send + Sync`). A dispatch to the key lands as `Asked<E>` on the effect entity; a user system with any `World` access inserts `Answer<E>`; the plugin turns it into the `EffectOutcome`. No sink, no mailbox, no task. Unary only: a system answers once. A handler that must reach the world is one of these; a handler served as a task cannot.
+`Handlers::register_world::<E>(key)` binds a `WorldEffect` (a `CustomEffect` whose payload and answer are `Send + Sync`). A dispatch to the key lands as `Asked<E>` on the effect entity; a user system with any `World` access inserts `Answer<E>`; the plugin turns it into the `EffectOutcome`. `Handlers::register_open(key, family)` binds a key of any family to the world itself: the dispatch is taken and left on its entity, `InFlight`, for a system to answer by inserting the `EffectOutcome` — a tool a system serves, nesting what it needs as effects `ChildOf` the call (`bus_world::a_system_serves_an_open_tool_key_and_nests_a_completion_under_it`). No sink, no mailbox, no task. Unary only: a system answers once. A handler that must reach the world is one of these; a handler served as a task cannot.
 
 ## The proofs
 

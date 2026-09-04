@@ -73,8 +73,10 @@
 //! No agent, no loop, no memory semantics, no hook trait, no policy
 //! vocabulary: those are the crate's later modules, and nothing here may
 //! anticipate them. A handler served as a task cannot reach the world; a
-//! handler that needs the world is a [`WorldHandler`]. Streaming answers
-//! from a system are not offered yet (a system answers unary effects).
+//! handler that needs the world is a [`WorldHandler`], or a key bound open
+//! ([`Handlers::register_open`]) that a system answers by inserting the
+//! outcome, whatever the family. Streaming answers from a system are not
+//! offered (a system answers unary effects).
 
 pub mod collect;
 pub mod dispatch;

@@ -8,6 +8,7 @@
 //! | 11 a decision suspended, then made from a system next tick; a denial is no record | `a_held_effect_is_denied_or_approved_from_a_system_next_tick` |
 //! | 12 nested dispatch: `ChildOf`, `parent` in the record, same-key nesting refused, despawn ⇒ `Cancelled` | `a_child_effect_records_its_parent_and_a_reentrant_one_is_refused`, `despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queued` |
 //! | — patch in `Gate`; replace in `Judge`; the record keeps the handler's answer | `gate_patches_and_judge_replaces_but_the_record_keeps_the_answer` |
+//! | — an open key of the tool family, answered by a system that nests a completion under it | `a_system_serves_an_open_tool_key_and_nests_a_completion_under_it` |
 
 #![allow(
     clippy::expect_used,
@@ -25,9 +26,10 @@ use bevy_ecs::prelude::*;
 use bus_support::*;
 use rig_core::{
     completion::Message,
-    effect::{CustomEffect, EffectId, EffectKind, HandlerKey, Outcome},
+    effect::{CustomEffect, EffectId, EffectKind, FamilyDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     serve::Decision,
+    tool::{ToolContext, ToolOutput, ToolResult},
 };
 use rig_ecs::bus::{
     Answer, Asked, BusSet, EffectLogResource, EffectOutcome, Handlers, Held, InFlight, Issued,
@@ -513,4 +515,111 @@ fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queue
     );
     assert_eq!(log.records.len(), 2, "the queued child has no record");
     let _ = Outcome::Custom(serde_json::Value::Null);
+}
+
+/// A tool key the world serves: the system spawns a completion `ChildOf`
+/// the tool effect and answers the tool with the completion's text.
+fn serve_lookup(
+    asked: Query<
+        (Entity, &PendingEffect),
+        (With<InFlight>, Without<EffectOutcome>, Without<ChildEffect>),
+    >,
+    mut commands: Commands,
+) {
+    for (entity, effect) in &asked {
+        if effect.key != HandlerKey::from("tool:lookup") {
+            continue;
+        }
+        let child = commands
+            .spawn((PendingEffect::new("model", completion()), ChildOf(entity)))
+            .id();
+        commands.entity(entity).insert(ChildEffect(child));
+    }
+}
+
+fn finish_lookup(
+    asked: Query<(Entity, &ChildEffect), (With<InFlight>, Without<EffectOutcome>)>,
+    answered: Query<&EffectOutcome>,
+    mut commands: Commands,
+) {
+    for (entity, ChildEffect(child)) in &asked {
+        if let Ok(outcome) = answered.get(*child) {
+            commands
+                .entity(entity)
+                .insert(EffectOutcome(Ok(Outcome::ToolResult {
+                    result: ToolResult::success(ToolOutput::text(format!(
+                        "looked up: {}",
+                        text_of(&outcome.0)
+                    ))),
+                    context: ToolContext::new(),
+                })));
+        }
+    }
+}
+
+#[test]
+fn a_system_serves_an_open_tool_key_and_nests_a_completion_under_it() {
+    let counters = Arc::new(Counters::default());
+    let mut app = serial_app();
+    EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
+    register(&mut app, "model", MockModel::new(&counters));
+    let bound = Handlers::with(app.world_mut(), |handlers| {
+        handlers
+            .register_open(
+                "tool:lookup",
+                FamilyDescriptor::Tool {
+                    name: "lookup".to_owned(),
+                    description: "looks a question up".to_owned(),
+                    parameters: serde_json::json!({"type": "object"}),
+                    embedding: None,
+                },
+            )
+            .expect("a fresh key")
+    })
+    .expect("a bus");
+    add_after_judge(&mut app, (serve_lookup, finish_lookup).chain());
+    let descriptor = Handlers::with(app.world_mut(), |handlers| {
+        handlers.descriptor(&HandlerKey::from("tool:lookup"))
+    })
+    .expect("a bus")
+    .expect("bound");
+    assert!(
+        matches!(descriptor.family, FamilyDescriptor::Tool { ref name, .. } if name == "lookup"),
+        "advertised as the tool it is"
+    );
+    let call = app
+        .world_mut()
+        .spawn(PendingEffect::new(
+            "tool:lookup",
+            EffectKind::ToolCall {
+                name: "lookup".to_owned(),
+                args: "{}".to_owned(),
+                context: ToolContext::new(),
+            },
+        ))
+        .id();
+    tick_until(&mut app, "the tool answered", |world| {
+        world.get::<EffectOutcome>(call).is_some()
+    });
+    let world = app.world();
+    let Some(EffectOutcome(Ok(Outcome::ToolResult { result, .. }))) =
+        world.get::<EffectOutcome>(call)
+    else {
+        panic!("a tool result");
+    };
+    assert_eq!(result.output().render(), "looked up: hello from the world");
+    assert!(
+        world.get::<InFlight>(call).is_none(),
+        "the outcome closed the flight"
+    );
+    let log = world.resource::<EffectLogResource>().log();
+    assert_eq!(log.records.len(), 2, "{:?}", log.records);
+    assert_eq!(log.records[0].key, HandlerKey::from("tool:lookup"));
+    assert_eq!(log.records[1].key, HandlerKey::from("model"));
+    assert_eq!(
+        log.records[1].parent,
+        Some(log.records[0].id),
+        "the completion names the tool call as its parent"
+    );
+    assert!(world.get::<rig_ecs::bus::Bound>(bound).is_some());
 }

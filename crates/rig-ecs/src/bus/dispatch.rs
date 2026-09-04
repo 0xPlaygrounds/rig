@@ -44,7 +44,8 @@ pub type Candidate = (
 ///   [`Scope`]), and either spawns the handler's future on the task pool —
 ///   into [`Serving`] for a unary effect, [`Streaming`] plus an empty
 ///   [`Streamed`] for a stream — or, for a handler that is a system, puts
-///   the effect on the entity as `Asked<E>`; then marks it [`InFlight`].
+///   the effect on the entity as `Asked<E>` (an open key adds nothing: the
+///   entity is the question); then marks it [`InFlight`].
 #[allow(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"

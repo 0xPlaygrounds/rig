@@ -46,21 +46,32 @@ pub enum Served {
     /// By a [`Serve`] future on the task pool: the common case, every
     /// adapter and every replayer.
     Task(ErasedHandler),
-    /// By a system: the dispatch lands as an [`Asked<E>`] component and a
-    /// user system answers with [`Answer<E>`].
+    /// By a system: the dispatch stays on its entity, `InFlight`, and a
+    /// user system answers it — through [`Asked<E>`] and [`Answer<E>`] for
+    /// a [`WorldHandler`], or by inserting the [`EffectOutcome`] itself
+    /// for a key bound with [`Handlers::register_open`].
     World(WorldServe),
 }
 
-/// A handler that is a system, erased: puts the effect on its entity as
-/// `Asked<E>`. A plain function pointer, so the table holds no closure and
-/// no `E`.
-#[derive(Clone, Copy)]
+/// A handler that is a system, erased: what the world does to the effect
+/// entity when `Dispatch` takes it. A plain function pointer, so the table
+/// holds no closure and no `E`.
+#[derive(Clone)]
 pub struct WorldServe {
-    /// The custom kind it serves (`E::KIND`).
-    pub kind: &'static str,
-    /// Deserialize the payload and insert `Asked<E>` on the effect entity,
-    /// or say why the payload is not an `E`.
+    /// What the key is bound as: the family a same-borrow re-registration
+    /// is checked against.
+    pub family: FamilyDescriptor,
+    /// What the dispatch lands as: for a [`WorldHandler`], deserialize the
+    /// payload and insert `Asked<E>` on the effect entity (or say why the
+    /// payload is not an `E`); for an open key, nothing — the effect
+    /// entity itself is the question.
     pub ask: fn(&mut EntityCommands<'_>, &EffectKind) -> Result<(), ErrorReport>,
+}
+
+/// The `ask` of an open key: the effect entity is the question, nothing
+/// is added to it.
+fn open(_entity: &mut EntityCommands<'_>, _kind: &EffectKind) -> Result<(), ErrorReport> {
+    Ok(())
 }
 
 /// A handler that is a system, for a [`WorldEffect`] `E`: bound with
@@ -86,7 +97,9 @@ impl<E: WorldEffect> WorldHandler<E> {
     /// How it is served.
     pub fn served() -> Served {
         Served::World(WorldServe {
-            kind: E::KIND,
+            family: FamilyDescriptor::Custom {
+                kind: E::KIND.to_owned(),
+            },
             ask: ask::<E>,
         })
     }
@@ -300,6 +313,32 @@ impl Handlers<'_, '_> {
         Ok(entity)
     }
 
+    /// Bind `key` to the world itself, as `family`: a dispatch to it is
+    /// taken (`Issued`, `InFlight`, the record opened) and left on its
+    /// entity for a user system with any `World` access to answer by
+    /// inserting the [`EffectOutcome`] — of any family, `family` being what
+    /// the key is advertised as (a tool's definition, a model's
+    /// capabilities). What the system dispatches on the way is a
+    /// `PendingEffect` it spawns `ChildOf` the effect it serves. Serial
+    /// serving keeps the key busy until the outcome lands. Unary only.
+    pub fn register_open(
+        &mut self,
+        key: impl Into<HandlerKey>,
+        family: FamilyDescriptor,
+    ) -> Result<Entity, ErrorReport> {
+        let key = key.into();
+        let descriptor = HandlerDescriptor {
+            key: key.clone(),
+            family: family.clone(),
+            layers: Vec::new(),
+        };
+        self.bind(
+            key,
+            descriptor,
+            Served::World(WorldServe { family, ask: open }),
+        )
+    }
+
     fn bind(
         &mut self,
         key: HandlerKey,
@@ -331,9 +370,7 @@ impl Handlers<'_, '_> {
                 self.table.served.get(&entity).map(|served| {
                     let family = match served {
                         Served::Task(handler) => handler.descriptor().family,
-                        Served::World(world) => FamilyDescriptor::Custom {
-                            kind: world.kind.to_owned(),
-                        },
+                        Served::World(world) => world.family.clone(),
                     };
                     (
                         entity,
