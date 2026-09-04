@@ -12,8 +12,8 @@ The request the model sees is derived, never authored: a run entity, utterances 
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
 | Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
 | Run | `Run`, `RunOf` → agent, `RunSeq`, `Streamed`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
-| Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `systems::{Fresh, Folded, Materialised}` |
-| Effect | the bus module's, `ChildOf` the turn |
+| Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
+| Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
 | the scene | `agent::scene::RunScene` beside the bus's `Scene` |
 
@@ -25,11 +25,14 @@ The agent's sets, around the bus's:
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
 | `RigSet::Assemble` | a fresh turn's graph is complete | the fold spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
+| `RigSet::Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to the concurrency, in call order |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
 | `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
-| `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them |
-| `RigSet::Materialise` | a complete turn is unread | the assistant utterance, the answer, a reprompt, an invalid call, or a failure |
+| `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |
+| `RigSet::Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: one user utterance of the results in call order (CONTRACT §8), or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure |
 | `RigSet::Settle` | a run settled or failed | observers on `Settled` / `Failed` |
+
+`tests/tool_batch.rs` pins the batch: two calls are two children dispatched in call order and one utterance of results; `ToolPolicy` sets how many fly at once; a `Judge` system's replacement reaches history while the record keeps the answer; a `Gate` denial is a skipped result and no record; a despawned child fails the run `Cancelled`; a system's `Resolution::{Repair, Retry}` renames or retries an invalid call (`Skip` and `Ignore` likewise). The corpus's nesting cells (matrix Q) run through a key the world serves (`Handlers::register_open`), the `lookup` tool answered by a system that spawns its child `ChildOf` the call.
 
 The first steering slot is any system before `Assemble`: it edits the graph. `tests/run_graph.rs` pins the wins: an utterance despawned leaves the next request; one document entity feeds two runs; a grant link advertises a tool and its removal un-advertises it; a model swapped on the run changes the next key; a `Patch` system's rewrite reaches the handler and the record; a system before `Assemble` rewrites an utterance. `tests/run_scene.rs` pins that the graph is the state: a run saved mid-turn resumes in a fresh world to the same second request.
 
@@ -44,7 +47,10 @@ The first steering slot is any system before `Assemble`: it edits the graph. `te
 | `on_dispatch` deny / patch | the bus's `Gate`: `Held`, `EffectOutcome(Err(Denied))`, or a rewrite |
 | `on_outcome` replace | the bus's `Judge` (an `EffectOutcome`), or `RigSet::Judge` (the turn's `Outputs`) |
 | deltas | `Changed<Streamed>` on the effect, `Changed<Outputs>` on the turn |
-| `on_invalid_tool_call` | a system before `Materialise` writing `Resolution` on an `InvalidCall` entity |
+| `on_invalid_tool_call` — `Fail`, `Ignore`, `Retry { feedback }`, `Repair { tool_name }`, `Skip { reason }` | a system before `RigSet::Materialise` writing `Resolution::{Fail, Ignore, Retry { feedback }, Repair { to }, Skip { reason }}` on the `InvalidCall` entity (`tool_batch.rs`) |
+| `tool_concurrency` | `ToolPolicy { concurrency }` on the run or the agent |
+| `on_dispatch` deny / patch on a tool call | the bus's `Gate` on the tool child: `EffectOutcome(Err(Denied))` is the skipped result the model sees, no record; a rewrite of the `PendingEffect` is the record's request |
+| `on_outcome` replace on a tool result | the bus's `Judge`: rewrite the tool child's `EffectOutcome`; history holds the replacement, the record the answer |
 | `on_turn_finished` / `on_run_settled` | observers on `Materialised`, `Settled`, `Failed` |
 
 None of these exists yet as a shipped policy; stage 4 reproduces every hook-recorded golden as one of them.
@@ -153,7 +159,7 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 
 ## What it deliberately does not have
 
-No hook trait, no history vector, no step enum, no run struct copied from anywhere: steering is a system between sets. Not yet: tool dispatch (stage 3), hooks as shipped systems (stage 4), memory, retrieval, routing and two runs on one agent (stage 5); a run that calls a granted tool fails `Unsupported`, named. The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). No `reflect` yet: `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save until the `reflect` PR extends it. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Not yet: hooks as shipped systems (stage 4), memory, retrieval, routing and two runs on one agent (stage 5). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). No `reflect` yet: `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save until the `reflect` PR extends it. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
 
 ## On wasm
 

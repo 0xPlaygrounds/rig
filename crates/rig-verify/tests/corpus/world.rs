@@ -3,11 +3,13 @@
 //! the golden's replayers, its log compared to the golden as the other two
 //! interpreters' are.
 //!
-//! What this interpreter supports is what stage 2 builds: a completion-only
-//! program with no hooks, no memory, no routes, no retrieval, no nesting,
-//! no layers, one prompt. Every other program is reported `unsupported`
-//! with the set or entity it waits for, and passes; the union of those
-//! lines over the corpus is the status table the PR prints.
+//! What this interpreter supports is what stages 2 and 3 build: a
+//! completion-and-tools program with no hooks, no memory, no routes, no
+//! retrieval, no layers, one prompt — the `lookup` tool's nesting included
+//! (a key the world serves: `world_nesting`). Every other program is
+//! reported `unsupported` with the set or entity it waits for, and passes;
+//! the union of those lines over the corpus is the status table the PR
+//! prints.
 
 use std::time::{Duration, Instant};
 
@@ -22,8 +24,8 @@ use rig_ecs::{
     agent::{
         AdditionalParams, Context, DefaultMaxTurns, DocumentId, DocumentText, Failed, Failure,
         Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind, Owner,
-        Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, Unhandled as WorldUnhandled,
-        UsesModel,
+        Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, ToolPolicy,
+        Unhandled as WorldUnhandled, UsesModel,
     },
     bus::{BusPlugin, EffectLogResource, Handlers, IdCounter},
     replay::stamp_header,
@@ -53,28 +55,23 @@ pub fn unsupported(program: &Program) -> Option<&'static str> {
     if program.dynamic_context.is_some() || program.retrieved_tools.is_some() {
         return Some("retrieval (stage 4)");
     }
-    if program.nesting.is_some() || program.cancel_when_reached {
-        return Some("nested dispatch from a tool (stage 3)");
-    }
     if !program.layers.is_empty() {
         return Some("layers on the program's handlers (stage 4)");
     }
     if program.second_prompt.is_some() {
         return Some("two runs on one agent (stage 5)");
     }
-    if program.invalid_retries > 0 {
-        return Some("invalid-call retries as systems (stage 4)");
-    }
-    if matches!(program.ending, Ending::Cancelled(_) | Ending::MemoryError) {
-        return Some("a hook's stop or a memory failure (stage 4 and 5)");
+    if matches!(program.ending, Ending::MemoryError) {
+        return Some("a memory failure (stage 5)");
     }
     let log = golden(program.fixture);
-    if log
-        .records
-        .iter()
-        .any(|record| record.kind.family() != EffectFamily::Completion)
-    {
-        return Some("tool, memory or retrieval dispatches (stage 3 and 5)");
+    if log.records.iter().any(|record| {
+        matches!(
+            record.kind.family(),
+            EffectFamily::Memory | EffectFamily::Retrieve
+        )
+    }) {
+        return Some("memory or retrieval dispatches (stage 5)");
     }
     None
 }
@@ -88,7 +85,13 @@ pub fn world_agent_reproduces(program: &Program) {
     }
     let log = golden(program.fixture);
     EffectLogReplayer::check_header(&log).expect("a current format");
-    let policy = log.header.bus.unwrap_or_default();
+    // A host-bus golden names no policy: the replay's host runs the
+    // producer's where the program names it, as `Replay::open` does.
+    let mut policy = log.header.bus.unwrap_or_default();
+    if program.host_serial {
+        assert!(log.header.bus.is_none(), "a host-bus program");
+        policy.serial_per_handler = true;
+    }
     let mut app = App::new();
     app.add_plugins((
         BusPlugin::with_policy(ServingPolicy {
@@ -110,6 +113,19 @@ pub fn world_agent_reproduces(program: &Program) {
     Handlers::with(world, |handlers| {
         for replayer in EffectLogReplayer::for_log(&log).expect("the golden's replayers") {
             let key = replayer.key().clone();
+            // The nesting program's keys are program, not record: the world
+            // serves them itself (`world_nesting`), the replayers answer
+            // only the leaves.
+            if program.nesting.is_some() && super::world_nesting::is_served_by_the_world(&key) {
+                let entity = handlers
+                    .register_open(
+                        key.clone(),
+                        rig_core::serve::Serve::descriptor(&replayer).family,
+                    )
+                    .expect("a fresh key");
+                handler_entities.push((key, entity));
+                continue;
+            }
             let entity = handlers
                 .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(replayer))
                 .expect("a fresh key");
@@ -117,6 +133,9 @@ pub fn world_agent_reproduces(program: &Program) {
         }
     })
     .expect("a bus");
+    if let Some(nesting) = program.nesting {
+        super::world_nesting::install(world, nesting, program.owner);
+    }
     let recorder = if keeps_events(&log) {
         EffectLogRecorder::keeping_stream_events()
     } else {
@@ -148,10 +167,25 @@ pub fn world_agent_reproduces(program: &Program) {
         program.streamed,
         program.max_turns,
     );
+    if let Some(concurrency) = program.tool_concurrency {
+        world.entity_mut(run).insert(ToolPolicy { concurrency });
+    }
 
     let start = Instant::now();
     loop {
         app.update();
+        if program.cancel_when_reached && super::world_nesting::reached(app.world_mut()) {
+            // The producer dropped the run once the never-answering handler
+            // was reached: the run entity goes, and the whole tree with it
+            // — the tool call and its child are cancelled, a queued child
+            // never begins.
+            app.world_mut().despawn(run);
+            app.update();
+            app.update();
+            let replayed = app.world().resource::<EffectLogResource>().log();
+            assert_same_records(&replayed, &log, "world agent");
+            return;
+        }
         let world = app.world();
         if world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some() {
             break;
@@ -189,6 +223,7 @@ pub fn world_agent_reproduces(program: &Program) {
         ((None, Some(Failed(Failure::Provider(report)))), Ending::ProviderError)
             if report.kind == ErrorKind::ProviderResponse => {}
         ((None, Some(Failed(Failure::Provider(report)))), Ending::Failed(kind))
+        | ((None, Some(Failed(Failure::Tool(report)))), Ending::Failed(kind))
             if report.kind == kind => {}
         (other, ending) => panic!(
             "{}: the run ends in {ending:?}, the world says {other:?}",

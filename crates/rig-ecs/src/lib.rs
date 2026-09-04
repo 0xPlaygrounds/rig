@@ -13,11 +13,13 @@
 //!
 //! The request is a graph in the world and a struct on the wire, with
 //! [`policy::fold_request`] as the one function between them. What the
-//! agent runtime does today: the completion-only run — request assembly,
-//! the stream fold, the three output modes and their reprompts, invalid
-//! calls as entities with a resolution, endings, the header. Not yet: tool
-//! dispatch (stage 3 of the programme), hooks as user systems (stage 4),
-//! memory, retrieval, routing and resume across runs (stage 5).
+//! agent runtime does today: the run with tools — request assembly, the
+//! stream fold, the three output modes and their reprompts, invalid calls
+//! as entities with a resolution (fail, ignore, retry, repair, skip), tool
+//! calls as effect entities `ChildOf` the turn with the batch as the
+//! turn's children, endings, the header. Not yet: hooks as shipped user
+//! systems (stage 4 of the programme), memory, retrieval, routing and
+//! resume across runs (stage 5).
 //!
 //! The `bus` module is written as if it were already its own crate (every
 //! item `pub` or private to its file, no import from a sibling module, no

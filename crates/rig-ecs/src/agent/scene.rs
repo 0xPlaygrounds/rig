@@ -11,12 +11,12 @@ use rig_core::effect::HandlerKey;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Context, Cursor,
+    AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Context, Cursor,
     DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant, InvalidCall,
     InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, Order, OrderCounter, Output, OutputRetries,
-    OutputToolName, Outputs, Owner, Parts, Preamble, Reprompt, Resolution, Role, Run, RunCounter,
-    RunOf, RunResult, RunSeq, Settled, Streamed, Temperature, ToolChoiceSpec, Turn, Usage,
-    UsesModel, Utterance,
+    OutputToolName, Outputs, Owner, Parts, Preamble, Reprompt, Resolution, ResolvingTools, Role,
+    Run, RunCounter, RunOf, RunResult, RunSeq, Settled, Streamed, Temperature, ToolCallSlot,
+    ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
 use crate::bus::{Bound, Scope};
 
@@ -126,6 +126,10 @@ pub struct WorldScene {
     /// The effects, with [`crate::bus::SceneEffect::parent_ref`] indexing
     /// `graph.entities`.
     pub effects: crate::bus::Scene,
+    /// Which call each tool effect is ([`ToolCallSlot`]), by index into
+    /// `effects.effects`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<(usize, ToolCallSlot)>,
 }
 
 /// What [`load_world`] spawned, by scene index.
@@ -143,7 +147,27 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
     let effects = crate::bus::Scene::save_with(world, |parent| {
         entities.iter().position(|entity| *entity == parent)
     });
-    Ok(WorldScene { graph, effects })
+    // The effects in the scene's order, to pair each tool effect's slot.
+    let mut rows: Vec<(Entity, crate::bus::Seq)> = world
+        .query::<(Entity, &crate::bus::Seq, &crate::bus::PendingEffect)>()
+        .iter(world)
+        .map(|(entity, seq, _)| (entity, *seq))
+        .collect();
+    rows.sort_by_key(|(_, seq)| *seq);
+    let slots = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (entity, _))| {
+            world
+                .get::<ToolCallSlot>(*entity)
+                .map(|slot| (index, slot.clone()))
+        })
+        .collect();
+    Ok(WorldScene {
+        graph,
+        effects,
+        slots,
+    })
 }
 
 /// Load `scene` into `world`: the graph first, then the effects, each
@@ -157,6 +181,11 @@ pub fn load_world(
     let effects = scene
         .effects
         .load_with(world, |index| graph.get(index).copied());
+    for (index, slot) in &scene.slots {
+        if let Some(effect) = effects.get(*index).copied() {
+            world.entity_mut(effect).insert(slot.clone());
+        }
+    }
     Ok(Loaded { graph, effects })
 }
 
@@ -242,6 +271,8 @@ impl RunScene {
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
+                ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
+                ResolvingTools => "resolving_tools", Batch => "batch",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
@@ -360,6 +391,8 @@ impl RunScene {
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
+                ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
+                ResolvingTools => "resolving_tools", Batch => "batch",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(

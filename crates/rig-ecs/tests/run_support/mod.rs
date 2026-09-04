@@ -228,3 +228,132 @@ impl Serve for NeverAnswers {
         drop(sink);
     }
 }
+
+/// A model that answers a script: one assistant turn per request, in
+/// order, then a fixed text.
+pub struct Scripted {
+    pub label: String,
+    pub turns: Mutex<std::collections::VecDeque<Vec<AssistantContent>>>,
+    pub requests: Arc<Mutex<Vec<CompletionRequest>>>,
+}
+
+impl Scripted {
+    pub fn new(
+        label: &str,
+        turns: Vec<Vec<AssistantContent>>,
+    ) -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        (
+            Self {
+                label: label.to_owned(),
+                turns: Mutex::new(turns.into()),
+                requests: Arc::clone(&requests),
+            },
+            requests,
+        )
+    }
+}
+
+impl Serve for Scripted {
+    type Family = rig_core::effect::family::Completion;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from(self.label.as_str()),
+            family: FamilyDescriptor::Completion {
+                model: ModelRef::new(self.label.as_str()),
+                capabilities: ProviderCapabilities::default(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        match kind {
+            EffectKind::Completion { request, .. } => {
+                self.requests.lock().expect("requests").push(request);
+                let choice = self
+                    .turns
+                    .lock()
+                    .expect("turns")
+                    .pop_front()
+                    .unwrap_or_else(|| vec![AssistantContent::text("done")]);
+                let response = CompletionResponse::new(choice, Usage::new(), "scripted");
+                sink.resolve(Ok(Outcome::Completion(response))).await;
+            }
+            other => {
+                sink.resolve(Err(ErrorReport::new(
+                    ErrorKind::HandlerUnavailable,
+                    format!("a model cannot serve {}", other.name()),
+                )))
+                .await;
+            }
+        }
+    }
+}
+
+/// A tool call the model makes, as the script's assistant part.
+pub fn call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
+    AssistantContent::tool_call(id, name, arguments)
+}
+
+/// A tool that adds `x` and `y`, counting how many calls were in flight
+/// at once.
+pub struct Adder {
+    pub name: String,
+    pub in_flight: Arc<std::sync::atomic::AtomicUsize>,
+    pub peak: Arc<std::sync::atomic::AtomicUsize>,
+    pub hold: Option<Arc<Mutex<Option<futures::channel::oneshot::Receiver<()>>>>>,
+}
+
+impl Adder {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_owned(),
+            in_flight: Arc::default(),
+            peak: Arc::default(),
+            hold: None,
+        }
+    }
+}
+
+impl Serve for Adder {
+    type Family = rig_core::effect::family::Tool;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from(self.name.as_str()),
+            family: FamilyDescriptor::Tool {
+                name: "add".to_owned(),
+                description: "adds x and y".to_owned(),
+                parameters: serde_json::json!({"type": "object", "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}}),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+        use std::sync::atomic::Ordering;
+        let EffectKind::ToolCall { args, .. } = kind else {
+            sink.resolve(Err(ErrorReport::new(ErrorKind::Request, "a tool call")))
+                .await;
+            return;
+        };
+        let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(now, Ordering::SeqCst);
+        let parsed: serde_json::Value = serde_json::from_str(&args).unwrap_or_default();
+        let sum = parsed["x"].as_i64().unwrap_or(0) + parsed["y"].as_i64().unwrap_or(0);
+        // Let a sibling start before answering, so concurrency shows.
+        for _ in 0..3 {
+            bevy_tasks::futures_lite::future::yield_now().await;
+        }
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+        sink.resolve(Ok(Outcome::ToolResult {
+            result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::json(
+                serde_json::json!(sum),
+            )),
+        }))
+        .await;
+    }
+}

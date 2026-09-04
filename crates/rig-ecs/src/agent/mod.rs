@@ -13,9 +13,9 @@
 //! | Model, Tool | the bus module's handler entities (`Bound`) |
 //! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
 //! | Utterance | [`Utterance`] + [`Role`] + [`Parts`] (the message's parts, verbatim), [`Order`]; `ChildOf` the run |
-//! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a phase marker ([`Assembling`], [`AwaitingModel`], [`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings |
-//! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`] |
-//! | Effect | the bus module's, `ChildOf` the turn |
+//! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a phase marker ([`Assembling`], [`AwaitingModel`], [`ResolvingTools`], [`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
+//! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`]; [`Batch`] while its tool calls are out |
+//! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
 //! | Invalid call | [`InvalidCall`] + [`Resolution`], `ChildOf` the turn |
 
 pub mod scene;
@@ -24,9 +24,10 @@ use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{
         Usage as WireUsage,
-        message::{AssistantContent, Message, ToolChoice, UserContent},
+        message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, UserContent},
     },
     error::ErrorReport,
+    tool::ToolContext,
 };
 use serde::{Deserialize, Serialize};
 
@@ -110,6 +111,27 @@ pub struct InvalidCalls {
     /// What happens when they are spent.
     pub unhandled: Unhandled,
 }
+
+/// How many of a turn's tool calls may be in flight at once: 1 (the
+/// default) runs them one after another in call order; N keeps N going.
+/// The run's, else the agent's.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolPolicy {
+    /// Calls in flight at once; 0 reads as 1.
+    pub concurrency: usize,
+}
+
+impl Default for ToolPolicy {
+    fn default() -> Self {
+        Self { concurrency: 1 }
+    }
+}
+
+/// The context every tool call of the run runs with (format 5: beside the
+/// effect, never in it): its `for_dispatch` snapshot becomes the call's
+/// `bus::ToolInputs`. The run's, else the agent's, else empty.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolContextSpec(pub ToolContext);
 
 /// The default `max_turns` the agent was built with, part of its identity
 /// (a run-level override is not).
@@ -346,6 +368,33 @@ pub struct Assembling;
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AwaitingModel;
 
+/// The run's current turn has its tool batch out: one effect per call,
+/// `ChildOf` the turn; the run goes on when every one has landed.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolvingTools;
+
+/// A turn whose batch is out: how many calls it holds. Removed when the
+/// batch lands and the results are history.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Batch {
+    /// Calls in the batch.
+    pub calls: usize,
+}
+
+/// Which of the turn's calls a tool effect entity is: what the result is
+/// shaped with. On the effect entity, beside the bus module's components.
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolCallSlot {
+    /// The call's index among the turn's calls, the result's order.
+    pub index: usize,
+    /// The call's id, as the model gave it.
+    pub id: ToolCallId,
+    /// The provider's ids for the call, when the wire had them.
+    pub provider: Option<ProviderCallId>,
+    /// The tool's name, as dispatched (a repaired call carries its repair).
+    pub name: String,
+}
+
 /// The run ended with an answer.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settled;
@@ -382,6 +431,10 @@ pub enum Failure {
         /// The name.
         name: String,
     },
+    /// A tool call could not be served — the bus closed, the handler gone,
+    /// a replay divergence — and the run fails with the report rather
+    /// than telling the model its tool failed.
+    Tool(ErrorReport),
 }
 
 /// The run's answer.
@@ -451,20 +504,34 @@ pub struct InvalidCall {
 /// What to do with an invalid call. Written by a user system before
 /// `Materialise` consumes it, else by the default-policy system from the
 /// run's [`InvalidCalls`].
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "resolution", rename_all = "snake_case")]
 pub enum Resolution {
     /// The run fails with `UnknownToolCall`.
     Fail,
-    /// The call is dropped from the turn.
+    /// The call is dropped from the turn; what is left goes on.
     Ignore,
-    /// Ask the model again (a later PR; refused now).
-    Retry,
-    /// Repair the call (a later PR; refused now).
-    Repair,
-    /// Skip the call and answer the model with feedback (a later PR;
-    /// refused now).
-    Skip,
+    /// Ask the model again: the turn and a tool result carrying `feedback`
+    /// for the call (and the invalid-peer notice for every other call of
+    /// the turn) become history, nothing is dispatched, and another turn
+    /// begins — while `InvalidCalls.retries` are left, else the run fails
+    /// `UnknownToolCall`.
+    Retry {
+        /// What the model is told.
+        feedback: String,
+    },
+    /// Rename the call to a granted tool and dispatch it as such.
+    Repair {
+        /// The tool's name.
+        to: String,
+    },
+    /// Answer the call with `reason` as its result, dispatch nothing of
+    /// the turn (every other call gets the invalid-peer notice), and go
+    /// on; refused under `tool_choice: none`.
+    Skip {
+        /// What the model is told.
+        reason: String,
+    },
 }
 
 // Every state component is serde and entity-free: relationships are the
@@ -479,4 +546,8 @@ const _: () = {
     assert_serde::<Outputs>();
     assert_serde::<InvalidCall>();
     assert_serde::<Resolution>();
+    assert_serde::<ToolPolicy>();
+    assert_serde::<ToolContextSpec>();
+    assert_serde::<Batch>();
+    assert_serde::<ToolCallSlot>();
 };
