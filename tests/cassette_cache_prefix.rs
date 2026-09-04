@@ -62,6 +62,17 @@ use cache_prefix::{EndpointKind, PrefixBlock, Violation};
 /// records that someone silenced the check, not why it is correct.
 const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     (
+        "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
+        "the effect corpus's per-turn shaping matrix: a request patch drops \
+         every tool on the second turn — moving the prefix is the behavior \
+         being recorded",
+    ),
+    (
+        "anthropic/corpus_shaping/preamble_second_turn.yaml",
+        "the same matrix: a request patch replaces the preamble on the second \
+         turn",
+    ),
+    (
         "anthropic/request_override/request_overridden_by_hook_blocking.yaml",
         "the scenario under test is a hook that rewrites the outbound request \
          between turns — moving the prefix is the behavior being recorded, not a \

@@ -1392,3 +1392,21 @@ fn action_types_are_event_specific() {
     calls.fetch_add(1, Ordering::Relaxed);
     assert_eq!(calls.load(Ordering::Relaxed), 1);
 }
+
+/// A hook that names itself is recorded under that name; one that does
+/// not is recorded under its type name.
+#[test]
+fn a_hook_names_itself_or_is_named_by_its_type() {
+    struct Plain;
+    impl AgentHook for Plain {}
+    struct Threshold(usize);
+    impl AgentHook for Threshold {
+        fn name(&self) -> Option<String> {
+            Some(format!("Threshold({})", self.0))
+        }
+    }
+    let mut stack = HookStack::new();
+    stack.push(Plain);
+    stack.push(Threshold(2));
+    assert_eq!(stack.names(), ["Plain", "Threshold(2)"]);
+}

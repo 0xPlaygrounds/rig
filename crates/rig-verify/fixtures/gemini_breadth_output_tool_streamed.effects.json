@@ -1,0 +1,215 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 1030837007388641174,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return a concise event object for a local Rust meetup in Seattle."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "final_result",
+              "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "category",
+                  "summary"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "final_result",
+                "arguments": {
+                  "category": "Technology",
+                  "summary": "A local meetup for Rust enthusiasts in Seattle to connect, share knowledge, and collaborate.",
+                  "title": "Seattle Rust Meetup"
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 153,
+            "output_tokens": 43,
+            "total_tokens": 345,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 149
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 153,
+              "candidatesTokenCount": 43,
+              "totalTokenCount": 345,
+              "thoughtsTokenCount": 149,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 153
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:tool:0",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:0",
+          "end": {
+            "close": "tool_call",
+            "name": "final_result",
+            "arguments": {
+              "category": "Technology",
+              "summary": "A local meetup for Rust enthusiasts in Seattle to connect, share knowledge, and collaborate.",
+              "title": "Seattle Rust Meetup"
+            },
+            "signature": "signature_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": "tool-0",
+            "function": {
+              "name": "final_result",
+              "arguments": {
+                "category": "Technology",
+                "summary": "A local meetup for Rust enthusiasts in Seattle to connect, share knowledge, and collaborate.",
+                "title": "Seattle Rust Meetup"
+              }
+            },
+            "signature": "signature_REDACTED_1",
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 153,
+            "output_tokens": 43,
+            "total_tokens": 345,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 149
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 153,
+              "candidatesTokenCount": 43,
+              "totalTokenCount": 345,
+              "thoughtsTokenCount": 149,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 153
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "finish_message": "Model generated function call(s).",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      ]
+    }
+  ]
+}

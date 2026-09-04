@@ -1033,6 +1033,7 @@ dependencies = [
  "bevy_tasks",
  "rig-bus",
  "rig-core",
+ "rig-effect-log",
  "serde",
  "serde_json",
 ]
@@ -1076,6 +1077,16 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "url",
+]
+
+[[package]]
+name = "rig-effect-log"
+version = "0.42.0"
+dependencies = [
+ "rig-bus",
+ "rig-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

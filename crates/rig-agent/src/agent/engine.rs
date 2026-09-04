@@ -224,12 +224,13 @@ where
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
         let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
-        // Live routing state stays in the driver, not the serde `AgentRun`. It
-        // records the model behind the preceding *issued* attempt: it advances
-        // immediately before the selected model's unary or streaming operation
-        // is invoked, so a completion-call stop, selection stop, or preparation
-        // failure leaves it unchanged while a provider error still counts.
-        let mut previous_model: Option<ModelRef> = None;
+        // Routing state: the model behind the preceding *issued* attempt. It
+        // advances immediately before the selected model's unary or streaming
+        // operation is invoked, so a completion-call stop, selection stop, or
+        // preparation failure leaves it unchanged while a provider error still
+        // counts. The run carries it (`AgentRun::previous_model`), so a
+        // resumed run's selection hook sees the model the head asked.
+        let mut previous_model: Option<ModelRef> = run.previous_model().cloned();
 
         // Pre-run hook: fired once with the initial prompt before any model
         // call. Rewrites chain across the stack in registration order; the
@@ -442,6 +443,7 @@ where
                     // stream). An issued attempt counts even when
                     // the provider returns an error; every stop/error path
                     // above left `previous_model` untouched.
+                    run.set_previous_model(selected_label.clone());
                     previous_model = Some(selected_label);
 
                     drive_step!('outer, source.run_model_turn(

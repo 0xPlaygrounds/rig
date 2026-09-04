@@ -10,10 +10,12 @@ mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;
 mod fixtures_hold_no_key;
+mod golden_delta;
 mod golden_endings;
 mod golden_hooks;
 mod golden_invalid;
 mod golden_memory;
+mod golden_oracle;
 mod golden_outcome;
 mod golden_output;
 mod golden_pairing;

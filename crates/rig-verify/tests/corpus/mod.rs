@@ -16,18 +16,21 @@
 //!
 //! | axis | values |
 //! |---|---|
-//! | completion transport | unary · streamed, events dropped · streamed, events kept |
+//! | completion transport | unary · streamed, events dropped · streamed, events kept · streamed on a delta wire (tool names and arguments as deltas) |
 //! | tool shape | none · one call then answer · two calls in one turn · two turns · zero-arg tool · a tool that errors |
 //! | tool id wire | provider id (anthropic) · id-less, minted `tool-<n>` (gemini) · dual `call_id`/`item_id` (openai) |
 //! | serving | `serial_per_handler` false · true; `tool_concurrency` 1 · 2; capacities default · 1 |
 //! | memory | none · `Load` + `Append` · `Load` of an empty conversation · `Clear` from a hook (after the load, or after the append) · two runs in one log · explicit history (bypassed) · a `Load` or `Append` that fails |
 //! | retrieval | none · `dynamic_context(n, index)` (`TopN`) · `retrieved_tools(n, index, toolset)` (`TopNIds`) · both |
-//! | embedding, rerank, custom | never dispatched by the agent itself: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a hook dispatches `Embed` and a host's `Custom<E>` over the host's bus (Matrix I); `Rerank` has no keyed cassette suite |
+//! | embedding, rerank, custom | never dispatched by the agent itself: an index embeds its query inside the handler (`RetrieveAdapter`), and nothing in `rig-agent` reranks; a hook dispatches `Embed`, `Rerank` (a mock reranker: no keyed cassette suite) and a host's `Custom<E>` over the host's bus (Matrices I, N, O) |
 //! | hooks | none · observe-only · `on_dispatch` → `Patch` · `Deny` · `on_outcome` → `Replace` · `on_invalid_tool_call` → `Retry` · `Repair` · `Skip` · `on_completion_call` → request patch · a hook that dispatches through `HookContext` · a stop at every point (`on_run_start`, `on_model_select`, `on_completion_call`, `on_dispatch`, `on_outcome`, `on_model_turn`, a delta) |
 //! | model routing | one model · `model_route` with `on_model_select` choosing the other |
 //! | output | text · `output_schema` under `Native` · `Tool` (the output tool's call, reprompted when missing or incomplete) · `Prompted` |
 //! | bus ownership | own bus (`bus` in the header) · a host's bus via `over_bus` (`bus: None`) |
-//! | run continuation | one run · serialize mid-run, resume on a fresh bus |
+//! | run continuation | one run · serialize after the first tool turn, resume on the same replay bus (every kind of program: hooks, memory, a committed output tool, a route, an ignored call, a streamed head) |
+//! | per-turn shaping | none · a request patch on one turn (`tool_choice`, `extra_context`, `preamble`, `max_tokens`, `additional_params`, `active_tools`, `history`) · patches merged from several hooks · a route on the first turn · a route registered after build |
+//! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
+//! | interpreters | the bus engine · the hand driver · the resumed engine · the Bevy host replaying the log as a script |
 //! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
 //! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
 //!
@@ -62,8 +65,8 @@ use rig_agent::{
     completion::PromptError,
     run::{
         AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
-        ModelTurnOutcome, PendingToolCall, RunSpec, StreamedResolution, StreamedTurnAssembler,
-        StreamedTurnEvent, prepare_request,
+        ModelTurnOutcome, PendingToolCall, PromptResponse, RunSpec, StreamedResolution,
+        StreamedTurnAssembler, StreamedTurnEvent, prepare_request,
     },
     tool::{RegisteredTool, server::ToolServer},
 };
@@ -150,6 +153,37 @@ pub enum Hook {
     ClearAtStart,
     /// `on_run_settled` → `Clear` after the run's `Append`.
     ClearAtSettled,
+    /// `on_tool_call_delta` → `Stop` on the delta naming the tool (Matrix K).
+    StopOnToolNameDelta,
+    /// `on_tool_call_delta` → `Stop` on the first arguments delta.
+    StopOnToolArgumentsDelta,
+    /// `on_completion_call` → `tool_choice: Required` on turn 1 (Matrix M).
+    PatchToolChoiceRequiredFirst,
+    /// `on_completion_call` → `tool_choice: None` on turn 2.
+    PatchToolChoiceNoneSecond,
+    /// `on_completion_call` → a context document on every turn.
+    PatchExtraContext,
+    /// `on_completion_call` → `max_tokens: 5` on turn 2.
+    PatchMaxTokensSecond,
+    /// `on_completion_call` → thinking (and temperature 1.0) on turn 2.
+    PatchThinkingSecond,
+    /// `on_completion_call` → the pirate preamble on turn 2.
+    PatchPreambleSecond,
+    /// `on_completion_call` → no tools advertised on turn 2.
+    PatchActiveToolsNoneSecond,
+    /// `on_completion_call` → a prior exchange as turn 1's history.
+    PatchHistoryFirst,
+    /// `on_model_select` → `Select("fast")` on the first turn only.
+    RouteOnFirstTurn,
+    /// `on_model_select` → `Select("late")` on every turn: a route
+    /// registered after build.
+    SelectLate,
+    /// `on_model_turn_finished` → `Stop` after turn `n`, named by `n`
+    /// (Matrix O: a stateful hook).
+    StopAfterTurnN(usize),
+    /// `on_run_start` → two documents reranked through the host's
+    /// reranker.
+    RerankDocs,
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -308,6 +342,12 @@ pub struct Program {
     /// A second `prompt` on the same agent after the first run settles:
     /// two runs, one log (Matrix J).
     pub second_prompt: Option<&'static str>,
+    /// A route the producer registered after build (`register_model`):
+    /// served under `<owner>/model:<label>` and in the handler table, but
+    /// not in the required row, so the replay registers its replayer on
+    /// the bus before the agent is built rather than through the builder
+    /// (Matrix M).
+    pub late_route: Option<&'static str>,
 }
 
 impl Program {
@@ -341,6 +381,7 @@ impl Program {
         unhandled: Unhandled::Fail,
         output_mode: None,
         second_prompt: None,
+        late_route: None,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -861,6 +902,258 @@ impl AgentHook for ClearAtSettled {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Matrix K: stops on the delta wire.
+
+pub const STOP_ON_TOOL_NAME_DELTA: &str = "stop on the tool's name delta";
+pub const STOP_ON_TOOL_ARGUMENTS_DELTA: &str = "stop on the tool's arguments delta";
+
+struct StopOnToolNameDelta;
+
+impl AgentHook for StopOnToolNameDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &HookContext,
+        event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        if event.tool_name.is_some() {
+            ObservationAction::stop(STOP_ON_TOOL_NAME_DELTA)
+        } else {
+            ObservationAction::continue_run()
+        }
+    }
+}
+
+struct StopOnToolArgumentsDelta;
+
+impl AgentHook for StopOnToolArgumentsDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &HookContext,
+        event: ToolCallDelta<'_>,
+    ) -> ObservationAction {
+        if event.tool_name.is_none() && !event.delta.is_empty() {
+            ObservationAction::stop(STOP_ON_TOOL_ARGUMENTS_DELTA)
+        } else {
+            ObservationAction::continue_run()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix M: per-turn shaping.
+
+pub const SHAPING_CONTEXT_ID: &str = "shaping-context";
+pub const SHAPING_CONTEXT: &str =
+    "Definition of a glarb-glarb: an ancient farming tool from planet Jiro.";
+pub const LATE_ROUTE: &str = "late";
+
+fn shaping_document() -> Document {
+    Document {
+        id: SHAPING_CONTEXT_ID.to_owned(),
+        text: SHAPING_CONTEXT.to_owned(),
+        additional_props: Default::default(),
+    }
+}
+
+/// The patch one of the corpus's hooks makes on `turn`, as the hook makes it.
+fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
+    match hook {
+        Hook::PatchToolChoiceRequiredFirst => {
+            (turn == 1).then(|| RequestPatch::new().tool_choice(ToolChoice::Required))
+        }
+        Hook::PatchToolChoiceNoneSecond => {
+            (turn == 2).then(|| RequestPatch::new().tool_choice(ToolChoice::None))
+        }
+        Hook::PatchExtraContext => Some(RequestPatch::new().context(shaping_document())),
+        Hook::PatchMaxTokensSecond => (turn == 2).then(|| RequestPatch::new().max_tokens(5)),
+        Hook::PatchThinkingSecond => (turn == 2).then(|| {
+            RequestPatch::new().temperature(1.0).additional_params(
+                serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }),
+            )
+        }),
+        Hook::PatchPreambleSecond => {
+            (turn == 2).then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE))
+        }
+        Hook::PatchActiveToolsNoneSecond => {
+            (turn == 2).then(|| RequestPatch::new().active_tools(Vec::<String>::new()))
+        }
+        Hook::PatchHistoryFirst => (turn == 1).then(|| {
+            RequestPatch::new().history(vec![
+                Message::user("My name is Ada."),
+                Message::assistant("Hello, Ada."),
+            ])
+        }),
+        Hook::PreambleOverride => Some(RequestPatch::new().preamble(PIRATE_PREAMBLE)),
+        Hook::RetryUnknownTool
+        | Hook::ObserveEverything
+        | Hook::PatchAddArgs
+        | Hook::DenyAdd
+        | Hook::ReplaceAddResult
+        | Hook::ReplaceAnswer
+        | Hook::DemandDone
+        | Hook::LookupBeforeRun
+        | Hook::RouteAfterFirstTurn
+        | Hook::StopAtStart
+        | Hook::StopAtModelSelect
+        | Hook::StopAtCompletionCall
+        | Hook::CancelAddDispatch
+        | Hook::CancelAddOutcome
+        | Hook::CancelAnswer
+        | Hook::StopAfterTurn
+        | Hook::StopAtAnswer
+        | Hook::StopOnTextDelta
+        | Hook::StopOnToolCallDelta
+        | Hook::StopOnReasoningDelta
+        | Hook::RecordSettled
+        | Hook::RepairToAdd
+        | Hook::SkipUnknown
+        | Hook::NoteAtStart
+        | Hook::NoteAtCompletionCall
+        | Hook::NoteAtOutcome
+        | Hook::NoteAtSettled
+        | Hook::NoteTwice
+        | Hook::NoteUnserved
+        | Hook::EmbedPrompt
+        | Hook::ClearAtStart
+        | Hook::ClearAtSettled
+        | Hook::StopOnToolNameDelta
+        | Hook::StopOnToolArgumentsDelta
+        | Hook::RouteOnFirstTurn
+        | Hook::SelectLate
+        | Hook::StopAfterTurnN(_)
+        | Hook::RerankDocs => None,
+    }
+}
+
+/// The program's request patch for `turn`: every patching hook's, merged in
+/// registration order as the hook stack merges them.
+pub fn patch_for_turn(program: &Program, turn: usize) -> Option<RequestPatch> {
+    program
+        .hooks
+        .iter()
+        .filter_map(|hook| hook_patch(*hook, turn))
+        .reduce(RequestPatch::merge)
+}
+
+macro_rules! patch_hook {
+    ($name:ident, $hook:expr) => {
+        struct $name;
+
+        impl AgentHook for $name {
+            async fn on_completion_call(
+                &self,
+                _ctx: &HookContext,
+                event: CompletionCallEvent<'_>,
+            ) -> CompletionCallAction {
+                match hook_patch($hook, event.turn) {
+                    Some(patch) => CompletionCallAction::patch(patch),
+                    None => CompletionCallAction::Continue,
+                }
+            }
+        }
+    };
+}
+
+patch_hook!(
+    PatchToolChoiceRequiredFirst,
+    Hook::PatchToolChoiceRequiredFirst
+);
+patch_hook!(PatchToolChoiceNoneSecond, Hook::PatchToolChoiceNoneSecond);
+patch_hook!(PatchExtraContext, Hook::PatchExtraContext);
+patch_hook!(PatchMaxTokensSecond, Hook::PatchMaxTokensSecond);
+patch_hook!(PatchThinkingSecond, Hook::PatchThinkingSecond);
+patch_hook!(PatchPreambleSecond, Hook::PatchPreambleSecond);
+patch_hook!(PatchActiveToolsNoneSecond, Hook::PatchActiveToolsNoneSecond);
+patch_hook!(PatchHistoryFirst, Hook::PatchHistoryFirst);
+
+struct RouteOnFirstTurn;
+
+impl AgentHook for RouteOnFirstTurn {
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        if event.previous_model.is_none() {
+            ModelSelectionAction::select(ROUTE)
+        } else {
+            ModelSelectionAction::continue_run()
+        }
+    }
+}
+
+struct SelectLate;
+
+impl AgentHook for SelectLate {
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        ModelSelectionAction::select(LATE_ROUTE)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix O: a stateful hook, a host's reranker.
+
+pub fn stop_after_turn_reason(n: usize) -> String {
+    format!("stopped after turn {n}")
+}
+
+struct StopAfterTurnN(usize);
+
+impl AgentHook for StopAfterTurnN {
+    fn name(&self) -> Option<String> {
+        Some(format!("StopAfterTurn({})", self.0))
+    }
+
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        event: ModelTurnFinished<'_>,
+    ) -> ModelTurnAction {
+        if event.turn == self.0 {
+            ModelTurnAction::stop(stop_after_turn_reason(self.0))
+        } else {
+            ModelTurnAction::continue_run()
+        }
+    }
+}
+
+pub const RERANK_KEY: &str = "host/rerank";
+pub const RERANK_DOCUMENTS: [&str; 2] = ["the harbor label", "the orchard label"];
+
+pub fn rerank_key() -> rig_core::effect::Key<rig_core::effect::family::Rerank> {
+    rig_core::effect::Key::new_unchecked(HandlerKey::from(RERANK_KEY))
+}
+
+pub fn rerank_request(query: &str) -> rig_core::effect::RerankRequest {
+    rig_core::effect::RerankRequest {
+        query: query.to_owned(),
+        documents: RERANK_DOCUMENTS
+            .iter()
+            .map(|doc| (*doc).to_owned())
+            .collect(),
+    }
+}
+
+struct RerankDocs;
+
+impl AgentHook for RerankDocs {
+    async fn on_run_start(&self, ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+        let host = ctx.bind(&rerank_key()).expect("the host serves reranking");
+        let query = event.prompt.rag_text().expect("a text prompt");
+        let ranked = host
+            .dispatch(rerank_request(&query))
+            .await
+            .expect("the host reranks");
+        assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        RunStartAction::continue_run()
+    }
+}
+
 fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
@@ -897,6 +1190,20 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::EmbedPrompt => builder.add_hook(EmbedPrompt),
             Hook::ClearAtStart => builder.add_hook(ClearAtStart),
             Hook::ClearAtSettled => builder.add_hook(ClearAtSettled),
+            Hook::StopOnToolNameDelta => builder.add_hook(StopOnToolNameDelta),
+            Hook::StopOnToolArgumentsDelta => builder.add_hook(StopOnToolArgumentsDelta),
+            Hook::PatchToolChoiceRequiredFirst => builder.add_hook(PatchToolChoiceRequiredFirst),
+            Hook::PatchToolChoiceNoneSecond => builder.add_hook(PatchToolChoiceNoneSecond),
+            Hook::PatchExtraContext => builder.add_hook(PatchExtraContext),
+            Hook::PatchMaxTokensSecond => builder.add_hook(PatchMaxTokensSecond),
+            Hook::PatchThinkingSecond => builder.add_hook(PatchThinkingSecond),
+            Hook::PatchPreambleSecond => builder.add_hook(PatchPreambleSecond),
+            Hook::PatchActiveToolsNoneSecond => builder.add_hook(PatchActiveToolsNoneSecond),
+            Hook::PatchHistoryFirst => builder.add_hook(PatchHistoryFirst),
+            Hook::RouteOnFirstTurn => builder.add_hook(RouteOnFirstTurn),
+            Hook::SelectLate => builder.add_hook(SelectLate),
+            Hook::StopAfterTurnN(n) => builder.add_hook(StopAfterTurnN(*n)),
+            Hook::RerankDocs => builder.add_hook(RerankDocs),
         };
     }
     builder
@@ -930,7 +1237,19 @@ pub fn as_data(record: &EffectRecord) -> serde_json::Value {
     })
 }
 
+/// The oracle: the replayed log is the golden, record by record, in the
+/// log's order — which is dispatch order across every key (ids are minted
+/// at dispatch and the recorder keeps them in that order), so a dispatch
+/// at the wrong point between two keys is a divergence, not a per-key
+/// match. Both logs' ids must be strictly increasing for that to hold.
 pub fn assert_same_records(replayed: &EffectLog, log: &EffectLog, interpreter: &str) {
+    for (name, which) in [("the golden", log), ("the replay", replayed)] {
+        let ids: Vec<u64> = which.iter().map(|record| record.id.as_u64()).collect();
+        assert!(
+            ids.windows(2).all(|pair| pair[0] < pair[1]),
+            "{interpreter}: {name}'s records are in dispatch order: {ids:?}"
+        );
+    }
     let replayed: Vec<_> = replayed.iter().map(as_data).collect();
     let recorded: Vec<_> = log.iter().map(as_data).collect();
     for (position, (got, want)) in replayed.iter().zip(&recorded).enumerate() {
@@ -1040,6 +1359,16 @@ impl Replay {
                 .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
                 .expect("a fresh key");
         }
+        // A route registered after build is served the way the producer
+        // served it: on the bus, outside the builder and the row.
+        if let Some(label) = program.late_route {
+            let key = HandlerKey::from(format!("{}/model:{label}", program.owner));
+            let replayer =
+                EffectLogReplayer::for_key(&log, &key).expect("the late route's records");
+            driver
+                .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
+                .expect("a fresh key");
+        }
         driver.record_to(recorder.clone());
         let driver = tokio::spawn(driver);
         Self {
@@ -1123,9 +1452,31 @@ impl Replay {
 // ---------------------------------------------------------------------------
 // The bus engine.
 
-pub async fn bus_engine_reproduces(program: &Program) {
-    let replay = Replay::open(program);
-    let server = replay.tool_server_for(program);
+/// The program's agent over the replay bus, its memory, route and
+/// context handlers replaying from `source` (the whole golden for a
+/// fresh run; the golden's tail for a resumed one, whose head the hand
+/// driver's handlers answered).
+pub fn build_agent(
+    replay: &Replay,
+    program: &Program,
+    server: rig_agent::tool::server::ToolServerHandle,
+    source: &EffectLog,
+) -> rig_agent::Agent {
+    let agent = build_agent_unchecked(replay, program, server, source);
+    agent
+        .check_replayable(&replay.log)
+        .expect("the same program as the one recorded");
+    agent
+}
+
+/// [`build_agent`] without the replay check, for a row that pins the
+/// refusal.
+pub fn build_agent_unchecked(
+    replay: &Replay,
+    program: &Program,
+    server: rig_agent::tool::server::ToolServerHandle,
+    source: &EffectLog,
+) -> rig_agent::Agent {
     let mut builder = AgentBuilder::over_bus(
         replay.dispatcher.clone(),
         replay.registrar.clone(),
@@ -1169,7 +1520,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
     }
     builder = add_hooks(builder, program.hooks);
     if let Some(conversation) = program.conversation {
-        let memory = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
+        let memory = EffectLogReplayer::for_key(source, &replay.memory_key)
             .expect("the conversation's records");
         builder = builder.memory_handler(memory).conversation(conversation);
     }
@@ -1177,19 +1528,22 @@ pub async fn bus_engine_reproduces(program: &Program) {
     // producer's `model_route` was; the host bus serves only the default
     // model, as the producer's client did.
     if let Some(label) = program.route {
-        let route = EffectLogReplayer::for_key(&replay.log, &replay.route_key(label))
+        let route = EffectLogReplayer::for_key(source, &replay.route_key(label))
             .expect("the route is in the required row");
         builder = builder.model_route_handler(label, route);
     }
     if let Some(samples) = program.dynamic_context {
-        let index = EffectLogReplayer::for_key(&replay.log, &replay.context_key())
+        let index = EffectLogReplayer::for_key(source, &replay.context_key())
             .expect("the context index's records");
         builder = builder.dynamic_context_handler(samples, index);
     }
-    let agent = builder.build();
-    agent
-        .check_replayable(&replay.log)
-        .expect("the same program as the one recorded");
+    builder.build()
+}
+
+pub async fn bus_engine_reproduces(program: &Program) {
+    let replay = Replay::open(program);
+    let server = replay.tool_server_for(program);
+    let agent = build_agent(&replay, program, server, &replay.log);
 
     let prompts: Vec<&str> = std::iter::once(program.prompt)
         .chain(program.second_prompt)
@@ -1431,8 +1785,8 @@ pub async fn call_tools(
 }
 
 /// The name the header records for a hook: its type's last path segment.
-fn hook_name(hook: Hook) -> &'static str {
-    match hook {
+fn hook_name(hook: Hook) -> String {
+    let name = match hook {
         Hook::RetryUnknownTool => "RetryUnknownTool",
         Hook::ObserveEverything => "ObserveEverything",
         Hook::PatchAddArgs => "PatchAddArgs",
@@ -1466,7 +1820,22 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::EmbedPrompt => "EmbedPrompt",
         Hook::ClearAtStart => "ClearAtStart",
         Hook::ClearAtSettled => "ClearAtSettled",
-    }
+        Hook::StopOnToolNameDelta => "StopOnToolNameDelta",
+        Hook::StopOnToolArgumentsDelta => "StopOnToolArgumentsDelta",
+        Hook::PatchToolChoiceRequiredFirst => "PatchToolChoiceRequiredFirst",
+        Hook::PatchToolChoiceNoneSecond => "PatchToolChoiceNoneSecond",
+        Hook::PatchExtraContext => "PatchExtraContext",
+        Hook::PatchMaxTokensSecond => "PatchMaxTokensSecond",
+        Hook::PatchThinkingSecond => "PatchThinkingSecond",
+        Hook::PatchPreambleSecond => "PatchPreambleSecond",
+        Hook::PatchActiveToolsNoneSecond => "PatchActiveToolsNoneSecond",
+        Hook::PatchHistoryFirst => "PatchHistoryFirst",
+        Hook::RouteOnFirstTurn => "RouteOnFirstTurn",
+        Hook::SelectLate => "SelectLate",
+        Hook::StopAfterTurnN(n) => return format!("StopAfterTurn({n})"),
+        Hook::RerankDocs => "RerankDocs",
+    };
+    name.to_owned()
 }
 
 /// What the bus engine's `check_replayable` checks, for the hand driver:
@@ -1489,9 +1858,9 @@ pub fn assert_header_names_the_program(replay: &Replay, program: &Program) {
     // `dynamic_context` is a hook of the builder's own (`DynamicContext`),
     // named in the header like any other; the producers register it
     // before their own hooks.
-    let hooks: Vec<&str> = program
+    let hooks: Vec<String> = program
         .dynamic_context
-        .map(|_| "DynamicContext")
+        .map(|_| "DynamicContext".to_owned())
         .into_iter()
         .chain(program.hooks.iter().map(|hook| hook_name(*hook)))
         .collect();
@@ -1550,7 +1919,133 @@ pub fn run_spec(program: &Program) -> RunSpec {
     }
 }
 
+/// The id of the last record the hand-driven head consumes: the end of
+/// the first run of tool records (and the custom notes a hook dispatches
+/// inside them) after a completion. Everything after it is the tail the
+/// resumed engine replays.
+fn head_end_id(log: &EffectLog) -> u64 {
+    let records = &log.records;
+    // The first tool record after a completion: a hook's own tool dispatch
+    // before the run's first completion (Matrix B's lookup) is not the
+    // tool turn.
+    let first_completion = records
+        .iter()
+        .position(|record| record.kind.family() == EffectFamily::Completion)
+        .expect("a resumed program has a completion");
+    let first_tool = first_completion
+        + records[first_completion..]
+            .iter()
+            .position(|record| record.kind.family() == EffectFamily::Tool)
+            .expect("a resumed program has a tool turn");
+    let mut end = first_tool;
+    while end + 1 < records.len()
+        && matches!(
+            records[end + 1].kind.family(),
+            EffectFamily::Tool | EffectFamily::Custom
+        )
+    {
+        end += 1;
+    }
+    records[end].id.as_u64()
+}
+
+/// The resumed engine's tail: the persisted run resumed on the replay bus
+/// by the program's agent, whose memory, route and context handlers are
+/// re-registered from the golden's tail (the head's handlers answered the
+/// rest). `Ok(Some)` is the answer, `Ok(None)` a non-answer ending the
+/// program expects, `Err` the hook's cancel reason.
+async fn resumed_tail(
+    replay: &Replay,
+    program: &Program,
+    server: rig_agent::tool::server::ToolServerHandle,
+    state: String,
+) -> Result<Option<PromptResponse>, &'static str> {
+    let head_end = head_end_id(&replay.log);
+    let tail_log = EffectLog {
+        header: replay.log.header.clone(),
+        records: replay
+            .log
+            .records
+            .iter()
+            .filter(|record| record.id.as_u64() > head_end)
+            .cloned()
+            .collect(),
+    };
+    if program.conversation.is_some() {
+        replay.registrar.deregister(&replay.memory_key);
+    }
+    if let Some(label) = program.route {
+        replay.registrar.deregister(&replay.route_key(label));
+    }
+    if program.dynamic_context.is_some() {
+        replay.registrar.deregister(&replay.context_key());
+    }
+    let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
+    let agent = build_agent(replay, program, server, &tail_log);
+    let mut runner = agent.runner("ignored").resume(restored);
+    if let Some(max_turns) = program.max_turns {
+        runner = runner.max_turns(max_turns);
+    }
+    if let Some(concurrency) = program.tool_concurrency {
+        runner = runner.tool_concurrency(concurrency);
+    }
+    runner = runner
+        .max_invalid_tool_call_retries(program.invalid_retries)
+        .unhandled_invalid_tool_call(unhandled_policy(program));
+    let outcome = if program.streamed {
+        let mut stream = runner.stream().await;
+        let mut output = None;
+        let mut failure = None;
+        while let Some(item) = within(stream.next()).await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
+                Ok(_) => {}
+                Err(StreamingError::Prompt(error)) => failure = Some(*error),
+                Err(error) => panic!("the resumed stream: {error:?}"),
+            }
+        }
+        drop(stream);
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(output.expect("the resumed stream yields a final response")),
+        }
+    } else {
+        within(runner.run()).await
+    };
+    drop(agent);
+    match (outcome, program.ending) {
+        (Ok(response), Ending::Answer) => Ok(Some(response)),
+        (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
+        | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => Ok(None),
+        (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
+            if reason == expected =>
+        {
+            Err(expected)
+        }
+        (Ok(response), ending) => {
+            panic!("the resumed run ends in {ending:?}, not an answer: {response:?}")
+        }
+        (Err(error), _) => panic!("the resumed run: {error:?}"),
+    }
+}
+
 pub async fn hand_driver_reproduces(program: &Program) {
+    hand_drive(program, false).await;
+}
+
+/// The run continued: the hand driver takes the program up to and
+/// including its first tool turn's results, serializes the `AgentRun`, and
+/// the bus engine resumes it on the same replay bus — whose replayers have
+/// answered the head and hold the tail — to the golden's ending. The
+/// recorded log is the whole golden: the head by hand, the tail by the
+/// engine, one record sequence. A resumed run loads no memory and saves
+/// none (the runner skips both on `resume`), so the head loads and the
+/// driver appends; the resumed engine fires the settled hooks itself.
+pub async fn resume_reproduces(program: &Program) {
+    hand_drive(program, true).await;
+}
+
+async fn hand_drive(program: &Program, resume: bool) {
     let replay = Replay::open(program);
     let server = replay.tool_server_for(program);
     server.attach(&replay.registrar);
@@ -1582,6 +2077,12 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(replayer))
             .expect("a fresh key");
         replay.dispatcher.handle(&key).expect("the route")
+    });
+    let late_route: Option<ModelHandle> = program.late_route.map(|label| {
+        replay
+            .dispatcher
+            .handle(&replay.route_key(label))
+            .expect("the late route")
     });
     let memory: Option<(MemoryHandle, ConversationId)> = program.conversation.map(|id| {
         let replayer = EffectLogReplayer::for_key(&replay.log, &replay.memory_key)
@@ -1643,6 +2144,19 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expect_err("no host serves notes");
         assert_eq!(refused.kind, rig_core::error::ErrorKind::HandlerUnavailable);
     }
+    assert!(
+        !(resume && program.second_prompt.is_some()),
+        "a resumed program is one run"
+    );
+    let mut resumed: Option<String> = None;
+    // The default model's label, as the engine names it to the selection
+    // hook: the key's label.
+    let default_label = replay
+        .model_key
+        .as_str()
+        .rsplit_once("model:")
+        .map(|(_, label)| label.to_owned())
+        .expect("the model key names its label");
     let prompts: Vec<&str> = std::iter::once(program.prompt)
         .chain(program.second_prompt)
         .collect();
@@ -1664,7 +2178,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
         };
         if load_failed {
             // As the engine: the run fails at the load, before any completion.
-            drop((model, route, tools, memory, context));
+            drop((model, route, late_route, tools, memory, context));
             let log = replay.log.clone();
             let replayed = replay.close().await;
             assert_same_records(&replayed, &log, "hand driver");
@@ -1705,6 +2219,16 @@ pub async fn hand_driver_reproduces(program: &Program) {
             assert_eq!(first.expect("acknowledged").at, "first");
             assert_eq!(second.expect("acknowledged").at, "second");
         }
+        if program.hooks.contains(&Hook::RerankDocs) {
+            let host = replay
+                .dispatcher
+                .bind(&rerank_key())
+                .expect("the host serves reranking");
+            let ranked = within(host.dispatch(rerank_request(prompt)))
+                .await
+                .expect("the replayer reranked");
+            assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        }
         if program.hooks.contains(&Hook::EmbedPrompt) {
             let host = replay
                 .dispatcher
@@ -1717,10 +2241,6 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expect("the replayer embedded");
             assert!(matches!(outputs, rig_core::effect::EmbedOutputs::Texts(_)));
         }
-        let patch = program
-            .hooks
-            .contains(&Hook::PreambleOverride)
-            .then(|| RequestPatch::new().preamble(PIRATE_PREAMBLE));
         let mut run = AgentRun::from_spec(&spec, prompt, history);
         // The routing hook selects the route once a model has been asked
         // (`previous_model` is set): the first call goes to the default.
@@ -1756,9 +2276,28 @@ pub async fn hand_driver_reproduces(program: &Program) {
                     history,
                     turn,
                 } => {
-                    let model = match (&route, program.hooks.contains(&Hook::RouteAfterFirstTurn)) {
-                        (Some(route), true) if asked_before => route,
-                        _ => &model,
+                    // The step's turn number, before `turn` is rebound to
+                    // the model's turn below.
+                    let turn_number = turn;
+                    // The selection hook's choice: a route after the first
+                    // turn, on the first turn only, or on every turn.
+                    let (model, label) = match &route {
+                        Some(route)
+                            if program.hooks.contains(&Hook::RouteAfterFirstTurn)
+                                && asked_before =>
+                        {
+                            (route, program.route.expect("a route"))
+                        }
+                        Some(route)
+                            if program.hooks.contains(&Hook::RouteOnFirstTurn) && !asked_before =>
+                        {
+                            (route, program.route.expect("a route"))
+                        }
+                        _ if program.hooks.contains(&Hook::SelectLate) => (
+                            late_route.as_ref().expect("a late route"),
+                            program.late_route.expect("a late route"),
+                        ),
+                        _ => (&model, default_label.as_str()),
                     };
                     asked_before = true;
                     // The retrievals the engine performs at the boundary, in its
@@ -1769,7 +2308,9 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         .rag_text()
                         .or_else(|| history.iter().rev().find_map(Message::rag_text))
                         .unwrap_or_default();
-                    let mut turn_patch = patch.clone();
+                    // The completion-call hooks' patches for this turn, merged
+                    // as the stack merges them.
+                    let mut turn_patch = patch_for_turn(program, turn);
                     if let (Some(context), Some(samples)) = (&context, program.dynamic_context) {
                         let req = rig_core::vector_store::request::VectorSearchRequest::builder()
                             .query(query.clone())
@@ -1810,6 +2351,11 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         turn_patch.as_ref(),
                     )
                     .expect("prepared");
+                    // The driver's routing state, persisted on the run as the
+                    // engine persists it — after the request prepared, so a
+                    // preparation failure leaves it unchanged — so a resumed
+                    // engine's selection hook sees it.
+                    run.set_previous_model(rig_core::completion::ModelRef::new(label));
                     run.set_output_tool_name(prepared.output_tool_name.clone());
                     run.advertise_tools(turn, prepared.tools.clone());
                     let executable = prepared.executable_tool_names.clone();
@@ -1867,6 +2413,19 @@ pub async fn hand_driver_reproduces(program: &Program) {
                                         if program.hooks.contains(&Hook::StopOnToolCallDelta) =>
                                     {
                                         Some(STOP_ON_TOOL_CALL_DELTA)
+                                    }
+                                    rig_core::streaming::Delta::ToolName { .. }
+                                        if program.hooks.contains(&Hook::StopOnToolNameDelta) =>
+                                    {
+                                        Some(STOP_ON_TOOL_NAME_DELTA)
+                                    }
+                                    rig_core::streaming::Delta::ToolArguments { arguments }
+                                        if program
+                                            .hooks
+                                            .contains(&Hook::StopOnToolArgumentsDelta)
+                                            && !arguments.is_empty() =>
+                                    {
+                                        Some(STOP_ON_TOOL_ARGUMENTS_DELTA)
                                     }
                                     rig_core::streaming::Delta::Reasoning { .. }
                                         if program.hooks.contains(&Hook::StopOnReasoningDelta) =>
@@ -2057,6 +2616,19 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         cancelled = Some(STOP_AFTER_TURN);
                         break None;
                     }
+                    // The stateful stop, at its turn: the reason the hook formats is
+                    // the program's ending, a literal.
+                    if let Some(n) = program.hooks.iter().find_map(|hook| match hook {
+                        Hook::StopAfterTurnN(n) if *n == turn_number => Some(*n),
+                        _ => None,
+                    }) {
+                        let Ending::Cancelled(expected) = program.ending else {
+                            panic!("a stateful stop ends the run");
+                        };
+                        assert_eq!(stop_after_turn_reason(n), expected);
+                        cancelled = Some(expected);
+                        break None;
+                    }
                     if program.hooks.contains(&Hook::StopAtAnswer) && !has_tool_calls {
                         cancelled = Some(STOP_AT_ANSWER);
                         break None;
@@ -2092,9 +2664,26 @@ pub async fn hand_driver_reproduces(program: &Program) {
                         }
                     };
                     run.tool_results(results).expect("results for every call");
+                    if resume && resumed.is_none() {
+                        // The suspension: the state a driver persists between
+                        // steps, with the next model call pending.
+                        resumed =
+                            Some(serde_json::to_string(&run).expect("the run state serializes"));
+                        break None;
+                    }
                 }
                 AgentRunStep::Done(response) => break Some(response),
             }
+        };
+        let response = match resumed.take() {
+            None => response,
+            Some(state) => match resumed_tail(&replay, program, server.clone(), state).await {
+                Ok(response) => response,
+                Err(reason) => {
+                    cancelled = Some(reason);
+                    None
+                }
+            },
         };
         if let Ending::Cancelled(expected) = program.ending {
             assert_eq!(
@@ -2106,7 +2695,7 @@ pub async fn hand_driver_reproduces(program: &Program) {
             assert_eq!(cancelled, None, "no hook stops this program");
         }
         let Some(response) = response else {
-            drop((model, route, tools, memory, context));
+            drop((model, route, late_route, tools, memory, context));
             let log = replay.log.clone();
             let replayed = replay.close().await;
             assert_same_records(&replayed, &log, "hand driver");
@@ -2123,13 +2712,13 @@ pub async fn hand_driver_reproduces(program: &Program) {
         }
         // The settled hooks, once per run, after the append: the clear,
         // the host note.
-        if program.hooks.contains(&Hook::ClearAtSettled) {
+        if program.hooks.contains(&Hook::ClearAtSettled) && !resume {
             let (handle, id) = memory.as_ref().expect("a memory program");
             within(handle.clear(id.clone()))
                 .await
                 .expect("the replayer answered the clear");
         }
-        if program.hooks.contains(&Hook::NoteAtSettled) {
+        if program.hooks.contains(&Hook::NoteAtSettled) && !resume {
             note("settled").await;
         }
         last_response = Some(response);
@@ -2141,157 +2730,10 @@ pub async fn hand_driver_reproduces(program: &Program) {
             .expected_output
             .map_or_else(|| golden_answer(&replay.log), str::to_owned)
     );
-    drop((model, route, tools, memory, context, notes));
+    drop((model, route, late_route, tools, memory, context, notes));
     let log = replay.log.clone();
     let replayed = replay.close().await;
     assert_same_records(&replayed, &log, "hand driver");
-}
-
-/// The run continued: the hand driver takes the program up to and
-/// including its first tool call's result, serializes the `AgentRun`, and
-/// the bus engine resumes it on the same replay bus — whose replayers have
-/// answered the head and hold the tail — to the golden's answer. The
-/// recorded log is the whole golden: the head by hand, the tail by the
-/// engine, one record sequence.
-pub async fn resume_reproduces(program: &Program) {
-    assert!(
-        program.hooks.is_empty() && program.conversation.is_none() && program.route.is_none(),
-        "resume rows are plain tool programs"
-    );
-    let replay = Replay::open(program);
-    let server = replay.tool_server();
-    server.attach(&replay.registrar);
-    let tools = tool_handles(&replay);
-    let model: ModelHandle = replay
-        .dispatcher
-        .handle(&replay.model_key)
-        .expect("the model");
-    assert_header_names_the_program(&replay, program);
-    let spec = run_spec(program);
-    let definitions = server.static_tool_defs();
-    let mut run = AgentRun::from_spec(&spec, program.prompt, None);
-    // Up to and including the first tool turn's results; then suspended
-    // with the next model call pending, the state a driver persists
-    // between steps.
-    loop {
-        match run.next_step().expect("a step") {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
-                let prepared = prepare_request(
-                    &spec,
-                    &model.capabilities(),
-                    &history,
-                    definitions.clone(),
-                    run.output_tool_name(),
-                    None,
-                )
-                .expect("prepared");
-                run.set_output_tool_name(prepared.output_tool_name.clone());
-                run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
-                let request = prepared
-                    .apply(CompletionRequestBuilder::unbound(prompt))
-                    .build();
-                let turn = if program.streamed {
-                    let mut stream = model.stream(request);
-                    let mut assembler = StreamedTurnAssembler::new(executable, allowed);
-                    while let Some(event) = within(stream.next()).await {
-                        let event = event.expect("the replayer re-emitted the recorded stream");
-                        assembler.ingest(&event).expect("a well-formed stream");
-                    }
-                    let usage = stream.usage();
-                    let snapshot = stream.snapshot();
-                    let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
-                    ModelTurn::new(
-                        streamed.message_id,
-                        streamed.choice,
-                        usage,
-                        streamed.executable_tool_names,
-                        streamed.allowed_tool_names,
-                    )
-                } else {
-                    let response = within(model.complete(request))
-                        .await
-                        .expect("the replayer recognised the request");
-                    ModelTurn::from_response_parts(&response, executable, allowed)
-                };
-                run.model_response(turn).expect("a model turn");
-            }
-            AgentRunStep::CallTools { calls } => {
-                let results = call_tools(
-                    calls,
-                    &tools,
-                    program.tool_concurrency.unwrap_or(1),
-                    &[],
-                    None,
-                )
-                .await
-                .expect("no hook stops a resume row");
-                run.tool_results(results).expect("results for every call");
-                break;
-            }
-            AgentRunStep::Done(_) => panic!("the program has a tool turn"),
-        }
-    }
-    let state = serde_json::to_string(&run).expect("the run state serializes");
-    drop((model, tools));
-    let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
-
-    let mut builder = AgentBuilder::over_bus(
-        replay.dispatcher.clone(),
-        replay.registrar.clone(),
-        program.owner,
-        replay.model_key.clone(),
-    )
-    .name(program.owner)
-    .tool_server_handle(server);
-    builder = match program.preamble {
-        Some(preamble) => builder.preamble(preamble),
-        None => builder.without_preamble(),
-    };
-    if let Some(temperature) = program.temperature {
-        builder = builder.temperature(temperature);
-    }
-    if let Some(default_max_turns) = program.default_max_turns {
-        builder = builder.default_max_turns(default_max_turns);
-    }
-    let agent = builder.build();
-    agent
-        .check_replayable(&replay.log)
-        .expect("the same program as the one recorded");
-    let mut runner = agent.runner("ignored").resume(restored);
-    if let Some(max_turns) = program.max_turns {
-        runner = runner.max_turns(max_turns);
-    }
-    if let Some(concurrency) = program.tool_concurrency {
-        runner = runner.tool_concurrency(concurrency);
-    }
-    // The medium the producer ran on: a streamed program's tail asks the
-    // model for a stream, as its record says.
-    let output = if program.streamed {
-        let mut stream = runner.stream().await;
-        let mut output = None;
-        while let Some(item) = within(stream.next()).await {
-            match item {
-                Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
-                Ok(_) => {}
-                Err(error) => panic!("the resumed stream: {error:?}"),
-            }
-        }
-        drop(stream);
-        output.expect("the resumed stream yields a final response")
-    } else {
-        within(runner.run()).await.expect("the resumed run").output
-    };
-    assert_eq!(output, golden_answer(&replay.log));
-    drop(agent);
-    let log = replay.log.clone();
-    let replayed = replay.close().await;
-    assert_same_records(&replayed, &log, "hand driver head, bus engine tail");
 }
 
 /// Both interpreters, as two tests each, for the rows named: `test: PROGRAM`.
