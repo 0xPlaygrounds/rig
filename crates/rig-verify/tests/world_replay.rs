@@ -147,7 +147,7 @@ fn replay_through_a_world(name: &str, log: &EffectLog) -> usize {
             );
         }
     }
-    // The world's log is in begin order, as rig-bus's is; under serial
+    // The world's log is in begin order, as rig-agent's bus's is; under serial
     // serving that is not id order in either runtime, so both sides are
     // compared by id.
     let mut replayed = world.resource::<EffectLogResource>().log().records;

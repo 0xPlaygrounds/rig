@@ -46,7 +46,8 @@ pub enum RequestCheck {
 /// with the record of the dispatch's own id, whatever order the dispatches
 /// arrive in — the mode for a world that re-issues effects under their
 /// recorded ids, where the replayer is then a pure function of the log and
-/// the id. Register one per key with [`EffectLogReplayer::register_all`].
+/// the id. A runtime registers one per key (`rig_agent::bus::replay::register_all`;
+/// rig-ecs's `Replay`).
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,
@@ -201,37 +202,6 @@ impl EffectLogReplayer {
             }
         }
         keys
-    }
-
-    /// Register a replayer for every key in `log` on `driver`. Refuses a
-    /// log of another format, and a log whose signature names a family its
-    /// records do not answer — before the first dispatch, not at the record
-    /// where it would have diverged.
-    #[cfg(feature = "bus")]
-    pub fn register_all(
-        log: &EffectLog,
-        driver: &mut rig_bus::BusDriver,
-    ) -> Result<(), ErrorReport> {
-        Self::register_all_checking(log, driver, RequestCheck::Payload)
-    }
-
-    /// [`register_all`](Self::register_all) with every replayer comparing
-    /// requests as `check` says.
-    #[cfg(feature = "bus")]
-    pub fn register_all_checking(
-        log: &EffectLog,
-        driver: &mut rig_bus::BusDriver,
-        check: RequestCheck,
-    ) -> Result<(), ErrorReport> {
-        Self::check_header(log)?;
-        for replayer in Self::for_log(log)? {
-            let key = replayer.key.clone();
-            driver.register_erased(
-                key,
-                rig_core::serve::ErasedHandler::new(replayer.checking(check)),
-            )?;
-        }
-        Ok(())
     }
 
     /// The header checks a replay makes before any dispatch: the format is

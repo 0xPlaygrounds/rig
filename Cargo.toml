@@ -50,7 +50,6 @@ members = [
 default-members = [
     ".",
     "crates/rig-core",
-    "crates/rig-bus",
     "crates/rig-effect-log",
     "crates/rig-agent",
     "crates/rig-ecs",
@@ -73,8 +72,8 @@ exclude = [
 ]
 
 [workspace.lints.rust]
-# `--cfg rig_loom` selects the model checker's sync shims (`bus/sync.rs`,
-# `agent/sync.rs`); a build flag, not a feature, and crate-specific so no
+# `--cfg rig_loom` selects the model checker's sync shims (rig-agent's
+# `sync.rs`); a build flag, not a feature, and crate-specific so no
 # dependency reacts to it (`event-listener` reacts to a bare `loom`).
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rig_loom)'] }
 
@@ -125,7 +124,6 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
 rig-core = { path = "crates/rig-core", version = "0.42.0" }
-rig-bus = { path = "crates/rig-bus", version = "0.42.0" }
 rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
 anyhow = "1"
 arrow-array = "58"
@@ -203,7 +201,6 @@ qdrant-client = { version = "1.10", default-features = false, features = [
 ] }
 quick-xml = "0.41"
 quote = "1"
-rayon = "1"
 redis = "1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
@@ -260,7 +257,6 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
-rig-bus = { path = "crates/rig-bus", version = "0.42.0" }
 rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
@@ -411,7 +407,6 @@ image = ["rig-core/image", "rig-agent?/image", "rig-reqwest?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
-rayon = ["rig-core/rayon"]
 rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
 reqwest = ["dep:rig-reqwest"]

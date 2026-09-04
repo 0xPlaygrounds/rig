@@ -55,77 +55,48 @@ fn rig_core_is_runtime_and_transport_free() {
     assert_absent("rig-core", &["--all-features"], &["tokio", "reqwest"]);
 }
 
-/// The bus runtime carries no runtime or transport either, and the
-/// dependency runs one way: rig-core knows nothing of the crate that
-/// drives its handlers.
+/// The frozen runtime's default graph carries no runtime or transport
+/// either (tokio is optional, under `test-utils`), and the dependency runs
+/// one way: rig-core knows nothing of the crates that drive its handlers.
 #[test]
-fn rig_bus_is_runtime_free_and_below_rig_core() {
-    assert_absent("rig-bus", &[], &["tokio", "reqwest"]);
+fn rig_agent_default_graph_is_runtime_free() {
+    assert_absent("rig-agent", &[], &["tokio", "reqwest"]);
     assert_absent("rig-effect-log", &[], &["tokio", "reqwest"]);
     assert_absent(
         "rig-core",
         &["--all-features"],
-        &["rig-bus", "rig-effect-log"],
+        &["rig-agent", "rig-effect-log", "rig-ecs"],
     );
-    assert_absent("rig-bus", &[], &["rig-effect-log"]);
 }
 
 /// The recorder is a handler-side seam (`rig_core::serve::Recorder`) and
 /// the serving policy a serve-side type (`rig_core::serve::ServingPolicy`),
-/// so rig-effect-log's only use of the bus runtime is the replayer's
-/// `register_all(&mut BusDriver)`: every other file of the crate compiles
-/// against rig-core alone. Checked at the source level, on code lines
-/// (doc comments may name the driver).
+/// so the log crate needs no runtime at all: registering a log's replayers
+/// on a driver is each runtime's own (`rig_agent::bus::replay`, rig-ecs's
+/// `Replay`). rig-effect-log depends on rig-core alone, under every
+/// feature.
 #[test]
-fn rig_effect_log_needs_rig_bus_only_for_replay() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-effect-log/src");
-    let mut offenders = Vec::new();
-    for entry in std::fs::read_dir(&root).expect("rig-effect-log sources") {
-        let path = entry.expect("entry").path();
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_owned();
-        if !name.ends_with(".rs") || name.ends_with("tests.rs") || name == "replay.rs" {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path).expect("source");
-        for (number, line) in text.lines().enumerate() {
-            let code = line.trim_start();
-            if code.starts_with("//") {
-                continue;
-            }
-            if code.contains("rig_bus") {
-                offenders.push(format!("{name}:{}: {}", number + 1, line.trim()));
-            }
-        }
-    }
+fn rig_effect_log_depends_on_rig_core_only() {
+    let forbidden = ["rig-agent", "rig-ecs", "tokio", "reqwest", "bevy_ecs"];
+    assert_absent("rig-effect-log", &[], &forbidden);
+    assert_absent("rig-effect-log", &["--all-features"], &forbidden);
+    let names = normal_dependency_names("rig-effect-log", &[]);
     assert!(
-        offenders.is_empty(),
-        "rig-effect-log reaches the bus runtime outside replay.rs:\n{}",
-        offenders.join("\n")
+        names.iter().any(|name| name == "rig-core"),
+        "rig-effect-log depends on rig-core"
     );
 }
 
 /// rig-ecs is the bus in a Bevy `World`: on the rig side exactly rig-core
-/// and rig-effect-log (the `replay` feature), never rig-bus — its driver is
-/// a system, not a client of the bus's — never rig-agent (a rewrite, held
-/// to rig-agent's bytes by the corpus alone), never the `bevy` facade, no
+/// and rig-effect-log (the `replay` feature), never rig-agent — its driver
+/// is a system, not a client of rig-agent's bus, and the agent half is a
+/// rewrite held to rig-agent's bytes by the corpus alone — never the `bevy` facade, no
 /// runtime, no transport, no MCP. Reflection and assets are features:
 /// `bevy_reflect` and `bevy_asset` are absent by default and present with
 /// every feature on (programme stage 6), and nothing else joins either way.
 #[test]
 fn rig_ecs_is_rig_core_and_bevy_only() {
-    let forbidden = [
-        "rig-bus",
-        "rig-agent",
-        "rig-rmcp",
-        "rmcp",
-        "bevy",
-        "tokio",
-        "reqwest",
-    ];
+    let forbidden = ["rig-agent", "rig-rmcp", "rmcp", "bevy", "tokio", "reqwest"];
     assert_absent("rig-ecs", &[], &forbidden);
     assert_absent("rig-ecs", &[], &["bevy_reflect", "bevy_asset"]);
     assert_absent("rig-ecs", &["--all-features"], &forbidden);

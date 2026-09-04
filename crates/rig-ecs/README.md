@@ -1,6 +1,6 @@
 # rig-ecs
 
-rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus as a plugin in the native shape — effects are entities, handlers are entities, the driver is a system, an outcome is a component, causality is `ChildOf`, a scene is a checkpoint — and the agent runtime over it (`agent`, `policy`, `systems`, `replay`): the run as a graph, the request as its fold. Nothing awaits, nothing blocks, nothing is probed; rig-bus is not in the graph; nothing is copied from rig-agent.
+rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus as a plugin in the native shape — effects are entities, handlers are entities, the driver is a system, an outcome is a component, causality is `ChildOf`, a scene is a checkpoint — and the agent runtime over it (`agent`, `policy`, `systems`, `replay`): the run as a graph, the request as its fold. Nothing awaits, nothing blocks, nothing is probed; rig-agent is not in the graph; nothing is copied from rig-agent.
 
 ## The run as a graph
 
@@ -162,7 +162,7 @@ No hook trait, no history vector, no step enum, no run struct copied from anywhe
 
 ## The examples, side by side
 
-The same programs as rig's root examples, each a page of user code over a scripted mock (`examples/support`), so the translation is shown: `agent_with_tools` (`Grant` links and a run entity for `dynamic_tools` and `prompt`), `human_in_the_loop` (a system in `BusSet::Gate` reading stdin for `AgentHook::on_dispatch`: approve, deny with an `EffectOutcome`, abort with `Cancelled`), `best_of_n` (`agent::fork` n − 1 times, a judging system over the settled runs, for a parallel fan-out), `streaming_ui` (a streamed run and a system after `RigSet::Fold` on `Changed<Streamed>` for a polled stream), `prompt_from_assets` (the `assets` feature). `cargo run -p rig-ecs --example <name>` — none needs a key.
+The same programs as rig's root examples, each a page of user code over a scripted mock (`examples/support`) — 49 to 102 lines each with their comments, not the thirty the design hoped for — so the translation is shown: `agent_with_tools` (`Grant` links and a run entity for `dynamic_tools` and `prompt`), `human_in_the_loop` (a system in `BusSet::Gate` reading stdin for `AgentHook::on_dispatch`: approve, deny with an `EffectOutcome`, abort with `Cancelled`), `best_of_n` (`agent::fork` n − 1 times, a judging system over the settled runs, for a parallel fan-out), `streaming_ui` (a streamed run and a system after `RigSet::Fold` on `Changed<Streamed>` for a polled stream), `prompt_from_assets` (the `assets` feature). `cargo run -p rig-ecs --example <name>` — none needs a key.
 
 ## On wasm
 

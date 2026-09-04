@@ -174,7 +174,7 @@ pub struct ToolContext {
     /// part of equality, dropped by the adapter before the result is
     /// resolved. The adapter copies them from the sink it serves
     /// (`OutcomeSink::scopes`) so a tool can reach its runtime by type —
-    /// rig-bus hands a `Dispatcher` whose every dispatch, and every agent
+    /// rig-agent's bus hands a `Dispatcher` whose every dispatch, and every agent
     /// built over it, descends from this call. Empty for an inline call.
     #[serde(skip)]
     scopes: Vec<std::sync::Arc<dyn Any + Send + Sync>>,
@@ -399,14 +399,6 @@ impl PublishedContext {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take()
-    }
-
-    /// Whether the tool published.
-    pub fn is_published(&self) -> bool {
-        self.0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
     }
 }
 

@@ -55,6 +55,7 @@ use rig_agent::agent::{
     ModelSelection, ModelSelectionAction, ObservationAction, ReasoningDelta, TextDelta,
     ToolCallDelta,
 };
+use rig_agent::bus::{Bus, Dispatcher, MemoryHandle, ModelHandle, ToolHandle};
 use rig_agent::run::{OutputMode, UnhandledInvalidToolCall};
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
@@ -71,7 +72,6 @@ use rig_agent::{
     },
     tool::{RegisteredTool, server::ToolServer},
 };
-use rig_bus::{Bus, Dispatcher, MemoryHandle, ModelHandle, ToolHandle};
 use rig_core::{
     completion::{CompletionRequestBuilder, Document},
     effect::{EffectFamily, EffectRecord, HandlerKey, MemoryOutcome},
@@ -443,7 +443,7 @@ pub const WORLD_DENY_REASON: &str = "blocked by the world";
 pub const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
 
 /// What the `lookup` tool dispatches from inside its own service, through
-/// the dispatcher its sink carries (`rig_bus::SinkDispatch`), so the child
+/// the dispatcher its sink carries (`rig_agent::bus::SinkDispatch`), so the child
 /// record names the tool's record as its parent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Nesting {
@@ -1681,7 +1681,8 @@ impl rig_core::serve::Serve for Lookup {
             // Answered later, by a task holding the detached sink: the
             // child is dispatched through the detached sink's dispatcher.
             let sink = sink.detach();
-            let dispatcher = rig_bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+            let dispatcher =
+                rig_agent::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
             assert_eq!(dispatcher.parent(), Some(sink.id()));
             let lookup = Lookup {
                 nesting: Nesting {
@@ -1696,7 +1697,7 @@ impl rig_core::serve::Serve for Lookup {
             });
             return;
         }
-        let dispatcher = rig_bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+        let dispatcher = rig_agent::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
         assert_eq!(dispatcher.parent(), Some(sink.id()));
         let text = self.nest(dispatcher, args).await;
         sink.resolve(Ok(tool_text(text))).await;
@@ -1730,7 +1731,7 @@ impl rig_core::serve::Serve for Relay {
             return;
         };
         let note: RelayNote = serde_json::from_value(payload).expect("a relay note");
-        let dispatcher = rig_bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+        let dispatcher = rig_agent::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
         let ack = dispatcher
             .bind(&note_key())
             .expect("the host serves notes")
@@ -2268,7 +2269,7 @@ pub fn golden_answer(log: &EffectLog) -> String {
 pub struct Replay {
     pub log: EffectLog,
     pub dispatcher: Dispatcher,
-    pub registrar: rig_bus::Registrar,
+    pub registrar: rig_agent::bus::Registrar,
     pub recorder: EffectLogRecorder,
     pub driver: tokio::task::JoinHandle<()>,
     pub model_key: HandlerKey,
@@ -2822,7 +2823,7 @@ pub async fn call_tools(
     tools: &[(String, ToolHandle)],
     concurrency: usize,
     hooks: &[Hook],
-    notes: Option<&rig_bus::Handle<rig_core::effect::family::Custom<Note>>>,
+    notes: Option<&rig_agent::bus::Handle<rig_core::effect::family::Custom<Note>>>,
 ) -> Result<Vec<UserContent>, &'static str> {
     let dispatch = |call: PendingToolCall| async move {
         if let Some(preresolved) = call.preresolved_result {
@@ -3279,7 +3280,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
     let server = replay.tool_server_for(program);
     server.attach(&replay.registrar);
     // The context index, registered by the driver as the builder would.
-    let context: Option<rig_bus::Handle<rig_core::effect::family::Retrieve>> =
+    let context: Option<rig_agent::bus::Handle<rig_core::effect::family::Retrieve>> =
         program.dynamic_context.map(|_| {
             let key = replay.context_key();
             let replayer = replay

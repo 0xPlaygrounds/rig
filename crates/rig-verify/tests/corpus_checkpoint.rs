@@ -77,7 +77,7 @@ use corpus::{
 };
 use rig_core::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig_core::error::ErrorKind;
-use rig_effect_log::{Checkpoint, EffectLog, EffectLogReplayer, RequestCheck};
+use rig_effect_log::{Checkpoint, EffectLog, RequestCheck};
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
@@ -336,8 +336,8 @@ async fn hash_mode_accepts_every_golden() {
     let mut replayed = 0usize;
     for fixture in &fixtures {
         let log = corpus::golden(fixture);
-        let (dispatcher, _registrar, mut driver) = rig_bus::Bus::channel();
-        EffectLogReplayer::register_all_checking(&log, &mut driver, RequestCheck::Hash)
+        let (dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
+        rig_agent::bus::replay::register_all_checking(&log, &mut driver, RequestCheck::Hash)
             .unwrap_or_else(|report| panic!("{fixture}: {report}"));
         let driver = tokio::spawn(driver);
         for record in log.iter() {
@@ -394,8 +394,9 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
         stream: *stream,
     };
     for check in [RequestCheck::Payload, RequestCheck::Hash] {
-        let (dispatcher, _registrar, mut driver) = rig_bus::Bus::channel();
-        EffectLogReplayer::register_all_checking(&log, &mut driver, check).expect("fresh keys");
+        let (dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
+        rig_agent::bus::replay::register_all_checking(&log, &mut driver, check)
+            .expect("fresh keys");
         let driver = tokio::spawn(driver);
         let report = corpus::within(dispatcher.dispatch(&model, changed.clone()))
             .await

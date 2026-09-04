@@ -268,7 +268,7 @@ impl ToolExecutionError {
     /// keep failures actionable. Call this when an explicitly constructed
     /// error's operator diagnostic may contain secrets; [`Self::from_error`]
     /// already uses this safe presentation for arbitrary source errors.
-    pub fn redact_model_feedback(mut self) -> Self {
+    pub(crate) fn redact_model_feedback(mut self) -> Self {
         self.model_output = Box::new(ToolOutput::text(self.kind.default_model_feedback()));
         self
     }

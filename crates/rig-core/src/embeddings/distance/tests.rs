@@ -64,8 +64,7 @@ fn test_chebyshev_distance() {
 }
 
 /// Every sum is taken in fixed chunks in index order, so a metric is the
-/// same bits on every run — under `rayon`, whatever order the threads
-/// finish in. (A recorded retrieval score that differed in its last digit
+/// same bits on every run. (A recorded retrieval score that differed in its last digit
 /// between two replays of one cassette is how this was found.)
 #[test]
 fn a_metric_is_the_same_bits_on_every_run() {

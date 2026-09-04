@@ -61,6 +61,7 @@ pub mod core {
 }
 
 pub mod agent;
+pub mod bus;
 pub mod client;
 pub mod completion;
 pub mod extractor;
@@ -71,6 +72,7 @@ pub(crate) use rig_core::json_utils;
 pub mod prelude;
 pub mod run;
 pub mod streaming;
+pub(crate) mod sync;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;

@@ -3,13 +3,12 @@
 //! the golden's replayers, its log compared to the golden as the other two
 //! interpreters' are.
 //!
-//! What this interpreter supports is what stages 2 and 3 build: a
-//! completion-and-tools program with no hooks, no memory, no routes, no
-//! retrieval, no layers, one prompt — the `lookup` tool's nesting included
-//! (a key the world serves: `world_nesting`). Every other program is
-//! reported `unsupported` with the set or entity it waits for, and passes;
-//! the union of those lines over the corpus is the status table the PR
-//! prints.
+//! Every program of the corpus runs here: completions, tools and batches,
+//! every hook as a user system (`world_hooks`), layers, memory, retrieval,
+//! routes, the `lookup` tool's nesting (a key the world serves:
+//! `world_nesting`), and every resume and checkpoint row as a scene load
+//! (`world_resume`). There is no `unsupported` row: a program the world
+//! cannot replay is a failing test, not a table line.
 
 use std::time::{Duration, Instant};
 
@@ -86,11 +85,11 @@ pub(super) fn open(
     app.finish();
     app.cleanup();
     let world = app.world_mut();
-    // rig-bus mints from 1; so does the world here, so ids read alike.
+    // rig-agent's bus mints from 1; so does the world here, so ids read alike.
     world.resource_mut::<IdCounter>().0 = 1;
 
     // The golden's replayers, by position per key, as the other
-    // interpreters register them: rig-bus minted an id for a dispatch a
+    // interpreters register them: rig-agent's bus minted an id for a dispatch a
     // hook or a layer then denied, so the ids do not align with the
     // world's, which mints only what it dispatches. Position holds because
     // the pool below is one thread: a handler task's first poll — where the
@@ -239,7 +238,7 @@ pub fn world_agent_reproduces(program: &Program) {
     }
 
     let world = app.world();
-    // The world's log is in begin order, as rig-bus's; the oracle asserts
+    // The world's log is in begin order, as rig-agent's bus's; the oracle asserts
     // it is dispatch order. The records carry the run's `Scope`, which the
     // goldens do not have and `as_data` does not compare.
     let replayed = world.resource::<EffectLogResource>().log();

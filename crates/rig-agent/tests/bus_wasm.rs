@@ -5,7 +5,7 @@
 //! is cancelled by drop, and the `Send + Sync` values the browser host
 //! holds are the same types as natively.
 //!
-//! Run with `cargo test -p rig-bus --target wasm32-unknown-unknown` under
+//! Run with `cargo test -p rig-agent --test bus_wasm --target wasm32-unknown-unknown` under
 //! `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner`
 //! (the CLI at the workspace lock file's `wasm-bindgen` version).
 
@@ -21,7 +21,7 @@ use std::{
     },
 };
 
-use rig_bus::{Bus, Dispatcher, EffectStream, Pending};
+use rig_agent::bus::{Bus, Dispatcher, EffectStream, Pending};
 use rig_core::serve::ServingPolicy;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},

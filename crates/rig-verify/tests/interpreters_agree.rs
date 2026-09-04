@@ -17,12 +17,12 @@
 use std::time::Duration;
 
 use proptest::prelude::*;
+use rig_agent::bus::{ModelHandle, ToolHandle};
 use rig_agent::{
     AgentBuilder,
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_bus::{ModelHandle, ToolHandle};
 use rig_core::serve::ServingPolicy;
 use rig_core::{
     completion::CompletionRequestBuilder,

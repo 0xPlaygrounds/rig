@@ -1,8 +1,8 @@
 //! Distance and similarity helpers for embedding vectors.
 //!
 //! The [`VectorDistance`] implementation for [`Embedding`](crate::embeddings::Embedding)
-//! uses iterator-based calculations by default and switches to Rayon-backed
-//! parallel iterators when the `rayon` feature is enabled.
+//! sums in fixed chunks on one thread, so every metric is the same bits on
+//! every run.
 
 /// Distance and similarity metrics for embedding vectors.
 pub trait VectorDistance {
@@ -27,19 +27,17 @@ pub trait VectorDistance {
 }
 
 /// The sums behind every metric are taken in fixed chunks: each chunk is
-/// summed left to right, then the chunk sums are summed left to right.
-/// With the `rayon` feature the chunks are computed in parallel and their
-/// sums combined in index order, so the result is the same bits on every
-/// run and the same bits as the sequential build. (A `par_iter().sum()`
-/// combines partial sums in whatever order the threads finish, and a
-/// cosine score that differed in its last digit from one run to the next
-/// turned a recorded retrieval into a record that was never the same
-/// twice.)
+/// summed left to right, then the chunk sums are summed left to right, so
+/// the result is the same bits on every run. (A parallel `sum()` that
+/// combined partial sums in whatever order the threads finished once gave
+/// a cosine score that differed in its last digit from one run to the
+/// next, and turned a recorded retrieval into a record that was never the
+/// same twice; the chunking is kept so a parallel build, if one returns,
+/// has the order it must reproduce.)
 const CHUNK: usize = 256;
 
 /// Generates the [`VectorDistance`] method bodies for [`Embedding`](crate::embeddings::Embedding)
-/// from one pairwise sum, one unary sum and one max-reduction, so the
-/// sequential and the Rayon-backed implementations share their math.
+/// from one pairwise sum, one unary sum and one max-reduction.
 macro_rules! impl_vector_distance {
     ($pair_sum:ident, $unary_sum:ident, $pair_max:ident) => {
         fn dot_product(&self, other: &Self) -> f64 {
@@ -78,13 +76,11 @@ macro_rules! impl_vector_distance {
     };
 }
 
-#[cfg(not(feature = "rayon"))]
 mod sequential {
     use super::{CHUNK, VectorDistance};
     use crate::embeddings::Embedding;
 
-    /// The same chunks and the same two left-to-right sums as the Rayon
-    /// build, one thread.
+    /// Fixed chunks, two left-to-right sums, one thread.
     fn pair_sum(a: &[f64], b: &[f64], term: impl Fn(f64, f64) -> f64) -> f64 {
         a.chunks(CHUNK)
             .zip(b.chunks(CHUNK))
@@ -103,45 +99,6 @@ mod sequential {
             .zip(b)
             .map(|(x, y)| term(*x, *y))
             .fold(0.0, f64::max)
-    }
-
-    impl VectorDistance for Embedding {
-        impl_vector_distance!(pair_sum, unary_sum, pair_max);
-    }
-}
-
-#[cfg(feature = "rayon")]
-mod rayon {
-    use super::{CHUNK, VectorDistance};
-    use crate::embeddings::Embedding;
-    use rayon::prelude::*;
-
-    /// Each chunk summed left to right on its thread; the chunk sums
-    /// combined in index order.
-    fn pair_sum(a: &[f64], b: &[f64], term: impl Fn(f64, f64) -> f64 + Sync) -> f64 {
-        a.par_chunks(CHUNK)
-            .zip(b.par_chunks(CHUNK))
-            .map(|(a, b)| a.iter().zip(b).map(|(x, y)| term(*x, *y)).sum::<f64>())
-            .collect::<Vec<f64>>()
-            .into_iter()
-            .sum()
-    }
-
-    fn unary_sum(a: &[f64], term: impl Fn(f64) -> f64 + Sync) -> f64 {
-        a.par_chunks(CHUNK)
-            .map(|a| a.iter().map(|x| term(*x)).sum::<f64>())
-            .collect::<Vec<f64>>()
-            .into_iter()
-            .sum()
-    }
-
-    fn pair_max(a: &[f64], b: &[f64], term: impl Fn(f64, f64) -> f64 + Sync) -> f64 {
-        // 0.0 is a valid identity for `max`: every term is a non-negative
-        // absolute difference.
-        a.par_iter()
-            .zip(b.par_iter())
-            .map(|(x, y)| term(*x, *y))
-            .reduce(|| 0.0, f64::max)
     }
 
     impl VectorDistance for Embedding {

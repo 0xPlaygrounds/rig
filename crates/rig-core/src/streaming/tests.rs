@@ -563,8 +563,8 @@ async fn finish_reason_is_reconciled_with_raw_attached() {
 /// The deserialization mirror carries `raw`: a terminal record with a
 /// captured payload survives serialize → deserialize with the payload
 /// intact, both bare and wrapped in `StreamEvent::Final` (the shape the
-/// agent forwards). A record serialized before the field existed still
-/// loads, with `raw` unset.
+/// agent forwards). A record written without the field (what an unset
+/// `raw` serializes to) loads with `raw` unset.
 #[test]
 fn stream_final_raw_round_trips_through_serde_mirror() {
     let payload = serde_json::json!({
@@ -590,12 +590,12 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
     let decoded = serde_json::from_value::<StreamEvent>(encoded).expect("deserialize wrapped");
     assert_eq!(decoded, wrapped);
 
-    // Pre-field JSON: no `raw` key.
-    let legacy = serde_json::json!({
+    // No `raw` key: the shape an unset `raw` is written as.
+    let without_raw = serde_json::json!({
         "usage": serde_json::to_value(Usage::new()).unwrap(),
         "provider": "example"
     });
-    let decoded = serde_json::from_value::<StreamFinal>(legacy).expect("legacy loads");
+    let decoded = serde_json::from_value::<StreamFinal>(without_raw).expect("loads without `raw`");
     assert!(decoded.raw.is_null());
 
     // Unset `raw` is not written, so a record without capture serializes
