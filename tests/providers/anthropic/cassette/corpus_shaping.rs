@@ -99,9 +99,19 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
                 .build();
             let outcome = agent.prompt(SUM_EVENT_PROMPT).max_turns(3).await;
             let log = agent.take_effect_log().expect("recording");
-            assert_eq!(&families(&log)[..3], TOOL_TURN);
+            // The patched turn answers in text, the run's output validation
+            // reprompts for the output tool, and the unpatched turn 3 calls it.
+            assert!(outcome.is_ok(), "{outcome:?}");
+            assert_eq!(
+                families(&log),
+                [
+                    EffectFamily::Completion,
+                    EffectFamily::Tool,
+                    EffectFamily::Completion,
+                    EffectFamily::Completion
+                ]
+            );
             assert_eq!(request_at(&log, 2).tool_choice, Some(ToolChoice::None));
-            eprintln!("OUTCOME {outcome:?} RECORDS {}", log.records.len());
             crate::goldens::golden_effects(
                 "anthropic_shaping_tool_choice_none_on_committed_output",
                 &log,

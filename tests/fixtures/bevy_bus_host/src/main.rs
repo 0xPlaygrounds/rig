@@ -427,13 +427,14 @@ fn guarded<T>(label: &str, mut step: impl FnMut() -> Option<T>) -> T {
     }
 }
 
-/// `--replay <golden.effects.json>`: the effect corpus's third
-/// interpreter. The host registers a replayer for every key the golden
-/// names, then a system dispatches each record's effect to its key in the
-/// golden's order and compares the answer with the record's; the golden
-/// is the script and the oracle at once. No agent runs here: the log's
-/// records are the program, as a host that persisted a run's effects
-/// would replay them.
+/// `--replay <golden.effects.json>`: the effect corpus's log-as-script
+/// replay in a Bevy world. The host registers a replayer for every key
+/// the golden names, then a system dispatches each record's effect to
+/// its key in the golden's order and compares the answer with the
+/// record's. No agent runs here and nothing is interpreted: what it
+/// proves is the bus plumbing and the order — a host that persisted a
+/// run's effects can dispatch them again from its systems and get the
+/// recorded answers back.
 fn replay(path: &str) {
     let pool = TaskPool::new();
     let text = std::fs::read_to_string(path).expect("the golden reads");
@@ -451,11 +452,12 @@ fn replay(path: &str) {
     let mut schedule = Schedule::default();
     schedule.add_systems((dispatch_next_record, poll_next_record).chain());
     let total = log.records.len();
-    guarded("replay", || {
+    let replayed = guarded("replay", || {
         tick(&mut world, &mut schedule);
         let script = world.resource::<ReplayScript>();
-        (script.records.is_empty() && script.in_flight.is_none()).then_some(())
+        (script.records.is_empty() && script.in_flight.is_none()).then_some(script.replayed)
     });
+    assert_eq!(replayed, total, "every record dispatched and compared");
     println!("replay: {total} record(s) of {path} replayed in the golden's order");
     println!("bevy-bus-host: ok");
 }

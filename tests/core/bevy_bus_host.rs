@@ -116,10 +116,26 @@ fn bevy_host_runs_the_ten_proofs() -> Result<(), Box<dyn std::error::Error>> {
 /// One vocabulary on both targets: the fixture spells the registrar as a
 /// `NonSend` resource natively and on wasm, and nothing else in it forks
 /// on the target either.
-/// The effect corpus's third interpreter: the Bevy host replays a golden
-/// as a script — a replayer per key on its bus, each record dispatched
-/// from a system in the golden's order, each answer compared with the
-/// record's (Matrix O).
+#[test]
+fn bevy_host_fixture_has_no_target_cfg() -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(fixture_dir().join("src/main.rs"))?;
+    let offenders: Vec<String> = source
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| line.contains("cfg("))
+        .map(|(number, line)| format!("{}: {}", number + 1, line.trim()))
+        .collect();
+    if !offenders.is_empty() {
+        return Err(format!("the fixture forks on the target:\n{}", offenders.join("\n")).into());
+    }
+    Ok(())
+}
+
+/// The effect corpus's log-as-script replay in a Bevy world: a replayer
+/// per key on the host's bus, each record dispatched from a system in the
+/// golden's order, each answer compared with the record's (Matrix O). It
+/// proves the plumbing and the order, not an interpretation of the
+/// program: no agent runs in the fixture.
 #[test]
 fn bevy_host_replays_a_golden() -> Result<(), Box<dyn std::error::Error>> {
     let golden = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -141,21 +157,6 @@ fn bevy_host_replays_a_golden() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !stdout.contains("replay: 3 record(s)") || !stdout.contains("bevy-bus-host: ok") {
         return Err(format!("the fixture did not report the replay:\n{stdout}").into());
-    }
-    Ok(())
-}
-
-#[test]
-fn bevy_host_fixture_has_no_target_cfg() -> Result<(), Box<dyn std::error::Error>> {
-    let source = std::fs::read_to_string(fixture_dir().join("src/main.rs"))?;
-    let offenders: Vec<String> = source
-        .lines()
-        .enumerate()
-        .filter(|(_, line)| line.contains("cfg("))
-        .map(|(number, line)| format!("{}: {}", number + 1, line.trim()))
-        .collect();
-    if !offenders.is_empty() {
-        return Err(format!("the fixture forks on the target:\n{}", offenders.join("\n")).into());
     }
     Ok(())
 }

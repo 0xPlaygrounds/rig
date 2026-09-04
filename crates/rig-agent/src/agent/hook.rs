@@ -1603,8 +1603,9 @@ impl HookStack {
         self.hooks.push(Arc::new(hook));
     }
 
-    /// The type names of the hooks in registration order (nested stacks
-    /// flattened) — the program identity an effect log records.
+    /// Every hook's name ([`AgentHook::name`], else its type name), in
+    /// registration order (nested stacks flattened) — the program
+    /// identity an effect log records.
     pub fn names(&self) -> Vec<String> {
         self.names.clone()
     }

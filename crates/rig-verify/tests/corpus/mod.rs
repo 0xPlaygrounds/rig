@@ -1925,10 +1925,18 @@ pub fn run_spec(program: &Program) -> RunSpec {
 /// resumed engine replays.
 fn head_end_id(log: &EffectLog) -> u64 {
     let records = &log.records;
-    let first_tool = records
+    // The first tool record after a completion: a hook's own tool dispatch
+    // before the run's first completion (Matrix B's lookup) is not the
+    // tool turn.
+    let first_completion = records
         .iter()
-        .position(|record| record.kind.family() == EffectFamily::Tool)
-        .expect("a resumed program has a tool turn");
+        .position(|record| record.kind.family() == EffectFamily::Completion)
+        .expect("a resumed program has a completion");
+    let first_tool = first_completion
+        + records[first_completion..]
+            .iter()
+            .position(|record| record.kind.family() == EffectFamily::Tool)
+            .expect("a resumed program has a tool turn");
     let mut end = first_tool;
     while end + 1 < records.len()
         && matches!(
@@ -2292,9 +2300,6 @@ async fn hand_drive(program: &Program, resume: bool) {
                         _ => (&model, default_label.as_str()),
                     };
                     asked_before = true;
-                    // The driver's routing state, persisted on the run as the engine
-                    // persists it, so a resumed engine's selection hook sees it.
-                    run.set_previous_model(rig_core::completion::ModelRef::new(label));
                     // The retrievals the engine performs at the boundary, in its
                     // order: the context (a completion-call hook), then the tool
                     // index; the query is the current prompt's text, else the
@@ -2346,6 +2351,11 @@ async fn hand_drive(program: &Program, resume: bool) {
                         turn_patch.as_ref(),
                     )
                     .expect("prepared");
+                    // The driver's routing state, persisted on the run as the
+                    // engine persists it — after the request prepared, so a
+                    // preparation failure leaves it unchanged — so a resumed
+                    // engine's selection hook sees it.
+                    run.set_previous_model(rig_core::completion::ModelRef::new(label));
                     run.set_output_tool_name(prepared.output_tool_name.clone());
                     run.advertise_tools(turn, prepared.tools.clone());
                     let executable = prepared.executable_tool_names.clone();

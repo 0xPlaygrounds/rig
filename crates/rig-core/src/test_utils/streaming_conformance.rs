@@ -2582,7 +2582,7 @@ pub mod fixtures {
                     "index": 0,
                     "delta": {
                         "type": "thought_summary",
-                        "content": {"text": "before tool"},
+                        "content": {"type": "text", "text": "before tool"},
                     },
                 })),
                 sse(&json!({
@@ -2600,7 +2600,7 @@ pub mod fixtures {
                     "index": 0,
                     "delta": {
                         "type": "thought_summary",
-                        "content": {"text": "after tool"},
+                        "content": {"type": "text", "text": "after tool"},
                     },
                 })),
                 completed(Some(json!({

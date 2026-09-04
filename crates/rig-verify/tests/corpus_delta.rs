@@ -29,7 +29,9 @@
 //! scripted); arguments-first under every resolution but `Retry` (the
 //! buffering is the assembler's, decided before the resolution; one cell
 //! pins it); the stops beside a resolution (a stop ends the turn before
-//! any resolution); the output tool on the live wires (Matrix N's rows);
+//! any resolution); the output tool arriving as deltas on a live wire
+//! (unrecorded: Matrix N's output-tool rows are on the block-shaped
+//! Responses and generate wires; the mock cell pins the assembly);
 //! `Skip` and `Repair` beside a valid call (Matrix G's mixed cells pin
 //! the pairing; the delta shape changes the surfacing, which the single
 //! cells pin).
@@ -203,8 +205,15 @@ fn every_cell_streams_the_tool_name_as_a_delta() {
     for fixture in [
         BASELINE.fixture,
         RETRY.fixture,
+        RETRY_ARGUMENTS_FIRST.fixture,
+        REPAIR.fixture,
+        SKIP.fixture,
         IGNORE.fixture,
+        IGNORE_BESIDE_VALID.fixture,
+        FAIL.fixture,
         OUTPUT_TOOL.fixture,
+        STOP_ON_NAME.fixture,
+        STOP_ON_ARGUMENTS.fixture,
         OPENAI_BASELINE.fixture,
         GEMINI_BASELINE.fixture,
     ] {

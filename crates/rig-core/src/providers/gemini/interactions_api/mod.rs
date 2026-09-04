@@ -1567,7 +1567,7 @@ pub mod interactions_api_types {
 
     /// Thought summary item: a content item like any other on this wire,
     /// tagged by `type` (the API refuses an untagged one on the way back:
-    /// "The 'type' parameter is required at 'input[n].content[0].summary[0]'").
+    /// "The 'type' parameter is required at `input[n].content[0].summary[0]`").
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ThoughtSummaryContent {

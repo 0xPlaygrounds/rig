@@ -81,7 +81,6 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
                 .count(),
             2
         );
-        eprintln!("ORDER {fams:?}");
         crate::goldens::golden_effects("anthropic_oracle_concurrent_notes", &log);
     })
     .await;

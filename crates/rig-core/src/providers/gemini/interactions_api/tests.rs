@@ -1123,7 +1123,15 @@ fn a_tool_round_trip_is_top_level_steps() {
             Step::Thought(_) => "thought",
             Step::FunctionCall(_) => "function_call",
             Step::FunctionResult(_) => "function_result",
-            _ => "other",
+            Step::CodeExecutionCall(_)
+            | Step::CodeExecutionResult(_)
+            | Step::UrlContextCall(_)
+            | Step::UrlContextResult(_)
+            | Step::GoogleSearchCall(_)
+            | Step::GoogleSearchResult(_)
+            | Step::McpServerToolCall(_)
+            | Step::McpServerToolResult(_)
+            | Step::FileSearchResult(_) => "other",
         })
         .collect();
     assert_eq!(

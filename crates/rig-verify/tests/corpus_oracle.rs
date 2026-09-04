@@ -41,6 +41,15 @@
 //!   and the replay is compared positionally across keys, so #2451's
 //!   "per key only" risk was a misreading. The id assertion is now in
 //!   `assert_same_records`, and no golden failed it.
+//! - The concurrent cell's pin is the interleaving shape — both tool
+//!   dispatches, then both notes (`[Tool, Tool, Custom, Custom]`), since
+//!   the engine mints both dispatches before the driver serves either
+//!   and each note follows its tool's answer — and not which tool's note
+//!   comes first: both notes carry the same payload (`at: "outcome"`),
+//!   so the two orders are one record sequence. The replay reproduces the
+//!   shape under the test runtime (current-thread tokio); a runtime that
+//!   answers the second dispatch before the first would move a note, and
+//!   that is a re-record with the rule restated, not a defect.
 //! - Hook identity by type name could not tell two programs apart whose
 //!   hooks differ only in a value; `AgentHook::name` lets a hook name
 //!   itself, the stack records it, and the stateful stop's header reads
