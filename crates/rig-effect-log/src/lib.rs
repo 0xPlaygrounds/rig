@@ -23,6 +23,14 @@
 //! log with another
 //! [`EFFECT_LOG_FORMAT`] does not load: there is no tolerant decoder.
 //!
+//! Format 6 records explicitly published tool result values separately from
+//! the ordinary outcome, including error outcomes. Replayers publish these
+//! values before resolving the outcome. The recorded map excludes inbound
+//! tool context and live scopes; handlers must publish before resolving and
+//! must not put secrets or live capabilities into durable result values.
+//! Older logs cannot establish whether published values were lost, so format
+//! 5 is rejected rather than interpreted as having no published output.
+//!
 //! The vocabulary is rig-core's, the runtimes are rig-agent's bus and rig-ecs; this crate is
 //! the persistence story over both, and what a host that saves and restores
 //! in-flight effects (a scene, a durable run) depends on.

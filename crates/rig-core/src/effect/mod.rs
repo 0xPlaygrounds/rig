@@ -943,6 +943,11 @@ pub enum RetrievedDocuments {
 /// One recorded exchange: the effect, who served it, and the answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectRecord {
+    /// Explicitly published tool-result metadata, including on errors. Never
+    /// inbound authentication values or runtime scopes. `None` means the tool
+    /// did not publish a context before resolving.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_output: Option<crate::tool::ToolResultContext>,
     /// The dispatch's id.
     pub id: EffectId,
     /// The handler the effect was routed to.

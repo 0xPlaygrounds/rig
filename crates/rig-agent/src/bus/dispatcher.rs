@@ -824,7 +824,8 @@ impl Dispatcher {
     ) -> Pending {
         let (reply, receiver) = oneshot::channel();
         let (cancel_guard, cancel) = oneshot::channel();
-        let published = context.as_ref().map(|_| PublishedContext::new());
+        let published = (context.is_some() || matches!(kind, EffectKind::ToolCall { .. }))
+            .then(PublishedContext::new);
         Pending {
             id,
             parent: self.parent,
@@ -1040,16 +1041,15 @@ pub struct Pending {
     parked: Arc<AtomicWaker>,
     /// Dropped with the value: the driver's cancel signal.
     _cancel_guard: oneshot::Sender<()>,
-    /// Where a tool call's published context comes back
-    /// ([`Dispatcher::dispatch_tool_with_id`]); `None` for any other
-    /// dispatch.
+    /// Where a tool call's published context comes back, including raw
+    /// tool dispatches without explicit inputs.
     published: Option<Arc<PublishedContext>>,
 }
 
 impl Pending {
     /// Where the tool's published context lands once this dispatch resolved
-    /// (clone it before awaiting the dispatch): `Some` for a
-    /// [`Dispatcher::dispatch_tool_with_id`], `None` otherwise.
+    /// (clone it before awaiting the dispatch): `Some` for tool calls,
+    /// including raw dispatches, and explicit context-bearing dispatches.
     pub fn published_context(&self) -> Option<Arc<PublishedContext>> {
         self.published.clone()
     }

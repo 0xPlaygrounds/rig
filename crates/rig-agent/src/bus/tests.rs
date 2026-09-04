@@ -1851,6 +1851,7 @@ struct Counting {
 }
 
 impl rig_core::serve::Recorder for Counting {
+    fn tool_output(&self, _: rig_core::effect::EffectId, _: rig_core::tool::ToolResultContext) {}
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
     fn begin(
         &self,

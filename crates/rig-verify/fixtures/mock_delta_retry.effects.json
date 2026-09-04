@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 5,
+    "format": 6,
     "run_spec": 14178699323467550126,
     "handlers": [
       {
@@ -480,6 +480,7 @@
       ]
     },
     {
+      "tool_output": {},
       "id": 3,
       "key": "golden/tool:add#0",
       "kind": {

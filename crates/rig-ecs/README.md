@@ -4,6 +4,26 @@ rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus as a plugi
 
 ## The run as a graph
 
+`agent::scene::WorldScene` saves the library's supported graph/effect state,
+not arbitrary world state. Install `agent::scene::SceneExtensions` in both
+worlds to register application components under stable, versioned names.
+Registered serde components on saved graph entities round-trip with those
+entities; a saved but unregistered name is rejected on load. Component payloads
+must be entity-independent and their serde implementations pure and
+deterministic. Embedded entity IDs are not remapped. Resources, custom effect
+components, extra entities, system-local state and live tasks remain host-owned.
+Bind handlers and install registrations before loading; install application
+insertion observers afterward to avoid reacting to partially restored state.
+
+`replay::stamp_run` captures supported effective configuration, including
+run-over-agent overrides. `check_replayable` checks the requested run's exact
+`Scope`; it does not search for another matching policy hash. Applications
+must declare a nonempty `agent::PolicyVersion` for their custom systems,
+ordering and otherwise-unhashed configuration. A missing declaration is
+reported as unverified. This declaration is not an automatic code fingerprint
+or a check of ambient credentials and external state. The builder-only
+`stamp_header` remains a corpus header, not an effective compatibility check.
+
 The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in `Order`, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that walks the graph at `RigSet::Assemble` and writes the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the corpus's third interpreter (`crates/rig-verify/tests/corpus/world.rs`) replays every completion-only golden through it.
 
 | design (§3.1) | here |
@@ -151,6 +171,30 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 ## What it deliberately does not have
 
 No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Memory is the graph and retrieval attaches (`tests/memory_graph.rs`); two runs on one agent are two `spawn_run`s; resume is a scene load (`agent::scene::{save_world, load_world}`, every resume and checkpoint row of the corpus as a world cell, CONTRACT §13). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+
+## Memory finalization across snapshots
+
+`Settled` means the model run produced its answer, not that external memory
+has committed it. `MemoryAppendScheduled` persists the fact that finalization
+created an append; its child effect carries the request, dispatch id and
+outcome. Loading a snapshot before finalization schedules that append;
+loading a queued, in-flight or completed append does not create another
+operation. See `tests/memory_resume.rs` for live-handler tests at these cuts.
+
+An unanswered effect is retried on load under its saved id. The external
+write may already have happened: a process can stop between the write and
+collecting its answer. This is not exactly-once execution. A host needing
+deduplication must durably associate an external idempotency key with the
+operation (including a session/log namespace, since `EffectId` alone is not
+globally unique), use an idempotent handler, or reconcile ambiguous writes
+before resuming. Despawning or abandoning a world does not roll back writes.
+
+Save only at a schedule boundary after deferred commands have been applied,
+and persist the scene together with its matching log/checkpoint. Inserting
+components while loading invokes Bevy insertion observers and change
+detection; application observers must not interpret rehydration as a new
+business event. Install such observers after loading or explicitly guard
+them during restoration.
 
 ## The prelude and the features
 

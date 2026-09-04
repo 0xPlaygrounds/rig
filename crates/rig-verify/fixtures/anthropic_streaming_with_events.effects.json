@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 5,
+    "format": 6,
     "run_spec": 9258363232016223254,
     "handlers": [
       {
@@ -342,6 +342,7 @@
       ]
     },
     {
+      "tool_output": {},
       "id": 2,
       "key": "golden/tool:subtract#1",
       "kind": {

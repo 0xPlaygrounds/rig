@@ -45,12 +45,20 @@ struct Recording {
 
 /// The record's view of one dispatch: the recorder, told by id.
 struct Recorded<R> {
+    published: Option<Arc<rig_core::tool::PublishedContext>>,
     recorder: R,
     id: EffectId,
 }
 
 impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        if let Some(output) = self
+            .published
+            .as_ref()
+            .and_then(|published| published.result_context())
+        {
+            self.recorder.tool_output(self.id, output);
+        }
         self.recorder.resolve(self.id, outcome.clone());
     }
 
@@ -78,7 +86,9 @@ impl Recording {
         let for_begin = recorder.clone();
         let begin = Box::new(move |id, key, kind, origin| for_begin.begin(id, key, kind, origin));
         let observe = Box::new(move |sink: OutcomeSink, id: EffectId| {
+            let published = sink.scope::<rig_core::tool::PublishedContext>();
             sink.with_observer(Box::new(Recorded {
+                published,
                 recorder: recorder.clone(),
                 id,
             }))

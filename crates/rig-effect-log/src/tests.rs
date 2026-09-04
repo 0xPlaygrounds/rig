@@ -25,6 +25,7 @@ fn request() -> CompletionRequest {
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
@@ -41,6 +42,7 @@ fn effect_record_and_log_round_trip() {
             events: None,
         },
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
@@ -64,6 +66,18 @@ fn effect_record_and_log_round_trip() {
     assert_eq!(back[0].id, EffectId::from_raw(1));
     assert_eq!(back[1].key.as_str(), "tool:add");
     assert!(matches!(&back[1].outcome, Err(report) if report.kind == ErrorKind::Timeout));
+}
+
+#[test]
+fn format_five_cannot_claim_published_output_completeness() {
+    let mut log = EffectLog::from_records(vec![]);
+    log.header.format = 5;
+    let error = super::EffectLogReplayer::check_header(&log).expect_err("old recorder lost output");
+    assert!(error.message.contains("format 5"));
+    assert!(super::EffectLogReplayer::for_log(&log).is_err());
+    assert!(super::EffectLogReplayer::for_log_by_id(&log).is_err());
+    assert!(super::EffectLogReplayer::for_key(&log, &HandlerKey::from("tool")).is_err());
+    assert!(super::EffectLogReplayer::for_key_by_id(&log, &HandlerKey::from("tool")).is_err());
 }
 
 /// The recorder finds a slot from the back: the newest slot with an id is
@@ -151,6 +165,7 @@ fn custom_kind() -> EffectKind {
 fn two_records() -> EffectLog {
     EffectLog::from_records(vec![
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),
@@ -162,6 +177,7 @@ fn two_records() -> EffectLog {
             events: None,
         },
         EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(2),
@@ -233,14 +249,14 @@ fn a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name() {
     let refused = EffectLog::from_checkpoint(&old, tail.clone()).expect_err("format 3");
     assert_eq!(
         refused.message,
-        "resume refused: the checkpoint is format 3, this rig reads format 5"
+        "resume refused: the checkpoint is format 3, this rig reads format 6"
     );
     let mut old_tail = tail;
     old_tail.header.format = 3;
     let refused = EffectLog::from_checkpoint(&checkpoint, old_tail).expect_err("format 3");
     assert_eq!(
         refused.message,
-        "resume refused: the tail is format 3, this rig reads format 5"
+        "resume refused: the tail is format 3, this rig reads format 6"
     );
 }
 

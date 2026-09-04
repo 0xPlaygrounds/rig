@@ -35,6 +35,88 @@ use rig_core::{
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Raw tool dispatches also get a publication slot; recording must not
+/// consume it before the pending caller can read it.
+#[tokio::test]
+async fn raw_tool_dispatch_records_and_replays_published_output() {
+    use rig_core::tool::{ContextValue, PublishedContext, ToolOutput, ToolResult};
+    #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    struct Artifact(String);
+    impl ContextValue for Artifact {
+        const KEY: &'static str = "artifact.v1";
+    }
+    struct Publisher;
+    impl Serve for Publisher {
+        type Family = rig_core::effect::family::Tool;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: HandlerKey::from("tool:publish"),
+                family: FamilyDescriptor::Tool {
+                    name: "publish".into(),
+                    description: "artifact".into(),
+                    parameters: json!({}),
+                    embedding: None,
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, sink: OutcomeSink) {
+            let mut context = ToolContext::new();
+            context
+                .insert_result(Artifact("result-123".into()))
+                .expect("encodes");
+            sink.scope::<PublishedContext>()
+                .expect("raw dispatch has a slot")
+                .publish(context);
+            sink.resolve(Ok(Outcome::ToolResult {
+                result: ToolResult::success(ToolOutput::text("ok")),
+            }))
+            .await;
+        }
+    }
+    let key = HandlerKey::from("tool:publish");
+    let kind = EffectKind::ToolCall {
+        name: "publish".into(),
+        args: "{}".into(),
+    };
+    let recorder = EffectLogRecorder::new();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver.register(key.clone(), Publisher).expect("fresh");
+    driver.record_to(recorder.clone());
+    let _task = spawn(driver);
+    let pending = dispatcher.dispatch(&key, kind.clone());
+    let published = pending.published_context().expect("slot");
+    let original = within(pending).await.expect("answer");
+    assert_eq!(
+        published
+            .take()
+            .expect("caller retains output")
+            .result::<Artifact>()
+            .expect("decodes"),
+        Some(Artifact("result-123".into()))
+    );
+    let json = serde_json::to_string(&recorder.log()).expect("serializes");
+    let log = serde_json::from_str(&json).expect("deserializes");
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    super::register_all(&log, &mut driver).expect("replayers");
+    let _task = spawn(driver);
+    let pending = dispatcher.dispatch(&key, kind);
+    let published = pending.published_context().expect("slot");
+    let replayed = within(pending).await.expect("answer");
+    assert_eq!(
+        serde_json::to_value(original).expect("serializes"),
+        serde_json::to_value(replayed).expect("serializes")
+    );
+    assert_eq!(
+        published
+            .take()
+            .expect("replayed output")
+            .result::<Artifact>()
+            .expect("decodes"),
+        Some(Artifact("result-123".into()))
+    );
+}
+
 async fn within<T>(future: impl Future<Output = T>) -> T {
     tokio::time::timeout(TIMEOUT, future)
         .await
@@ -709,6 +791,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
+            tool_output: None,
             parent: None,
             scope: None,
             id: EffectId::from_raw(1),

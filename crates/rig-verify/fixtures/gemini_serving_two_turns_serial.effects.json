@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 5,
+    "format": 6,
     "run_spec": 13512054446980575785,
     "handlers": [
       {
@@ -211,6 +211,7 @@
       }
     },
     {
+      "tool_output": {},
       "id": 2,
       "key": "stress-agent/tool:add#0",
       "kind": {
@@ -397,6 +398,7 @@
       }
     },
     {
+      "tool_output": {},
       "id": 4,
       "key": "stress-agent/tool:subtract#1",
       "kind": {

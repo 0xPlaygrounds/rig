@@ -119,6 +119,7 @@ impl EffectLogReplayer {
         first: Option<EffectRecord>,
         records: Records,
     ) -> Result<Self, ErrorReport> {
+        Self::check_header(log)?;
         let (family, described) = match first {
             Some(first) => (first.kind.family(), describe(key, &first.kind, log)),
             // No record: the handler table is the header's first source —
@@ -175,6 +176,7 @@ impl EffectLogReplayer {
     /// key the required row names that no record does, each with its
     /// replayer.
     pub fn for_log(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+        Self::check_header(log)?;
         Self::keys_of(log)
             .iter()
             .map(|key| Self::for_key(log, key))
@@ -183,6 +185,7 @@ impl EffectLogReplayer {
 
     /// [`for_log`](Self::for_log) with every replayer answering by id.
     pub fn for_log_by_id(log: &EffectLog) -> Result<Vec<Self>, ErrorReport> {
+        Self::check_header(log)?;
         Self::keys_of(log)
             .iter()
             .map(|key| Self::for_key_by_id(log, key))
@@ -512,6 +515,22 @@ impl Serve for EffectLogReplayer {
                         ),
                     )),
                     None => {
+                        if let Some(output) = record.tool_output {
+                            let Some(published) = sink.scope::<rig_core::tool::PublishedContext>()
+                            else {
+                                sink.resolve(Err(ErrorReport::new(
+                                    ErrorKind::Divergence,
+                                    "replay requires a tool-result publication slot",
+                                )))
+                                .await;
+                                return;
+                            };
+                            let context = sink
+                                .scope::<rig_core::tool::ToolContext>()
+                                .map(|context| context.for_dispatch())
+                                .unwrap_or_default();
+                            published.publish(context.with_result_context(output));
+                        }
                         // A stream recorded verbatim replays verbatim: the
                         // consumer sees the original delta boundaries, not
                         // the fold re-emitted. A stream that ended in an
