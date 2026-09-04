@@ -4,6 +4,15 @@
 //! shape is the same with a real `CompletionAdapter` registered under the
 //! key.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::type_complexity,
+    reason = "an example: user code, thirty lines, a mock behind it"
+)]
+
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Startup};
 use bevy_ecs::prelude::*;
 use rig_core::{

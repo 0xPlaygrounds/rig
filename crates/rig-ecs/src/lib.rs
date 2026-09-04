@@ -42,6 +42,8 @@
 //! a `git mv` when a second consumer exists.
 
 pub mod agent;
+#[cfg(feature = "assets")]
+pub mod assets;
 pub mod bus;
 pub mod policy;
 pub mod prelude;

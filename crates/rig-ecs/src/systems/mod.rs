@@ -128,6 +128,9 @@ pub type AwaitingView = (
     &'static OutputToolName,
     &'static Usage,
 );
+/// What the cancel observer reads of a run: awaiting its model, resolving
+/// its tools, already ended.
+pub type RunPhase = (Has<AwaitingModel>, Has<ResolvingTools>, Has<Failed>);
 /// What the cancel observer reads of a turn: its run, whether it was
 /// read, whether its batch is out.
 pub type TurnState = (&'static ChildOf, Has<Materialised>, Has<Batch>);
@@ -315,7 +318,7 @@ pub fn next_order(world: &mut World) -> Order {
     order
 }
 
-fn next_order_in(counter: &mut OrderCounter) -> Order {
+pub fn next_order_in(counter: &mut OrderCounter) -> Order {
     let order = Order(counter.0);
     counter.0 += 1;
     order
@@ -1755,7 +1758,7 @@ pub fn effect_cancelled(
     removed: On<bevy_ecs::lifecycle::Remove, PendingEffect>,
     effects: Query<(&ChildOf, Has<ToolCallSlot>), With<PendingEffect>>,
     turns: Query<TurnState, With<Turn>>,
-    runs: Query<(Has<AwaitingModel>, Has<ResolvingTools>), With<Run>>,
+    runs: Query<RunPhase, With<Run>>,
     mut commands: Commands,
 ) {
     let effect = removed.event().entity;
@@ -1767,9 +1770,14 @@ pub fn effect_cancelled(
         return;
     };
     let run = run_of.parent();
-    let Ok((awaiting, resolving)) = runs.get(run) else {
+    let Ok((awaiting, resolving, failed)) = runs.get(run) else {
         return;
     };
+    // A run already ended keeps its ending: `run_cancelled` writes the
+    // reason before it despawns what was pending.
+    if failed {
+        return;
+    }
     let cancelled = Failed(Failure::Cancelled(rig_core::serve::cancelled()));
     if is_tool_call && batched && resolving {
         // A tool child despawned while its batch was out: the run ends
@@ -1832,6 +1840,14 @@ pub fn run_cancelled(
             }
         }
     }
+    // The ending first, so the despawns' observer (`effect_cancelled`)
+    // finds the run ended with this reason and leaves it.
+    commands
+        .entity(run)
+        .remove::<(Assembling, AwaitingModel, ResolvingTools)>()
+        .insert(Failed(Failure::Cancelled(
+            rig_core::error::ErrorReport::new(ErrorKind::Cancelled, reason.clone()),
+        )));
     for effect in pending {
         commands.entity(effect).despawn();
     }
@@ -1841,10 +1857,4 @@ pub fn run_cancelled(
             .insert(Materialised)
             .remove::<(Batch, Fresh, RequestPatch)>();
     }
-    commands
-        .entity(run)
-        .remove::<(Assembling, AwaitingModel, ResolvingTools)>()
-        .insert(Failed(Failure::Cancelled(
-            rig_core::error::ErrorReport::new(ErrorKind::Cancelled, reason.clone()),
-        )));
 }

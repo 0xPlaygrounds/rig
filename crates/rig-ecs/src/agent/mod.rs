@@ -826,3 +826,33 @@ const _: () = {
     assert_serde::<Conversation>();
     assert_serde::<Retrieval>();
 };
+
+/// Fork `run`: a clone of the run entity and its whole subtree (the
+/// utterances, the turns, their effects — `ChildOf` is linked, so the
+/// clone is deep) under the next run number and its own scope, on the
+/// same agent. Best-of-n is `fork` n − 1 times and a system that judges
+/// the settled runs (design §3.4). Fork a run at rest — between turns,
+/// no effect in flight: a task is not cloned, an in-flight effect's clone
+/// would wait forever.
+pub fn fork(world: &mut World, run: Entity) -> Entity {
+    let seq = {
+        let mut counter = world.resource_mut::<RunCounter>();
+        let seq = counter.0;
+        counter.0 += 1;
+        seq
+    };
+    let owner = world
+        .get::<RunOf>(run)
+        .and_then(|run_of| world.get::<Owner>(run_of.0))
+        .map(|owner| owner.0.clone())
+        .unwrap_or_default();
+    let clone = world
+        .entity_mut(run)
+        .clone_and_spawn_with_opt_out(|builder| {
+            builder.linked_cloning(true);
+        });
+    world
+        .entity_mut(clone)
+        .insert((RunSeq(seq), crate::bus::Scope(format!("{owner}/run#{seq}"))));
+    clone
+}

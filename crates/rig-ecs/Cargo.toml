@@ -65,3 +65,11 @@ required-features = ["reflect"]
 [[test]]
 name = "reflect_scene"
 required-features = ["reflect"]
+
+[[test]]
+name = "assets_prompt"
+required-features = ["assets"]
+
+[[example]]
+name = "prompt_from_assets"
+required-features = ["assets"]

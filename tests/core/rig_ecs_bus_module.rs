@@ -275,11 +275,13 @@ fn no_serde_type_holds_an_entity() {
 /// The crate's tests live where the module guard can find them: every
 /// integration test file is a `bus_*` file (the substrate's own suite) or
 /// one of the agent's — `run_*`, `tool_*`, `steer_*`, `memory_*`,
-/// `reflect_*` — and no `bus_*` file imports an agent module: the
+/// `reflect_*`, `assets_*` — and no `bus_*` file imports an agent module: the
 /// substrate's suite is the future rig-bevy suite verbatim.
 #[test]
 fn every_test_file_belongs_to_a_suite_and_the_bus_suite_is_agent_free() {
-    const SUITES: [&str; 6] = ["bus_", "run_", "tool_", "steer_", "memory_", "reflect_"];
+    const SUITES: [&str; 7] = [
+        "bus_", "run_", "tool_", "steer_", "memory_", "reflect_", "assets_",
+    ];
     let tests = crate_root().join("tests");
     let offenders: Vec<String> = std::fs::read_dir(&tests)
         .expect("rig-ecs has tests")
