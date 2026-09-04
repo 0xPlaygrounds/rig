@@ -9,11 +9,11 @@ use std::{
     time::Duration,
 };
 
+use rig_agent::bus::Bus;
 use rig_agent::{
     AgentBuilder,
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_bus::Bus;
 use rig_core::{
     effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
@@ -111,7 +111,7 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     let saved = serde_json::to_string(&log).expect("log serializes");
     let restored: rig_effect_log::EffectLog = serde_json::from_str(&saved).expect("restores");
     let (dispatcher, registrar, mut driver) = Bus::channel();
-    EffectLogReplayer::register_all(&restored, &mut driver).expect("fresh keys");
+    rig_agent::bus::replay::register_all(&restored, &mut driver).expect("fresh keys");
     let replay_task = tokio::spawn(driver);
 
     // The replayed agent advertises the same tool (its handler is the
@@ -167,7 +167,7 @@ async fn a_tool_divergence_fails_the_run_at_the_tool_record() {
     }
 
     let (dispatcher, registrar, mut driver) = Bus::channel();
-    EffectLogReplayer::register_all(&log, &mut driver).expect("fresh keys");
+    rig_agent::bus::replay::register_all(&log, &mut driver).expect("fresh keys");
     let replay_task = tokio::spawn(driver);
     let tool_replayer =
         EffectLogReplayer::for_key(&log, &tool_key).expect("the log has the tool's records");

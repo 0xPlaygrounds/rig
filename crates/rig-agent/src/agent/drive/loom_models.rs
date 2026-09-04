@@ -12,7 +12,7 @@ use std::{
 use loom::{sync::Arc, thread};
 
 use super::{WakerSet, try_lock};
-use crate::agent::sync::Mutex;
+use crate::sync::Mutex;
 
 /// A waker that counts its wakes.
 struct Counting(AtomicUsize);

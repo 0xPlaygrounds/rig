@@ -337,18 +337,18 @@ fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
         opt_in_json.get("record_telemetry_content").is_none(),
         "local telemetry policy must not be serialized into provider requests"
     );
-    let legacy_roundtrip: CompletionRequest =
-        serde_json::from_value(opt_in_json).expect("deserialize legacy request");
+    let without_field: CompletionRequest =
+        serde_json::from_value(opt_in_json).expect("deserialize a request without the field");
     assert!(
-        !legacy_roundtrip.record_telemetry_content,
+        !without_field.record_telemetry_content,
         "missing field should deserialize to the safe default"
     );
 }
 
 /// The deserialization mirror carries `raw`: a response with a captured
-/// payload survives serialize → deserialize with the payload intact, a
-/// response serialized before the field existed still loads with `raw`
-/// unset, and an unset `raw` is not written.
+/// payload survives serialize → deserialize with the payload intact, an
+/// unset `raw` is not written, and a response written without the field
+/// (which is what an unset `raw` serializes to) loads with `raw` unset.
 #[test]
 fn normalized_response_raw_round_trips_through_serde_mirror() {
     let payload = serde_json::json!({
@@ -375,12 +375,13 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         encoded
     );
 
-    let legacy = serde_json::json!({
+    let without_raw = serde_json::json!({
         "choice": [{"type": "text", "text": "hello"}],
         "usage": serde_json::to_value(Usage::new()).unwrap(),
         "provider": "example"
     });
-    let decoded: CompletionResponse = serde_json::from_value(legacy).expect("legacy loads");
+    let decoded: CompletionResponse =
+        serde_json::from_value(without_raw).expect("loads without `raw`");
     assert!(decoded.raw.is_null());
 
     let bare = serde_json::to_value(CompletionResponse::new(

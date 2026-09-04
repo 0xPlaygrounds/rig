@@ -11,8 +11,8 @@
 
 use std::time::Duration;
 
+use rig_agent::bus::Bus;
 use rig_agent::{AgentBuilder, run::PromptError};
-use rig_bus::Bus;
 use rig_core::{
     effect::{EffectFamily, EffectKind, HandlerKey},
     error::ErrorKind,

@@ -1,14 +1,3 @@
-#![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(
-    test,
-    allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        clippy::unwrap_used,
-        clippy::unreachable
-    )
-)]
 //! The effect bus runtime: one channel between whoever needs an effect
 //! served and the handlers that serve it.
 //!
@@ -97,7 +86,7 @@
 //!
 //! ```ignore
 //! // Bevy: one call site, one spelling, both targets.
-//! let (dispatcher, registrar, mut driver) = rig_bus::Bus::channel();
+//! let (dispatcher, registrar, mut driver) = rig_agent::bus::Bus::channel();
 //! driver.register("model", rig_core::serve::adapters::CompletionAdapter::new("gpt", model))?;
 //! let task = IoTaskPool::get().spawn(driver);   // BusDriver: Send on native, !Send ok on wasm
 //! world.insert_resource(BusRes(dispatcher));     // Dispatcher: Send + Sync + 'static everywhere
@@ -109,11 +98,11 @@
 //! }
 //! ```
 //!
-//! A bare wasm host passes its own spawner to [`Bus::new_with`] — rig-bus
+//! A bare wasm host passes its own spawner to [`Bus::new_with`] — the bus
 //! does not depend on `wasm-bindgen-futures`; the host supplies it.
 //!
 //! ```ignore
-//! let (dispatcher, registrar) = rig_bus::Bus::new_with(
+//! let (dispatcher, registrar) = rig_agent::bus::Bus::new_with(
 //!     rig_core::serve::ServingPolicy::default(),
 //!     |driver| {
 //!         driver
@@ -224,7 +213,6 @@ mod dispatcher;
 mod driver;
 mod handle;
 mod registrar;
-mod sync;
 
 pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
 pub use driver::BusDriver;
@@ -274,7 +262,7 @@ impl Bus {
 
     /// A bus whose driver is handed to `spawn` after `register` has filled
     /// its handler table. `spawn` is the host's executor entry point
-    /// (`tokio::spawn`, a task pool, `spawn_local`); rig-bus supplies none.
+    /// (`tokio::spawn`, a task pool, `spawn_local`); rig-agent supplies none.
     pub fn new_with(
         config: ServingPolicy,
         register: impl FnOnce(&mut BusDriver),
@@ -286,6 +274,8 @@ impl Bus {
         (dispatcher, registrar)
     }
 }
+
+pub mod replay;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;

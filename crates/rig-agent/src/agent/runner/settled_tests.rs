@@ -110,7 +110,7 @@ mod slow_stream {
     /// streaming is cut off and the record is the cancel.
     #[tokio::test]
     async fn a_delta_stop_cancels_a_dispatch_still_streaming() {
-        let (dispatcher, registrar, mut driver) = rig_bus::Bus::channel();
+        let (dispatcher, registrar, mut driver) = crate::bus::Bus::channel();
         let key = HandlerKey::from("golden/model:default");
         driver
             .register_erased(key.clone(), rig_core::serve::ErasedHandler::new(Slow))

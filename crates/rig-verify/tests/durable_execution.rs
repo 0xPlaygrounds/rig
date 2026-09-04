@@ -19,12 +19,12 @@ use std::{
     time::Duration,
 };
 
+use rig_agent::bus::{Bus, ModelHandle, ToolHandle};
 use rig_agent::{
     AgentBuilder,
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_bus::{Bus, ModelHandle, ToolHandle};
 use rig_core::{
     completion::CompletionRequestBuilder,
     effect::EffectFamily,
@@ -295,7 +295,7 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         serial_per_handler: scenario.serial_per_handler,
         ..rig_core::serve::ServingPolicy::default()
     });
-    EffectLogReplayer::register_all(&continuation, &mut driver).expect("fresh keys");
+    rig_agent::bus::replay::register_all(&continuation, &mut driver).expect("fresh keys");
     let recorder = EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let replay_task = tokio::spawn(driver);
@@ -466,7 +466,7 @@ async fn a_hooks_decision_is_program_not_record() {
         let tool_key = tool_key.clone();
         async move {
             let (dispatcher, registrar, mut driver) = Bus::channel();
-            EffectLogReplayer::register_all(&continuation, &mut driver).expect("fresh keys");
+            rig_agent::bus::replay::register_all(&continuation, &mut driver).expect("fresh keys");
             let replay_task = tokio::spawn(driver);
             let tool_replayer =
                 EffectLogReplayer::for_key(&continuation, &tool_key).expect("records");
@@ -609,7 +609,7 @@ async fn resumes_from_a_checkpoint(
         serial_per_handler: scenario.serial_per_handler,
         ..rig_core::serve::ServingPolicy::default()
     });
-    EffectLogReplayer::register_all_checking(&continuation, &mut driver, check)
+    rig_agent::bus::replay::register_all_checking(&continuation, &mut driver, check)
         .expect("fresh keys");
     let recorder = EffectLogRecorder::new();
     driver.record_to(recorder.clone());

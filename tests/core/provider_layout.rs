@@ -220,12 +220,6 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ),
     ("rig-derive", Exempt("proc-macro crate — no runtime wire")),
     (
-        "rig-bus",
-        Exempt(
-            "the effect bus runtime — dispatcher, registrar, driver, typed views; no provider, no wire",
-        ),
-    ),
-    (
         "rig-effect-log",
         Exempt(
             "record and replay over the bus — the effect log, recorder, replayer; no provider, no wire",

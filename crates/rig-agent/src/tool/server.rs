@@ -23,8 +23,8 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
+use crate::bus::Registrar;
 use indexmap::IndexMap;
-use rig_bus::Registrar;
 use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
     effect::Key,
@@ -123,7 +123,7 @@ impl ToolServerState {
 
     fn publish(&self, tool: &RegisteredTool) {
         for bus in &self.buses {
-            crate::agent::bus::register_generated(
+            crate::agent::drive::register_generated(
                 bus.register_erased(tool.key().raw().clone(), tool.handler().clone()),
             );
         }
@@ -224,12 +224,12 @@ impl ToolServerState {
 
     fn attach(&mut self, bus: &Registrar) {
         for (_, tool) in self.toolset.iter() {
-            crate::agent::bus::register_generated(
+            crate::agent::drive::register_generated(
                 bus.register_erased(tool.key().raw().clone(), tool.handler().clone()),
             );
         }
         for index in &self.retrieval_indexes {
-            crate::agent::bus::register_generated(
+            crate::agent::drive::register_generated(
                 bus.register_erased(index.key.clone(), index.handler.clone()),
             );
         }

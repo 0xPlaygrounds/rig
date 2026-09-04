@@ -8,7 +8,7 @@ use std::{
     task::{Context, Waker},
 };
 
-use super::sync::Mutex;
+use crate::sync::Mutex;
 
 use rig_core::{
     effect::{Family, HandlerDescriptor, HandlerKey},

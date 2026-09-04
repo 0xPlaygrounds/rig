@@ -16,14 +16,14 @@
 //! inherent methods below, which are dispatches.
 //!
 //! ```compile_fail
-//! use rig_bus::ModelHandle;
+//! use rig_agent::bus::ModelHandle;
 //!
 //! fn requires_serialize<T: serde::Serialize>() {}
 //! requires_serialize::<ModelHandle>();
 //! ```
 //!
 //! ```compile_fail
-//! use rig_bus::ToolHandle;
+//! use rig_agent::bus::ToolHandle;
 //!
 //! fn requires_deserialize<T: for<'de> serde::Deserialize<'de>>() {}
 //! requires_deserialize::<ToolHandle>();

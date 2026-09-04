@@ -10,8 +10,8 @@
 //! - and the discipline the shape depends on: nothing in the crate blocks
 //!   (`block_on`), holds an `Entity` inside a serde type, forks on the
 //!   target (`cfg(target`), draws a clock or a random number, or reaches
-//!   for a side channel of the bus runtime (the names rig-bus lost when
-//!   its host became a world).
+//!   for a side channel of the bus runtime (the names rig-agent's bus lost
+//!   when its host became a world).
 
 use std::path::{Path, PathBuf};
 

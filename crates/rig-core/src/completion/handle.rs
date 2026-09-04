@@ -1,7 +1,7 @@
 //! The string identity a runtime names a model by.
 //!
 //! Live model behaviour is reached through the effect bus: a
-//! `ModelHandle` (`rig_bus`) is a typed view bound to the key
+//! `ModelHandle` (`rig_agent::bus`) is a typed view bound to the key
 //! a [`CompletionAdapter`](crate::serve::adapters::CompletionAdapter) was
 //! registered under. `ModelRef` is the serializable half — the label under
 //! which a runtime resolves that key.

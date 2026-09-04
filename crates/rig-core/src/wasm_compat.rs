@@ -10,7 +10,7 @@ use futures::Stream;
 // (`Rc`→`Arc`, `RefCell`→`Mutex`, and a thread-safe wasm HTTP client), not
 // a change here. Nothing in the crate asserts `Send` by hand on the
 // strength of this premise; the bus carries `!Send` handlers only through
-// values that are themselves `!Send` there (`rig_bus::Registrar`).
+// values that are themselves `!Send` there (rig-agent's `bus::Registrar`).
 #[cfg(all(
     target_arch = "wasm32",
     target_os = "unknown",

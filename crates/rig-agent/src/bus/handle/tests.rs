@@ -4,7 +4,7 @@ use futures::StreamExt;
 use serde_json::json;
 
 use super::*;
-use crate::Bus;
+use crate::bus::Bus;
 use rig_core::{
     completion::{CompletionRequest, Message},
     effect::{EffectFamily, HandlerKey, family},
@@ -93,7 +93,11 @@ fn request() -> CompletionRequest {
     }
 }
 
-fn bus() -> (Dispatcher, crate::Registrar, tokio::task::JoinHandle<()>) {
+fn bus() -> (
+    Dispatcher,
+    crate::bus::Registrar,
+    tokio::task::JoinHandle<()>,
+) {
     let (dispatcher, registrar, mut driver) = Bus::channel();
     driver
         .register(
@@ -219,7 +223,7 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
         .handle(&HandlerKey::from("double"))
         .expect("tool");
     assert_eq!(tool.name(), "double");
-    let crate::ToolAnswer { result, .. } =
+    let crate::bus::ToolAnswer { result, .. } =
         within(tool.call("double", r#"{"x": 21}"#, ToolContext::new()))
             .await
             .expect("called");

@@ -1,4 +1,4 @@
-error[E0277]: the trait bound `NotAHandler: rig_core::serve::handler::Serve` is not satisfied
+error[E0277]: the trait bound `NotAHandler: Serve` is not satisfied
   --> tests/ui/serve/fail_not_a_serve.rs:10:39
    |
 10 |     let _ = registrar.register("key", NotAHandler);
@@ -6,23 +6,23 @@ error[E0277]: the trait bound `NotAHandler: rig_core::serve::handler::Serve` is 
    |                       |
    |                       required by a bound introduced by this call
    |
-help: the trait `rig_core::serve::handler::Serve` is not implemented for `NotAHandler`
+help: the trait `Serve` is not implemented for `NotAHandler`
   --> tests/ui/serve/fail_not_a_serve.rs:6:1
    |
  6 | struct NotAHandler;
    | ^^^^^^^^^^^^^^^^^^
-   = help: the following other types implement trait `rig_core::serve::handler::Serve`:
+   = help: the following other types implement trait `Serve`:
              Arc<H>
-             rig_core::serve::adapters::CompletionAdapter<M>
-             rig_core::serve::adapters::EmbedAdapter<E>
-             rig_core::serve::adapters::ImageEmbedAdapter<E>
-             rig_core::serve::adapters::MemoryAdapter<M>
-             rig_core::serve::adapters::RerankAdapter<M>
-             rig_core::serve::adapters::RetrieveAdapter<I>
-             rig_core::serve::adapters::ToolAdapter<T>
+             CompletionAdapter<M>
+             EmbedAdapter<E>
+             ErasedHandler
+             Layer<I>
+             MemoryAdapter<M>
+             RerankAdapter<M>
+             RetrieveAdapter<I>
            and $N others
 note: required by a bound in `Registrar::register`
-  --> $WORKSPACE/crates/rig-bus/src/registrar.rs
+  --> $WORKSPACE/crates/rig-agent/src/bus/registrar.rs
    |
    |     pub fn register(
    |            -------- required by a bound in this associated function

@@ -3,7 +3,7 @@ name = "rig-effect-log"
 version.workspace = true
 edition = { workspace = true }
 license = "MIT"
-description = "Record and replay for rig's effect bus: the effect log, its header, the recorder a driver writes to and the replayer that answers from the record."
+description = "Record and replay for rig's effects: the effect log, its header, the recorder a driver writes to and the replayer that answers from the record. Depends on rig-core alone."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [package.metadata.docs.rs]
@@ -13,16 +13,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [lints]
 workspace = true
 
-[features]
-default = ["bus"]
-# Registering replayers on a rig-bus driver (`EffectLogReplayer::register_all`).
-# The log, the recorder and the replayer itself need rig-core alone; a
-# second runtime (rig-ecs, whose driver is a system) registers the replayer
-# through its own registry and turns this off.
-bus = ["dep:rig-bus"]
-
 [dependencies]
-rig-bus = { path = "../rig-bus", version = "0.42.0", optional = true }
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

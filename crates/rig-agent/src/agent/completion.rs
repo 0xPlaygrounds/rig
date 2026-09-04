@@ -2,6 +2,7 @@ use super::hook::{HookStack, RequestPatch};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
 use super::typed::TypedRun;
+use crate::bus::{BusDriver, Dispatcher, ModelHandle};
 use crate::{
     completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Document,
@@ -10,13 +11,12 @@ use crate::{
     run::response::PromptResponse,
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
-use rig_bus::{BusDriver, Dispatcher, ModelHandle};
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, Key, family};
 use rig_core::id::ConversationId;
 use rig_effect_log::EffectLog;
 
-use super::bus::AgentBus;
+use super::drive::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -260,7 +260,7 @@ pub(crate) struct AgentConfig {
     /// The anonymous model this value selected ([`Agent::set_model`],
     /// [`AgentRunner::using_model_value`]); its registration lives as long
     /// as the values sharing it.
-    pub(crate) anonymous_model: Option<std::sync::Arc<super::bus::AnonymousModel>>,
+    pub(crate) anonymous_model: Option<std::sync::Arc<super::drive::AnonymousModel>>,
 }
 
 impl AgentConfig {
@@ -332,7 +332,7 @@ impl AgentConfig {
     /// Bind the memory handle, when memory is configured.
     pub(crate) fn memory_handle(
         &self,
-    ) -> Option<Result<rig_bus::MemoryHandle, rig_core::error::ErrorReport>> {
+    ) -> Option<Result<crate::bus::MemoryHandle, rig_core::error::ErrorReport>> {
         self.memory_key
             .as_ref()
             .map(|key| self.bus.dispatcher().bind(key))
@@ -813,7 +813,7 @@ pub struct AgentParts {
     pub dispatcher: Dispatcher,
     /// The bus's registration handle: register on the bus once the driver
     /// is spawned.
-    pub registrar: rig_bus::Registrar,
+    pub registrar: crate::bus::Registrar,
     /// The bus's serving half: spawn it or drive it, or the agent hangs.
     pub driver: BusDriver,
     /// The agent, now over the bus rather than owning it.

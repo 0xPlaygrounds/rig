@@ -296,8 +296,8 @@ async fn a_log_of_another_format_is_refused_by_number() {
     let by_the_agent = refusal(&TOOLS, |log| log.header.format = 3).await;
     assert_eq!(by_the_agent, by_the_replayer);
     // And the replayer's registration refuses before any key.
-    let (_dispatcher, _registrar, mut driver) = rig_bus::Bus::channel();
-    let by_registration = EffectLogReplayer::register_all(&log, &mut driver)
+    let (_dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
+    let by_registration = rig_agent::bus::replay::register_all(&log, &mut driver)
         .expect_err("format 3")
         .to_string();
     assert_eq!(by_registration, by_the_replayer);
@@ -407,7 +407,7 @@ async fn a_policy_round_trips_through_the_header() {
     let restored: rig_effect_log::LogHeader = serde_json::from_value(json).expect("restores");
     assert_eq!(restored.bus, Some(policy));
     // And back into a bus: the driver a host builds under it runs it.
-    let (_dispatcher, _registrar, driver) = rig_bus::Bus::channel_with(policy);
+    let (_dispatcher, _registrar, driver) = rig_agent::bus::Bus::channel_with(policy);
     assert_eq!(*driver.config(), policy);
     // A header without one is the host's business.
     let mut nameless = restored;

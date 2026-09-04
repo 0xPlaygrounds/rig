@@ -36,7 +36,6 @@ lopdf = { workspace = true, optional = true }
 mime_guess = { workspace = true }
 ordered-float = { workspace = true }
 quick-xml = { workspace = true, optional = true }
-rayon = { workspace = true, optional = true }
 rig-derive = { version = "0.42.0", path = "../rig-derive", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -98,7 +97,6 @@ derive = ["dep:rig-derive"]
 test-utils = []
 pdf = ["dep:lopdf"]
 epub = ["dep:epub", "dep:quick-xml"]
-rayon = ["dep:rayon"]
 # The transport-agnostic websocket contract (`ws_client`) and the provider
 # websocket sessions written against it. Adds no dependency — the contract is
 # built from `http`/`bytes`/`futures`/`url`, which rig-core already has — but

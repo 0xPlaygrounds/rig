@@ -11,6 +11,7 @@ use std::{
 };
 
 use futures::StreamExt;
+use rig_agent::bus::{Bus, BusDriver};
 use rig_agent::{
     Agent, AgentBuilder,
     agent::{
@@ -22,7 +23,6 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
-use rig_bus::{Bus, BusDriver};
 use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
@@ -159,7 +159,7 @@ async fn into_parts_hands_over_the_driver_with_the_dispatcher() {
     // Spawn the driver ourselves; the dispatcher clone and the agent both
     // resolve through it.
     let task = tokio::spawn(driver);
-    let handle: rig_bus::ModelHandle = dispatcher
+    let handle: rig_agent::bus::ModelHandle = dispatcher
         .bind(agent.model_key())
         .expect("the model is registered");
     assert_eq!(handle.model_ref().as_str(), "default");
@@ -649,7 +649,7 @@ async fn a_nested_agent_call_from_a_tool_is_served_by_the_driving_run() {
 struct NestedSameTool {
     host: Arc<
         OnceLock<(
-            rig_bus::Registrar,
+            rig_agent::bus::Registrar,
             HandlerKey,
             rig_agent::tool::server::ToolServerHandle,
         )>,
@@ -678,7 +678,7 @@ impl Tool for NestedSameTool {
     ) -> Result<String, Self::Error> {
         let (registrar, model_key, tools) = self.host.get().expect("set after build").clone();
         let scoped = context
-            .scope::<rig_bus::Dispatcher>()
+            .scope::<rig_agent::bus::Dispatcher>()
             .expect("served over a bus: the call has a scope");
         assert!(
             scoped.parent().is_some(),
@@ -1451,7 +1451,7 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
         agent,
     } = parts;
     let task = tokio::spawn(driver);
-    let anonymous = |dispatcher: &rig_bus::Dispatcher| {
+    let anonymous = |dispatcher: &rig_agent::bus::Dispatcher| {
         dispatcher
             .keys()
             .into_iter()
@@ -1590,10 +1590,10 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         agent,
     } = parts;
     let task = tokio::spawn(driver);
-    let model: rig_bus::ModelHandle = dispatcher
+    let model: rig_agent::bus::ModelHandle = dispatcher
         .bind(agent.model_key())
         .expect("the model is registered");
-    let streamer: rig_bus::ModelHandle = dispatcher
+    let streamer: rig_agent::bus::ModelHandle = dispatcher
         .handle(&HandlerKey::from(format!(
             "{}/model:streamer",
             agent.owner()

@@ -247,7 +247,7 @@ pub struct OutcomeSink {
     done: Option<oneshot::Sender<()>>,
     /// The driver's scopes for this dispatch: opaque values the driver
     /// attaches ([`with_scope`]) and a runtime crate or an adapter reads
-    /// back by type — rig-bus hands a `Dispatcher` whose dispatches carry
+    /// back by type — rig-agent's bus hands a `Dispatcher` whose dispatches carry
     /// this dispatch's id as their parent; a tool call's driver hands the
     /// `ToolContext` the tool runs with and the [`PublishedContext`] it
     /// publishes into. rig-core names no runtime, so the slots are `Any`;
@@ -350,7 +350,7 @@ impl DetachedSink {
 /// What a driver sees of one dispatch through the sink it handed out: the
 /// record's view. A driver that is on the reply path itself (an ECS
 /// schedule reading an outcome component) installs none; a driver that is
-/// not (rig-bus, whose consumer holds the reply channel) installs one per
+/// not (rig-agent's bus, whose consumer holds the reply channel) installs one per
 /// dispatch with [`OutcomeSink::with_observer`], and it is told the
 /// outcome exactly once — a stream's folded, at its terminal.
 pub trait Observe: Send + Sync {
@@ -783,7 +783,7 @@ fn finish_unary(
 /// Re-emit a completed response as the events a stream consumer expects:
 /// one block per content item, then `Final`. Used when a unary answer meets
 /// a streaming dispatch (a replayed log, a unary-only custom handler).
-pub fn events_from_response(
+pub(crate) fn events_from_response(
     response: &CompletionResponse,
 ) -> Vec<Result<StreamEvent, ErrorReport>> {
     use crate::{

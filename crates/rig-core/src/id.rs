@@ -59,15 +59,6 @@ macro_rules! counter_id {
                 }
             }
 
-            /// Advance this process's counter past `raw`, so ids minted after
-            /// the call are strictly greater than it. Call it when loading ids
-            /// persisted by an earlier process (a resumed run) so fresh mints
-            /// cannot collide with ids consumers already saw.
-            pub fn advance_past(raw: u64) {
-                Self::counter()
-                    .fetch_max(raw.saturating_add(1), std::sync::atomic::Ordering::Relaxed);
-            }
-
             /// Build an id from its raw value. `None` for zero, which is never
             /// a valid id.
             pub const fn from_raw(raw: u64) -> Option<Self> {
@@ -195,7 +186,7 @@ impl AsRef<str> for ConversationId {
 }
 
 /// Generate a `len`-character, URL-safe, non-cryptographic identifier.
-pub fn generate_with_len(len: usize) -> String {
+pub(crate) fn generate_with_len(len: usize) -> String {
     std::iter::repeat_with(|| {
         let idx = fastrand::usize(..ALPHABET.len());
         // `idx` is always in bounds, but use `get` to avoid the `indexing_slicing` lint.

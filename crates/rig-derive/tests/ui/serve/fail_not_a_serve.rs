@@ -1,7 +1,7 @@
 //! A type that does not implement `Serve` is told to implement `Serve` —
 //! never the bus's own boxed trait or the sealed family trait.
 
-use rig_bus::Bus;
+use rig_agent::bus::Bus;
 
 struct NotAHandler;
 

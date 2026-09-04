@@ -312,7 +312,7 @@ impl std::fmt::Debug for Scratchpad {
 #[derive(Debug)]
 pub struct HookContext {
     /// The bus the run dispatches through, when it has one.
-    dispatcher: Option<rig_bus::Dispatcher>,
+    dispatcher: Option<crate::bus::Dispatcher>,
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
@@ -337,7 +337,7 @@ impl HookContext {
     pub(crate) fn new(
         is_streaming: bool,
         agent_name: Option<String>,
-        dispatcher: Option<rig_bus::Dispatcher>,
+        dispatcher: Option<crate::bus::Dispatcher>,
     ) -> Self {
         Self {
             dispatcher,
@@ -399,7 +399,7 @@ impl HookContext {
 
     /// The run's bus, for a hook binding a typed view; fails when the
     /// context was built outside a run.
-    fn bus(&self) -> Result<&rig_bus::Dispatcher, ErrorReport> {
+    fn bus(&self) -> Result<&crate::bus::Dispatcher, ErrorReport> {
         self.dispatcher.as_ref().ok_or_else(|| {
             ErrorReport::new(
                 ErrorKind::BusClosed,
@@ -1819,11 +1819,11 @@ impl AgentHook for HookStack {
 /// A typed view a hook bound through its [`HookContext`], scoped to the
 /// run by its lifetime: it is `!'static`, so a hook cannot store it in a
 /// field or move it into a spawned task — the compiler refuses. It offers
-/// the family-generic API of [`Handle`](rig_bus::Handle) by
+/// the family-generic API of [`Handle`](crate::bus::Handle) by
 /// delegation rather than `Deref` (a `Deref` to the `Clone` handle would
 /// hand back an owned `'static` view through `.clone()`, which is the one
 /// thing this type exists to prevent). A host that wants an owned handle
-/// takes it from a [`Dispatcher`](rig_bus::Dispatcher) it holds
+/// takes it from a [`Dispatcher`](crate::bus::Dispatcher) it holds
 /// itself.
 ///
 /// ```compile_fail
@@ -1852,12 +1852,12 @@ impl AgentHook for HookStack {
 /// }
 /// ```
 pub struct RunHandle<'ctx, F: rig_core::effect::Family> {
-    inner: rig_bus::Handle<F>,
+    inner: crate::bus::Handle<F>,
     _run: std::marker::PhantomData<&'ctx HookContext>,
 }
 
 impl<'ctx, F: rig_core::effect::Family> RunHandle<'ctx, F> {
-    fn scoped(inner: rig_bus::Handle<F>) -> Self {
+    fn scoped(inner: crate::bus::Handle<F>) -> Self {
         Self {
             inner,
             _run: std::marker::PhantomData,
@@ -1865,7 +1865,7 @@ impl<'ctx, F: rig_core::effect::Family> RunHandle<'ctx, F> {
     }
 
     /// Dispatch a typed request of this family.
-    pub fn dispatch(&self, request: F::Request) -> rig_bus::Typed<F> {
+    pub fn dispatch(&self, request: F::Request) -> crate::bus::Typed<F> {
         self.inner.dispatch(request)
     }
 
@@ -1892,7 +1892,7 @@ impl RunHandle<'_, rig_core::effect::family::Retrieve> {
         req: rig_core::vector_store::request::VectorSearchRequest<
             rig_core::vector_store::request::Filter<serde_json::Value>,
         >,
-    ) -> rig_bus::Retrieval<T> {
+    ) -> crate::bus::Retrieval<T> {
         self.inner.top_n(req)
     }
 }
@@ -1902,7 +1902,7 @@ impl RunHandle<'_, rig_core::effect::family::Completion> {
     pub fn complete(
         &self,
         request: rig_core::completion::CompletionRequest,
-    ) -> rig_bus::Completion {
+    ) -> crate::bus::Completion {
         self.inner.complete(request)
     }
 

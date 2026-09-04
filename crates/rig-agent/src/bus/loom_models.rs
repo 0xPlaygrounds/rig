@@ -1,5 +1,5 @@
 //! The bus's wait/wake protocols under `loom`: every interleaving of a
-//! small model, run with `RUSTFLAGS="--cfg rig_loom" cargo test -p rig-core
+//! small model, run with `RUSTFLAGS="--cfg rig_loom" cargo test -p rig-agent
 //! --lib --release loom_`. A model that fails is a bug in the protocol.
 //!
 //! `Waker`s are `std`'s (loom does not intercept `wake()`), so the models

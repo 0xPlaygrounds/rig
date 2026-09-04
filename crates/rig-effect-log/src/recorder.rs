@@ -77,7 +77,7 @@ impl EffectLogRecorder {
     }
 
     /// The header the log will carry: set by the driver at
-    /// [`BusDriver::record_to`](rig_bus::BusDriver::record_to) (the registered handlers) and by an agent
+    /// a driver's `record_to` (rig-agent's `BusDriver`) (the registered handlers) and by an agent
     /// (the run spec hash); the signature accumulates as dispatches are
     /// served.
     pub fn header(&self) -> LogHeader {

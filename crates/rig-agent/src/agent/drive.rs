@@ -23,11 +23,11 @@ use std::{
 
 use futures::Stream;
 
-use super::sync::Mutex;
+use crate::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
-use rig_bus::{BusDriver, Dispatcher, Registrar};
+use crate::bus::{BusDriver, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::CompletionAdapter;
@@ -428,7 +428,7 @@ impl<S> Driven<S> {
 /// taken is being polled from inside another run's driver poll and yields.
 /// A poisoned lock (a handler panicked under a poll) is taken over, as
 /// everywhere else in the bus.
-fn try_lock<T>(driver: &Mutex<T>) -> Option<super::sync::MutexGuard<'_, T>> {
+fn try_lock<T>(driver: &Mutex<T>) -> Option<crate::sync::MutexGuard<'_, T>> {
     match driver.try_lock() {
         Ok(guard) => Some(guard),
         Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),

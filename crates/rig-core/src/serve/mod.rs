@@ -7,14 +7,14 @@
 //! out-of-tree kind (`EffectKind::Custom`) or a replayer implements
 //! [`Serve`] directly; a handler that streams writes through
 //! [`OutcomeSink::writer`] (a [`StreamWriter`]) and never names a block id. [`ErasedHandler`] is rig-core's **only** erasure: the
-//! handler-table entry a bus runtime (`rig_bus`) carries, and what
+//! handler-table entry a bus runtime (`rig_agent::bus`) carries, and what
 //! [`serve_inline`] runs without a bus.
 //!
 //! The driver seam — [`OutcomeSink::unary`], [`OutcomeSink::stream`],
 //! [`OutcomeSink::with_observer`], [`ErasedHandler::handle`], [`StreamTap`]
 //! — is what a bus driver builds to hand a handler its sink and, when the
 //! driver is not itself on the reply path, observe what it answers.
-//! `rig_bus` is one such driver; a second runtime (an ECS schedule, which
+//! `rig_agent::bus` is one such driver; a second runtime (an ECS schedule, which
 //! reads the outcome where it lands and installs no observer) is another.
 
 pub mod adapters;
@@ -25,7 +25,7 @@ mod writer;
 
 pub use handler::{
     DetachedSink, ErasedHandler, HandlerFuture, Observe, OutcomeSink, Serve, SinkClosed, StreamTap,
-    cancelled, events_from_response, serve_inline, serve_inline_with, stream_truncated,
+    cancelled, serve_inline, serve_inline_with, stream_truncated,
 };
 pub use layer::{Decision, Intercept, Layer, Verdict};
 pub use recorder::{Origin, Recorder};
@@ -33,7 +33,7 @@ pub use writer::StreamWriter;
 
 /// A driver's sizing and serving policy: what a program was recorded
 /// under and what a host runs it under. Serve-side data, so a log names no
-/// runtime and any driver — rig-bus's, a host's own — states its policy in
+/// runtime and any driver — rig-agent's, a host's own — states its policy in
 /// the same terms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ServingPolicy {

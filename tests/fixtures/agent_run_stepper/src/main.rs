@@ -20,7 +20,7 @@ use std::{
 
 use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
-use rig_bus::{Bus, BusDriver, ModelHandle};
+use rig_agent::bus::{Bus, BusDriver, ModelHandle};
 use rig_core::completion::{
     AssistantContent, CompletionError, CompletionModel, CompletionRequest,
     CompletionRequestBuilder, CompletionResponse, ModelRef, Usage,
