@@ -479,6 +479,14 @@ pub struct AgentRun {
     /// [`AgentRunStep::CallModel`] is emitted.
     #[serde(default)]
     streamed_completion_call_recorded: bool,
+    /// The model behind the run's preceding issued completion attempt, as
+    /// the driver advances it immediately before the attempt is issued
+    /// (a stop or a preparation failure leaves it unchanged; a provider
+    /// error still counts). Persisted so a resumed run's model-selection
+    /// hook sees the model the run last asked, as a fresh run's would,
+    /// rather than a run that has asked none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    previous_model: Option<rig_core::completion::ModelRef>,
     /// The tool definitions the driver advertised to the model for a turn,
     /// recorded with [`AgentRun::advertise_tools`]. Protocol data, so a second
     /// driver (or a resumed run) can re-pair tool calls with what was offered.
@@ -560,6 +568,7 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
+            previous_model: None,
             turn_tools: None,
             entries: Vec::new(),
             state: RunState::PreparingRequest,
@@ -784,6 +793,18 @@ impl AgentRun {
     }
 
     /// Details for each completed model call so far.
+    /// The model behind the run's preceding issued completion attempt, if
+    /// any: what a model-selection hook is shown as `previous_model`.
+    pub fn previous_model(&self) -> Option<&rig_core::completion::ModelRef> {
+        self.previous_model.as_ref()
+    }
+
+    /// Record the model an attempt is about to be issued to; the driver
+    /// calls this immediately before the model turn is driven.
+    pub fn set_previous_model(&mut self, model: rig_core::completion::ModelRef) {
+        self.previous_model = Some(model);
+    }
+
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
