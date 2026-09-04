@@ -427,7 +427,85 @@ fn guarded<T>(label: &str, mut step: impl FnMut() -> Option<T>) -> T {
     }
 }
 
+/// `--replay <golden.effects.json>`: the effect corpus's third
+/// interpreter. The host registers a replayer for every key the golden
+/// names, then a system dispatches each record's effect to its key in the
+/// golden's order and compares the answer with the record's; the golden
+/// is the script and the oracle at once. No agent runs here: the log's
+/// records are the program, as a host that persisted a run's effects
+/// would replay them.
+fn replay(path: &str) {
+    let pool = TaskPool::new();
+    let text = std::fs::read_to_string(path).expect("the golden reads");
+    let log: rig_effect_log::EffectLog = serde_json::from_str(&text).expect("the golden decodes");
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    rig_effect_log::EffectLogReplayer::register_all(&log, &mut driver).expect("the golden's keys");
+    let mut world = World::new();
+    world.insert_resource(BusRes(dispatcher.clone()));
+    world.insert_resource(ReplayScript {
+        records: log.records.clone().into(),
+        in_flight: None,
+        replayed: 0,
+    });
+    world.spawn(DriverTask(pool.spawn(driver)));
+    let mut schedule = Schedule::default();
+    schedule.add_systems((dispatch_next_record, poll_next_record).chain());
+    let total = log.records.len();
+    guarded("replay", || {
+        tick(&mut world, &mut schedule);
+        let script = world.resource::<ReplayScript>();
+        (script.records.is_empty() && script.in_flight.is_none()).then_some(())
+    });
+    println!("replay: {total} record(s) of {path} replayed in the golden's order");
+    println!("bevy-bus-host: ok");
+}
+
+/// The golden's records still to dispatch, and the one in flight.
+#[derive(Resource)]
+struct ReplayScript {
+    records: std::collections::VecDeque<rig_core::effect::EffectRecord>,
+    in_flight: Option<(rig_core::effect::EffectRecord, Pending)>,
+    replayed: usize,
+}
+
+fn dispatch_next_record(bus: Res<BusRes>, mut script: ResMut<ReplayScript>) {
+    if script.in_flight.is_some() {
+        return;
+    }
+    if let Some(record) = script.records.pop_front() {
+        let pending = bus.0.dispatch(&record.key, record.kind.clone());
+        script.in_flight = Some((record, pending));
+    }
+}
+
+fn poll_next_record(mut script: ResMut<ReplayScript>) {
+    let Some((record, pending)) = script.in_flight.as_mut() else {
+        return;
+    };
+    let Some(outcome) = block_on(poll_once(pending)) else {
+        return;
+    };
+    let got = serde_json::to_value(&outcome).expect("an outcome serializes");
+    let want = serde_json::to_value(&record.outcome).expect("a record serializes");
+    assert_eq!(
+        got,
+        want,
+        "record {} (`{}`) replayed differently",
+        record.id.as_u64(),
+        record.key
+    );
+    script.replayed += 1;
+    script.in_flight = None;
+}
+
 fn main() {
+    let mut args = std::env::args().skip(1);
+    if let Some(flag) = args.next() {
+        assert_eq!(flag, "--replay", "the only flag is --replay <golden>");
+        let path = args.next().expect("--replay takes the golden's path");
+        replay(&path);
+        return;
+    }
     let pool = TaskPool::new();
 
     // ---- proofs 1, 2, 3, 7 ----

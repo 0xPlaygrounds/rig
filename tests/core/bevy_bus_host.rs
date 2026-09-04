@@ -1,7 +1,7 @@
 //! The Bevy host fixture: the bound claims proven in a running Bevy world.
 //!
 //! `tests/fixtures/bevy_bus_host` is its own workspace (bevy stays out of the
-//! main lock file) depending on rig-core and rig-bus only on the rig side and on
+//! main lock file) depending on rig-core, rig-bus and rig-effect-log only on the rig side and on
 //! `bevy_ecs` + `bevy_tasks` only on the host side, from crates.io at one
 //! release version. This test runs the fixture binary and checks that graph.
 
@@ -116,6 +116,35 @@ fn bevy_host_runs_the_ten_proofs() -> Result<(), Box<dyn std::error::Error>> {
 /// One vocabulary on both targets: the fixture spells the registrar as a
 /// `NonSend` resource natively and on wasm, and nothing else in it forks
 /// on the target either.
+/// The effect corpus's third interpreter: the Bevy host replays a golden
+/// as a script — a replayer per key on its bus, each record dispatched
+/// from a system in the golden's order, each answer compared with the
+/// record's (Matrix O).
+#[test]
+fn bevy_host_replays_a_golden() -> Result<(), Box<dyn std::error::Error>> {
+    let golden = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("crates/rig-verify/fixtures/anthropic_tool_call_turn.effects.json");
+    let child = fixture_cargo()
+        .args(["run", "--quiet", "--locked", "--manifest-path"])
+        .arg(fixture_manifest())
+        .arg("--target-dir")
+        .arg(target_dir())
+        .arg("--")
+        .arg("--replay")
+        .arg(&golden)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let (status, stdout, stderr) = wait_with_timeout(child, FIXTURE_TIMEOUT)?;
+    if !status.success() {
+        return Err(format!("bevy bus host replay failed:\n{stdout}\n{stderr}").into());
+    }
+    if !stdout.contains("replay: 3 record(s)") || !stdout.contains("bevy-bus-host: ok") {
+        return Err(format!("the fixture did not report the replay:\n{stdout}").into());
+    }
+    Ok(())
+}
+
 #[test]
 fn bevy_host_fixture_has_no_target_cfg() -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read_to_string(fixture_dir().join("src/main.rs"))?;
@@ -183,9 +212,12 @@ fn bevy_host_fixture_graph_is_rig_core_and_bevy_ecs_tasks_only()
         .collect();
     let mut rig_side = rig_side;
     rig_side.sort_unstable();
-    if rig_side != ["rig-bus", "rig-core"] {
+    // The replayer (`--replay`) is a handler like any other, and hosting
+    // one is the fixture's purpose: rig-effect-log is the vocabulary of a
+    // recorded run, itself over rig-core and rig-bus only.
+    if rig_side != ["rig-bus", "rig-core", "rig-effect-log"] {
         return Err(format!(
-            "rig-side dependencies must be rig-core and rig-bus only, got {rig_side:?}"
+            "rig-side dependencies must be rig-core, rig-bus and rig-effect-log only, got {rig_side:?}"
         )
         .into());
     }
