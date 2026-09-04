@@ -2,7 +2,9 @@
 //! turn and invalid call as serde, relationships as indices into the scene
 //! (or, for a handler entity, its bound key), so a fresh world rebuilds the
 //! graph exactly and the driver re-issues what has no outcome. Saved
-//! beside the bus module's `Scene`, which carries the effects.
+//! beside the bus module's `Scene`, which carries the effects: the pair is
+//! [`WorldScene`], and an effect `ChildOf` a turn keeps that parent across
+//! the two by index ([`save_world`], [`load_world`]).
 
 use bevy_ecs::prelude::*;
 use rig_core::effect::HandlerKey;
@@ -112,11 +114,62 @@ macro_rules! give {
     };
 }
 
+/// The whole state of the agent runtime in a world: the run graph and the
+/// bus module's effects, saved together so an effect `ChildOf` a turn is
+/// `ChildOf` it again after a load — which is what lets a run saved with
+/// its model call in flight resume: the effect is re-issued under its saved
+/// id, answered, and read by the turn it belongs to.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorldScene {
+    /// The graph.
+    pub graph: RunScene,
+    /// The effects, with [`crate::bus::SceneEffect::parent_ref`] indexing
+    /// `graph.entities`.
+    pub effects: crate::bus::Scene,
+}
+
+/// What [`load_world`] spawned, by scene index.
+#[derive(Debug, Clone, Default)]
+pub struct Loaded {
+    /// The graph's entities, by [`RunScene::entities`] index.
+    pub graph: Vec<Entity>,
+    /// The effect entities, by [`crate::bus::Scene::effects`] index.
+    pub effects: Vec<Entity>,
+}
+
+/// Save the graph and the effects of `world` as one [`WorldScene`].
+pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::ErrorReport> {
+    let (graph, entities) = RunScene::take(world)?;
+    let effects = crate::bus::Scene::save_with(world, |parent| {
+        entities.iter().position(|entity| *entity == parent)
+    });
+    Ok(WorldScene { graph, effects })
+}
+
+/// Load `scene` into `world`: the graph first, then the effects, each
+/// effect `ChildOf` the graph entity its `parent_ref` names. Handlers are
+/// the host's to bind first, as for [`RunScene::load`].
+pub fn load_world(
+    scene: &WorldScene,
+    world: &mut World,
+) -> Result<Loaded, rig_core::error::ErrorReport> {
+    let graph = scene.graph.load(world)?;
+    let effects = scene
+        .effects
+        .load_with(world, |index| graph.get(index).copied());
+    Ok(Loaded { graph, effects })
+}
+
 impl RunScene {
     /// Take the graph of `world`: agents and documents first, then their
     /// links, then runs, then utterances, turns and invalid calls, each
     /// after its parent.
     pub fn save(world: &mut World) -> Result<Self, rig_core::error::ErrorReport> {
+        Self::take(world).map(|(scene, _)| scene)
+    }
+
+    /// [`RunScene::save`], with the entity each scene index was taken from.
+    pub fn take(world: &mut World) -> Result<(Self, Vec<Entity>), rig_core::error::ErrorReport> {
         let mut order: Vec<(u8, Entity)> = Vec::new();
         for (entity, _) in world.query::<(Entity, &Owner)>().iter(world) {
             order.push((0, entity));
@@ -254,11 +307,14 @@ impl RunScene {
                 relations,
             });
         }
-        Ok(Self {
-            entities: saved,
-            next_order: world.get_resource::<OrderCounter>().map_or(0, |c| c.0),
-            next_run: world.get_resource::<RunCounter>().map_or(0, |c| c.0),
-        })
+        Ok((
+            Self {
+                entities: saved,
+                next_order: world.get_resource::<OrderCounter>().map_or(0, |c| c.0),
+                next_run: world.get_resource::<RunCounter>().map_or(0, |c| c.0),
+            },
+            entities,
+        ))
     }
 
     /// Spawn the graph into `world`. Handlers are the host's to bind first:

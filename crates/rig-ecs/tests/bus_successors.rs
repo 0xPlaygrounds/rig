@@ -152,6 +152,7 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
             id: None,
             outcome: None,
             parent: None,
+            parent_ref: None,
             scope: None,
             held: false,
         }],

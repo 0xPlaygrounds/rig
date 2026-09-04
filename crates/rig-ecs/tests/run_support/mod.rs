@@ -202,3 +202,29 @@ pub fn texts(request: &CompletionRequest) -> Vec<String> {
         })
         .collect()
 }
+
+/// A completion model that never answers: the dispatch stays in flight
+/// for as long as the world lives.
+pub struct NeverAnswers {
+    pub label: String,
+}
+
+impl Serve for NeverAnswers {
+    type Family = rig_core::effect::family::Completion;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from(self.label.as_str()),
+            family: FamilyDescriptor::Completion {
+                model: ModelRef::new(self.label.as_str()),
+                capabilities: ProviderCapabilities::default(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        futures::future::pending::<()>().await;
+        drop(sink);
+    }
+}

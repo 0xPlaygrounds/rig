@@ -36,6 +36,14 @@ pub struct SceneEffect {
     /// The index in [`Scene::effects`] of the effect it descends from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<usize>,
+    /// The index, in a sibling scene the host keeps beside this one, of
+    /// the entity the effect descends from when that entity is not an
+    /// effect of this scene — a host's own entity the effect was spawned
+    /// `ChildOf`. Written by the host's resolver at
+    /// [`Scene::save_with`], read back by its resolver at
+    /// [`Scene::load_with`]; the plain [`Scene::save`] writes none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_ref: Option<usize>,
     /// The entity's own scope, if it carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
@@ -57,8 +65,19 @@ pub struct Scene {
 
 impl Scene {
     /// Take the scene of `world`: every entity with a [`PendingEffect`],
-    /// in `Seq` order, and every [`Bound`] descriptor.
+    /// in `Seq` order, and every [`Bound`] descriptor. An effect `ChildOf`
+    /// an entity that is not an effect keeps no parent; see
+    /// [`Scene::save_with`].
     pub fn save(world: &mut World) -> Self {
+        Self::save_with(world, |_| None)
+    }
+
+    /// [`Scene::save`], with `sibling` naming — by an index into a scene the
+    /// host saves beside this one — every parent entity that is not an
+    /// effect of this scene, so a host's own entity an effect descends from
+    /// is kept as [`SceneEffect::parent_ref`] and restored by
+    /// [`Scene::load_with`].
+    pub fn save_with(world: &mut World, sibling: impl Fn(Entity) -> Option<usize>) -> Self {
         let mut handlers: Vec<HandlerDescriptor> = world
             .query::<&Bound>()
             .iter(world)
@@ -80,9 +99,12 @@ impl Scene {
             let Some(effect) = entity_ref.get::<PendingEffect>().cloned() else {
                 continue;
             };
-            let parent = entity_ref
-                .get::<ChildOf>()
-                .and_then(|child_of| index_of(child_of.parent()));
+            let parent_entity = entity_ref.get::<ChildOf>().map(ChildOf::parent);
+            let parent = parent_entity.and_then(index_of);
+            let parent_ref = match parent {
+                Some(_) => None,
+                None => parent_entity.and_then(&sibling),
+            };
             effects.push(SceneEffect {
                 seq: *seq,
                 key: effect.key,
@@ -95,6 +117,7 @@ impl Scene {
                     .get::<EffectOutcome>()
                     .map(|outcome| outcome.0.clone()),
                 parent,
+                parent_ref,
                 scope: entity_ref.get::<Scope>().map(|scope| scope.0.clone()),
                 held: entity_ref.contains::<Held>(),
             });
@@ -107,8 +130,20 @@ impl Scene {
     /// as intent with its saved id [`Reserved`], a child `ChildOf` its
     /// parent. Handlers are the host's to bind; the scene's descriptors
     /// say what each key needs. Returns the spawned entities, by scene
-    /// index.
+    /// index. A [`SceneEffect::parent_ref`] is not resolved here; see
+    /// [`Scene::load_with`].
     pub fn load(&self, world: &mut World) -> Vec<Entity> {
+        self.load_with(world, |_| None)
+    }
+
+    /// [`Scene::load`], with `sibling` resolving every
+    /// [`SceneEffect::parent_ref`] to the entity the host loaded from its
+    /// own scene, so the effect is `ChildOf` it again.
+    pub fn load_with(
+        &self,
+        world: &mut World,
+        sibling: impl Fn(usize) -> Option<Entity>,
+    ) -> Vec<Entity> {
         let mut spawned: Vec<Entity> = Vec::with_capacity(self.effects.len());
         for effect in &self.effects {
             let mut entity = world.spawn(PendingEffect {
@@ -138,10 +173,14 @@ impl Scene {
         // Parents in a second pass, so a child saved before its parent (a
         // re-parented entity) keeps its causality.
         for (index, effect) in self.effects.iter().enumerate() {
-            if let (Some(parent), Some(child)) = (
-                effect.parent.and_then(|at| spawned.get(at).copied()),
-                spawned.get(index).copied(),
-            ) {
+            let Some(child) = spawned.get(index).copied() else {
+                continue;
+            };
+            let parent = effect
+                .parent
+                .and_then(|at| spawned.get(at).copied())
+                .or_else(|| effect.parent_ref.and_then(&sibling));
+            if let Some(parent) = parent {
                 world.entity_mut(child).insert(ChildOf(parent));
             }
         }
