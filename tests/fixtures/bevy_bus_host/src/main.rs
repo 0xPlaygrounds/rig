@@ -54,7 +54,8 @@ use std::{
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::{Task, TaskPool, block_on, futures_lite::future::poll_once};
-use rig_bus::{Bus, BusConfig, Dispatcher, EffectStream, ModelHandle, Pending, Registrar};
+use rig_bus::{Bus, Dispatcher, EffectStream, ModelHandle, Pending, Registrar};
+use rig_core::serve::ServingPolicy;
 use rig_core::serve::{DetachedSink, OutcomeSink, Serve};
 use rig_core::{
     completion::{
@@ -665,9 +666,9 @@ fn main() {
 
     // ---- proof 5: dispatch never blocks a system ----
     {
-        let (dispatcher, _registrar, driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, driver) = Bus::channel_with(ServingPolicy {
             command_capacity: 1,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         });
         // Nobody drives yet: fill the channel from "a system" and keep
         // dispatching; every call returns immediately.
@@ -704,9 +705,9 @@ fn main() {
     // ---- proof 6: a stream consumed across ticks, dropped mid-stream ----
     {
         let counters = Arc::new(Counters::default());
-        let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
             stream_capacity: 4,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         });
         driver
             .register(
@@ -756,9 +757,9 @@ fn main() {
     // ---- proof 8: a tool that is a system ----
     {
         let mailbox = WorldToolMailbox::default();
-        let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
             serial_per_handler: true,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         });
         driver
             .register(

@@ -76,7 +76,7 @@ pub(super) struct Shared {
     /// — no in-flight work is resurrected across a restart.
     generation: AtomicU64,
     /// The config the bus was opened with; a reopened driver keeps it.
-    config: super::BusConfig,
+    config: rig_core::serve::ServingPolicy,
 }
 
 /// A bus's identity while it lives (see [`Dispatcher::id`]).
@@ -124,7 +124,7 @@ struct CommandQueue {
 }
 
 impl Shared {
-    pub(super) fn new(config: super::BusConfig) -> Self {
+    pub(super) fn new(config: rig_core::serve::ServingPolicy) -> Self {
         Self {
             serial_per_handler: config.serial_per_handler,
             serving: Mutex::new(None),
@@ -185,7 +185,7 @@ impl Shared {
             .collect()
     }
 
-    pub(super) fn config(&self) -> super::BusConfig {
+    pub(super) fn config(&self) -> rig_core::serve::ServingPolicy {
         self.config
     }
 
@@ -503,7 +503,7 @@ impl Reply {
 /// [`Dispatcher::dispatch_stream`] return immediately, and the *first poll*
 /// of the returned [`Pending`]/[`EffectStream`] performs the (possibly
 /// back-pressured) send. The command buffer is bounded **bus-wide** by
-/// [`BusConfig::command_capacity`](super::BusConfig::command_capacity):
+/// [`ServingPolicy::command_capacity`](rig_core::serve::ServingPolicy::command_capacity):
 /// a full buffer lands its pressure on the value being polled, never on the
 /// caller — a system that dispatches from inside a frame cannot deadlock the
 /// app, and a burst of dispatches cannot grow the buffer past the bound.
@@ -699,7 +699,7 @@ impl Dispatcher {
     }
 
     /// Commands buffered on the bus and not yet taken by the driver — at
-    /// most [`BusConfig::command_capacity`](super::BusConfig::command_capacity).
+    /// most [`ServingPolicy::command_capacity`](rig_core::serve::ServingPolicy::command_capacity).
     /// A dispatch that finds the buffer full parks at its send stage (its
     /// poll stays `Pending`) until the driver drains; the pressure is on the
     /// `Pending`/`EffectStream`, never on the caller.

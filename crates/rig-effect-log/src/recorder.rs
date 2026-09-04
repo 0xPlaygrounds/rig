@@ -2,14 +2,12 @@
 //! into an [`EffectLog`].
 
 use std::{
-    collections::BTreeMap,
     fmt,
     sync::{Arc, Mutex, PoisonError},
 };
 
 use rig_core::serve::Recorder;
 use rig_core::{
-    effect::EffectFamily,
     effect::{EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
@@ -46,6 +44,7 @@ struct RecordSlot {
 impl RecordSlot {
     fn record(&self) -> Option<EffectRecord> {
         self.outcome.as_ref().map(|outcome| EffectRecord {
+            parent: None,
             id: self.id,
             key: self.key.clone(),
             kind: self.kind.clone(),
@@ -96,8 +95,8 @@ impl EffectLogRecorder {
     pub fn set_program(
         &self,
         hooks: Vec<String>,
-        required: BTreeMap<HandlerKey, EffectFamily>,
-        bus: Option<rig_bus::BusConfig>,
+        required: rig_core::effect::EffectRow,
+        bus: Option<rig_core::serve::ServingPolicy>,
     ) {
         let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
         header.hooks = hooks;
@@ -174,8 +173,7 @@ impl EffectLogRecorder {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .signature
-            .entry(key.clone())
-            .or_insert_with(|| kind.family());
+            .insert_if_absent(key.clone(), kind.family());
         let events = (self.keep_events && kind.streams()).then(Vec::new);
         self.slots
             .lock()

@@ -114,7 +114,7 @@
 //!
 //! ```ignore
 //! let (dispatcher, registrar) = rig_bus::Bus::new_with(
-//!     rig_bus::BusConfig::default(),
+//!     rig_core::serve::ServingPolicy::default(),
 //!     |driver| {
 //!         driver
 //!             .register("model", rig_core::serve::adapters::CompletionAdapter::new("gpt", model))
@@ -170,12 +170,13 @@ mod registrar;
 mod sync;
 
 pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
-pub use driver::{BusConfig, BusDriver};
+pub use driver::BusDriver;
 pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
     Retrieval, ToolCall, ToolHandle, Typed, wrap_stream,
 };
 pub use registrar::Registrar;
+use rig_core::serve::ServingPolicy;
 
 use std::sync::Arc;
 
@@ -197,15 +198,15 @@ const _: () = {
 pub struct Bus;
 
 impl Bus {
-    /// A bus with the default [`BusConfig`]: the dispatcher, the registrar
+    /// A bus with the default [`ServingPolicy`]: the dispatcher, the registrar
     /// and the driver. Register handlers on the driver, then drive it or
     /// spawn it; register through the registrar once it is spawned.
     pub fn channel() -> (Dispatcher, Registrar, BusDriver) {
-        Self::channel_with(BusConfig::default())
+        Self::channel_with(ServingPolicy::default())
     }
 
     /// A bus with an explicit config.
-    pub fn channel_with(config: BusConfig) -> (Dispatcher, Registrar, BusDriver) {
+    pub fn channel_with(config: ServingPolicy) -> (Dispatcher, Registrar, BusDriver) {
         let shared = Arc::new(dispatcher::Shared::new(config));
         let mailbox = Arc::new(registrar::Mailbox::new());
         let dispatcher = Dispatcher::open(shared.clone(), config.stream_capacity.max(1));
@@ -247,7 +248,7 @@ impl Bus {
     /// its handler table. `spawn` is the host's executor entry point
     /// (`tokio::spawn`, a task pool, `spawn_local`); rig-bus supplies none.
     pub fn new_with(
-        config: BusConfig,
+        config: ServingPolicy,
         register: impl FnOnce(&mut BusDriver),
         spawn: impl FnOnce(BusDriver),
     ) -> (Dispatcher, Registrar) {

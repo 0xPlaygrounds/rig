@@ -708,6 +708,7 @@ async fn a_tool_call_under_a_different_context_is_a_divergence() {
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
+            parent: None,
             id: EffectId::from_raw(1),
             key: key.clone(),
             kind: EffectKind::ToolCall {

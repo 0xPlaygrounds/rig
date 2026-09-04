@@ -22,7 +22,8 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError, ToolSet},
 };
-use rig_bus::{Bus, BusConfig, BusDriver};
+use rig_bus::{Bus, BusDriver};
+use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
     effect::{EffectFamily, EffectKind, HandlerKey},
@@ -104,9 +105,9 @@ async fn serial_per_handler_is_proven_under_the_agents_inline_driver() {
     // first even though the runner dispatches both concurrently.
     let serial = Slow::default();
     let agent = AgentBuilder::with_bus_config(
-        BusConfig {
+        ServingPolicy {
             serial_per_handler: true,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         },
         "default",
         two_tool_calls_then_done(),
@@ -700,9 +701,9 @@ async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
         )])
     };
     let agent = AgentBuilder::with_bus_config(
-        BusConfig {
+        ServingPolicy {
             serial_per_handler: true,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         },
         "default",
         MockCompletionModel::from_turns([

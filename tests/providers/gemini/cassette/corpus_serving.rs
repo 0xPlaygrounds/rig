@@ -22,9 +22,9 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
                 .name("stress-agent")
-                .configure_bus(rig::bus::BusConfig {
+                .configure_bus(rig::serve::ServingPolicy {
                     serial_per_handler: true,
-                    ..rig::bus::BusConfig::default()
+                    ..rig::serve::ServingPolicy::default()
                 })
                 .preamble(CHAIN_PREAMBLE)
                 .temperature(0.0)

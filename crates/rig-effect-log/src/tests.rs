@@ -26,6 +26,7 @@ fn request() -> CompletionRequest {
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
+            parent: None,
             id: EffectId::from_raw(1),
             key: HandlerKey::from("model"),
             kind: EffectKind::Completion {
@@ -40,6 +41,7 @@ fn effect_record_and_log_round_trip() {
             events: None,
         },
         EffectRecord {
+            parent: None,
             id: EffectId::from_raw(2),
             key: HandlerKey::from("tool:add"),
             kind: EffectKind::ToolCall {

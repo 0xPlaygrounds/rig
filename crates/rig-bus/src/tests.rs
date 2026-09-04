@@ -10,7 +10,7 @@ use std::{
 use futures::{FutureExt, StreamExt, channel::oneshot, future::poll_fn, task::noop_waker_ref};
 use serde_json::json;
 
-use super::{Bus, BusConfig, BusDriver, Dispatcher, ModelHandle, Registrar};
+use super::{Bus, BusDriver, Dispatcher, ModelHandle, Registrar, ServingPolicy};
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     OutcomeSink, Serve,
@@ -233,7 +233,7 @@ async fn a_dropped_driver_answers_bus_closed_before_and_after_the_send() {
     assert!(dispatcher.is_closed());
 
     // `new_with` whose spawner drops the driver: the same answer.
-    let (dispatcher, _registrar) = Bus::new_with(BusConfig::default(), |_| {}, drop);
+    let (dispatcher, _registrar) = Bus::new_with(ServingPolicy::default(), |_| {}, drop);
     let report = within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1))))
         .await
         .expect_err("closed");
@@ -344,9 +344,9 @@ async fn descriptor_is_a_snapshot_that_needs_no_driver() {
 async fn serial_per_handler_serves_in_arrival_order_and_concurrent_may_not() {
     async fn run(serial: bool) -> Vec<u64> {
         let served = Arc::new(Mutex::new(Vec::new()));
-        let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
             serial_per_handler: serial,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         });
         driver
             .register(
@@ -405,9 +405,9 @@ async fn concurrent_serving_across_keys_is_the_default() {
 
 #[test]
 fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
-    let (dispatcher, _registrar, driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
@@ -443,9 +443,9 @@ fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
 
 #[test]
 fn a_dispatch_parked_on_the_bound_is_sent_once_the_driver_drains() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -498,9 +498,9 @@ fn a_buffered_dispatch_answers_bus_closed_when_the_driver_drops_before_taking_it
 
 #[test]
 fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -525,9 +525,9 @@ fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
 
 #[test]
 fn deregistering_a_serial_key_drains_its_queue_with_handler_unavailable() {
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (blocked, open) = Echo::gated();
     let key = HandlerKey::from("echo");
@@ -627,9 +627,9 @@ impl Serve for SelfCaller {
 
 #[test]
 fn a_reentrant_dispatch_to_the_in_flight_key_under_serial_serving_is_refused() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let key = HandlerKey::from("self");
     driver
@@ -844,9 +844,9 @@ async fn dropping_the_stream_cancels_the_handler() {
     }
     let sends = Arc::new(AtomicUsize::new(0));
     let cancelled = Arc::new(AtomicUsize::new(0));
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         stream_capacity: 4,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     driver
         .register(
@@ -1895,9 +1895,9 @@ fn a_pending_dropped_before_the_driver_polls_never_reaches_its_handler() {
 
 #[test]
 fn a_serial_key_is_not_occupied_by_a_dispatch_cancelled_before_it_was_served() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -1950,9 +1950,9 @@ fn a_probe_resolves_a_dispatch_without_an_executor() {
 fn ten_thousand_probes_on_a_full_bus_keep_one_waker() {
     // A frame-ticked host probes a parked dispatch once per frame; the bus
     // keeps one slot per parked value, not one waker per probe.
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -1995,9 +1995,9 @@ impl futures::task::ArcWake for CountingWake {
 
 #[test]
 fn a_parked_value_dropped_before_the_drain_leaves_no_slot_to_wake() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, _served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -2043,9 +2043,9 @@ impl Serve for Detaching {
 
 #[test]
 fn a_detached_sink_keeps_its_serial_slot_until_answered() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let mailbox = Arc::new(Mutex::new(Vec::new()));
     driver

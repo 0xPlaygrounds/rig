@@ -849,6 +849,206 @@ pub struct EffectRecord {
     /// boundaries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<StreamEvent>>,
+    /// The dispatch this one was made from — a handler serving `parent`
+    /// dispatched it through its sink's dispatcher — or `None` for a
+    /// dispatch the consumer made itself. Causality as data: a host parents
+    /// the effect's entity by it, a replay reads the chain off the record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<EffectId>,
+}
+
+/// The effect row of a program: which keys it can dispatch to, and of
+/// which family — the effect type of the program, as a row of
+/// `key: family` entries (Leijen's effect rows, with the key as the
+/// label). One type, three readers: the log's header stores the program's
+/// row and the trace's signature, the agent checks its row against a
+/// log's handler table on replay, and a host checks a scene's row against
+/// its bus at startup — all with [`EffectRow::is_subset_of`], which names
+/// the first gap.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EffectRow(std::collections::BTreeMap<HandlerKey, EffectFamily>);
+
+/// The first entry of a row a set of handlers does not serve: the key,
+/// the family the row needs, and what serves the key instead, if anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowGap {
+    /// The key the row names.
+    pub key: HandlerKey,
+    /// The family the row needs it as.
+    pub needed: EffectFamily,
+    /// The family a handler serves it as, or `None` when nothing serves it.
+    pub served: Option<EffectFamily>,
+}
+
+impl std::fmt::Display for RowGap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.served {
+            Some(served) => write!(
+                f,
+                "`{}` is needed as {} but served as {served}",
+                self.key, self.needed
+            ),
+            None => write!(f, "`{}` ({}) is not served", self.key, self.needed),
+        }
+    }
+}
+
+/// One difference between two rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowDiff {
+    /// The other row lacks this entry.
+    Missing {
+        key: HandlerKey,
+        family: EffectFamily,
+    },
+    /// The other row has an entry this one lacks.
+    Extra {
+        key: HandlerKey,
+        family: EffectFamily,
+    },
+    /// Both rows name the key, as different families.
+    Family {
+        key: HandlerKey,
+        this: EffectFamily,
+        other: EffectFamily,
+    },
+}
+
+impl std::fmt::Display for RowDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing { key, family } => write!(f, "`{key}` ({family}) is missing"),
+            Self::Extra { key, family } => write!(f, "`{key}` ({family}) is extra"),
+            Self::Family { key, this, other } => {
+                write!(f, "`{key}` is {this} here and {other} there")
+            }
+        }
+    }
+}
+
+impl EffectRow {
+    /// An empty row.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Name `key` as `family`; a key already named is re-named.
+    pub fn insert(&mut self, key: HandlerKey, family: EffectFamily) -> Option<EffectFamily> {
+        self.0.insert(key, family)
+    }
+
+    /// Name `key` as `family` unless the row already names it.
+    pub fn insert_if_absent(&mut self, key: HandlerKey, family: EffectFamily) {
+        self.0.entry(key).or_insert(family);
+    }
+
+    /// The family the row names `key` as.
+    pub fn get(&self, key: &HandlerKey) -> Option<&EffectFamily> {
+        self.0.get(key)
+    }
+
+    /// Whether the row names `key`.
+    pub fn contains_key(&self, key: &HandlerKey) -> bool {
+        self.0.contains_key(key)
+    }
+
+    /// The keys, in order.
+    pub fn keys(&self) -> impl Iterator<Item = &HandlerKey> {
+        self.0.keys()
+    }
+
+    /// The entries, in key order.
+    pub fn iter(&self) -> impl Iterator<Item = (&HandlerKey, &EffectFamily)> {
+        self.0.iter()
+    }
+
+    /// How many keys the row names.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether the row names no key.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Whether every entry of this row is served by `handlers` as the
+    /// family the row needs: `Ok` when it is, else the first gap in key
+    /// order — a key nothing serves, or one served as another family.
+    pub fn is_subset_of(&self, handlers: &[HandlerDescriptor]) -> Result<(), RowGap> {
+        for (key, needed) in &self.0 {
+            let served = handlers
+                .iter()
+                .find(|descriptor| &descriptor.key == key)
+                .map(|descriptor| descriptor.family.family());
+            match served {
+                Some(served) if served == *needed => {}
+                served => {
+                    return Err(RowGap {
+                        key: key.clone(),
+                        needed: *needed,
+                        served,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Every difference between this row and `other`, in key order:
+    /// entries `other` lacks, entries it has and this row lacks, and keys
+    /// both name as different families.
+    pub fn diff(&self, other: &EffectRow) -> Vec<RowDiff> {
+        let mut diffs = Vec::new();
+        for (key, family) in &self.0 {
+            match other.0.get(key) {
+                None => diffs.push(RowDiff::Missing {
+                    key: key.clone(),
+                    family: *family,
+                }),
+                Some(theirs) if theirs != family => diffs.push(RowDiff::Family {
+                    key: key.clone(),
+                    this: *family,
+                    other: *theirs,
+                }),
+                Some(_) => {}
+            }
+        }
+        for (key, family) in &other.0 {
+            if !self.0.contains_key(key) {
+                diffs.push(RowDiff::Extra {
+                    key: key.clone(),
+                    family: *family,
+                });
+            }
+        }
+        diffs
+    }
+}
+
+impl FromIterator<(HandlerKey, EffectFamily)> for EffectRow {
+    fn from_iter<I: IntoIterator<Item = (HandlerKey, EffectFamily)>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'a> IntoIterator for &'a EffectRow {
+    type Item = (&'a HandlerKey, &'a EffectFamily);
+    type IntoIter = std::collections::btree_map::Iter<'a, HandlerKey, EffectFamily>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for EffectRow {
+    type Item = (HandlerKey, EffectFamily);
+    type IntoIter = std::collections::btree_map::IntoIter<HandlerKey, EffectFamily>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
 }
 
 // The protocol crosses threads and serializes on every target.
@@ -871,6 +1071,7 @@ const _: fn() = || {
     assert_wire::<MemoryOutcome>();
     assert_wire::<RetrievedDocuments>();
     assert_wire::<EffectRecord>();
+    assert_wire::<EffectRow>();
     assert_wire::<StreamEvent>();
 };
 

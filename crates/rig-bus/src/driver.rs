@@ -29,43 +29,7 @@ use super::{
     registrar::{Mailbox, Registrar, Registration},
 };
 
-/// Bus sizing and serving policy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BusConfig {
-    /// Commands the bus buffers, **bus-wide**, before a `Pending`/
-    /// `EffectStream` parks at its send stage (its poll stays `Pending`
-    /// until the driver drains). The bound holds across every `Dispatcher`
-    /// clone and every dispatch; the caller of `dispatch` is never blocked.
-    pub command_capacity: usize,
-    /// Stream events buffered per streaming dispatch before the handler
-    /// stalls (the client-side pause point).
-    pub stream_capacity: usize,
-    /// Serve one command at a time per key. `false` serves every command
-    /// concurrently; `true` is the cassette-ordered property — a handler
-    /// sees its dispatches in the order they arrived.
-    ///
-    /// Under serial serving a handler must not dispatch to **its own key**
-    /// and wait for the answer: that dispatch would queue behind the
-    /// command that waits on it. The bus refuses the case it can see — a
-    /// dispatch to the key being served, made on the thread the driver is
-    /// polling it on — with a `Request` report instead of hanging. It
-    /// cannot see a nested dispatch made from another task or thread the
-    /// handler spawned (`tokio::spawn`, `IoTaskPool::spawn`): that one
-    /// queues behind its parent and waits forever. A handler that needs
-    /// its own key serves it from a second key, or the bus runs with
-    /// `serial_per_handler: false`.
-    pub serial_per_handler: bool,
-}
-
-impl Default for BusConfig {
-    fn default() -> Self {
-        Self {
-            command_capacity: 16,
-            stream_capacity: 64,
-            serial_per_handler: false,
-        }
-    }
-}
+use rig_core::serve::ServingPolicy;
 
 type InFlight = WasmBoxedFuture<'static, HandlerKey>;
 type InFlightServing = Pin<Box<Serving>>;
@@ -124,7 +88,7 @@ pub struct BusDriver {
     shared: Arc<Shared>,
     mailbox: Arc<Mailbox>,
     handlers: BTreeMap<HandlerKey, ErasedHandler>,
-    config: BusConfig,
+    config: ServingPolicy,
     in_flight: FuturesUnordered<InFlightServing>,
     queued: BTreeMap<HandlerKey, VecDeque<Command>>,
     busy: BTreeSet<HandlerKey>,
@@ -147,7 +111,7 @@ impl fmt::Debug for BusDriver {
 }
 
 impl BusDriver {
-    pub(super) fn new(shared: Arc<Shared>, mailbox: Arc<Mailbox>, config: BusConfig) -> Self {
+    pub(super) fn new(shared: Arc<Shared>, mailbox: Arc<Mailbox>, config: ServingPolicy) -> Self {
         shared.driver_born();
         Self {
             shared,
@@ -267,7 +231,7 @@ impl BusDriver {
     }
 
     /// The serving policy.
-    pub const fn config(&self) -> &BusConfig {
+    pub const fn config(&self) -> &ServingPolicy {
         &self.config
     }
 

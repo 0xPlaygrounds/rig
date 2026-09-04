@@ -157,7 +157,7 @@ async fn a_golden_of_another_required_row_is_refused_with_both_rows() {
 async fn a_golden_of_another_bus_policy_is_refused_with_both_policies() {
     let mut log = golden("anthropic_memory_conversation");
     let recorded = log.header.bus.expect("the header names the bus policy");
-    let other = rig_bus::BusConfig {
+    let other = rig_core::serve::ServingPolicy {
         serial_per_handler: !recorded.serial_per_handler,
         ..recorded
     };

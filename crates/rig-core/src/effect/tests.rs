@@ -534,3 +534,94 @@ fn a_custom_effect_that_does_not_serialize_is_refused_at_wrap() {
         "{report:?}"
     );
 }
+
+// ---- the effect row ----
+
+fn descriptor(key: &str, family: FamilyDescriptor) -> HandlerDescriptor {
+    HandlerDescriptor {
+        key: HandlerKey::from(key),
+        family,
+    }
+}
+
+/// A row is a subset of a handler table when every key it names is served
+/// as the family it needs; the first gap names the key, the family needed
+/// and what serves it instead.
+#[test]
+fn a_row_is_checked_against_a_handler_table_and_names_its_first_gap() {
+    let row: EffectRow = [
+        (
+            HandlerKey::from("a/model:default"),
+            EffectFamily::Completion,
+        ),
+        (HandlerKey::from("a/tool:add#0"), EffectFamily::Tool),
+    ]
+    .into_iter()
+    .collect();
+    let served = vec![
+        descriptor(
+            "a/model:default",
+            FamilyDescriptor::Completion {
+                model: ModelRef::new("m"),
+                capabilities: ProviderCapabilities::default(),
+            },
+        ),
+        descriptor(
+            "a/tool:add#0",
+            FamilyDescriptor::Tool {
+                name: "add".into(),
+                description: String::new(),
+                parameters: json!({}),
+                embedding: None,
+            },
+        ),
+        descriptor("host/note", FamilyDescriptor::Custom { kind: "n".into() }),
+    ];
+    assert_eq!(row.is_subset_of(&served), Ok(()));
+    let gap = row
+        .is_subset_of(&served[..1])
+        .expect_err("the tool is not served");
+    assert_eq!(gap.key, HandlerKey::from("a/tool:add#0"));
+    assert_eq!(gap.needed, EffectFamily::Tool);
+    assert_eq!(gap.served, None);
+    assert_eq!(gap.to_string(), "`a/tool:add#0` (tool_call) is not served");
+    let wrong = vec![descriptor("a/model:default", FamilyDescriptor::Memory {})];
+    let gap = row
+        .is_subset_of(&wrong)
+        .expect_err("served as another family");
+    assert_eq!(gap.served, Some(EffectFamily::Memory));
+    assert_eq!(
+        gap.to_string(),
+        "`a/model:default` is needed as completion but served as memory"
+    );
+}
+
+/// A diff names what the other row lacks, what it has extra, and the keys
+/// both name as different families, in key order.
+#[test]
+fn a_row_diff_names_every_difference() {
+    let this: EffectRow = [
+        (HandlerKey::from("a"), EffectFamily::Completion),
+        (HandlerKey::from("b"), EffectFamily::Tool),
+    ]
+    .into_iter()
+    .collect();
+    let other: EffectRow = [
+        (HandlerKey::from("b"), EffectFamily::Memory),
+        (HandlerKey::from("c"), EffectFamily::Retrieve),
+    ]
+    .into_iter()
+    .collect();
+    let diffs: Vec<String> = this.diff(&other).iter().map(ToString::to_string).collect();
+    assert_eq!(
+        diffs,
+        [
+            "`a` (completion) is missing",
+            "`b` is tool_call here and memory there",
+            "`c` (retrieve) is extra",
+        ]
+    );
+    assert!(this.diff(&this).is_empty());
+    let wire = serde_json::to_value(&this).expect("serializes");
+    assert_eq!(wire, json!({ "a": "completion", "b": "tool" }));
+}

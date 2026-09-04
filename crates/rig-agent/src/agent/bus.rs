@@ -27,8 +27,9 @@ use super::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
-use rig_bus::{BusConfig, BusDriver, Dispatcher, Registrar};
+use rig_bus::{BusDriver, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
+use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
     completion::{CompletionModel, ModelRef},
@@ -85,7 +86,7 @@ pub(crate) struct AgentBus {
     recorder: Option<EffectLogRecorder>,
     anonymous_models: Arc<AtomicUsize>,
     /// The policy the owned bus was created with; `None` over a host's bus.
-    config: Option<BusConfig>,
+    config: Option<ServingPolicy>,
 }
 
 impl std::fmt::Debug for AgentBus {
@@ -104,7 +105,7 @@ impl AgentBus {
         registrar: Registrar,
         driver: BusDriver,
         owner: String,
-        config: BusConfig,
+        config: ServingPolicy,
     ) -> Self {
         Self {
             dispatcher,
@@ -119,7 +120,7 @@ impl AgentBus {
     }
 
     /// The policy the owned bus runs under; `None` over a host's bus.
-    pub(crate) fn config(&self) -> Option<BusConfig> {
+    pub(crate) fn config(&self) -> Option<ServingPolicy> {
         self.config
     }
 

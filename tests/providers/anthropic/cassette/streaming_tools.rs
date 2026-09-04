@@ -121,9 +121,9 @@ async fn serial_serving_reproduces_the_recorded_request_order() {
             let order = OutOfOrderSignalOrder::default();
             let agent = client
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
-                .configure_bus(rig_bus::BusConfig {
+                .configure_bus(rig_core::serve::ServingPolicy {
                     serial_per_handler: true,
-                    ..rig_bus::BusConfig::default()
+                    ..rig_core::serve::ServingPolicy::default()
                 })
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(OutOfOrderAlphaSignal(order.clone()))
@@ -696,9 +696,9 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
             let agent = client
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .name("golden")
-                .configure_bus(rig_bus::BusConfig {
+                .configure_bus(rig_core::serve::ServingPolicy {
                     serial_per_handler: true,
-                    ..rig_bus::BusConfig::default()
+                    ..rig_core::serve::ServingPolicy::default()
                 })
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(OutOfOrderAlphaSignal(order.clone()))

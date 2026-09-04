@@ -21,7 +21,7 @@ use std::{
     },
 };
 
-use rig_bus::{Bus, BusConfig, Dispatcher, EffectStream, Pending};
+use rig_bus::{Bus, Dispatcher, EffectStream, Pending, ServingPolicy};
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorKind,
@@ -112,7 +112,7 @@ async fn a_unary_dispatch_resolves_through_a_spawn_local_driver() {
     let served = Rc::new(Cell::new(0));
     let cancelled = Arc::new(AtomicUsize::new(0));
     let (dispatcher, _registrar) = Bus::new_with(
-        BusConfig::default(),
+        ServingPolicy::default(),
         |driver| {
             driver
                 .register(
@@ -154,9 +154,9 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
     let served = Rc::new(Cell::new(0));
     let cancelled = Arc::new(AtomicUsize::new(0));
     let (dispatcher, _registrar) = Bus::new_with(
-        BusConfig {
+        ServingPolicy {
             stream_capacity: 4,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         },
         |driver| {
             driver

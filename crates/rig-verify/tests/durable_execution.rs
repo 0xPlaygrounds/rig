@@ -141,9 +141,9 @@ impl Scenario {
 
     fn builder(self) -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
         AgentBuilder::with_bus_config(
-            rig_bus::BusConfig {
+            rig_core::serve::ServingPolicy {
                 serial_per_handler: self.serial_per_handler,
-                ..rig_bus::BusConfig::default()
+                ..rig_core::serve::ServingPolicy::default()
             },
             "default",
             self.model(),
@@ -294,9 +294,9 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         "the hand driver's record is the reference log's head, request and outcome"
     );
     let continuation: EffectLog = reference_log.tail(partial_log.len());
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_bus::BusConfig {
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::serve::ServingPolicy {
         serial_per_handler: scenario.serial_per_handler,
-        ..rig_bus::BusConfig::default()
+        ..rig_core::serve::ServingPolicy::default()
     });
     EffectLogReplayer::register_all(&continuation, &mut driver).expect("fresh keys");
     let recorder = EffectLogRecorder::new();

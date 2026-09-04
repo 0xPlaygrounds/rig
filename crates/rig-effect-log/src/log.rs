@@ -2,12 +2,13 @@
 
 use std::collections::BTreeMap;
 
-use rig_core::effect::{EffectFamily, EffectRecord, HandlerDescriptor, HandlerKey};
+use rig_core::effect::{EffectRecord, EffectRow, HandlerDescriptor};
+use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
 /// The log format this crate writes and reads. A log with another format
 /// does not load: there is no tolerant decoder.
-pub const EFFECT_LOG_FORMAT: u32 = 3;
+pub const EFFECT_LOG_FORMAT: u32 = 4;
 
 /// What a log says about the run it records, so a replay can refuse a log
 /// the program has outgrown before the first dispatch diverges.
@@ -27,7 +28,7 @@ pub struct LogHeader {
     /// The effect signature: which keys the run performed effects on, and
     /// of which family — the effect row read off the trace.
     #[serde(default)]
-    pub signature: BTreeMap<HandlerKey, EffectFamily>,
+    pub signature: EffectRow,
     /// The program's hook stack at record time: the ordered type names of
     /// every hook (nested stacks flattened). Hooks are program, not record —
     /// a hook's decision is re-made on replay — so a log replayed under
@@ -40,12 +41,12 @@ pub struct LogHeader {
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
     #[serde(default)]
-    pub required: BTreeMap<HandlerKey, EffectFamily>,
+    pub required: EffectRow,
     /// The serving policy the run was recorded under. Per-key order is
     /// dispatch order under either policy; the header says which so a
     /// replay under a different one is a stated choice, not a surprise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bus: Option<rig_bus::BusConfig>,
+    pub bus: Option<ServingPolicy>,
 }
 
 impl Default for LogHeader {
@@ -54,9 +55,9 @@ impl Default for LogHeader {
             format: EFFECT_LOG_FORMAT,
             run_spec: None,
             handlers: Vec::new(),
-            signature: BTreeMap::new(),
+            signature: EffectRow::new(),
             hooks: Vec::new(),
-            required: BTreeMap::new(),
+            required: EffectRow::new(),
             bus: None,
         }
     }
@@ -81,8 +82,7 @@ impl EffectLog {
         for record in &records {
             header
                 .signature
-                .entry(record.key.clone())
-                .or_insert_with(|| record.kind.family());
+                .insert_if_absent(record.key.clone(), record.kind.family());
         }
         Self { header, records }
     }

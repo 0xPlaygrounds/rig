@@ -70,9 +70,9 @@ fn command(id: u64) -> (Box<Command>, Receiver) {
 #[test]
 fn loom_close_fails_what_the_driver_never_took() {
     loom::model(|| {
-        let shared = Arc::new(Shared::new(super::BusConfig {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
             command_capacity: 4,
-            ..super::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         }));
         let sender = {
             let shared = Arc::clone(&shared);
@@ -135,9 +135,9 @@ impl Serve for Nothing {
 #[test]
 fn loom_a_registration_before_a_dispatch_is_installed_first() {
     loom::model(|| {
-        let shared = Arc::new(Shared::new(super::BusConfig {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
             command_capacity: 4,
-            ..super::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         }));
         let mailbox = Arc::new(Mailbox::new());
         let poster = {
@@ -194,9 +194,9 @@ fn loom_a_registration_before_a_dispatch_is_installed_first() {
 #[test]
 fn loom_bound_is_never_exceeded_and_no_sender_is_lost() {
     loom::model(|| {
-        let shared = Arc::new(Shared::new(super::BusConfig {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
             command_capacity: 1,
-            ..super::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         }));
         let mut senders = Vec::new();
         for id in 1..=2u64 {
@@ -469,9 +469,9 @@ fn loom_reopen_races_the_last_in_flight_reply() {
 #[test]
 fn loom_close_for_commands_never_strands_a_late_enqueue() {
     loom::model(|| {
-        let shared = Arc::new(Shared::new(super::BusConfig {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
             command_capacity: 4,
-            ..super::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         }));
         // No dispatcher is open: the sender is a `Pending` that outlived its.
         let sender = {
