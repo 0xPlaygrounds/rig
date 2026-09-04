@@ -151,3 +151,86 @@ A tool served by a system (a world-served handler, §8.4) answers by inserting t
 ### 8.4 The tool context off the wire (format 5)
 
 `EffectKind::ToolCall { name, args }` and `Outcome::ToolResult { result }` carry no context. The inbound values reach the adapter through the sink's scope (`OutcomeSink::scope::<ToolContext>()`), attached by the driver — the world from the effect entity's `bus::ToolInputs`, rig-bus from the dispatch's own context — and the values a tool published come back beside the sink (`rig_core::tool::PublishedContext`), which the world reads into `bus::ToolOutputs` when the outcome lands. Every golden's context was empty (`{}` on 0 of 207 records' inbound or outbound maps); the re-stamp moves only `/records/*/kind/context` and `/records/*/outcome/Ok/context` and `/header/format` 4 → 5 (the PR pastes the count).
+
+## 9. Steering: every hook is a system
+
+Stage 4 (ruling 4). No hook trait: a user system writes a component at a set boundary and a library system reads it later. The spellings are `how-the-ecs-dissolves-rig-agent.md` §3's table; each row names the cell that pins it (`crates/rig-verify/tests/corpus/world_hooks.rs` writes them for the corpus). The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
+
+### 9.1 Stopping: `Cancelled(reason)` on the run
+
+| the stop | the write | what the library does | pinned by |
+|---|---|---|---|
+| any hook's `stop(reason)` | `agent::Cancelled(reason)` inserted on the run, at any moment | the observer `run_cancelled` fails the run `Failed(Cancelled(report))` with `report.message == reason` and `kind == Cancelled`, removes its phase marker, marks its current turn read, and despawns every effect of the run that was never issued (never dispatched: no record); an effect in flight is left to its handler, so the record is the handler's — a stream that ended stays a completion, one still streaming ends as the replayer or provider ends it | every `Ending::Cancelled` cell; the reason asserted |
+| `on_run_start` → stop | an `On<Add, Run>` observer inserts `Cancelled` | no record | `mock_endings_stop_at_start` (`[]`, `stopped at run start`) |
+| `on_model_select` → stop | a system between `Advance` and `Select` | no record: the turn is fresh, the effect not yet folded | `mock_endings_stop_at_model_select` |
+| `on_completion_call` → stop | a system before `Assemble` (on `Added<Fresh>`), or in `Patch` | no record: the completion effect is despawned before `Dispatch` | `mock_endings_stop_at_completion_call` |
+| `on_dispatch` → `Deny(Cancelled)` on a tool | a system in the bus's `Gate` on the tool child | the tool child is never issued: `[Completion]` | `anthropic_endings_tool_dispatch_cancelled{,_streamed}`, `gemini_breadth_tool_dispatch_cancelled`, `openai_breadth_tool_dispatch_cancelled` |
+| `on_outcome` → stop on a tool result | `On<Add, EffectOutcome>` on the tool child, or a system in the bus's `Judge` | the tool's record holds its real answer; nothing is committed | `anthropic_endings_tool_outcome_cancelled{,_streamed}` (`[Completion, Tool]`) |
+| `on_outcome` → stop on an answer | a system in `RigSet::Judge` | `[Completion]`, the real answer in the record | `anthropic_endings_answer_outcome_cancelled` |
+| `on_model_turn_finished` → stop | a system in `RigSet::Judge` (before `Materialise`) | the turn is not history | `anthropic_endings_turn_finished_stop{,_streamed}`, `anthropic_endings_answer_turn_stop` (`[C, T, C]`), `anthropic_oracle_stop_after_turn_two` (the stateful hook: `Cursor.turn == 2`) |
+| a delta stop | a system after `RigSet::Fold` on `Changed<Outputs>` (text), `Changed<Streamed>` (a tool-call delta: `Delta::ToolName` / `Delta::ToolArguments` among the new events) | the record is the handler's timing: the replayer ends the stream as it was recorded (`Cancelled` where the producer dropped it, a whole completion where the mock had already finished) | `anthropic_endings_text_delta_stop`, `anthropic_endings_tool_call_delta_stop`, `gemini_breadth_text_delta_stop`, `openai_breadth_text_delta_stop` (`Cancelled`, events kept); `mock_delta_stop_on_name`, `mock_delta_stop_on_arguments` (whole) |
+
+### 9.2 Selecting: `UsesModel` on the run
+
+| the hook | the write | pinned by |
+|---|---|---|
+| `on_model_select` → `select(label)` | a system after `Advance`, before `Select`, inserting `UsesModel(the route's handler entity)` on the run; `Select` copies the agent's only when the run has none, so a route persists until replaced — a system that routes one turn re-inserts the default on the next; the route is declared on the agent by a `Route` link (`agent::Route(entity)`, `ChildOf` the agent) so the required row names it, or bound after the agent exists and not in the row (`late_route`) | `anthropic_serving_model_route` (`fast` after the first turn: `Cursor.turn > 1`), `anthropic_shaping_route_on_first_turn` (`fast` on turn 1 only), `anthropic_shaping_late_route` (`late` on every turn; `/header/required` without it) |
+
+### 9.3 The completion call: `RequestPatch` on the turn
+
+`agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `assemble` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
+
+| field | what the fold does | pinned by |
+|---|---|---|
+| `preamble` | replaces the preamble the system message is built from (the augmentation still applies) | `anthropic_hooks_preamble_override` `/records/0/…/chat_history/0`; `anthropic_shaping_preamble_second_turn` `/records/2/…/chat_history/0` (turn 2 only; turn 1 the agent's) |
+| `history` | replaces the utterances (the system message stays) | `anthropic_shaping_history_first_turn` `/records/0/…/chat_history/1..3` |
+| `extra_context` | appended after the turn's attachments | `anthropic_shaping_extra_context{,_streamed}` `/records/0/…/documents/0` (`shaping-context`) |
+| `max_tokens`, `temperature`, `additional_params` | replace the setting for the turn (an object `additional_params` merges over the agent's) | `anthropic_shaping_max_tokens_second_turn` (`5` on turn 2), `anthropic_shaping_thinking_second_turn` (`1.0`, thinking on turn 2) |
+| `tool_choice` | replaces the choice for the turn; a committed output tool (`OutputToolName` minted) stays advertised whatever the choice | `anthropic_shaping_tool_choice_required_first` (`required` on turn 1), `anthropic_shaping_tool_choice_none_on_committed_output` `/records/2/…/tools` (`add`, `final_result` under `none`; then a reprompt) |
+| `active_tools` | narrows the adverts to the names listed | `anthropic_shaping_active_tools_none_second_turn` `/records/2/…/tools` (`[]`) |
+| three hooks on one turn | the merge above | `anthropic_shaping_merged_three` (the pirate preamble, the document, `required` on turn 1) |
+
+### 9.4 The model turn: `Retry` and a replaced answer
+
+| the hook | the write | what `materialise` does | pinned by |
+|---|---|---|---|
+| `on_model_turn_finished` → `retry_with_feedback(text)` | `agent::Retry { feedback: Some(text) }` on the turn, in `RigSet::Judge` | the turn (unless empty) and a user utterance of the feedback become history; another turn; nothing is committed as an answer; text turns only (a tool-bearing turn is refused, `Failed(Unsupported)`) | `anthropic_hooks_demand_done` `/records/1/…/chat_history/2..3` |
+| `repeat` | `Retry { feedback: None }` | nothing becomes history; another turn | `rig_agent::run::AgentRun::retry_model_turn` docs |
+| `on_outcome` → replace a completion | a system in `RigSet::Judge` rewriting the turn's `Outputs.content` (or the bus's `Judge` rewriting the `EffectOutcome`) | what is read is the replacement; the record holds the model's | `anthropic_hooks_replace_answer` (the run's output `REPLACED`, the record's text) |
+
+### 9.5 A hook's own dispatch
+
+A `PendingEffect` the system spawns `ChildOf` the run at the hook's moment (its record names no parent — the run is not an effect — and carries the run's `Scope`):
+
+| moment | the write | pinned by |
+|---|---|---|
+| run start | `On<Add, Run>` observer: before the first completion is folded, so its `Seq` is lower | `anthropic_host_custom_at_start{,_streamed}` (`[Custom, Completion]`), `anthropic_host_custom_twice_{serial,concurrent}` (`[X, X, C]`), `anthropic_hooks_lookup_before_run` (`[Tool, C, Tool, C]`: a tool call `add(1, 2)` on the tool's key), `openai_host_embed_prompt{,_streamed}` / `gemini_breadth_embed_prompt` (`Embed { inputs: Texts([prompt]) }`), `mock_oracle_rerank` (`Rerank { query: prompt, documents }`), `mock_leftovers_five_thousand_events` (two hundred notes) |
+| before a completion | a system on `Added<Fresh>` before `Assemble` (the note's `Seq` precedes the completion's) | `anthropic_host_custom_at_completion_call` (`[X, C]`) |
+| after a tool answered | `On<Add, EffectOutcome>` on a tool child | `anthropic_host_custom_at_outcome{,_streamed}`, `{gemini,openai}_breadth_custom_at_outcome` (`[C, T, X, C]`), `anthropic_oracle_concurrent_notes` (`[C, T, T, X, X, C]`) |
+| settled | `On<Add, Settled>` observer; the world ticks to quiescence after the run ends | `anthropic_host_custom_at_settled` (`[C, X]`), `anthropic_host_custom_start_and_settled` |
+| a key nothing serves | the system finds no `Bound` for the key and dispatches nothing | `anthropic_host_custom_unserved` (`[C]`) |
+| an effect with no wire form | `PendingEffect::custom` refuses it; nothing is spawned | `mock_leftovers_unserializable_from_hook` (`[C]`) |
+
+### 9.6 Layers
+
+A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record — the world's `Dispatch` installs the sink observer that hears `discard` and `patch` for a handler whose descriptor names layers, so the recorder forgets the slot or takes the patched request as the record's — and a verdict after leaves the handler's answer in the record. The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
+
+| cell | records | pinned by |
+|---|---|---|
+| a denying layer on the tool | `[C, C]`, the reason as the skipped result | `anthropic_layers_deny_tool`, `anthropic_layers_host_deny_over_host_bus`, `mock_layers_suspend_deny`, `mock_leftovers_denied_tool{,_streamed}` |
+| a patching layer | the record holds the layer's arguments | `anthropic_layers_patch_tool_args`, `anthropic_layers_patch_beneath_hook_patch` (the hook's patch in `Gate`, the layer's beneath it: `{30, 12}`) |
+| a replacing layer | the record holds the handler's answer, history the replacement | `anthropic_layers_replace_tool_result`, `anthropic_layers_two_layers` |
+| a wrong-family patch | `Internal`, no record, a failed result the model sees | `mock_layers_wrong_family_patch` |
+| a cancelling layer on the model | `[C]` with events; `Failed(Cancelled)` at the record | `mock_layers_replace_streamed_cancelled` |
+| a denying layer on the model, on memory | `[]`; `Failed(Provider(Denied))` / `Failed(Memory)` | `mock_leftovers_denied_completion`, `mock_leftovers_denied_memory_load` (§11) |
+| a denied note from a hook | the system's note is answered `Denied`; the run goes on | `mock_leftovers_denied_custom_from_hook{,_streamed}` |
+| the suspended tool cancelled | `[C, T✗]`: the run despawned while the layer waits | `mock_layers_suspend_cancelled` |
+
+## 10. Identity as data
+
+| what | where | pinned by |
+|---|---|---|
+| `LogHeader::hooks` | the program's declaration — the corpus's `hook_name` list, then `layer_names` — passed to `replay::stamp_header(world, agent, recorder, bus, hooks)`; the world has no hook stack to name | every golden's `/header/hooks`, asserted by the interpreter |
+| `LogHeader::programs: BTreeMap<Arc<str>, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_header` (`policy` = `stable_hash(spec_json)`), `#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]`: rig-agent's goldens carry none, no re-stamp; a world's own log carries its scopes | `rig-effect-log`'s round-trip test |
+| `replay::check_replayable(world, agent, &log)` | refuses a foreign golden: the scope's `required` not served by the log's handlers, or its `policy` ≠ the agent's `spec_hash`; falls back to `run_spec`/`required` for a golden without `programs` | `run_identity.rs` |
+| `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
