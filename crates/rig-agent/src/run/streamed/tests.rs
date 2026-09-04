@@ -1236,3 +1236,41 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
         AgentRunStep::CallModel { turn: 2, .. }
     ));
 }
+
+/// An invalid call ignored at its name delta: the block's later argument
+/// deltas and its end are swallowed, the turn finishes without the call,
+/// and the call is neither re-surfaced nor buffered as a pending delta.
+#[test]
+fn an_ignored_name_delta_swallows_the_rest_of_its_block() {
+    let mut asm = assembler();
+    let surfaced = asm
+        .ingest(&name_delta("c1", "multiply"))
+        .expect("ingest should succeed");
+    assert!(
+        matches!(surfaced.as_slice(), [StreamedTurnEvent::InvalidToolCall(_)]),
+        "{surfaced:?}"
+    );
+    let replayed = asm.resolve_pending_invalid(&StreamedResolution::Ignored);
+    assert!(replayed.is_empty(), "{replayed:?}");
+    let args = asm
+        .ingest(&args_delta("c1", "{\"x\": 1}"))
+        .expect("an ignored call's arguments are swallowed");
+    assert!(args.is_empty(), "{args:?}");
+    let end = asm
+        .ingest(&completed_tool_call(
+            tool_call("c1", "multiply"),
+            iid_for("c1"),
+        ))
+        .expect("an ignored call's end is swallowed");
+    assert!(end.is_empty(), "{end:?}");
+    assert!(asm.pending_delta_error().is_none());
+    asm.ingest(&final_item()).expect("the turn finishes");
+    let turn = asm.finish(None, &[]);
+    assert!(
+        turn.choice
+            .iter()
+            .all(|content| !matches!(content, AssistantContent::ToolCall(_))),
+        "{:?}",
+        turn.choice
+    );
+}

@@ -542,3 +542,608 @@ pub(crate) fn retrievable_toolset() -> rig::tool::ToolSet {
         .expect("the tool context serializes");
     toolset
 }
+
+// ---------------------------------------------------------------------------
+// The endings matrix's hooks (Matrix F): every `Stop` in the hook surface,
+// each a stateless type deciding from its event alone, plus an
+// observe-only hook that records what `on_run_settled` saw (producer-side
+// assertion; the header names it like any other hook).
+
+#[allow(dead_code)]
+pub(crate) const STOP_AT_START: &str = "stopped at run start";
+#[allow(dead_code)]
+pub(crate) const STOP_AT_MODEL_SELECT: &str = "stopped at model selection";
+#[allow(dead_code)]
+pub(crate) const STOP_AT_COMPLETION_CALL: &str = "stopped before the completion call";
+#[allow(dead_code)]
+pub(crate) const CANCEL_ADD_DISPATCH: &str = "add is cancelled before the bus";
+#[allow(dead_code)]
+pub(crate) const CANCEL_ADD_OUTCOME: &str = "add is cancelled after the bus";
+#[allow(dead_code)]
+pub(crate) const CANCEL_ANSWER: &str = "the answer is cancelled";
+#[allow(dead_code)]
+pub(crate) const STOP_AFTER_TURN: &str = "stopped after the model turn";
+#[allow(dead_code)]
+pub(crate) const STOP_AT_ANSWER: &str = "stopped at the answer turn";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TEXT_DELTA: &str = "stopped on the first text delta";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_TOOL_CALL_DELTA: &str = "stopped on the first tool-call delta";
+#[allow(dead_code)]
+pub(crate) const STOP_ON_REASONING_DELTA: &str = "stopped on the first reasoning delta";
+
+#[allow(dead_code)]
+pub(crate) struct StopAtStart;
+impl rig::agent::AgentHook for StopAtStart {
+    async fn on_run_start(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        rig::agent::RunStartAction::stop(STOP_AT_START)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopAtModelSelect;
+impl rig::agent::AgentHook for StopAtModelSelect {
+    fn on_model_select(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ModelSelection<'_>,
+    ) -> rig::agent::ModelSelectionAction {
+        rig::agent::ModelSelectionAction::stop(STOP_AT_MODEL_SELECT)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopAtCompletionCall;
+impl rig::agent::AgentHook for StopAtCompletionCall {
+    async fn on_completion_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionCallAction {
+        rig::agent::CompletionCallAction::stop(STOP_AT_COMPLETION_CALL)
+    }
+}
+
+/// `on_dispatch` → `Deny(Cancelled)` for `add`: the run stops before the
+/// tool reaches the bus.
+#[allow(dead_code)]
+pub(crate) struct CancelAddDispatch;
+impl rig::agent::AgentHook for CancelAddDispatch {
+    async fn on_dispatch(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::DispatchEvent<'_>,
+    ) -> rig::agent::DispatchAction {
+        if event.tool_name() == Some("add") {
+            rig::agent::DispatchAction::stop(CANCEL_ADD_DISPATCH)
+        } else {
+            rig::agent::DispatchAction::proceed()
+        }
+    }
+}
+
+/// `on_outcome` → `Replace(Err(Cancelled))` for `add`'s result: the tool
+/// ran and is recorded; the run stops after.
+#[allow(dead_code)]
+pub(crate) struct CancelAddOutcome;
+impl rig::agent::AgentHook for CancelAddOutcome {
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        if event.tool_name() == Some("add") && event.tool_result().is_some() {
+            rig::agent::OutcomeAction::stop(CANCEL_ADD_OUTCOME)
+        } else {
+            rig::agent::OutcomeAction::proceed()
+        }
+    }
+}
+
+/// `on_outcome` → `Replace(Err(Cancelled))` on a text answer.
+#[allow(dead_code)]
+pub(crate) struct CancelAnswer;
+impl rig::agent::AgentHook for CancelAnswer {
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        match event.completion() {
+            Some(response)
+                if !response
+                    .choice
+                    .iter()
+                    .any(|c| matches!(c, rig::message::AssistantContent::ToolCall(_))) =>
+            {
+                rig::agent::OutcomeAction::stop(CANCEL_ANSWER)
+            }
+            _ => rig::agent::OutcomeAction::proceed(),
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopAfterTurn;
+impl rig::agent::AgentHook for StopAfterTurn {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        rig::agent::ModelTurnAction::stop(STOP_AFTER_TURN)
+    }
+}
+
+/// Stops at the turn that carries no tool call — the answer turn of a
+/// tool program, so the tool turn's records precede the stop.
+#[allow(dead_code)]
+pub(crate) struct StopAtAnswer;
+impl rig::agent::AgentHook for StopAtAnswer {
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        if event
+            .content
+            .iter()
+            .any(|c| matches!(c, rig::message::AssistantContent::ToolCall(_)))
+        {
+            rig::agent::ModelTurnAction::continue_run()
+        } else {
+            rig::agent::ModelTurnAction::stop(STOP_AT_ANSWER)
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopOnTextDelta;
+impl rig::agent::AgentHook for StopOnTextDelta {
+    async fn on_text_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::TextDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        rig::agent::ObservationAction::stop(STOP_ON_TEXT_DELTA)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopOnToolCallDelta;
+impl rig::agent::AgentHook for StopOnToolCallDelta {
+    async fn on_tool_call_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ToolCallDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        rig::agent::ObservationAction::stop(STOP_ON_TOOL_CALL_DELTA)
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) struct StopOnReasoningDelta;
+impl rig::agent::AgentHook for StopOnReasoningDelta {
+    async fn on_reasoning_delta(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _event: rig::agent::ReasoningDelta<'_>,
+    ) -> rig::agent::ObservationAction {
+        rig::agent::ObservationAction::stop(STOP_ON_REASONING_DELTA)
+    }
+}
+
+/// Observe-only: what `on_run_settled` saw, for the producer to assert.
+/// Not a record, and its state is not identity (the header names the
+/// type); the replay's hook of the same name observes nothing.
+#[derive(Clone, Default)]
+#[allow(dead_code)]
+pub(crate) struct RecordSettled(pub(crate) std::sync::Arc<std::sync::Mutex<Option<String>>>);
+impl rig::agent::AgentHook for RecordSettled {
+    async fn on_run_settled(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::RunSettled<'_>,
+    ) {
+        let seen = match event.outcome {
+            rig::agent::SettledOutcome::Response(response) => {
+                format!("response:{}", response.output)
+            }
+            rig::agent::SettledOutcome::Error(reason) => format!("error:{reason}"),
+        };
+        *self.0.lock().expect("settled") = Some(seen);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The invalid-call matrix's hooks (Matrix G).
+
+#[allow(dead_code)]
+pub(crate) const SKIP_REASON: &str = "no such tool; skipped";
+
+/// `on_invalid_tool_call` → `Repair { tool_name: "add" }`: the unknown
+/// call is re-targeted to `add` with its arguments.
+#[allow(dead_code)]
+pub(crate) struct RepairToAdd;
+impl rig::agent::AgentHook for RepairToAdd {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _context: &rig::agent::InvalidToolCallContext,
+    ) -> Option<rig::agent::InvalidToolCallAction> {
+        Some(rig::agent::InvalidToolCallAction::Repair {
+            tool_name: "add".to_owned(),
+        })
+    }
+}
+
+/// `on_invalid_tool_call` → `Skip { reason }`: the model sees the reason
+/// as the call's result and goes on.
+#[allow(dead_code)]
+pub(crate) struct SkipUnknown;
+impl rig::agent::AgentHook for SkipUnknown {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _context: &rig::agent::InvalidToolCallContext,
+    ) -> Option<rig::agent::InvalidToolCallAction> {
+        Some(rig::agent::InvalidToolCallAction::Skip {
+            reason: SKIP_REASON.to_owned(),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix I: a host's own effect, dispatched by hooks over the host's bus.
+
+/// The host's key for its custom handler.
+#[allow(dead_code)]
+pub(crate) const NOTE_KEY: &str = "host/note";
+/// The host's key for its embedding model.
+#[allow(dead_code)]
+pub(crate) const EMBED_KEY: &str = "host/embed";
+
+/// A host-defined effect: a note of where in the run it was taken.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct Note {
+    pub at: String,
+}
+
+/// The host's answer to a [`Note`].
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct NoteAck {
+    pub accepted: bool,
+    pub at: String,
+}
+
+impl rig::effect::CustomEffect for Note {
+    const KIND: &'static str = "corpus:note";
+    type Answer = NoteAck;
+}
+
+/// The host's handler for [`Note`]: acknowledges every note with where
+/// it was taken.
+#[allow(dead_code)]
+pub(crate) struct NoteTaker;
+
+impl rig::serve::Serve for NoteTaker {
+    type Family = rig::effect::family::Custom<Note>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(NOTE_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <Note as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+        }
+    }
+
+    async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        let outcome = match kind {
+            rig::effect::EffectKind::Custom { payload, .. } => {
+                match serde_json::from_value::<Note>(payload) {
+                    Ok(note) => Ok(rig::effect::Outcome::Custom(
+                        serde_json::to_value(NoteAck {
+                            accepted: true,
+                            at: note.at,
+                        })
+                        .expect("an ack serializes"),
+                    )),
+                    Err(error) => Err(rig::error::ErrorReport::new(
+                        rig::error::ErrorKind::Request,
+                        format!("not a note: {error}"),
+                    )),
+                }
+            }
+            other => Err(rig::error::ErrorReport::new(
+                rig::error::ErrorKind::Request,
+                format!("a note, not {other:?}"),
+            )),
+        };
+        sink.resolve(outcome).await;
+    }
+}
+
+#[allow(dead_code)]
+fn note_key() -> rig::effect::Key<rig::effect::family::Custom<Note>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(NOTE_KEY))
+}
+
+/// Dispatch a note from a hook, asserting the host acknowledged it.
+#[allow(dead_code)]
+async fn take_note(ctx: &rig::agent::HookContext, at: &str) {
+    let host = ctx.bind(&note_key()).expect("the host serves notes");
+    let ack = host
+        .dispatch(Note { at: at.to_owned() })
+        .await
+        .expect("the host acknowledges");
+    assert!(ack.accepted && ack.at == at, "{ack:?}");
+}
+
+/// `on_run_start` → a note, before the first completion.
+#[allow(dead_code)]
+pub(crate) struct NoteAtStart;
+
+impl rig::agent::AgentHook for NoteAtStart {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        take_note(ctx, "start").await;
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_completion_call` → a note before every completion.
+#[allow(dead_code)]
+pub(crate) struct NoteAtCompletionCall;
+
+impl rig::agent::AgentHook for NoteAtCompletionCall {
+    async fn on_completion_call(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::CompletionCallEvent<'_>,
+    ) -> rig::agent::CompletionCallAction {
+        take_note(ctx, "completion_call").await;
+        rig::agent::CompletionCallAction::Continue
+    }
+}
+
+/// `on_outcome` → a note after every tool answer (a completion's answer
+/// is left alone).
+#[allow(dead_code)]
+pub(crate) struct NoteAtOutcome;
+
+impl rig::agent::AgentHook for NoteAtOutcome {
+    async fn on_outcome(
+        &self,
+        ctx: &rig::agent::HookContext,
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        if event.kind.family() == rig::effect::EffectFamily::Tool {
+            take_note(ctx, "outcome").await;
+        }
+        rig::agent::OutcomeAction::Proceed
+    }
+}
+
+/// `on_run_settled` → a note after the run's answer: the last dispatch
+/// the run makes, after the record that answered it.
+#[allow(dead_code)]
+pub(crate) struct NoteAtSettled;
+
+impl rig::agent::AgentHook for NoteAtSettled {
+    async fn on_run_settled(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunSettled<'_>,
+    ) {
+        take_note(ctx, "settled").await;
+    }
+}
+
+/// `on_run_start` → two notes dispatched together (their order is the
+/// bus's).
+#[allow(dead_code)]
+pub(crate) struct NoteTwice;
+
+impl rig::agent::AgentHook for NoteTwice {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let host = ctx.bind(&note_key()).expect("the host serves notes");
+        let first = host.dispatch(Note {
+            at: "first".to_owned(),
+        });
+        let second = host.dispatch(Note {
+            at: "second".to_owned(),
+        });
+        let (first, second) = futures::join!(first, second);
+        assert_eq!(first.expect("acknowledged").at, "first");
+        assert_eq!(second.expect("acknowledged").at, "second");
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` → a bind to a key the host never registered: the hook
+/// sees the refusal and lets the run go on; nothing is dispatched.
+#[allow(dead_code)]
+pub(crate) struct NoteUnserved;
+
+impl rig::agent::AgentHook for NoteUnserved {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let refused = ctx.bind(&note_key()).expect_err("no host serves notes");
+        assert_eq!(
+            refused.kind,
+            rig::error::ErrorKind::HandlerUnavailable,
+            "{refused:?}"
+        );
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` → the prompt's text embedded through the host's
+/// embedding model.
+#[allow(dead_code)]
+pub(crate) struct EmbedPrompt;
+
+impl rig::agent::AgentHook for EmbedPrompt {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let key: rig::effect::Key<rig::effect::family::Embed> =
+            rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(EMBED_KEY));
+        let host = ctx.bind(&key).expect("the host serves embeddings");
+        let text = event.prompt.rag_text().expect("a text prompt");
+        let outputs = host
+            .dispatch(rig::effect::EmbedInputs::Texts(vec![text]))
+            .await
+            .expect("the host embeds");
+        match outputs {
+            rig::effect::EmbedOutputs::Texts(response) => {
+                assert_eq!(response.embeddings.len(), 1, "{response:?}")
+            }
+            rig::effect::EmbedOutputs::Images(_) => panic!("a text embedding"),
+        }
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix J: memory operations.
+
+/// The agent's memory key (`<owner>/memory`, the owner `golden`).
+#[allow(dead_code)]
+pub(crate) const MEMORY_KEY: &str = "golden/memory";
+/// The conversation every memory cell loads and saves under.
+#[allow(dead_code)]
+pub(crate) const CONVERSATION: &str = "golden-conversation";
+
+/// Clear the conversation from a hook, through the run's memory handle.
+#[allow(dead_code)]
+async fn clear_conversation(ctx: &rig::agent::HookContext) {
+    let memory = ctx
+        .memory(&rig::effect::HandlerKey::from(MEMORY_KEY))
+        .expect("the run's bus serves memory");
+    let outcome = memory
+        .dispatch(rig::effect::MemoryOp::Clear {
+            conversation: rig::id::ConversationId::from(CONVERSATION),
+        })
+        .await
+        .expect("the memory clears");
+    assert!(
+        matches!(outcome, rig::effect::MemoryOutcome::Cleared),
+        "{outcome:?}"
+    );
+}
+
+/// `on_run_start` → `Clear`; the hook fires after the run's `Load`, so
+/// the clear lands between the load and the append.
+#[allow(dead_code)]
+pub(crate) struct ClearAtStart;
+
+impl rig::agent::AgentHook for ClearAtStart {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        clear_conversation(ctx).await;
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_settled` → `Clear` after the run's `Append`.
+#[allow(dead_code)]
+pub(crate) struct ClearAtSettled;
+
+impl rig::agent::AgentHook for ClearAtSettled {
+    async fn on_run_settled(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunSettled<'_>,
+    ) {
+        clear_conversation(ctx).await;
+    }
+}
+
+/// An in-memory conversation store whose `load` or `append` refuses.
+#[allow(dead_code)]
+pub(crate) struct FailingMemory {
+    inner: rig::memory::InMemoryConversationMemory,
+    fail_load: bool,
+    fail_append: bool,
+}
+
+#[allow(dead_code)]
+impl FailingMemory {
+    pub(crate) fn load_fails() -> Self {
+        Self {
+            inner: rig::memory::InMemoryConversationMemory::new(),
+            fail_load: true,
+            fail_append: false,
+        }
+    }
+
+    pub(crate) fn append_fails() -> Self {
+        Self {
+            inner: rig::memory::InMemoryConversationMemory::new(),
+            fail_load: false,
+            fail_append: true,
+        }
+    }
+}
+
+fn refused(op: &str) -> rig::memory::MemoryError {
+    rig::memory::MemoryError::Backend(format!("the store refused the {op}").into())
+}
+
+impl rig::memory::ConversationMemory for FailingMemory {
+    fn load<'a>(
+        &'a self,
+        conversation_id: &'a rig::id::ConversationId,
+    ) -> rig::wasm_compat::WasmBoxedFuture<
+        'a,
+        Result<Vec<rig::message::Message>, rig::memory::MemoryError>,
+    > {
+        if self.fail_load {
+            Box::pin(async { Err(refused("load")) })
+        } else {
+            self.inner.load(conversation_id)
+        }
+    }
+
+    fn append<'a>(
+        &'a self,
+        conversation_id: &'a rig::id::ConversationId,
+        messages: Vec<rig::message::Message>,
+    ) -> rig::wasm_compat::WasmBoxedFuture<'a, Result<(), rig::memory::MemoryError>> {
+        if self.fail_append {
+            Box::pin(async { Err(refused("append")) })
+        } else {
+            self.inner.append(conversation_id, messages)
+        }
+    }
+
+    fn clear<'a>(
+        &'a self,
+        conversation_id: &'a rig::id::ConversationId,
+    ) -> rig::wasm_compat::WasmBoxedFuture<'a, Result<(), rig::memory::MemoryError>> {
+        self.inner.clear(conversation_id)
+    }
+}

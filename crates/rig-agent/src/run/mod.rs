@@ -1790,6 +1790,20 @@ impl AgentRun {
         }
     }
 
+    /// Drop a streamed invalid call and go on with the turn without it —
+    /// [`UnhandledInvalidToolCall::Ignore`] on the streaming surface, the
+    /// counterpart of [`ignore_invalid_tool_call`](Self::ignore_invalid_tool_call).
+    /// The call never enters the run; the assembler drops its pending
+    /// state on [`StreamedResolution::Ignored`].
+    pub fn ignore_streamed_invalid_tool_call(&mut self) -> Result<StreamedResolution, PromptError> {
+        if !matches!(self.state, RunState::AwaitingModel) {
+            return Err(self.protocol_violation(
+                "ignore_streamed_invalid_tool_call called without a pending CallModel step",
+            ));
+        }
+        Ok(StreamedResolution::Ignored)
+    }
+
     /// Shared rollback for the streamed Retry and Skip resolutions: push the
     /// partial turn's rollback messages and abandon the turn, or fail the run
     /// when the partial turn yields no rollback messages.

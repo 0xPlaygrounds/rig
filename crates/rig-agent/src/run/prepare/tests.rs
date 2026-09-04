@@ -349,16 +349,32 @@ fn resolve_output_mode_degrades_to_native_when_output_tool_not_callable() {
 }
 
 #[test]
-fn tool_choice_permits_output_tool_only_for_auto_required_or_unset() {
-    assert!(tool_choice_permits_output_tool(None));
-    assert!(tool_choice_permits_output_tool(Some(&ToolChoice::Auto)));
-    assert!(tool_choice_permits_output_tool(Some(&ToolChoice::Required)));
-    assert!(!tool_choice_permits_output_tool(Some(&ToolChoice::None)));
-    assert!(!tool_choice_permits_output_tool(Some(
-        &ToolChoice::Specific {
+fn output_tool_callable_for_auto_required_unset_or_a_specific_set_naming_it() {
+    assert!(output_tool_callable(None, "final_result"));
+    assert!(output_tool_callable(
+        Some(&ToolChoice::Auto),
+        "final_result"
+    ));
+    assert!(output_tool_callable(
+        Some(&ToolChoice::Required),
+        "final_result"
+    ));
+    assert!(!output_tool_callable(
+        Some(&ToolChoice::None),
+        "final_result"
+    ));
+    assert!(!output_tool_callable(
+        Some(&ToolChoice::Specific {
             function_names: vec!["add".to_string()],
-        }
-    )));
+        }),
+        "final_result"
+    ));
+    assert!(output_tool_callable(
+        Some(&ToolChoice::Specific {
+            function_names: vec!["add".to_string(), "final_result".to_string()],
+        }),
+        "final_result"
+    ));
 }
 
 #[test]
