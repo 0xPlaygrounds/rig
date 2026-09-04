@@ -2,7 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use rig_core::effect::{EffectRecord, EffectRow, HandlerDescriptor};
+use rig_core::effect::{EffectId, EffectRecord, EffectRow, HandlerDescriptor};
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::ServingPolicy;
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +96,93 @@ impl EffectLog {
             records: self.records.get(at..).unwrap_or_default().to_vec(),
         }
     }
+
+    /// Cut the log at `at`: a [`Checkpoint`] naming the position, the id of
+    /// the record that follows it, and `state` — what the driver persists
+    /// (an agent's serialized run, a scene) — beside the tail the
+    /// continuation replays. `at` past the end is a checkpoint with an
+    /// empty tail.
+    pub fn checkpoint(&self, at: usize, state: serde_json::Value) -> (Checkpoint, Self) {
+        let checkpoint = Checkpoint {
+            format: EFFECT_LOG_FORMAT,
+            at,
+            next: self.records.get(at).map(|record| record.id),
+            state,
+        };
+        (checkpoint, self.tail(at))
+    }
+
+    /// The continuation `checkpoint` names, over `tail`: refused by name
+    /// when the checkpoint is of another format, when the tail's first
+    /// record is not the one the checkpoint expects next (ids are total, so
+    /// a tail begins exactly at the checkpoint's next id), or when the
+    /// tail's own header is of another format.
+    pub fn from_checkpoint(checkpoint: &Checkpoint, tail: Self) -> Result<Self, ErrorReport> {
+        if checkpoint.format != EFFECT_LOG_FORMAT {
+            return Err(ErrorReport::new(
+                ErrorKind::Internal,
+                format!(
+                    "resume refused: the checkpoint is format {}, this rig reads format {}",
+                    checkpoint.format, EFFECT_LOG_FORMAT
+                ),
+            ));
+        }
+        if tail.header.format != EFFECT_LOG_FORMAT {
+            return Err(ErrorReport::new(
+                ErrorKind::Internal,
+                format!(
+                    "resume refused: the tail is format {}, this rig reads format {}",
+                    tail.header.format, EFFECT_LOG_FORMAT
+                ),
+            ));
+        }
+        let first = tail.records.first().map(|record| record.id);
+        if first != checkpoint.next {
+            return Err(ErrorReport::new(
+                ErrorKind::Internal,
+                match (checkpoint.next, first) {
+                    (Some(next), Some(first)) => format!(
+                        "resume refused: the checkpoint at {} expects record {next} next, the tail begins at {first}",
+                        checkpoint.at
+                    ),
+                    (Some(next), None) => format!(
+                        "resume refused: the checkpoint at {} expects record {next} next, the tail is empty",
+                        checkpoint.at
+                    ),
+                    (None, Some(first)) => format!(
+                        "resume refused: the checkpoint at {} ends the log, the tail begins at {first}",
+                        checkpoint.at
+                    ),
+                    (None, None) => unreachable_refusal(),
+                },
+            ));
+        }
+        Ok(tail)
+    }
+}
+
+/// `(None, None)` is the equal case, taken by the comparison above; this
+/// arm types the match.
+fn unreachable_refusal() -> String {
+    "resume refused: the tail does not follow the checkpoint".to_owned()
+}
+
+/// A cut in a log: where a run was suspended, what follows, and what the
+/// driver persisted — beside the tail, so a resumed run replays only what
+/// it has not performed, and a full log offered in a tail's place is
+/// refused by its first id.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Checkpoint {
+    /// The log format the checkpoint was cut under ([`EFFECT_LOG_FORMAT`]).
+    pub format: u32,
+    /// The position in the log: `at` records were performed before it.
+    pub at: usize,
+    /// The id of the record the tail begins with; `None` when the
+    /// checkpoint ends the log.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<EffectId>,
+    /// What the driver persists: an agent's serialized run, a host's scene.
+    pub state: serde_json::Value,
 }
 
 impl std::ops::Deref for EffectLog {

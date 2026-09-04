@@ -16,7 +16,22 @@ use rig_core::{
 
 use rig_core::serve::{OutcomeSink, Serve};
 
-use super::{EFFECT_LOG_FORMAT, EffectLog};
+use super::{EFFECT_LOG_FORMAT, EffectLog, stable_hash};
+
+/// How a replayer compares an incoming request with the record's: by the
+/// whole payload as data (the divergence names the first differing JSON
+/// pointer), or by [`stable_hash`] of each (the divergence names the two
+/// hashes). A replayer's mode, never a log's: the records hold the request
+/// either way, and the mode decides what a replay refuses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequestCheck {
+    /// Compare the payloads as data.
+    #[default]
+    Payload,
+    /// Compare their stable hashes.
+    Hash,
+}
 
 /// A handler that answers dispatches from a recorded log instead of a
 /// provider: the replay half of record/replay.
@@ -31,6 +46,7 @@ pub struct EffectLogReplayer {
     family: EffectFamily,
     descriptor: HandlerDescriptor,
     records: Mutex<VecDeque<EffectRecord>>,
+    check: RequestCheck,
 }
 
 impl EffectLogReplayer {
@@ -89,7 +105,19 @@ impl EffectLogReplayer {
             family,
             descriptor,
             records: Mutex::new(records),
+            check: RequestCheck::Payload,
         })
+    }
+
+    /// The same replayer comparing requests as `check` says.
+    pub fn checking(mut self, check: RequestCheck) -> Self {
+        self.check = check;
+        self
+    }
+
+    /// The mode this replayer compares requests in.
+    pub const fn check(&self) -> RequestCheck {
+        self.check
     }
 
     /// Every key the log mentions, in first-appearance order, then every
@@ -118,10 +146,23 @@ impl EffectLogReplayer {
         log: &EffectLog,
         driver: &mut rig_bus::BusDriver,
     ) -> Result<(), ErrorReport> {
+        Self::register_all_checking(log, driver, RequestCheck::Payload)
+    }
+
+    /// [`register_all`](Self::register_all) with every replayer comparing
+    /// requests as `check` says.
+    pub fn register_all_checking(
+        log: &EffectLog,
+        driver: &mut rig_bus::BusDriver,
+        check: RequestCheck,
+    ) -> Result<(), ErrorReport> {
         Self::check_header(log)?;
         for replayer in Self::for_log(log)? {
             let key = replayer.key.clone();
-            driver.register_erased(key, rig_core::serve::ErasedHandler::new(replayer))?;
+            driver.register_erased(
+                key,
+                rig_core::serve::ErasedHandler::new(replayer.checking(check)),
+            )?;
         }
         Ok(())
     }
@@ -172,6 +213,25 @@ impl EffectLogReplayer {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .len()
+    }
+}
+
+/// [`divergence`] under `check`: by payload, or by the stable hashes of
+/// the two payloads, reported as the pair.
+fn divergence_under(
+    check: RequestCheck,
+    recorded: &EffectKind,
+    got: &EffectKind,
+) -> Option<String> {
+    match check {
+        RequestCheck::Payload => divergence(recorded, got),
+        RequestCheck::Hash => {
+            let (Ok(recorded), Ok(got)) = (stable_hash(recorded), stable_hash(got)) else {
+                return Some("the payload could not be hashed".to_owned());
+            };
+            (recorded != got)
+                .then(|| format!("hash {recorded:#018x} was recorded, {got:#018x} arrived"))
+        }
     }
 }
 
@@ -394,7 +454,7 @@ impl Serve for EffectLogReplayer {
                         kind.name()
                     ),
                 )),
-                Some(record) => match divergence(&record.kind, &kind) {
+                Some(record) => match divergence_under(self.check, &record.kind, &kind) {
                     Some(what) => Err(ErrorReport::new(
                         ErrorKind::Divergence,
                         format!(
