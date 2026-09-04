@@ -190,7 +190,7 @@ fn the_header_sets_nest_as_stated() {
             );
         }
         for key in log.header.signature.keys() {
-            if key.as_str().starts_with("host/") {
+            if key.parts().owner.as_deref() == Some("host") {
                 assert!(!log.header.required.contains_key(key), "{name}: `{key}`");
             }
         }

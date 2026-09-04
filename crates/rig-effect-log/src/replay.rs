@@ -416,11 +416,11 @@ fn describe_required(
     };
     match family {
         EffectFamily::Tool => {
-            let name = key
-                .as_str()
-                .rsplit_once("tool:")
-                .map(|(_, rest)| rest.split_once('#').map_or(rest, |(name, _)| name))
-                .ok_or_else(|| gap("the key does not name a tool"))?;
+            let parts = key.parts();
+            let name = match parts.kind.as_deref() {
+                Some("tool") => parts.label.as_ref(),
+                _ => return Err(gap("the key does not name a tool")),
+            };
             let advertised = advertised_tool(name, log)
                 .ok_or_else(|| gap("no recorded request advertises the tool"))?;
             Ok(FamilyDescriptor::Tool {
