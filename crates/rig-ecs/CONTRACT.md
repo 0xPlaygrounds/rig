@@ -234,3 +234,43 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 | `LogHeader::programs: BTreeMap<Arc<str>, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_header` (`policy` = `stable_hash(spec_json)`), `#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]`: rig-agent's goldens carry none, no re-stamp; a world's own log carries its scopes | `rig-effect-log`'s round-trip test |
 | `replay::check_replayable(world, agent, &log)` | refuses a foreign golden: the scope's `required` not served by the log's handlers, or its `policy` ≠ the agent's `spec_hash`; falls back to `run_spec`/`required` for a golden without `programs` | `run_identity.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
+
+## 11. Memory is the graph
+
+Stage 5 (ruling 5). The conversation graph *is* memory; a memory handler is where it persists. `agent::Remembers(entity)` on the agent names the memory handler entity; `agent::Conversation(id)` the conversation (the run's, else the agent's). Every op is an effect entity `ChildOf` the run, recorded like any other.
+
+| moment | what happens | pinned by |
+|---|---|---|
+| a run spawned with no history, on an agent that remembers | before its first turn the run dispatches `Memory { Load { conversation } }` (the run is `LoadingMemory`); when it lands, the loaded messages become utterances *before* the prompt (each marked `Remembered`), and the run is `Assembling` | `anthropic_memory_conversation` `/records/0` (`load`, `golden-conversation`), `/records/1/…/chat_history` (the loaded history, then the prompt) |
+| a run spawned with history | no load, no append: the history is the run's; memory stays in the required row | `anthropic_memory_history_bypass` (`[Completion]`, `golden/memory` in `/header/required`) |
+| the run settles | `Memory { Append { conversation, messages } }` is dispatched `ChildOf` the run, `messages` every utterance of the run that is not `Remembered`, in order (the prompt, the turns' assistant utterances and tool results, the answer) | `anthropic_memory_conversation` `/records/2` (user, assistant); `anthropic_serving_serial_memory_tools` `/records/4` (user, assistant call, user result, assistant) |
+| the load fails | the run is `Failed(Memory(report))` at the record; no completion | `mock_memory_failing_load` (`[Load(err)]`, `MemoryError`); `mock_leftovers_denied_memory_load` (`[]`: a layer's denial, no record) |
+| the append fails | the record holds the store's error; the answer stands | `anthropic_memory_failing_append{,_streamed}` |
+| a hook clears | `Memory { Clear { conversation } }` spawned by a user system `ChildOf` the run: after the load landed (`On<Add, EffectOutcome>` on the load) — the run has already read the store; after the append was spawned (a system after `RigSet::Settle` on `Added<PendingEffect>` of an append) | `anthropic_memory_clear_at_start` (`[Load, Clear, C, Append]`), `anthropic_memory_clear_at_settled` (`[Load, C, Append, Clear]`) |
+| two runs on one agent | the second run's load returns what the first appended; each run appends its own | `anthropic_memory_two_runs{,_streamed}`, `openai_breadth_memory_two_runs`, `anthropic_memory_clear_at_{start,settled}_two_runs` |
+| a layer replaces the load | the run's history is the replacement; the record the store's answer | `anthropic_layers_memory_load_replaced` (`/records/1/…/chat_history` has four messages, `/records/0/outcome` none) |
+| memory over a host's bus, under serial serving with two tools | the same ops in the same order | `anthropic_memory_host_bus`, `anthropic_memory_serial_two_tools` |
+
+The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { Load }` and `Append` carry `conversation` verbatim (`ConversationId`).
+
+## 12. Retrieval attaches; routes bind
+
+| what | the walk | pinned by |
+|---|---|---|
+| `agent::Retrieves(entity)` link entities `ChildOf` the agent with `Retrieval { samples, what: Documents \| Tools }` | `Advance` spawns, `ChildOf` the fresh turn and before the fold, one `Retrieve` effect per link in link order — `TopN` for documents, `TopNIds` for tools — with `VectorSearchRequest::builder().query(q).samples(n).build()` (`threshold`, `additional_params`, `filter` null); the turn stays `Fresh` (`Retrieving`) until they land | `gemini_retrieval_context_and_tools` `/records/0..1` (context then tools, before every completion), `/records/4..5` (again on turn 2) |
+| the query | the last utterance with text, from the end (`Message::rag_text`): the prompt on turn 1, still the prompt after a tool turn | every retrieval cell's `/records/*/kind/query/req/query` |
+| documents | each result `(score, id, value)` becomes a document entity (`DocumentId(id)`, `DocumentText(serde_json::to_string_pretty(value))` — a string value keeps its quotes) attached to the turn after its static attachments, in result order; an existing document entity with that id is reused | `gemini_retrieval_dynamic_context_over_sampled` `/records/1/…/documents` (three, in score order); `gemini_retrieval_dynamic_context_empty_index` (none) |
+| tools | the retrieved ids name tools among the agent's `Grant` links marked `Retrievable` (never advertised otherwise); the turn advertises the retrieved tools first, in result order, then the static grants | `gemini_retrieval_retrieved_tools_with_static` `/records/1/…/tools` (`subtract`, `add`) |
+| the required row | `<owner>/retrieve:context#0`, `<owner>/retrieve:tools#0` as `retrieve`; a `Retrievable` grant's key as `tool_call` | `gemini_retrieval_context_and_tools` `/header/required`; `hooks: ["DynamicContext"]` from the program's declaration (§10) |
+| a route bound after the agent exists (`late_route`) | `UsesModel` inserted on the run by a system (§9.2); not in the row | `anthropic_shaping_late_route` |
+| a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
+
+## 13. Resume is a scene load; two runs
+
+| what | how | pinned by |
+|---|---|---|
+| a run saved after its first tool turn's results (the head), resumed in a fresh world over the log's tail | `agent::scene::save_world` after `land_batch` put the run back in `Assembling`; a fresh world binds the tail's replayers (positional per key, as the corpus's resumed engine does) and the model handler, `load_world`s the pair, ticks to the ending: the tail's records are the golden's from the cut, the answer the golden's | every `corpus_resume.rs` row (18) and `corpus_checkpoint.rs` program (14), as `world_resume` cells |
+| `Checkpoint::state` | the `WorldScene` as JSON: a checkpoint is a cut of the log beside the scene, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs` |
+| a resumed run loads nothing and appends | the loaded utterances are `Remembered` in the scene; the append is the resumed run's (the world keeps its state, the frozen engine's driver had to) | `anthropic_serving_serial_memory_tools` resumed: `[Load, C, Tool, C, Append]` with the append in the tail |
+| durable execution | the same property as `durable_execution.rs`: a run interrupted after tool call *n*, its scene and log so far, resumes in a fresh process image to the same answer and the same tail | `world_durable` |
+| two runs on one agent | two `spawn_run`s in sequence, the second after the first ended and the world went quiet; the conversation shared through memory (§11) | `anthropic_memory_two_runs`, `openai_breadth_memory_two_runs` |
