@@ -40,6 +40,25 @@
 //!     with `Handle::rebind` and the effects re-dispatched under fresh ids
 //!     (`mint_id` + `dispatch_with_id`); they resolve.
 //!
+//! 11. A layer that suspends: an `Intercept` whose `before` hands the
+//!     dispatch to a resource and waits; a system with `Query` access
+//!     approves or denies next tick; a denied dispatch resolves `Denied`
+//!     on the consumer's `Pending`, a system sees it on the tick it lands,
+//!     and the log holds no record for it; despawning the consumer
+//!     mid-suspend closes the slot the system holds without a panic.
+//!
+//! 12. A system-resolved tool dispatches a nested completion through its
+//!     sink's dispatcher: the child's effect entity is spawned as a child
+//!     of the tool's (`ChildOf`), the record carries `parent`; under serial
+//!     serving a nested dispatch to the tool's own key is refused, not
+//!     hung; despawning the parent entity cancels the child and its record
+//!     says `Cancelled`.
+//!
+//! 13. A checkpointed scene: the pending effects and a log position are a
+//!     `Checkpoint` beside the log's tail; the world is rebuilt over a
+//!     fresh bus with replayers for the tail; re-dispatch from the
+//!     position resolves to the records.
+//!
 //! Every proof runs under a wall-clock guard; a hang is a failure, never a
 //! wait.
 
@@ -54,9 +73,9 @@ use std::{
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::{Task, TaskPool, block_on, futures_lite::future::poll_once};
-use rig_bus::{Bus, Dispatcher, EffectStream, ModelHandle, Pending, Registrar};
+use rig_bus::{Bus, Dispatcher, EffectStream, ModelHandle, Pending, Registrar, SinkDispatch};
 use rig_core::serve::ServingPolicy;
-use rig_core::serve::{DetachedSink, OutcomeSink, Serve};
+use rig_core::serve::{Decision, DetachedSink, Intercept, OutcomeSink, Serve, Verdict};
 use rig_core::{
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
@@ -418,6 +437,230 @@ fn poll_system(
 fn tick(world: &mut World, schedule: &mut Schedule) {
     schedule.run(world);
 }
+
+// ---- proof 11: a layer that suspends, decided by a system ----
+
+/// A decision the world will make: the layer awaits it, the system fills
+/// it. `Arc::strong_count == 1` on the world's side means the layer's
+/// future is gone (the consumer cancelled), so nothing waits for the
+/// decision any more.
+#[derive(Clone)]
+struct DecisionSlot(Arc<std::sync::Mutex<(Option<Decision>, Option<std::task::Waker>)>>);
+
+impl DecisionSlot {
+    fn new() -> Self {
+        Self(Arc::new(std::sync::Mutex::new((None, None))))
+    }
+
+    fn decide(&self, decision: Decision) {
+        let mut slot = self.0.lock().expect("slot");
+        slot.0 = Some(decision);
+        if let Some(waker) = slot.1.take() {
+            waker.wake();
+        }
+    }
+
+    /// Whether the layer that asked is gone.
+    fn is_canceled(&self) -> bool {
+        Arc::strong_count(&self.0) == 1
+    }
+}
+
+impl Future for DecisionSlot {
+    type Output = Decision;
+
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Decision> {
+        let mut slot = self.0.lock().expect("slot");
+        match slot.0.take() {
+            Some(decision) => Poll::Ready(decision),
+            None => {
+                slot.1 = Some(cx.waker().clone());
+                Poll::Pending
+            }
+        }
+    }
+}
+
+/// The dispatches waiting for the world's decision.
+#[derive(Resource, Default, Clone)]
+struct Approvals(Arc<std::sync::Mutex<Vec<(rig_core::effect::EffectId, DecisionSlot)>>>);
+
+/// The layer: every dispatch waits for the world.
+struct Gate {
+    approvals: Approvals,
+}
+
+impl Intercept for Gate {
+    fn name(&self) -> String {
+        "Gate".to_owned()
+    }
+
+    async fn before(&self, id: rig_core::effect::EffectId, _kind: &EffectKind) -> Decision {
+        let slot = DecisionSlot::new();
+        self.approvals
+            .0
+            .lock()
+            .expect("approvals")
+            .push((id, slot.clone()));
+        slot.await
+    }
+
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Outcome, rig_core::error::ErrorReport>,
+    ) -> Verdict {
+        Verdict::Keep
+    }
+}
+
+/// What the world decided, and the slot it still holds for the third.
+#[derive(Resource, Default)]
+struct Decided {
+    approved: usize,
+    denied: usize,
+    held: Option<DecisionSlot>,
+    /// Denials a system saw land on a consumer, on the tick they landed.
+    denied_seen: usize,
+}
+
+/// A system with `Query` access decides: the first dispatch proceeds if
+/// the world has its three markers, the second is denied, the third is
+/// held (the consumer will go).
+fn decide_system(
+    approvals: Res<Approvals>,
+    world_state: Query<&WorldState>,
+    mut decided: ResMut<Decided>,
+) {
+    let asked: Vec<_> = approvals.0.lock().expect("approvals").drain(..).collect();
+    for (_, slot) in asked {
+        let n = decided.approved + decided.denied + usize::from(decided.held.is_some());
+        match n {
+            0 if world_state.iter().count() == 3 => {
+                slot.decide(Decision::Proceed);
+                decided.approved += 1;
+            }
+            0 => panic!("proof 11: the world has three markers"),
+            1 => {
+                slot.decide(Decision::deny("blocked by the world"));
+                decided.denied += 1;
+            }
+            _ => decided.held = Some(slot),
+        }
+    }
+}
+
+/// The observer's seat: a denial is seen on the tick it lands.
+fn see_denials(answered: Query<&Answered, Added<Answered>>, mut decided: ResMut<Decided>) {
+    for outcome in &answered {
+        if matches!(&outcome.0, Err(report) if report.kind == ErrorKind::Denied) {
+            decided.denied_seen += 1;
+        }
+    }
+}
+
+// ---- proof 12: a nested dispatch from a system-resolved tool ----
+
+/// A tool call the world is resolving: its sink, and the child completion
+/// it dispatched through the sink's dispatcher.
+#[derive(Resource, Default)]
+struct Nested {
+    parents: Vec<(Entity, DetachedSink)>,
+    answered: Vec<Result<Outcome, rig_core::error::ErrorReport>>,
+    /// The refusal a same-key nested dispatch got under serial serving.
+    refused: Option<rig_core::error::ErrorReport>,
+}
+
+/// Pops the tool's sink from the mailbox and dispatches a child completion
+/// through it; the child's entity is a child of the tool's.
+fn nest_system(
+    mut commands: Commands,
+    mailbox: Res<WorldToolMailbox>,
+    mut nested: ResMut<Nested>,
+    parents: Query<(Entity, &InFlight)>,
+) {
+    let mut taken = mailbox.0.lock().expect("mailbox");
+    while let Some((_, sink)) = taken.pop() {
+        let scoped = sink
+            .dispatcher()
+            .expect("proof 12: served by the bus driver");
+        assert_eq!(
+            scoped.parent(),
+            Some(sink.id()),
+            "proof 12: scoped to the tool's dispatch"
+        );
+        // The tool's own key under serial serving: refused at the send,
+        // never queued behind the call that waits on it.
+        let mut own = scoped.dispatch(
+            &HandlerKey::from("world-tool"),
+            EffectKind::Custom {
+                kind: Arc::from("host:nested"),
+                payload: serde_json::json!({"leaf": true}),
+            },
+        );
+        match own.poll_outcome() {
+            Some(Err(report)) => nested.refused = Some(report),
+            other => panic!("proof 12: the same-key nested dispatch was not refused: {other:?}"),
+        }
+        let child = scoped.dispatch(
+            &HandlerKey::from("model"),
+            EffectKind::Completion {
+                request: request(),
+                stream: false,
+            },
+        );
+        assert_eq!(child.parent(), Some(sink.id()));
+        // The tool's entity is the one whose `InFlight` id is the sink's.
+        let (parent_entity, _) = parents
+            .iter()
+            .find(|(_, in_flight)| in_flight.0.id() == sink.id())
+            .expect("proof 12: the tool's entity");
+        commands.spawn((InFlight(child), ChildOf(parent_entity)));
+        nested.parents.push((parent_entity, sink));
+    }
+}
+
+/// The world's duty with a detached sink: a consumer that went away is a
+/// closed sink, and the world drops it — the record says `Cancelled`
+/// through the sink's drop, and the dispatch ends.
+fn drop_cancelled_sinks(mut nested: ResMut<Nested>) {
+    nested.parents.retain(|(_, sink)| !sink.is_closed());
+}
+
+/// When a child completion answered, the tool answers with it.
+fn finish_nested(
+    mut commands: Commands,
+    mut nested: ResMut<Nested>,
+    children: Query<(Entity, &ChildOf, &Answered)>,
+) {
+    for (entity, child_of, answered) in &children {
+        let Some(position) = nested
+            .parents
+            .iter()
+            .position(|(parent, _)| *parent == child_of.parent())
+        else {
+            continue;
+        };
+        let (_, sink) = nested.parents.remove(position);
+        let text = match &answered.0 {
+            Ok(Outcome::Completion(response)) => response
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Text(text) => Some(text.text.clone()),
+                    _ => None,
+                })
+                .collect::<String>(),
+            other => panic!("proof 12: a completion, not {other:?}"),
+        };
+        let outcome = Ok(Outcome::Custom(serde_json::json!({ "nested": text })));
+        block_on(sink.resolve(outcome.clone()));
+        nested.answered.push(outcome);
+        commands.entity(entity).despawn();
+    }
+}
+
 
 fn guarded<T>(label: &str, mut step: impl FnMut() -> Option<T>) -> T {
     let started = Instant::now();
@@ -795,7 +1038,9 @@ fn main() {
             let runs = world.resource::<WorldToolRuns>();
             (runs.answered.len() == 1).then_some(())
         });
-        fn custom_payload(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> serde_json::Value {
+        fn custom_payload(
+            outcome: &Result<Outcome, rig_core::error::ErrorReport>,
+        ) -> serde_json::Value {
             match outcome {
                 Ok(Outcome::Custom(payload)) => payload.clone(),
                 other => panic!("proof 8: expected a custom outcome, got {other:?}"),
@@ -946,7 +1191,10 @@ fn main() {
         for effect in loaded.effects {
             // Fresh ids: an `EffectId` is never persisted.
             let id = dispatcher.mint_id();
-            re_dispatched.push((id, dispatcher.dispatch_with_id(id, &effect.key, effect.kind.clone())));
+            re_dispatched.push((
+                id,
+                dispatcher.dispatch_with_id(id, &effect.key, effect.kind.clone()),
+            ));
             world.spawn(effect);
         }
         assert_eq!(world.query::<&PendingEffect>().iter(&world).count(), 2);
@@ -970,13 +1218,27 @@ fn main() {
         // point is that the re-dispatched effects reached the handler that
         // arrived after the load, through the re-bound view's key.
         for outcome in &outcomes {
-            let report = outcome.as_ref().expect_err("proof 10: the mock refuses custom kinds");
-            assert_eq!(report.kind, ErrorKind::HandlerUnavailable, "proof 10: {report:?}");
-            assert!(report.message.contains("mock model cannot serve"), "proof 10: {report:?}");
+            let report = outcome
+                .as_ref()
+                .expect_err("proof 10: the mock refuses custom kinds");
+            assert_eq!(
+                report.kind,
+                ErrorKind::HandlerUnavailable,
+                "proof 10: {report:?}"
+            );
+            assert!(
+                report.message.contains("mock model cannot serve"),
+                "proof 10: {report:?}"
+            );
         }
-        let model = world.query::<&Model>().single(&world).expect("proof 10: one model");
+        let model = world
+            .query::<&Model>()
+            .single(&world)
+            .expect("proof 10: one model");
         assert_eq!(model.0.key(), &HandlerKey::from("model"));
-        println!("proof 10: a scene of pending effects and descriptors round-tripped and re-dispatched");
+        println!(
+            "proof 10: a scene of pending effects and descriptors round-tripped and re-dispatched"
+        );
     }
 
     // ---- proof 4 (buffered): a dispatch dropped before the driver ran ----
@@ -1024,6 +1286,317 @@ fn main() {
             "proof 4: the dispatch dropped before the driver ran was served"
         );
         println!("proof 4: a dispatch cancelled while buffered never entered its handler");
+    }
+
+    // ---- proof 11: a layer that suspends, decided by a system ----
+    {
+        let counters = Arc::new(Counters::default());
+        let approvals = Approvals::default();
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        let layered = rig_core::serve::ErasedHandler::new(MockModel {
+            counters: counters.clone(),
+        })
+        .layered(Gate {
+            approvals: approvals.clone(),
+        });
+        driver
+            .register_erased(HandlerKey::from("model"), layered)
+            .expect("register");
+        assert_eq!(
+            dispatcher
+                .descriptor(&HandlerKey::from("model"))
+                .expect("published")
+                .layers,
+            ["Gate"],
+            "proof 11: the descriptor names the layer"
+        );
+        let recorder = rig_effect_log::EffectLogRecorder::new();
+        driver.record_to(recorder.clone());
+        let _driver_task = pool.spawn(driver);
+        let mut world = World::new();
+        world.insert_resource(approvals.clone());
+        world.insert_resource(Decided::default());
+        world.insert_resource(Ticks::default());
+        for _ in 0..3 {
+            world.spawn(WorldState);
+        }
+        let key = HandlerKey::from("model");
+        let mut consumers = Vec::new();
+        for _ in 0..3 {
+            let pending = dispatcher.dispatch(
+                &key,
+                EffectKind::Completion {
+                    request: request(),
+                    stream: false,
+                },
+            );
+            consumers.push(world.spawn(InFlight(pending)).id());
+        }
+        let mut schedule = Schedule::default();
+        schedule.add_systems((decide_system, poll_system, see_denials).chain());
+        guarded("proof 11", || {
+            tick(&mut world, &mut schedule);
+            let decided = world.resource::<Decided>();
+            (decided.approved == 1
+                && decided.denied == 1
+                && decided.held.is_some()
+                && world.get::<Answered>(consumers[0]).is_some()
+                && world.get::<Answered>(consumers[1]).is_some())
+            .then_some(())
+        });
+        assert!(
+            world
+                .get::<Answered>(consumers[0])
+                .expect("answered")
+                .0
+                .is_ok(),
+            "proof 11: the approved dispatch was served"
+        );
+        let denied = &world.get::<Answered>(consumers[1]).expect("answered").0;
+        assert!(
+            matches!(denied, Err(report) if report.kind == ErrorKind::Denied && !report.retryable),
+            "proof 11: {denied:?}"
+        );
+        assert_eq!(
+            world.resource::<Decided>().denied_seen,
+            1,
+            "proof 11: a system saw the denial land"
+        );
+        assert_eq!(
+            counters.unary_served.load(Ordering::SeqCst),
+            1,
+            "proof 11: the denied one never reached the model"
+        );
+        // The third suspends still; its consumer goes: the world's slot
+        // closes, and deciding it is a no-op, never a panic.
+        assert!(world.get::<InFlight>(consumers[2]).is_some());
+        world.despawn(consumers[2]);
+        let held = world.resource_mut::<Decided>().held.take().expect("held");
+        guarded("proof 11", || held.is_canceled().then_some(()));
+        held.decide(Decision::Proceed);
+        // The log: one record (the approved), none for the denial, and the
+        // cancelled one resolved by the consumer's drop.
+        guarded("proof 11", || (recorder.in_flight() == 0).then_some(()));
+        let log = recorder.take();
+        let kinds: Vec<_> = log
+            .iter()
+            .map(|record| match &record.outcome {
+                Ok(_) => "ok".to_owned(),
+                Err(report) => format!("{:?}", report.kind),
+            })
+            .collect();
+        assert_eq!(kinds, ["ok", "Cancelled"], "proof 11: {kinds:?}");
+        println!("proof 11: a suspended layer was approved, denied and cancelled by the world");
+    }
+
+    // ---- proof 12: a nested dispatch from a system-resolved tool ----
+    {
+        let counters = Arc::new(Counters::default());
+        let mailbox = WorldToolMailbox::default();
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+            serial_per_handler: true,
+            ..ServingPolicy::default()
+        });
+        driver
+            .register(
+                "world-tool",
+                WorldTool {
+                    mailbox: mailbox.clone(),
+                },
+            )
+            .expect("register");
+        driver
+            .register(
+                "model",
+                MockModel {
+                    counters: counters.clone(),
+                },
+            )
+            .expect("register");
+        let recorder = rig_effect_log::EffectLogRecorder::new();
+        driver.record_to(recorder.clone());
+        let _driver_task = pool.spawn(driver);
+        let mut world = World::new();
+        world.insert_resource(BusRes(dispatcher.clone()));
+        world.insert_resource(mailbox.clone());
+        world.insert_resource(Nested::default());
+        world.insert_resource(Ticks::default());
+        let key = HandlerKey::from("world-tool");
+        let tool_call = |n: u64| EffectKind::Custom {
+            kind: Arc::from("host:tool"),
+            payload: serde_json::json!({ "n": n }),
+        };
+        let first = world
+            .spawn(InFlight(dispatcher.dispatch(&key, tool_call(0))))
+            .id();
+        let mut schedule = Schedule::default();
+        schedule.add_systems(
+            (
+                nest_system,
+                poll_system,
+                finish_nested,
+                drop_cancelled_sinks,
+            )
+                .chain(),
+        );
+        let outcome = guarded("proof 12 (first answered)", || {
+            tick(&mut world, &mut schedule);
+            world
+                .get::<Answered>(first)
+                .map(|answered| answered.0.clone())
+        });
+        assert!(
+            matches!(&outcome, Ok(Outcome::Custom(payload)) if payload["nested"] == "hello from the world"),
+            "proof 12: {outcome:?}"
+        );
+        let refused = world
+            .resource::<Nested>()
+            .refused
+            .clone()
+            .expect("proof 12: the same-key dispatch was refused");
+        assert_eq!(refused.kind, ErrorKind::Request);
+        assert!(
+            refused.message.contains("re-entrant"),
+            "proof 12: {}",
+            refused.message
+        );
+        // The chain in the record: the child names the tool's dispatch.
+        guarded("proof 12 (records)", || {
+            (recorder.in_flight() == 0).then_some(())
+        });
+        let log = recorder.take();
+        assert_eq!(
+            log.len(),
+            2,
+            "proof 12: the tool and its child, not the refused one"
+        );
+        assert_eq!(
+            log[1].parent,
+            Some(log[0].id),
+            "proof 12: the child carries its parent"
+        );
+        assert_eq!(log[0].key, key);
+        // The parent goes while the child is in flight: the child is
+        // cancelled with it, and its record says so.
+        counters.hold.store(true, Ordering::SeqCst);
+        let second = world
+            .spawn(InFlight(dispatcher.dispatch(&key, tool_call(1))))
+            .id();
+        guarded("proof 12 (second started)", || {
+            tick(&mut world, &mut schedule);
+            (counters.unary_started.load(Ordering::SeqCst) == 2).then_some(())
+        });
+        let children = world
+            .query::<&ChildOf>()
+            .iter(&world)
+            .filter(|child_of| child_of.parent() == second)
+            .count();
+        assert_eq!(
+            children, 1,
+            "proof 12: the child's entity is a child of the tool's"
+        );
+        world.despawn(second);
+        // The world keeps ticking: its system drops the closed sink, and
+        // the child's cancel lands on the driver's next poll.
+        guarded("proof 12 (cancelled records)", || {
+            tick(&mut world, &mut schedule);
+            (recorder.in_flight() == 0).then_some(())
+        });
+        let log = recorder.take();
+        let kinds: Vec<_> = log
+            .iter()
+            .map(|record| match &record.outcome {
+                Ok(_) => "ok".to_owned(),
+                Err(report) => format!("{:?}", report.kind),
+            })
+            .collect();
+        assert_eq!(kinds, ["Cancelled", "Cancelled"], "proof 12: {kinds:?}");
+        assert_eq!(log[1].parent, Some(log[0].id));
+        counters.hold.store(false, Ordering::SeqCst);
+        assert!(
+            world.resource::<Nested>().parents.is_empty(),
+            "proof 12: the world dropped the cancelled tool's sink"
+        );
+        println!(
+            "proof 12: a system-resolved tool nested a completion through its sink's dispatcher; the chain refused itself and cancelled together"
+        );
+    }
+
+    // ---- proof 13: a checkpointed scene ----
+    {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../crates/rig-verify/fixtures/anthropic_tool_call_turn.effects.json"
+        );
+        let text = std::fs::read_to_string(path).expect("proof 13: the golden reads");
+        let log: rig_effect_log::EffectLog =
+            serde_json::from_str(&text).expect("proof 13: the golden decodes");
+        // The world had performed the first record; the rest is pending
+        // intent, stored as the checkpoint's state beside the tail.
+        let pending: Vec<PendingEffect> = log
+            .records
+            .iter()
+            .skip(1)
+            .map(|record| PendingEffect {
+                key: record.key.clone(),
+                kind: record.kind.clone(),
+            })
+            .collect();
+        let (checkpoint, tail) = log.checkpoint(
+            1,
+            serde_json::to_value(&pending).expect("proof 13: the intent serializes"),
+        );
+        let saved = (
+            serde_json::to_string(&checkpoint).expect("proof 13: the checkpoint serializes"),
+            serde_json::to_string(&tail).expect("proof 13: the tail serializes"),
+        );
+        // A fresh process image: the checkpoint and the tail loaded, the
+        // continuation named, a fresh bus with replayers for the tail, the
+        // effects re-dispatched from the position.
+        let checkpoint: rig_effect_log::Checkpoint =
+            serde_json::from_str(&saved.0).expect("proof 13: the checkpoint loads");
+        let tail: rig_effect_log::EffectLog =
+            serde_json::from_str(&saved.1).expect("proof 13: the tail loads");
+        let refused = rig_effect_log::EffectLog::from_checkpoint(&checkpoint, log.clone())
+            .expect_err("proof 13: the full log is not the tail");
+        assert!(
+            refused.message.starts_with("resume refused"),
+            "proof 13: {}",
+            refused.message
+        );
+        let continuation = rig_effect_log::EffectLog::from_checkpoint(&checkpoint, tail)
+            .expect("proof 13: the tail follows");
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        rig_effect_log::EffectLogReplayer::register_all(&continuation, &mut driver)
+            .expect("proof 13: the tail's keys");
+        let mut world = World::new();
+        world.insert_resource(BusRes(dispatcher.clone()));
+        let intent: Vec<PendingEffect> =
+            serde_json::from_value(checkpoint.state.clone()).expect("proof 13: the intent loads");
+        assert_eq!(intent.len(), continuation.len());
+        world.insert_resource(ReplayScript {
+            records: continuation.records.clone().into(),
+            in_flight: None,
+            replayed: 0,
+        });
+        for effect in intent {
+            world.spawn(effect);
+        }
+        world.spawn(DriverTask(pool.spawn(driver)));
+        let mut schedule = Schedule::default();
+        schedule.add_systems((dispatch_next_record, poll_next_record).chain());
+        let total = continuation.len();
+        let replayed = guarded("proof 13", || {
+            tick(&mut world, &mut schedule);
+            let script = world.resource::<ReplayScript>();
+            (script.records.is_empty() && script.in_flight.is_none()).then_some(script.replayed)
+        });
+        assert_eq!(replayed, total);
+        assert_eq!(checkpoint.at, 1);
+        println!(
+            "proof 13: a checkpointed scene re-dispatched {total} record(s) from position {} and they resolved",
+            checkpoint.at
+        );
     }
 
     println!("bevy-bus-host: ok");

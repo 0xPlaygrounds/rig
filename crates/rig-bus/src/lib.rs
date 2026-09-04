@@ -147,53 +147,13 @@
 //!   sizes (and the dispatcher's, the registrar's, a key's) are budgeted at
 //!   compile time, so a field that grows one past its budget fails to
 //!   compile rather than quietly costing every dispatch.
-//!
-//! # Layers
-//!
-//! Interception is handler composition: an
-//! [`ErasedHandler::layered`](rig_core::serve::ErasedHandler::layered)
-//! wraps a handler in an [`Intercept`](rig_core::serve::Intercept) — a
-//! policy that sees every dispatch before the handler
-//! ([`Decision`](rig_core::serve::Decision): proceed, patch, deny) and
-//! every answer after ([`Verdict`](rig_core::serve::Verdict): keep,
-//! replace) — and the result registers like any handler, under the inner
-//! descriptor with the layer's name in `layers`. Decisions are program,
-//! never record: the recorder taps the innermost hop, so a denial
-//! (`ErrorKind::Denied` on the consumer's outcome) leaves no record and a
-//! replacement leaves the handler's real answer in it. A layer that
-//! suspends in `before` — an approval answered by a system next tick —
-//! keeps the dispatch in flight and its serial slot busy until it decides.
-//!
-//! # Causal dispatch
-//!
-//! A handler's way back onto the bus is its sink's dispatcher
-//! ([`SinkDispatch::dispatcher`]): every dispatch made through it — and
-//! every [`Handle`] bound from it — carries the served dispatch's id as its
-//! **parent**, readable on the [`Pending`]/[`EffectStream`]/[`Typed`]
-//! (`parent()`) and passed to the recorder, so a record names the dispatch
-//! it was made from and a host can parent the effect's entity at dispatch.
-//! Two rules follow from the chain, as data rather than from the thread the
-//! driver happens to poll on:
-//!
-//! - Under serial serving, a dispatch that descends from a dispatch in
-//!   flight on its own key would queue behind that ancestor and wait on
-//!   itself; it is refused (`ErrorKind::Request`, "re-entrant") — from a
-//!   spawned task exactly as from the handler's own poll.
-//! - A cancel reaches the chain: dropping a [`Pending`] whose handler
-//!   dispatched children flags every descendant in flight (its handler is
-//!   dropped, its sink reads closed, its record and any consumer still
-//!   holding it say `Cancelled`) and drops the ones still queued or
-//!   buffered unserved — no handler poll, no record.
-//!
-//! A consumer's dispatcher holds the bus open for commands; the scoped one
-//! a handler reads off its sink does not — the dispatch it serves does.
-//!
-//! Beside the parent, a dispatch carries a **scope**: [`Dispatcher::scoped`]
-//! stamps every dispatch made through the clone it returns — and every
-//! nested dispatch a handler makes while serving one — with a stable id of
-//! the program dispatching (a run id, an agent name; never a runtime
-//! handle), recorded as `EffectRecord::scope`, so a log several programs
-//! write in one world reads per program. `None` when nothing set it.
+//! - No handler survives a driver. [`Bus::reopen`] gives a bus whose driver
+//!   is gone a new one with an empty handler table; the handles bound
+//!   before keep working, the handlers do not come back on their own. A
+//!   host that restarts its driver (a state transition) keeps every
+//!   [`ErasedHandler`](rig_core::serve::ErasedHandler) it registered — an
+//!   erased handler is `Clone` — and registers it again through the new
+//!   registrar; that is the plugin's rule, not the bus's.
 //!
 //! # Writing a handler
 //!
