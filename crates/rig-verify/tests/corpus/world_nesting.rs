@@ -2,7 +2,7 @@
 //! never-answering handler are keys the world serves (`register_open`),
 //! answered by systems that nest what they need as effects `ChildOf` the
 //! call — so the child's record names the call as its parent, exactly as
-//! the rig-bus `Lookup`'s sink dispatcher does. Program, not record: the
+//! rig-agent's bus `Lookup`'s sink dispatcher does. Program, not record: the
 //! replayers answer only the leaves (the model, the host's note).
 
 #![allow(

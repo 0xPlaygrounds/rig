@@ -153,10 +153,10 @@ jobs:
 
   # The *executed* wasm tests in the tree: rig-agent's `tests/bus_wasm.rs`
   # and rig-ecs's `tests/{bus_wasm,run_wasm}.rs`, run under
-  # `wasm-bindgen-test-runner` on Node. Every other wasm job is a `cargo check`. The CLI must match the
-  # `wasm-bindgen` crate version the lock file resolves, so it is read from
-  # the lock file rather than pinned here (the classic red is a mismatch
-  # between the two).
+  # `wasm-bindgen-test-runner` on Node. Every other wasm job is a `cargo
+  # check`. The CLI must match the `wasm-bindgen` crate version the lock
+  # file resolves, so it is read from the lock file rather than pinned here
+  # (the classic red is a mismatch between the two).
   test-wasm-suites:
     name: stable / test ${{ matrix.package }} wasm target
     runs-on: ubuntu-latest

@@ -240,19 +240,26 @@ fn named_exemptions_are_live() {
     );
 }
 
+/// No global or ambient state in the vocabulary (`rig-core/src/effect`) or
+/// in the bus runtime (`rig-agent/src/bus`): no `static`, no `OnceLock`,
+/// no `thread_local!` outside tests. (The bus half scanned `rig-core/src/
+/// bus` — a directory that had not existed since the bus left rig-core —
+/// until the fold re-keyed it here.)
 #[test]
 fn bus_and_effect_have_no_global_state() {
-    let root = crate_src("rig-core");
     let mut offenders = Vec::new();
-    for module in ["bus", "effect"] {
-        for path in non_test_sources(&root.join(module)) {
+    for (krate, module) in [("rig-core", "effect"), ("rig-agent", "bus")] {
+        let root = crate_src(krate);
+        let dir = root.join(module);
+        assert!(dir.is_dir(), "{krate}/src/{module} exists");
+        for path in non_test_sources(&dir) {
             let relative = path
                 .strip_prefix(&root)
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
             let text = std::fs::read_to_string(&path)
-                .unwrap_or_else(|err| panic!("{relative} is readable: {err}"));
+                .unwrap_or_else(|err| panic!("{krate}/{relative} is readable: {err}"));
             for (line_number, line) in text.lines().enumerate() {
                 let trimmed = line.trim_start();
                 if trimmed.starts_with("//") {
@@ -262,14 +269,18 @@ fn bus_and_effect_have_no_global_state() {
                     || trimmed.starts_with("pub static ")
                     || trimmed.starts_with("pub(crate) static ");
                 if is_static || line.contains("OnceLock") || line.contains("thread_local!") {
-                    offenders.push(format!("{relative}:{}: {}", line_number + 1, line.trim()));
+                    offenders.push(format!(
+                        "{krate}/{relative}:{}: {}",
+                        line_number + 1,
+                        line.trim()
+                    ));
                 }
             }
         }
     }
     assert!(
         offenders.is_empty(),
-        "no global or ambient state in bus/ or effect/:\n{}",
+        "no global or ambient state in the bus or in effect/:\n{}",
         offenders.join("\n")
     );
 }

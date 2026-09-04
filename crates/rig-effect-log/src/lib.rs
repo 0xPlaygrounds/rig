@@ -15,7 +15,7 @@
 //! run-spec hash an agent stamps, the handlers registered when recording
 //! began, the effect signature — and every exchange in dispatch order
 //! (`rig_core::effect::EffectRecord`). The [`EffectLogRecorder`] is the
-//! [`Recorder`](rig_core::serve::Recorder) a a driver (rig-agent's `BusDriver`)
+//! [`Recorder`](rig_core::serve::Recorder) a driver such as rig-agent's `BusDriver`
 //! writes to (its `record_to`); the
 //! [`EffectLogReplayer`] is a handler that answers the same dispatches from
 //! the record instead of a provider, one per key (a runtime registers
