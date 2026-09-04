@@ -3,7 +3,7 @@
 use crate::{
     completion::{CompletionError, Usage},
     message::ReasoningContent,
-    streaming::{StreamFinal, ToolCallEnd},
+    streaming::{StreamFinal, ToolCallEnd, UnparseableToolInput},
 };
 
 use crate::providers::internal::adapter::AdapterOutput;
@@ -59,6 +59,10 @@ pub enum MockStreamEvent {
     ToolCallNameDelta { id: String, name: String },
     /// Tool call arguments delta event.
     ToolCallArgumentsDelta { id: String, arguments: String },
+    /// The end of a tool call streamed as deltas: the accumulator
+    /// finalizes the fragments into the completed call, as a wire's
+    /// step-stop does.
+    ToolCallEnd { id: String },
     /// Complete reasoning event.
     Reasoning {
         id: String,
@@ -159,6 +163,11 @@ impl MockStreamEvent {
             id: id.into(),
             arguments: arguments.into(),
         }
+    }
+
+    /// Create the end of a tool call streamed as deltas.
+    pub fn tool_call_end(id: impl Into<String>) -> Self {
+        Self::ToolCallEnd { id: id.into() }
     }
 
     /// Create a complete reasoning event with the default mock id
@@ -280,6 +289,10 @@ impl MockStreamEvent {
             Self::ToolCallArgumentsDelta { id, arguments } => {
                 out.tool_arguments(&fixture_part_id(id), arguments)
             }
+            Self::ToolCallEnd { id } => out.tool_end(
+                fixture_part_id(id),
+                ToolCallEnd::new(UnparseableToolInput::Error),
+            ),
             Self::Reasoning { id, content } => {
                 // Fixture syntax: a wire-shaped id is both the key and the
                 // durable handle; a legacy minted rendering is a key only.
