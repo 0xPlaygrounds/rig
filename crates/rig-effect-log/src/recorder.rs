@@ -189,9 +189,14 @@ impl EffectLogRecorder {
             });
     }
 
+    // The open slot is almost always the last one begun: a stream's events
+    // and a dispatch's outcome land on the newest slots, and every resolved
+    // slot before them is dead weight to a scan from the front. Searching
+    // from the back makes a long streamed run linear in its events rather
+    // than in its records times its events.
     fn event_slot(&self, id: EffectId, event: &StreamEvent) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id)
+        if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id)
             && let Some(events) = slot.events.as_mut()
         {
             events.push(event.clone());
@@ -200,7 +205,7 @@ impl EffectLogRecorder {
 
     fn resolve_slot(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(slot) = slots.iter_mut().find(|slot| slot.id == id) {
+        if let Some(slot) = slots.iter_mut().rev().find(|slot| slot.id == id) {
             slot.outcome = Some(outcome);
         }
     }

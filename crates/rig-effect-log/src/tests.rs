@@ -63,3 +63,28 @@ fn effect_record_and_log_round_trip() {
     assert_eq!(back[1].key.as_str(), "tool:add");
     assert!(matches!(&back[1].outcome, Err(report) if report.kind == ErrorKind::Timeout));
 }
+
+/// The recorder finds a slot from the back: the newest slot with an id is
+/// the one an event or an outcome lands on. Probed with two slots begun
+/// under one id (a shape the recorder never sees from a bus, which mints
+/// ids once): the later slot resolves, the earlier stays in flight.
+#[test]
+fn the_recorder_finds_the_newest_slot_first() {
+    use rig_core::serve::Recorder;
+    let recorder = EffectLogRecorder::new();
+    let kind = || EffectKind::Custom {
+        kind: std::sync::Arc::from("test:probe"),
+        payload: serde_json::Value::Null,
+    };
+    let id = EffectId::from_raw(7);
+    recorder.begin(id, HandlerKey::from("k"), kind());
+    recorder.begin(id, HandlerKey::from("k"), kind());
+    recorder.resolve(id, Ok(Outcome::Custom(serde_json::json!("newest"))));
+    let log = recorder.take();
+    assert_eq!(log.records.len(), 1, "one slot resolved");
+    assert_eq!(
+        recorder.in_flight(),
+        1,
+        "the earlier slot is still in flight"
+    );
+}
