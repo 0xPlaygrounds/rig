@@ -145,9 +145,28 @@ impl Shared {
         }
     }
 
-    /// The driver stopped draining: no dispatcher is left to send.
-    pub(super) fn close_commands(&self) {
-        self.commands_closed.store(true, Ordering::SeqCst);
+    /// Close the bus for commands if nothing can send one any more: no
+    /// dispatcher is open and nothing is buffered. Decided and stored
+    /// **under the queue lock**, as `mark_closed` stores `closed`: `enqueue`
+    /// reads the flag under the same lock, so a `Pending` that outlived its
+    /// dispatcher cannot land a command in the buffer between this check and
+    /// this store — which would have been a command the driver, already
+    /// `Ready`, never takes. Returns whether the bus is now closed for
+    /// commands.
+    pub(super) fn try_close_commands(&self) -> bool {
+        let queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if queue.commands.is_empty() && self.dispatchers() == 0 {
+            self.commands_closed.store(true, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Whether the bus is closed for commands (the loom models' probe).
+    #[cfg(rig_loom)]
+    pub(super) fn commands_closed(&self) -> bool {
+        self.commands_closed.load(Ordering::SeqCst)
     }
 
     /// A bus's identity while it lives: two buses in one process never

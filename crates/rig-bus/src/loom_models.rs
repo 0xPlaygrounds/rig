@@ -459,3 +459,50 @@ fn loom_reopen_races_the_last_in_flight_reply() {
         );
     });
 }
+
+/// The close for commands races a late enqueue from a `Pending` that
+/// outlived its dispatcher: every interleaving ends with the command
+/// either buffered on a bus still open for commands (the driver's next
+/// poll takes it) or refused as `BusClosed` — never buffered on a bus
+/// closed for commands, which nothing would ever take. The decision and
+/// the store are one critical section with the enqueue's check.
+#[test]
+fn loom_close_for_commands_never_strands_a_late_enqueue() {
+    loom::model(|| {
+        let shared = Arc::new(Shared::new(super::BusConfig {
+            command_capacity: 4,
+            ..super::BusConfig::default()
+        }));
+        // No dispatcher is open: the sender is a `Pending` that outlived its.
+        let sender = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                let (cmd, _receiver) = command(1);
+                let (_flag, waker) = recording();
+                let cx = Context::from_waker(&waker);
+                let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
+                match shared.enqueue(cmd, &parked, &cx) {
+                    Enqueue::Sent => false,
+                    Enqueue::Closed => true,
+                    Enqueue::Parked(_) | Enqueue::Refused(_) => panic!("neither"),
+                }
+            })
+        };
+        let closer = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || shared.try_close_commands())
+        };
+        let refused = sender.join().unwrap();
+        let closed = closer.join().unwrap();
+        assert!(
+            !(shared.commands_closed() && shared.buffered() > 0),
+            "a command is buffered on a bus closed for commands (refused: {refused}, closed: {closed})"
+        );
+        if closed {
+            assert!(
+                refused,
+                "the close saw an empty buffer, so the send came after it"
+            );
+        }
+    });
+}

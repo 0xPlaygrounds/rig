@@ -453,13 +453,13 @@ impl Future for BusDriver {
                 }
                 this.drain_orphaned_queues();
                 // The bus is closed for commands once every dispatcher has
-                // dropped and nothing it enqueued remains.
-                if this.shared.dispatchers() == 0 && this.shared.buffered() == 0 {
+                // dropped and nothing it enqueued remains — decided under
+                // the queue lock, so no late send lands after the decision.
+                // Observable to a `Pending` that outlived its dispatcher: its
+                // send answers `BusClosed` now, not after the last in-flight
+                // stream ends.
+                if this.shared.try_close_commands() {
                     this.commands_closed = true;
-                    // Observable to a `Pending` that outlived its dispatcher:
-                    // its send answers `BusClosed` now, not after the last
-                    // in-flight stream ends.
-                    this.shared.close_commands();
                 }
             }
             // Drive the tasks. A completion may release a queued command,
