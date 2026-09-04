@@ -2428,6 +2428,9 @@ struct Parent {
     child: HandlerKey,
     from_another_thread: bool,
     held: Option<Arc<Mutex<Vec<super::Pending>>>>,
+    /// Await the child's answer and report it (else report the child's
+    /// first poll and let it go).
+    await_child: bool,
 }
 
 impl Serve for Parent {
@@ -2464,6 +2467,22 @@ impl Serve for Parent {
             held.lock().expect("held").push(nested);
             // The parent stays in flight until its consumer goes.
             futures::future::pending::<()>().await;
+            return;
+        }
+        if self.await_child {
+            let outcome = match first {
+                Poll::Ready(result) => result,
+                Poll::Pending => nested.await,
+            };
+            let outcome = match outcome {
+                Ok(outcome) => Ok(outcome),
+                Err(report) => Ok(Outcome::Custom(json!({
+                    "kind": format!("{:?}", report.kind),
+                    "message": report.message,
+                }))),
+            };
+            sink.resolve(outcome).await;
+            return;
         }
         let outcome = match first {
             Poll::Ready(Err(report)) => Ok(Outcome::Custom(json!({
@@ -2507,6 +2526,7 @@ fn a_dispatch_made_through_the_sinks_dispatcher_carries_its_parent() {
                 child: HandlerKey::from("echo"),
                 from_another_thread: false,
                 held: Some(held.clone()),
+                await_child: false,
             },
         )
         .expect("register");
@@ -2559,6 +2579,7 @@ fn a_nested_serial_dispatch_from_another_thread_is_refused_by_its_chain() {
                 child: HandlerKey::from("parent"),
                 from_another_thread: true,
                 held: None,
+                await_child: false,
             },
         )
         .expect("register");
@@ -2581,7 +2602,9 @@ fn a_nested_serial_dispatch_from_another_thread_is_refused_by_its_chain() {
 #[test]
 fn a_grandchild_on_the_ancestors_serial_key_is_refused_too() {
     // parent -> middle -> parent: the grandchild would queue behind the
-    // grandparent. The chain is walked, not just the immediate parent.
+    // grandparent. The chain is walked — two hops — not just the immediate
+    // parent. The parent awaits the middle, the middle awaits its child
+    // (the grandchild), so the refusal travels back as data.
     let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
         ..ServingPolicy::default()
@@ -2594,6 +2617,7 @@ fn a_grandchild_on_the_ancestors_serial_key_is_refused_too() {
                 child: HandlerKey::from("middle"),
                 from_another_thread: false,
                 held: None,
+                await_child: true,
             },
         )
         .expect("register");
@@ -2605,28 +2629,40 @@ fn a_grandchild_on_the_ancestors_serial_key_is_refused_too() {
                 child: HandlerKey::from("parent"),
                 from_another_thread: false,
                 held: None,
+                await_child: true,
             },
         )
         .expect("register");
     let mut outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
     let outcome = drive_to_outcome(&mut driver, &mut outer)
-        .expect("resolved")
+        .expect("resolved, never hung")
         .expect("served");
-    // The parent saw its child accepted; the child saw the grandchild
-    // refused, but the parent only reports its own first poll.
+    // The middle's answer is the parent's answer: the grandchild's refusal.
+    let Outcome::Custom(payload) = outcome else {
+        panic!("custom outcome expected, got {outcome:?}");
+    };
+    assert_eq!(payload["kind"], json!("Request"), "{payload}");
     assert!(
-        matches!(&outcome, Outcome::Custom(payload) if *payload == json!("accepted")),
-        "{outcome:?}"
+        payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("re-entrant")),
+        "{payload}"
     );
-    // So ask the middle handler directly: it, dispatched by a consumer, sees
-    // its child (parent) accepted — no chain above it.
+    // From the other end — middle -> parent -> middle — the walk finds the
+    // middle's own key two hops up and names it.
     let mut middle = dispatcher.dispatch(&HandlerKey::from("middle"), custom(json!("m")));
     let outcome = drive_to_outcome(&mut driver, &mut middle)
-        .expect("resolved")
+        .expect("resolved, never hung")
         .expect("served");
+    let Outcome::Custom(payload) = outcome else {
+        panic!("custom outcome expected, got {outcome:?}");
+    };
+    assert_eq!(payload["kind"], json!("Request"), "{payload}");
     assert!(
-        matches!(&outcome, Outcome::Custom(payload) if *payload == json!("accepted")),
-        "{outcome:?}"
+        payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("`middle`")),
+        "{payload}"
     );
     assert_eq!(driver.in_flight(), 0, "nothing hung behind itself");
 }
@@ -2648,6 +2684,7 @@ fn a_parent_cancel_reaches_a_child_in_flight_whose_pending_lives_elsewhere() {
                 child: HandlerKey::from("echo"),
                 from_another_thread: false,
                 held: Some(held.clone()),
+                await_child: false,
             },
         )
         .expect("register");
@@ -2698,6 +2735,7 @@ fn a_parent_cancel_reaches_a_child_still_queued() {
                 child: HandlerKey::from("echo"),
                 from_another_thread: false,
                 held: Some(held.clone()),
+                await_child: false,
             },
         )
         .expect("register");
@@ -2959,14 +2997,16 @@ fn the_inbox_names_every_dispatch_that_ended_since_the_last_drain() {
     assert!(d.poll_unpin(&mut cx).is_pending());
     let _ = driver.poll_unpin(&mut cx);
     let ended = dispatcher.take_resolved();
-    assert!(
-        !ended.contains(&c_id),
-        "dropped before it was served: never began, never ended"
+    assert_eq!(
+        ended,
+        [c_id, d.id()],
+        "every command the driver took ends in the inbox: the one dropped unserved, the one answered on the spot"
     );
-    assert!(
-        !ended.contains(&d.id()),
-        "answered on the spot, never in flight: not the inbox's to name"
-    );
+    assert!(d.poll_unpin(&mut cx).is_ready());
+    // A dispatch refused before any send was never taken.
+    let refused = dispatcher.refused(ErrorReport::new(ErrorKind::Request, "no wire form"));
+    assert!(dispatcher.take_resolved().is_empty());
+    drop(refused);
     assert_eq!(dispatcher.inbox_dropped(), 0);
 }
 

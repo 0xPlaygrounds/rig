@@ -705,8 +705,91 @@ impl Tool for NestedSameTool {
     }
 }
 
+/// A tool that, from inside its own execution, prompts the *same* agent
+/// again on the agent's own bus: nothing ties that run to the call.
+#[derive(Clone, Default)]
+struct NestedOnItself {
+    agent: Arc<OnceLock<Agent>>,
+}
+
+impl Tool for NestedOnItself {
+    const NAME: &'static str = "same";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "asks the agent to call me again".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: serde_json::Value,
+    ) -> Result<String, Self::Error> {
+        let agent = self.agent.get().expect("set after build").clone();
+        let response = agent
+            .prompt("nested")
+            .max_turns(2)
+            .run()
+            .await
+            .map_err(|err| {
+                ToolExecutionError::new(rig_agent::tool::ToolErrorKind::Other, err.to_string())
+            })?;
+        Ok(response.output)
+    }
+}
+
 #[tokio::test]
 async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
+    // The shape the thread-id rule used to refuse: a tool prompting the
+    // same own-bus agent from inside its own call, under serial serving.
+    // Re-entrancy is a chain now, and this run carries no parent — nothing
+    // ties it to the call — so the nested call to `same` queues behind the
+    // outer call that waits on it: the run does not complete. Pinned as the
+    // documented behaviour; the test below is the shape that fails fast.
+    let tool = NestedOnItself::default();
+    let call_same = || {
+        MockTurn::from_contents([rig_core::message::AssistantContent::ToolCall(
+            rig_core::message::ToolCall::from_wire(
+                "tc",
+                rig_core::message::ToolFunction::new("same".to_owned(), json!({})),
+            ),
+        )])
+    };
+    let agent = AgentBuilder::with_bus_config(
+        ServingPolicy {
+            serial_per_handler: true,
+            ..ServingPolicy::default()
+        },
+        "default",
+        MockCompletionModel::from_turns([
+            call_same(),
+            call_same(),
+            MockTurn::text("inner-done"),
+            MockTurn::text("done"),
+        ]),
+    )
+    .tool(tool.clone())
+    .build();
+    tool.agent.set(agent.clone()).ok().expect("unset");
+    let waited = tokio::time::timeout(
+        Duration::from_millis(300),
+        agent.prompt("go").max_turns(3).run(),
+    )
+    .await;
+    assert!(
+        waited.is_err(),
+        "a nested run on the same own-bus agent under serial serving waits on itself: {waited:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_nested_call_over_the_calls_scope_under_serial_serving_fails_fast() {
     // Outer turn: call `same`. Inside it the nested run's model calls `same`
     // again — under serial serving that would queue behind the outer call
     // that waits on it, so the bus refuses it (the nested run descends from

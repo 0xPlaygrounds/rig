@@ -199,6 +199,11 @@
 //!
 //! A consumer's dispatcher holds the bus open for commands; the scoped one
 //! a handler reads off its sink does not — the dispatch it serves does.
+//! What the chain cannot see it cannot refuse: a nested run made on the
+//! *same* dispatcher that made the outer call — an agent prompting itself
+//! from inside its own tool over its own bus — carries no parent, and
+//! under serial serving it queues behind the call that waits on it. Run
+//! the nested work over the call's scope instead.
 //!
 //! Beside the parent, a dispatch carries a **scope**: [`Dispatcher::scoped`]
 //! stamps every dispatch made through the clone it returns — and every

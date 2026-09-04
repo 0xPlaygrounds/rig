@@ -573,7 +573,7 @@ fn loom_a_nested_serial_dispatch_is_refused_from_any_thread() {
 /// (it was in flight when the cancel scanned) — never in flight unflagged,
 /// which is what a separate check-then-insert would allow.
 #[test]
-fn loom_a_parent_cancel_reaches_a_queued_child() {
+fn loom_a_parent_cancel_reaches_a_child_that_begins_meanwhile() {
     loom::model(|| {
         let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy::default()));
         let _parent = shared

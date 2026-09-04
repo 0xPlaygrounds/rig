@@ -25,8 +25,8 @@
 //! | check mode | `Payload` · `Hash` |
 //! | replayed against | the tail · the full log (refused by id) |
 //!
-//! Full cross-product: 3 × 8 × 2 × 2 = 96. Recorded: 13 programs × 2 modes
-//! × 2 targets = 52 rows, plus the rows below. Pruned: the position is the
+//! Full cross-product: 3 × 8 × 2 × 2 = 96. Recorded: 14 programs × 2 modes
+//! × 2 targets = 56 rows, plus the rows below. Pruned: the position is the
 //! program's (a two-turn program checkpoints after turn 2, a streamed one
 //! has a streamed head); a mode crossed with the full-log target beyond
 //! payload (the refusal is by id, before any request is compared).

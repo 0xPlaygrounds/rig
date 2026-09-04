@@ -526,6 +526,11 @@ impl OutcomeSink {
         DetachedSink(self)
     }
 
+    /// The driver seam: install the recorder's tap. `on_outcome` sees the
+    /// outcome as it resolves (a stream's, folded); `on_event` each streamed
+    /// event when the recorder keeps them; `on_discard` a decision that
+    /// ended the dispatch before any handler served it (no record);
+    /// `on_patch` an effect served in the place of the one that began.
     pub fn with_tap(
         mut self,
         on_outcome: OnOutcome,

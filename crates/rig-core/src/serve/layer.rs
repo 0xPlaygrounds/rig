@@ -78,6 +78,13 @@ pub enum Verdict {
 /// name is the layer's identity in a log's handler table and hook list:
 /// a program recorded under one layer stack refuses a replay under
 /// another, so a layer is host policy and must say what it is.
+///
+/// Beneath a layer the handler answers into a sink of the layer's own,
+/// so `OutcomeSink::is_closed` reads the layer, not the consumer: a
+/// consumer's cancel reaches the handler when the driver drops the
+/// layer's future — which drops the handler's — and the record says
+/// `Cancelled`; a handler that polls `is_closed` to stop early sees it
+/// then, not the instant the consumer left.
 pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
     /// The layer's name, as the log records it.
     fn name(&self) -> String;

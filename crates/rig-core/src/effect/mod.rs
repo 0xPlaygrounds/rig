@@ -937,17 +937,23 @@ impl std::fmt::Display for RowGap {
 pub enum RowDiff {
     /// The other row lacks this entry.
     Missing {
+        /// The key this row names.
         key: HandlerKey,
+        /// The family this row names it as.
         family: EffectFamily,
     },
     /// The other row has an entry this one lacks.
     Extra {
+        /// The key the other row names.
         key: HandlerKey,
+        /// The family the other row names it as.
         family: EffectFamily,
     },
     /// Both rows name the key, as different families.
     Family {
+        /// The key both name.
         key: HandlerKey,
+        /// This row's family for it.
         this: EffectFamily,
         other: EffectFamily,
     },

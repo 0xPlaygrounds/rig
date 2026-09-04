@@ -273,16 +273,19 @@ impl BusDriver {
         } = command;
         if cancel.try_recv().is_err() {
             drop(reply);
+            self.shared.resolved(id);
             return false;
         }
         let Some(handler) = self.handlers.get(&key).cloned() else {
             reply.fail(handler_unavailable(&key));
+            self.shared.resolved(id);
             return false;
         };
         // A dispatch whose ancestor was cancelled while it was queued is
         // dropped unserved: no handler poll, no record.
         let Ok(flag) = self.shared.begin_in_flight(id, key.clone(), parent) else {
             reply.fail(rig_core::serve::cancelled());
+            self.shared.resolved(id);
             return false;
         };
         if self.config.serial_per_handler {
@@ -313,25 +316,39 @@ impl BusDriver {
         let shared = Arc::clone(&self.shared);
         let task = Box::pin(
             async move {
+                use futures::future::{Either, select};
                 let serving = handler.handle(kind, sink);
                 let ancestor_cancelled = flag.wait();
                 // The handler races the consumer's cancel and an ancestor's:
                 // either drops the handler future (and the sink, which
                 // reports the cancel); the consumer's also reaches every
-                // descendant of this dispatch.
-                match futures::future::select(
-                    serving,
-                    futures::future::select(cancel, ancestor_cancelled),
-                )
-                .await
-                {
-                    futures::future::Either::Left(_) => {}
-                    futures::future::Either::Right((futures::future::Either::Left(_), _)) => {
-                        shared.cancel_descendants(id)
+                // descendant of this dispatch. A handler that returned with
+                // its sink detached is still a dispatch in flight, so the
+                // cancels keep racing the sink's answer after it.
+                // The loser of a race is dropped before the sink is awaited:
+                // a handler future dropped is the sink dropped (unless it was
+                // detached), which is what resolves `sink_done`.
+                match select(serving, select(cancel, ancestor_cancelled)).await {
+                    Either::Left((_, cancels)) => match select(sink_done, cancels).await {
+                        Either::Left(_) => {}
+                        Either::Right((Either::Left(_), sink_done)) => {
+                            shared.cancel_descendants(id);
+                            let _ = sink_done.await;
+                        }
+                        Either::Right((Either::Right(_), sink_done)) => {
+                            let _ = sink_done.await;
+                        }
+                    },
+                    Either::Right((Either::Left(_), serving)) => {
+                        drop(serving);
+                        shared.cancel_descendants(id);
+                        let _ = sink_done.await;
                     }
-                    futures::future::Either::Right((futures::future::Either::Right(_), _)) => {}
+                    Either::Right((Either::Right(_), serving)) => {
+                        drop(serving);
+                        let _ = sink_done.await;
+                    }
                 }
-                let _ = sink_done.await;
                 (task_key, id)
             }
             .instrument(span),
@@ -366,7 +383,9 @@ impl BusDriver {
                     .partition(|command| command.parent == Some(id));
                 *queue = kept.into();
                 for orphan in orphans {
+                    let id = orphan.id;
                     orphan.reply.fail(rig_core::serve::cancelled());
+                    self.shared.resolved(id);
                 }
             }
             self.shared.fail_buffered_children(id);
@@ -402,15 +421,18 @@ impl BusDriver {
         for key in orphaned {
             if let Some(queue) = self.queued.remove(&key) {
                 for command in queue {
+                    let id = command.id;
                     command.reply.fail(handler_unavailable(&key));
+                    self.shared.resolved(id);
                 }
             }
         }
     }
 }
 
-/// An in-flight task that tells the bus which key is being polled, so a
-/// dispatch made from inside the handler can be recognised as re-entrant.
+/// An in-flight task: the handler's future, the cancels it races and the
+/// sink's answer, ending as the key it occupied and the dispatch's id so
+/// the driver can release the one and end the other.
 struct Serving {
     task: InFlight,
 }

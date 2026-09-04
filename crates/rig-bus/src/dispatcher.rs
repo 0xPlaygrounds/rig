@@ -137,7 +137,7 @@ impl Shared {
             serial_per_handler: config.serial_per_handler,
             causality: Mutex::new(Causality::default()),
             inbox: Mutex::new(Inbox {
-                ids: Vec::new(),
+                ids: VecDeque::new(),
                 cap: config.command_capacity.saturating_mul(64).max(1),
                 dropped: 0,
             }),
@@ -235,6 +235,7 @@ impl Shared {
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.closed.store(false, Ordering::SeqCst);
         self.commands_closed.store(false, Ordering::SeqCst);
+        self.forget_the_dead_driver();
         true
     }
 
@@ -259,7 +260,9 @@ impl Shared {
             )
         };
         for command in commands {
+            let id = command.id;
             command.reply.fail(bus_closed());
+            self.resolved(id);
         }
         wake_parked(senders);
     }
@@ -454,15 +457,16 @@ impl Shared {
         Ok(flag)
     }
 
-    /// A dispatch ended: its id goes to the inbox, the oldest going when
+    /// A command the driver took ended — answered, failed, cancelled or
+    /// dropped unserved: its id goes to the inbox, the oldest going when
     /// the host has not drained it.
     pub(super) fn resolved(&self, id: EffectId) {
         let mut inbox = self.inbox.lock().unwrap_or_else(PoisonError::into_inner);
         if inbox.ids.len() >= inbox.cap {
-            inbox.ids.remove(0);
+            inbox.ids.pop_front();
             inbox.dropped += 1;
         }
-        inbox.ids.push(id);
+        inbox.ids.push_back(id);
     }
 
     pub(super) fn take_resolved(&self) -> Vec<EffectId> {
@@ -473,6 +477,22 @@ impl Shared {
                 .unwrap_or_else(PoisonError::into_inner)
                 .ids,
         )
+        .into()
+    }
+
+    /// A new driver starts with no history: the causality table and the
+    /// inbox of the driver that died are cleared with the flags.
+    fn forget_the_dead_driver(&self) {
+        let mut causality = self
+            .causality
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        causality.in_flight.clear();
+        causality.cancelled.clear();
+        drop(causality);
+        let mut inbox = self.inbox.lock().unwrap_or_else(PoisonError::into_inner);
+        inbox.ids.clear();
+        inbox.dropped = 0;
     }
 
     pub(super) fn inbox_dropped(&self) -> usize {
@@ -509,7 +529,9 @@ impl Shared {
             orphans
         };
         for orphan in orphans {
+            let id = orphan.id;
             orphan.reply.fail(rig_core::serve::cancelled());
+            self.resolved(id);
         }
     }
 
@@ -598,10 +620,9 @@ fn wake_parked(senders: Vec<Weak<AtomicWaker>>) {
     }
 }
 
-/// One command on the channel: a dispatch and its reply half.
 /// The ids of dispatches that ended, waiting for the host's next drain.
 pub(super) struct Inbox {
-    ids: Vec<EffectId>,
+    ids: VecDeque<EffectId>,
     cap: usize,
     dropped: usize,
 }
@@ -699,6 +720,7 @@ impl Future for CancelWait {
     }
 }
 
+/// One command on the channel: a dispatch and its reply half.
 pub(super) struct Command {
     pub(super) id: EffectId,
     pub(super) key: HandlerKey,
@@ -830,14 +852,19 @@ impl Dispatcher {
         self.scope.as_ref()
     }
 
-    /// The completion inbox, drained: the id of every dispatch that ended
-    /// since the last drain — answered, failed or cancelled — in the order
-    /// the driver saw them end. A ticking host probes those values only
-    /// (`poll_outcome`/`poll_item` on the ones it maps the ids to) instead
-    /// of every value in flight. Bounded at `command_capacity * 64`: past
-    /// it the oldest ids are dropped and [`Dispatcher::inbox_dropped`]
-    /// counts them, so a host that never drains pays a bounded vector and
-    /// can tell it fell behind.
+    /// The completion inbox, drained: the id of every command the driver
+    /// took that ended since the last drain — answered, failed, cancelled
+    /// or dropped unserved — in the order the driver saw them end, which
+    /// is one driver poll after the sink's reply (a host that answers a
+    /// detached sink and drains in the same tick finds the id on the next).
+    /// A dispatch refused before any send ([`Dispatcher::dispatch`] of a
+    /// request with no wire form) was never taken and is not named. A
+    /// ticking host probes those values only (`poll_outcome`/`poll_item`
+    /// on the ones it maps the ids to) instead of every value in flight.
+    /// Bounded at `command_capacity * 64`: past it the oldest ids are
+    /// dropped and [`Dispatcher::inbox_dropped`] counts them, so a host that
+    /// never drains pays a bounded vector and can tell it fell behind. A
+    /// [`Bus::reopen`](crate::Bus::reopen) starts an empty inbox.
     pub fn take_resolved(&self) -> Vec<EffectId> {
         self.shared.take_resolved()
     }
@@ -928,10 +955,6 @@ impl Dispatcher {
         }
     }
 
-    /// Dispatch a streaming effect. Legal only for kinds whose family
-    /// streams — today `Completion { stream: true }` alone; a stream
-    /// dispatch of a unary kind resolves as one failed item with an
-    /// invalid-dispatch report and never reaches a handler.
     /// A dispatch refused before any send — a typed request with no wire
     /// form — as a [`Pending`] that resolves `report` on its first poll. It
     /// never reaches the buffer, a handler or a recorder; the id is minted so
@@ -951,6 +974,10 @@ impl Dispatcher {
         }
     }
 
+    /// Dispatch a streaming effect. Legal only for kinds whose family
+    /// streams — today `Completion { stream: true }` alone; a stream
+    /// dispatch of a unary kind resolves as one failed item with an
+    /// invalid-dispatch report and never reaches a handler.
     pub fn dispatch_stream(&self, key: &HandlerKey, kind: EffectKind) -> EffectStream {
         self.dispatch_stream_with_id(self.mint(), key, kind)
     }

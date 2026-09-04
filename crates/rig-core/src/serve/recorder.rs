@@ -17,7 +17,9 @@ use crate::{
 /// handle), stamped by a scoped dispatcher. Both ride the record.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Origin {
+    /// The dispatch this one was made from, if a handler made it.
     pub parent: Option<EffectId>,
+    /// The scope of the program that made it, if its dispatcher was scoped.
     pub scope: Option<std::sync::Arc<str>>,
 }
 
