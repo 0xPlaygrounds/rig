@@ -380,6 +380,32 @@ impl<S> Driven<S> {
         self.wakers.unregister(self.slot);
     }
 
+    /// A run that ended with a dispatch still in flight left it because it
+    /// dropped the stream — a hook stopped the run on a delta — and the
+    /// driver settles that cancel only when polled. Nothing polls an owned
+    /// driver between runs, so the cancelled dispatch's record was never
+    /// written to the log (the next run would have settled it, or nothing
+    /// would). Poll the driver until the in-flight count stops falling:
+    /// a cancel resolves on the poll that observes it, so this is a few
+    /// polls, and a dispatch that is not cancelled is not waited on.
+    fn settle_in_flight(&mut self, cx: &Context<'_>) {
+        let Some(driver) = self.driver.clone() else {
+            return;
+        };
+        let mut before = usize::MAX;
+        loop {
+            let in_flight = match try_lock(&driver) {
+                Some(guard) => guard.in_flight(),
+                None => return,
+            };
+            if in_flight == 0 || in_flight >= before {
+                return;
+            }
+            before = in_flight;
+            self.poll_driver(cx);
+        }
+    }
+
     /// Register `cx`'s waker so driver progress under any other run's poll
     /// wakes this one, then poll the driver once if nobody else is polling
     /// it right now.
@@ -445,6 +471,7 @@ impl<S: Stream + Unpin> Stream for Driven<S> {
         match Pin::new(&mut *inner).poll_next(cx) {
             Poll::Ready(Some(item)) => Poll::Ready(Some(item)),
             Poll::Ready(None) => {
+                this.settle_in_flight(cx);
                 this.finish();
                 Poll::Ready(None)
             }
@@ -457,6 +484,7 @@ impl<S: Stream + Unpin> Stream for Driven<S> {
                 };
                 match Pin::new(&mut *inner).poll_next(cx) {
                     Poll::Ready(None) => {
+                        this.settle_in_flight(cx);
                         this.finish();
                         Poll::Ready(None)
                     }

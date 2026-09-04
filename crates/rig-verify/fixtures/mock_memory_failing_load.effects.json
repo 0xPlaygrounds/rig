@@ -1,0 +1,61 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 171082663332529849,
+    "handlers": [
+      {
+        "key": "golden/memory",
+        "family": {
+          "family": "memory"
+        }
+      },
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/memory": "memory"
+    },
+    "hooks": [],
+    "required": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Err": {
+          "kind": "memory_backend",
+          "retryable": false,
+          "message": "Memory backend error: the store refused the load",
+          "code": null,
+          "http_status": null,
+          "refusal": false,
+          "source_chain": []
+        }
+      }
+    }
+  ]
+}

@@ -61,6 +61,7 @@ use super::{
     },
     telemetry::{build_chat_span, new_execute_tool_span},
 };
+use crate::run::UnhandledInvalidToolCall;
 use crate::{
     completion::{CompletionError, PromptError, Usage},
     json_utils,
@@ -1042,6 +1043,12 @@ impl TurnSource for StreamingTurnSource {
                                         .await,
                                 )
                             {
+                                // The stop is the run's: the dispatch in flight is
+                                // cancelled here, before the error surfaces, so the
+                                // record is the same cancel on every transport (it
+                                // used to depend on whether the provider had finished
+                                // before the consumer dropped the run).
+                                drop(stream);
                                 yield Err(StreamingError::Prompt(Box::new(
                                     run.cancel_error(reason),
                                 )));
@@ -1074,6 +1081,12 @@ impl TurnSource for StreamingTurnSource {
                                         )
                                         .await,
                                 ) {
+                                    // The stop is the run's: the dispatch in flight is
+                                    // cancelled here, before the error surfaces, so the
+                                    // record is the same cancel on every transport (it
+                                    // used to depend on whether the provider had finished
+                                    // before the consumer dropped the run).
+                                    drop(stream);
                                     yield Err(StreamingError::Prompt(Box::new(
                                         run.cancel_error(reason),
                                     )));
@@ -1107,6 +1120,12 @@ impl TurnSource for StreamingTurnSource {
                                         )
                                         .await,
                                 ) {
+                                    // The stop is the run's: the dispatch in flight is
+                                    // cancelled here, before the error surfaces, so the
+                                    // record is the same cancel on every transport (it
+                                    // used to depend on whether the provider had finished
+                                    // before the consumer dropped the run).
+                                    drop(stream);
                                     yield Err(StreamingError::Prompt(Box::new(
                                         run.cancel_error(reason),
                                     )));
@@ -1150,28 +1169,48 @@ impl TurnSource for StreamingTurnSource {
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
                             // fails fast.
-                            let action = if self.has_hooks {
+                            let hook_action = if self.has_hooks {
                                 let context =
                                     run.streamed_invalid_tool_call_context(&partial, &invalid);
                                 runner
                                     .config.hooks
                                     .on_invalid_tool_call(hook_ctx, &context)
                                     .await
-                                    .unwrap_or_else(InvalidToolCallAction::fail)
                             } else {
-                                InvalidToolCallAction::fail()
+                                None
+                            };
+                            // No hook resolved it: the runner's policy, as the
+                            // unary surface applies it (`Ignore` drops the call
+                            // and goes on; `Fail` fails the run). This surface
+                            // used to fail regardless of the policy.
+                            let resolved = match hook_action {
+                                Some(action) => {
+                                    run.resolve_streamed_invalid_tool_call(&partial, &invalid, action)
+                                }
+                                None => match runner.unhandled_invalid_tool_call {
+                                    UnhandledInvalidToolCall::Fail => run
+                                        .resolve_streamed_invalid_tool_call(
+                                            &partial,
+                                            &invalid,
+                                            InvalidToolCallAction::fail(),
+                                        ),
+                                    UnhandledInvalidToolCall::Ignore => {
+                                        run.ignore_streamed_invalid_tool_call()
+                                    }
+                                },
+                            };
+                            let resolution = match resolved {
+                                Ok(resolution) => resolution,
+                                Err(err) => {
+                                    yield Err(Box::new(err).into());
+                                    return;
+                                }
                             };
 
-                            let resolution =
-                                match run.resolve_streamed_invalid_tool_call(&partial, &invalid, action) {
-                                    Ok(resolution) => resolution,
-                                    Err(err) => {
-                                        yield Err(Box::new(err).into());
-                                        return;
-                                    }
-                                };
-
                             match resolution {
+                                StreamedResolution::Ignored => {
+                                    assembler.resolve_pending_invalid(&resolution);
+                                }
                                 StreamedResolution::Repaired { .. } => {
                                     // Replayed deltas flow through the same event
                                     // handling above; the turn is now recovered.

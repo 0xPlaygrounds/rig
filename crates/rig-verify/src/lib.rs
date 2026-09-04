@@ -39,6 +39,11 @@
 //! | C, serving policy, routing and bus ownership | `corpus_serving.rs` | 12 goldens |
 //! | D, continuation, cancellation and failure outcomes | `corpus_outcome.rs` | 8 goldens and 4 resume rows |
 //! | E, request-shape axes | `corpus_request_shape.rs` | 13 goldens, one axis each |
+//! | F, hook-ended runs | `corpus_endings.rs` | 13 goldens, every hook stop and cancel |
+//! | G, invalid calls streamed and ignored | `corpus_invalid.rs` | 13 goldens, mock-scripted |
+//! | H, output modes | `corpus_output.rs` | 14 goldens, `Tool` and `Prompted` |
+//! | I, a host's own families | `corpus_host.rs` | 12 goldens, custom and embedding over a host's bus |
+//! | J, memory operations | `corpus_memory.rs` | 12 goldens, clears, two runs, failures |
 //!
 //! Every golden is replayed by both interpreters (a cancelled stream by
 //! both too: the replayer answers the record as the cancel it was, after

@@ -112,7 +112,8 @@ async fn run_streamed_turn(
                         Ok(resolution) => {
                             let replayed = assembler.resolve_pending_invalid(&resolution);
                             match resolution {
-                                StreamedResolution::Repaired { .. } => {
+                                StreamedResolution::Repaired { .. }
+                                | StreamedResolution::Ignored => {
                                     events.extend(replayed);
                                 }
                                 StreamedResolution::TurnAbandoned {
