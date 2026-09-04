@@ -1042,6 +1042,12 @@ impl TurnSource for StreamingTurnSource {
                                         .await,
                                 )
                             {
+                                // The stop is the run's: the dispatch in flight is
+                                // cancelled here, before the error surfaces, so the
+                                // record is the same cancel on every transport (it
+                                // used to depend on whether the provider had finished
+                                // before the consumer dropped the run).
+                                drop(stream);
                                 yield Err(StreamingError::Prompt(Box::new(
                                     run.cancel_error(reason),
                                 )));
@@ -1074,6 +1080,12 @@ impl TurnSource for StreamingTurnSource {
                                         )
                                         .await,
                                 ) {
+                                    // The stop is the run's: the dispatch in flight is
+                                    // cancelled here, before the error surfaces, so the
+                                    // record is the same cancel on every transport (it
+                                    // used to depend on whether the provider had finished
+                                    // before the consumer dropped the run).
+                                    drop(stream);
                                     yield Err(StreamingError::Prompt(Box::new(
                                         run.cancel_error(reason),
                                     )));
@@ -1107,6 +1119,12 @@ impl TurnSource for StreamingTurnSource {
                                         )
                                         .await,
                                 ) {
+                                    // The stop is the run's: the dispatch in flight is
+                                    // cancelled here, before the error surfaces, so the
+                                    // record is the same cancel on every transport (it
+                                    // used to depend on whether the provider had finished
+                                    // before the consumer dropped the run).
+                                    drop(stream);
                                     yield Err(StreamingError::Prompt(Box::new(
                                         run.cancel_error(reason),
                                     )));
