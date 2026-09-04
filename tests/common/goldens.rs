@@ -1777,3 +1777,419 @@ pub(crate) fn parent_positions(log: &EffectLog) -> Vec<Option<usize>> {
         })
         .collect()
 }
+
+// ---------------------------------------------------------------------------
+// Matrix P: the layers, hand-written `Intercept`s; Matrix T's `Denied`
+// cells. Program, not record: `crates/rig-verify/tests/corpus/mod.rs`
+// holds the same types verbatim.
+
+#[allow(dead_code)]
+pub(crate) const PATCHED_ARGS: &str = r#"{"x":40,"y":2}"#;
+#[allow(dead_code)]
+pub(crate) const PATCHED_AGAIN_ARGS: &str = r#"{"x":30,"y":12}"#;
+#[allow(dead_code)]
+pub(crate) const HOST_DENY_REASON: &str = "denied by the host";
+#[allow(dead_code)]
+pub(crate) const WORLD_DENY_REASON: &str = "blocked by the world";
+#[allow(dead_code)]
+pub(crate) const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
+
+/// The history the memory layer answers a `Load` with: two turns naming Ada.
+#[allow(dead_code)]
+pub(crate) fn replaced_history() -> Vec<Message> {
+    vec![
+        Message::user("My name is Ada."),
+        Message::assistant("Hello, Ada."),
+    ]
+}
+
+#[allow(dead_code)]
+fn is_add(kind: &rig::effect::EffectKind) -> bool {
+    matches!(kind, rig::effect::EffectKind::ToolCall { name, .. } if name == "add")
+}
+
+#[allow(dead_code)]
+fn patch_add(kind: &rig::effect::EffectKind, args: &str) -> rig::serve::Decision {
+    match kind {
+        rig::effect::EffectKind::ToolCall { name, context, .. } if name == "add" => {
+            rig::serve::Decision::Patch(rig::effect::EffectKind::ToolCall {
+                name: name.clone(),
+                args: args.to_owned(),
+                context: context.clone(),
+            })
+        }
+        _ => rig::serve::Decision::Proceed,
+    }
+}
+
+macro_rules! keep_after {
+    () => {
+        async fn after(
+            &self,
+            _id: rig::effect::EffectId,
+            _kind: &rig::effect::EffectKind,
+            _outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+        ) -> rig::serve::Verdict {
+            rig::serve::Verdict::Keep
+        }
+    };
+}
+
+macro_rules! proceed_before {
+    () => {
+        async fn before(
+            &self,
+            _id: rig::effect::EffectId,
+            _kind: &rig::effect::EffectKind,
+        ) -> rig::serve::Decision {
+            rig::serve::Decision::Proceed
+        }
+    };
+}
+
+/// The hook `DenyAdd`, as a layer.
+#[allow(dead_code)]
+pub(crate) struct DenyAddLayer;
+
+impl rig::serve::Intercept for DenyAddLayer {
+    fn name(&self) -> String {
+        "DenyAddLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        if is_add(kind) {
+            rig::serve::Decision::deny(DENY_REASON)
+        } else {
+            rig::serve::Decision::Proceed
+        }
+    }
+    keep_after!();
+}
+
+/// The hook `PatchAddArgs`, as a layer.
+#[allow(dead_code)]
+pub(crate) struct PatchAddArgsLayer;
+
+impl rig::serve::Intercept for PatchAddArgsLayer {
+    fn name(&self) -> String {
+        "PatchAddArgsLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        patch_add(kind, PATCHED_ARGS)
+    }
+    keep_after!();
+}
+
+/// The host's own patch of `add`'s arguments, beneath the agent's.
+#[allow(dead_code)]
+pub(crate) struct PatchAgainLayer;
+
+impl rig::serve::Intercept for PatchAgainLayer {
+    fn name(&self) -> String {
+        "PatchAgainLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        patch_add(kind, PATCHED_AGAIN_ARGS)
+    }
+    keep_after!();
+}
+
+/// The hook `ReplaceAddResult`, as a layer.
+#[allow(dead_code)]
+pub(crate) struct ReplaceAddResultLayer;
+
+impl rig::serve::Intercept for ReplaceAddResultLayer {
+    fn name(&self) -> String {
+        "ReplaceAddResultLayer".to_owned()
+    }
+    proceed_before!();
+    async fn after(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+        outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+    ) -> rig::serve::Verdict {
+        match outcome {
+            Ok(rig::effect::Outcome::ToolResult { result, context }) if is_add(kind) => {
+                rig::serve::Verdict::Replace(Ok(rig::effect::Outcome::ToolResult {
+                    result: result
+                        .clone()
+                        .with_output(rig::tool::ToolOutput::text(REPLACED_RESULT)),
+                    context: context.clone(),
+                }))
+            }
+            _ => rig::serve::Verdict::Keep,
+        }
+    }
+}
+
+/// The world a suspending layer asks.
+#[allow(dead_code)]
+pub(crate) type Asks = tokio::sync::mpsc::UnboundedSender<(
+    rig::effect::EffectId,
+    futures::channel::oneshot::Sender<rig::serve::Decision>,
+)>;
+
+/// An approval gate: `before` sends the dispatch to the world and waits.
+#[allow(dead_code)]
+pub(crate) struct ApprovalLayer {
+    pub asks: Asks,
+}
+
+impl rig::serve::Intercept for ApprovalLayer {
+    fn name(&self) -> String {
+        "ApprovalLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        let (decide, decided) = futures::channel::oneshot::channel();
+        self.asks.send((id, decide)).expect("the world listens");
+        match decided.await {
+            Ok(decision) => decision,
+            Err(futures::channel::oneshot::Canceled) => {
+                rig::serve::Decision::Deny(rig::error::ErrorReport::new(
+                    rig::error::ErrorKind::Internal,
+                    "layer `ApprovalLayer`: the world closed the answer channel without deciding",
+                ))
+            }
+        }
+    }
+    keep_after!();
+}
+
+/// What the world answers a suspended dispatch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum Answer {
+    Approve,
+    Deny,
+    /// Never: the world signals it was asked and holds the channel.
+    Never,
+}
+
+/// Spawn the world: answers as `answer` says; signals `reached` when it
+/// holds an answer forever.
+#[allow(dead_code)]
+pub(crate) fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>) -> Asks {
+    let (asks, mut asked): (Asks, _) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Some((_, decide)) = asked.recv().await {
+            match answer {
+                Answer::Approve => {
+                    let _ = decide.send(rig::serve::Decision::Proceed);
+                }
+                Answer::Deny => {
+                    let _ = decide.send(rig::serve::Decision::deny(WORLD_DENY_REASON));
+                }
+                Answer::Never => {
+                    reached.notify_one();
+                    held.push(decide);
+                }
+            }
+        }
+    });
+    asks
+}
+
+/// A patch of another family: never a dispatch.
+#[allow(dead_code)]
+pub(crate) struct WrongFamilyLayer;
+
+impl rig::serve::Intercept for WrongFamilyLayer {
+    fn name(&self) -> String {
+        "WrongFamilyLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        if is_add(kind) {
+            rig::serve::Decision::Patch(rig::effect::EffectKind::Custom {
+                kind: std::sync::Arc::from("corpus:wrong"),
+                payload: serde_json::Value::Null,
+            })
+        } else {
+            rig::serve::Decision::Proceed
+        }
+    }
+    keep_after!();
+}
+
+/// `after` on a completion → the answer is cancelled.
+#[allow(dead_code)]
+pub(crate) struct CancelStreamLayer;
+
+impl rig::serve::Intercept for CancelStreamLayer {
+    fn name(&self) -> String {
+        "CancelStreamLayer".to_owned()
+    }
+    proceed_before!();
+    async fn after(
+        &self,
+        _id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+        _outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+    ) -> rig::serve::Verdict {
+        rig::serve::Verdict::Replace(Err(rig::error::ErrorReport::new(
+            rig::error::ErrorKind::Cancelled,
+            CANCEL_STREAM_REASON,
+        )))
+    }
+}
+
+/// `after` on a memory `Load` → the replacement history in the store's place.
+#[allow(dead_code)]
+pub(crate) struct ReplaceLoadLayer;
+
+impl rig::serve::Intercept for ReplaceLoadLayer {
+    fn name(&self) -> String {
+        "ReplaceLoadLayer".to_owned()
+    }
+    proceed_before!();
+    async fn after(
+        &self,
+        _id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+        outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+    ) -> rig::serve::Verdict {
+        match outcome {
+            Ok(rig::effect::Outcome::Memory(rig::effect::MemoryOutcome::Loaded { .. })) => {
+                rig::serve::Verdict::Replace(Ok(rig::effect::Outcome::Memory(
+                    rig::effect::MemoryOutcome::Loaded {
+                        messages: replaced_history(),
+                    },
+                )))
+            }
+            _ => rig::serve::Verdict::Keep,
+        }
+    }
+}
+
+/// The host denies everything on the key.
+#[allow(dead_code)]
+pub(crate) struct DenyAllLayer;
+
+impl rig::serve::Intercept for DenyAllLayer {
+    fn name(&self) -> String {
+        "DenyAllLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        rig::serve::Decision::deny(HOST_DENY_REASON)
+    }
+    keep_after!();
+}
+
+/// `on_run_start` → a host note the host's layer denies; the hook sees
+/// `Denied` and the run goes on.
+#[allow(dead_code)]
+pub(crate) struct NoteDeniedAtStart;
+
+impl rig::agent::AgentHook for NoteDeniedAtStart {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let host = ctx.bind(&note_key()).expect("the host serves notes");
+        let report = host
+            .dispatch(Note {
+                at: "start".to_owned(),
+            })
+            .await
+            .expect_err("the host's layer denies the note");
+        assert_eq!(report.kind, rig::error::ErrorKind::Denied, "{report:?}");
+        assert_eq!(report.message, HOST_DENY_REASON);
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` asserts the run starts with the history the memory
+/// layer put in the `Load`'s place.
+#[allow(dead_code)]
+pub(crate) struct HistoryIsReplaced;
+
+impl rig::agent::AgentHook for HistoryIsReplaced {
+    async fn on_run_start(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        assert_eq!(event.history, replaced_history());
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// The `add` tool of the anthropic cells (`tests/common/support.rs`'s
+/// `Adder`, verbatim in name, description and schema, so a layered cell's
+/// handler table and requests are the hook cells' bytes), available to
+/// every target.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[allow(dead_code)]
+pub(crate) struct AddArgs {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[allow(dead_code)]
+pub(crate) struct Adder;
+
+impl rig::tool::Tool for Adder {
+    const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
+    type Args = AddArgs;
+    type Output = i32;
+
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::from_str(
+            r#"{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}"#,
+        )
+        .expect("adder schema should deserialize")
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        Ok(args.x + args.y)
+    }
+}
+
+/// The agent's `add` tool under `layers` (outermost first), registered
+/// through a tool server named `golden` so the key is `golden/tool:add#0`.
+#[allow(dead_code)]
+pub(crate) fn add_tool_under(
+    layers: impl FnOnce(rig::serve::ErasedHandler) -> rig::serve::ErasedHandler,
+) -> rig::agent::tool::server::ToolServerHandle {
+    let adder = rig::serve::ErasedHandler::new(rig::serve::adapters::ToolAdapter::new(Adder));
+    rig::agent::tool::server::ToolServer::new()
+        .owner("golden")
+        .registered_tool(
+            rig::tool::RegisteredTool::from_handler(layers(adder)).expect("a tool-family handler"),
+        )
+        .run()
+}

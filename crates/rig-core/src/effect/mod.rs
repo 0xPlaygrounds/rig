@@ -981,6 +981,11 @@ impl EffectRow {
         self.0.entry(key).or_insert(family);
     }
 
+    /// Remove `key` from the row; the family it named, if it was there.
+    pub fn remove(&mut self, key: &HandlerKey) -> Option<EffectFamily> {
+        self.0.remove(key)
+    }
+
     /// The family the row names `key` as.
     pub fn get(&self, key: &HandlerKey) -> Option<&EffectFamily> {
         self.0.get(key)

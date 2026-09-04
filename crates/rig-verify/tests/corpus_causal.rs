@@ -152,14 +152,14 @@ const SAME_KEY_FROM_THREAD_REFUSED: Program = Program {
 const PARENT_CANCELLED_CHILD_IN_FLIGHT: Program = Program {
     fixture: "mock_causal_parent_cancelled_child_in_flight",
     nesting: Some(nesting(NestedChild::Never)),
-    cancel_at_nested_child: true,
+    cancel_when_reached: true,
     ..MOCK
 };
 const PARENT_CANCELLED_CHILD_QUEUED: Program = Program {
     fixture: "mock_causal_parent_cancelled_child_queued",
     nesting: Some(nesting(NestedChild::NeverTwice)),
     host_serial: true,
-    cancel_at_nested_child: true,
+    cancel_when_reached: true,
     ..MOCK
 };
 const DETACHED_RESOLVER: Program = Program {

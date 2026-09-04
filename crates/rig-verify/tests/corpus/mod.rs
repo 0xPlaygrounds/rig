@@ -74,7 +74,8 @@ use rig_agent::{
 use rig_bus::{Bus, Dispatcher, MemoryHandle, ModelHandle, ToolHandle};
 use rig_core::{
     completion::{CompletionRequestBuilder, Document},
-    effect::{EffectFamily, EffectRecord, HandlerKey},
+    effect::{EffectFamily, EffectRecord, HandlerKey, MemoryOutcome},
+    error::ErrorKind,
     id::ConversationId,
     message::ToolChoice,
     message::{AssistantContent, Message, UserContent},
@@ -185,6 +186,12 @@ pub enum Hook {
     /// `on_run_start` → two documents reranked through the host's
     /// reranker.
     RerankDocs,
+    /// `on_run_start` → a host note the host's layer denies; the hook sees
+    /// `Denied` and the run goes on (Matrix T).
+    NoteDeniedAtStart,
+    /// `on_run_start` observes the history the run starts with and asserts
+    /// it is the replacement a memory layer made (Matrix P).
+    HistoryIsReplaced,
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -261,6 +268,9 @@ pub enum Ending {
     /// `PromptError::PromptCancelled` with this reason: a hook stopped the
     /// run. The records are those the engine made before the stop.
     Cancelled(&'static str),
+    /// `PromptError::Report` (or a stream's `Report` item) of this kind: a
+    /// layer denied or replaced what the run needed (Matrices P and T).
+    Failed(ErrorKind),
 }
 
 /// The producer's tool choice, as data.
@@ -355,11 +365,75 @@ pub struct Program {
     /// The host's bus serves serially (a host-bus golden does not name
     /// its policy; the replay's host runs the producer's).
     pub host_serial: bool,
-    /// The producer dropped the run once the nested child was reached (a
-    /// handler that never answers signals it): the tool call and its
-    /// child are cancelled together; the run never finishes.
-    pub cancel_at_nested_child: bool,
+    /// The producer dropped the run once a host handler signalled it was
+    /// reached — the never-answering handler (Matrix Q: the tool call and
+    /// its child are cancelled together) or the suspending layer's world
+    /// (Matrix P: the tool call is cancelled mid-suspend); the run never
+    /// finishes.
+    pub cancel_when_reached: bool,
+    /// The layers the producer registered around the program's handlers,
+    /// as the header names them (Matrix P): per key, outermost first.
+    pub layers: &'static [LayerSpec],
 }
+
+/// A layer the producer wrapped around one of the program's handlers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LayerSpec {
+    pub at: LayerAt,
+    pub layer: LayerKind,
+}
+
+/// The key a layer wraps.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerAt {
+    /// The agent's `add` tool (`<owner>/tool:add#0`).
+    Tool,
+    /// The agent's model key.
+    Model,
+    /// The agent's memory key.
+    Memory,
+    /// The host's note handler (`host/note`).
+    Note,
+}
+
+/// The layers of the corpus, by name: each is a hand-written `Intercept`
+/// in this module (and, verbatim, in the producers' `goldens.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerKind {
+    /// `before` → `deny(DENY_REASON)` for `add`: the hook `DenyAdd` as a layer.
+    DenyAdd,
+    /// `before` → `Patch` of `add`'s arguments to `PATCHED_ARGS`: `PatchAddArgs` as a layer.
+    PatchAddArgs,
+    /// `after` → `Replace` of `add`'s output with `REPLACED_RESULT`: `ReplaceAddResult` as a layer.
+    ReplaceAddResult,
+    /// `before` → `Patch` of `add`'s arguments to `PATCHED_AGAIN_ARGS` (the host's own policy).
+    PatchAgain,
+    /// `before` suspends until the world answers as `Answer` says.
+    Approval(Answer),
+    /// `before` → `Patch` of another family: `Internal`, no dispatch.
+    WrongFamily,
+    /// `after` → `Replace(Err(Cancelled))` on a completion.
+    CancelStream,
+    /// `after` → `Replace` of a memory `Load`'s answer with the bypass history.
+    ReplaceLoad,
+    /// `before` → `deny(HOST_DENY_REASON)` for everything.
+    DenyAll,
+}
+
+/// What the world answers a suspended dispatch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Answer {
+    Approve,
+    Deny,
+    /// Never: the world signals it was asked and holds the channel; the
+    /// producer drops the run (`cancel_when_reached`).
+    Never,
+}
+
+pub const PATCHED_AGAIN_ARGS: &str = r#"{"x":30,"y":12}"#;
+pub const HOST_DENY_REASON: &str = "denied by the host";
+pub const WORLD_DENY_REASON: &str = "blocked by the world";
+pub const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
 
 /// What the `lookup` tool dispatches from inside its own service, through
 /// the dispatcher its sink carries (`rig_bus::SinkDispatch`), so the child
@@ -436,7 +510,8 @@ impl Program {
         late_route: None,
         nesting: None,
         host_serial: false,
-        cancel_at_nested_child: false,
+        cancel_when_reached: false,
+        layers: &[],
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -921,6 +996,418 @@ impl AgentHook for EmbedPrompt {
 // ---------------------------------------------------------------------------
 // Matrix J: memory cleared from a hook.
 
+struct NoteDeniedAtStart;
+
+impl AgentHook for NoteDeniedAtStart {
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        let host = ctx.bind(&note_key()).expect("the host serves notes");
+        let report = host
+            .dispatch(Note {
+                at: "start".to_owned(),
+            })
+            .await
+            .expect_err("the host's layer denies the note");
+        assert_eq!(report.kind, ErrorKind::Denied, "{report:?}");
+        assert_eq!(report.message, HOST_DENY_REASON);
+        RunStartAction::continue_run()
+    }
+}
+
+struct HistoryIsReplaced;
+
+impl AgentHook for HistoryIsReplaced {
+    async fn on_run_start(&self, _ctx: &HookContext, event: RunStart<'_>) -> RunStartAction {
+        assert_eq!(
+            event.history,
+            bypass_history(),
+            "the run starts with the history the memory layer put in the Load's place"
+        );
+        RunStartAction::continue_run()
+    }
+}
+
+/// The history the memory layer answers a `Load` with, and the one the
+/// bypass program hands the runner (Matrix J): two turns naming Ada.
+pub fn bypass_history() -> Vec<Message> {
+    vec![
+        Message::user("My name is Ada."),
+        Message::assistant("Hello, Ada."),
+    ]
+}
+
+// ---------------------------------------------------------------------------
+// Matrix P: the layers, hand-written `Intercept`s. Program, not record:
+// the producers' `goldens.rs` holds the same types verbatim.
+
+fn is_add(kind: &rig_core::effect::EffectKind) -> bool {
+    matches!(kind, rig_core::effect::EffectKind::ToolCall { name, .. } if name == "add")
+}
+
+fn patch_add(kind: &rig_core::effect::EffectKind, args: &str) -> rig_core::serve::Decision {
+    match kind {
+        rig_core::effect::EffectKind::ToolCall { name, context, .. } if name == "add" => {
+            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::ToolCall {
+                name: name.clone(),
+                args: args.to_owned(),
+                context: context.clone(),
+            })
+        }
+        _ => rig_core::serve::Decision::Proceed,
+    }
+}
+
+/// The hook `DenyAdd`, as a layer.
+pub struct DenyAddLayer;
+
+impl rig_core::serve::Intercept for DenyAddLayer {
+    fn name(&self) -> String {
+        "DenyAddLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        if is_add(kind) {
+            rig_core::serve::Decision::deny(DENY_REASON)
+        } else {
+            rig_core::serve::Decision::Proceed
+        }
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+/// The hook `PatchAddArgs`, as a layer.
+pub struct PatchAddArgsLayer;
+
+impl rig_core::serve::Intercept for PatchAddArgsLayer {
+    fn name(&self) -> String {
+        "PatchAddArgsLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        patch_add(kind, PATCHED_ARGS)
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+/// The host's own patch of `add`'s arguments, beneath the agent's.
+pub struct PatchAgainLayer;
+
+impl rig_core::serve::Intercept for PatchAgainLayer {
+    fn name(&self) -> String {
+        "PatchAgainLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        patch_add(kind, PATCHED_AGAIN_ARGS)
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+/// The hook `ReplaceAddResult`, as a layer.
+pub struct ReplaceAddResultLayer;
+
+impl rig_core::serve::Intercept for ReplaceAddResultLayer {
+    fn name(&self) -> String {
+        "ReplaceAddResultLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        rig_core::serve::Decision::Proceed
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        kind: &rig_core::effect::EffectKind,
+        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        match outcome {
+            Ok(rig_core::effect::Outcome::ToolResult { result, context }) if is_add(kind) => {
+                rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::ToolResult {
+                    result: result
+                        .clone()
+                        .with_output(ToolOutput::text(REPLACED_RESULT)),
+                    context: context.clone(),
+                }))
+            }
+            _ => rig_core::serve::Verdict::Keep,
+        }
+    }
+}
+
+/// An approval gate: `before` sends the dispatch to the world and waits.
+pub struct ApprovalLayer {
+    pub asks: tokio::sync::mpsc::UnboundedSender<(
+        rig_core::effect::EffectId,
+        futures::channel::oneshot::Sender<rig_core::serve::Decision>,
+    )>,
+}
+
+impl rig_core::serve::Intercept for ApprovalLayer {
+    fn name(&self) -> String {
+        "ApprovalLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        let (decide, decided) = futures::channel::oneshot::channel();
+        self.asks.send((id, decide)).expect("the world listens");
+        match decided.await {
+            Ok(decision) => decision,
+            Err(futures::channel::oneshot::Canceled) => {
+                rig_core::serve::Decision::Deny(rig_core::error::ErrorReport::new(
+                    ErrorKind::Internal,
+                    "layer `ApprovalLayer`: the world closed the answer channel without deciding",
+                ))
+            }
+        }
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+/// A patch of another family: never a dispatch.
+pub struct WrongFamilyLayer;
+
+impl rig_core::serve::Intercept for WrongFamilyLayer {
+    fn name(&self) -> String {
+        "WrongFamilyLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        if is_add(kind) {
+            rig_core::serve::Decision::Patch(rig_core::effect::EffectKind::Custom {
+                kind: std::sync::Arc::from("corpus:wrong"),
+                payload: serde_json::Value::Null,
+            })
+        } else {
+            rig_core::serve::Decision::Proceed
+        }
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+/// `after` on a completion → the answer is cancelled.
+pub struct CancelStreamLayer;
+
+impl rig_core::serve::Intercept for CancelStreamLayer {
+    fn name(&self) -> String {
+        "CancelStreamLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        rig_core::serve::Decision::Proceed
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Replace(Err(rig_core::error::ErrorReport::new(
+            ErrorKind::Cancelled,
+            CANCEL_STREAM_REASON,
+        )))
+    }
+}
+
+/// `after` on a memory `Load` → the bypass history in the store's place.
+pub struct ReplaceLoadLayer;
+
+impl rig_core::serve::Intercept for ReplaceLoadLayer {
+    fn name(&self) -> String {
+        "ReplaceLoadLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        rig_core::serve::Decision::Proceed
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        match outcome {
+            Ok(rig_core::effect::Outcome::Memory(MemoryOutcome::Loaded { .. })) => {
+                rig_core::serve::Verdict::Replace(Ok(rig_core::effect::Outcome::Memory(
+                    MemoryOutcome::Loaded {
+                        messages: bypass_history(),
+                    },
+                )))
+            }
+            _ => rig_core::serve::Verdict::Keep,
+        }
+    }
+}
+
+/// The host denies everything on the key.
+pub struct DenyAllLayer;
+
+impl rig_core::serve::Intercept for DenyAllLayer {
+    fn name(&self) -> String {
+        "DenyAllLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+    ) -> rig_core::serve::Decision {
+        rig_core::serve::Decision::deny(HOST_DENY_REASON)
+    }
+    async fn after(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _kind: &rig_core::effect::EffectKind,
+        _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+/// The world the suspending layers ask: answers as the program says, and
+/// signals `reached` when it holds an answer forever.
+pub type Asks = tokio::sync::mpsc::UnboundedSender<(
+    rig_core::effect::EffectId,
+    futures::channel::oneshot::Sender<rig_core::serve::Decision>,
+)>;
+
+pub fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>) -> Asks {
+    let (asks, mut asked): (Asks, _) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Some((_, decide)) = asked.recv().await {
+            match answer {
+                Answer::Approve => {
+                    let _ = decide.send(rig_core::serve::Decision::Proceed);
+                }
+                Answer::Deny => {
+                    let _ = decide.send(rig_core::serve::Decision::deny(WORLD_DENY_REASON));
+                }
+                Answer::Never => {
+                    reached.notify_one();
+                    held.push(decide);
+                }
+            }
+        }
+    });
+    asks
+}
+
+/// `handler` under the program's layers at `at`, outermost first as the
+/// header names them (so wrapped innermost first).
+pub fn layered(
+    handler: rig_core::serve::ErasedHandler,
+    program: &Program,
+    at: LayerAt,
+    world: &Option<Asks>,
+) -> rig_core::serve::ErasedHandler {
+    let mut handler = handler;
+    for spec in program.layers.iter().rev().filter(|spec| spec.at == at) {
+        handler = match spec.layer {
+            LayerKind::DenyAdd => handler.layered(DenyAddLayer),
+            LayerKind::PatchAddArgs => handler.layered(PatchAddArgsLayer),
+            LayerKind::ReplaceAddResult => handler.layered(ReplaceAddResultLayer),
+            LayerKind::PatchAgain => handler.layered(PatchAgainLayer),
+            LayerKind::Approval(_) => handler.layered(ApprovalLayer {
+                asks: world.clone().expect("a world for the suspending layer"),
+            }),
+            LayerKind::WrongFamily => handler.layered(WrongFamilyLayer),
+            LayerKind::CancelStream => handler.layered(CancelStreamLayer),
+            LayerKind::ReplaceLoad => handler.layered(ReplaceLoadLayer),
+            LayerKind::DenyAll => handler.layered(DenyAllLayer),
+        };
+    }
+    handler
+}
+
+/// The names the header lists for the program's layers: the handler
+/// table's order (by key), outermost first within a key.
+pub fn layer_names(program: &Program, owner: &str) -> Vec<String> {
+    let key_of = |at: LayerAt| match at {
+        LayerAt::Tool => format!("{owner}/tool:add#0"),
+        LayerAt::Model => format!("{owner}/model:default"),
+        LayerAt::Memory => format!("{owner}/memory"),
+        LayerAt::Note => NOTE_KEY.to_owned(),
+    };
+    let mut keyed: Vec<(String, &LayerSpec)> = program
+        .layers
+        .iter()
+        .map(|spec| (key_of(spec.at), spec))
+        .collect();
+    keyed.sort_by(|a, b| a.0.cmp(&b.0));
+    keyed
+        .into_iter()
+        .map(|(_, spec)| match spec.layer {
+            LayerKind::DenyAdd => "DenyAddLayer",
+            LayerKind::PatchAddArgs => "PatchAddArgsLayer",
+            LayerKind::ReplaceAddResult => "ReplaceAddResultLayer",
+            LayerKind::PatchAgain => "PatchAgainLayer",
+            LayerKind::Approval(_) => "ApprovalLayer",
+            LayerKind::WrongFamily => "WrongFamilyLayer",
+            LayerKind::CancelStream => "CancelStreamLayer",
+            LayerKind::ReplaceLoad => "ReplaceLoadLayer",
+            LayerKind::DenyAll => "DenyAllLayer",
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Matrix Q: the nesting tool and the host's relay and never-answering
 // handlers. Program, not record: the producer's copies live in
@@ -1370,7 +1857,9 @@ fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
         | Hook::RouteOnFirstTurn
         | Hook::SelectLate
         | Hook::StopAfterTurnN(_)
-        | Hook::RerankDocs => None,
+        | Hook::RerankDocs
+        | Hook::NoteDeniedAtStart
+        | Hook::HistoryIsReplaced => None,
     }
 }
 
@@ -1552,6 +2041,8 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::SelectLate => builder.add_hook(SelectLate),
             Hook::StopAfterTurnN(n) => builder.add_hook(StopAfterTurnN(*n)),
             Hook::RerankDocs => builder.add_hook(RerankDocs),
+            Hook::NoteDeniedAtStart => builder.add_hook(NoteDeniedAtStart),
+            Hook::HistoryIsReplaced => builder.add_hook(HistoryIsReplaced),
         };
     }
     builder
@@ -1699,8 +2190,11 @@ pub struct Replay {
     pub model_key: HandlerKey,
     pub memory_key: HandlerKey,
     /// Signalled when the host's never-answering handler is reached
-    /// (Matrix Q's cancelled cells).
+    /// (Matrix Q's cancelled cells) or the world holds a suspended layer's
+    /// answer forever (Matrix P's).
     pub reached: Option<std::sync::Arc<tokio::sync::Notify>>,
+    /// The world a suspending layer asks (Matrix P).
+    pub world: Option<Asks>,
 }
 
 impl Replay {
@@ -1718,11 +2212,30 @@ impl Replay {
         let (dispatcher, registrar, mut driver) = Bus::channel_with(bus);
         let model_key = HandlerKey::from(format!("{}/model:default", program.owner));
         let memory_key = HandlerKey::from(format!("{}/memory", program.owner));
+        // The world of a suspending layer, and what it signals.
+        let mut reached = None;
+        let world = program
+            .layers
+            .iter()
+            .find_map(|spec| match spec.layer {
+                LayerKind::Approval(answer) => Some(answer),
+                _ => None,
+            })
+            .map(|answer| {
+                let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+                reached = Some(std::sync::Arc::clone(&notify));
+                spawn_world(answer, notify)
+            });
         let model = EffectLogReplayer::for_key(&log, &model_key).expect("the model's records");
         driver
             .register_erased(
                 model_key.clone(),
-                rig_core::serve::ErasedHandler::new(model),
+                layered(
+                    rig_core::serve::ErasedHandler::new(model),
+                    program,
+                    LayerAt::Model,
+                    &world,
+                ),
             )
             .expect("a fresh key");
         let recorder = if keeps_events(&log) {
@@ -1740,7 +2253,6 @@ impl Replay {
         // is refused by name rather than skipped.
         // The host's nesting handlers are program: registered as the
         // producer registered them, never replayed (Matrix Q).
-        let mut reached = None;
         if program.nesting.is_some() {
             driver
                 .register_erased(
@@ -1759,10 +2271,14 @@ impl Replay {
                 .expect("a fresh key");
             reached = Some(notify);
         }
+        // The host's keys come from the handler table (the header's first
+        // source): a key the host served but a layer denied every dispatch
+        // to has no record and is not in the signature, yet must be served.
         let host_keys: Vec<HandlerKey> = log
             .header
-            .signature
-            .keys()
+            .handlers
+            .iter()
+            .map(|handler| &handler.key)
             .filter(|key| key.as_str().starts_with("host/"))
             .filter(|key| {
                 program.nesting.is_none()
@@ -1773,9 +2289,17 @@ impl Replay {
         for key in host_keys {
             let replayer =
                 EffectLogReplayer::for_key(&log, &key).expect("the host handler's records");
-            driver
-                .register_erased(key, rig_core::serve::ErasedHandler::new(replayer))
-                .expect("a fresh key");
+            let handler = if key.as_str() == NOTE_KEY {
+                layered(
+                    rig_core::serve::ErasedHandler::new(replayer),
+                    program,
+                    LayerAt::Note,
+                    &world,
+                )
+            } else {
+                rig_core::serve::ErasedHandler::new(replayer)
+            };
+            driver.register_erased(key, handler).expect("a fresh key");
         }
         // A route registered after build is served the way the producer
         // served it: on the bus, outside the builder and the row.
@@ -1798,6 +2322,7 @@ impl Replay {
             model_key,
             memory_key,
             reached,
+            world,
         }
     }
 
@@ -1846,6 +2371,17 @@ impl Replay {
                         model_key: self.model_key.clone(),
                     })
                     .expect("a tool-family handler")
+                }
+                _ if key.as_str().ends_with("/tool:add#0") && !program.layers.is_empty() => {
+                    let replayer = EffectLogReplayer::for_key(&self.log, &key)
+                        .expect("a required tool is described");
+                    let handler = layered(
+                        rig_core::serve::ErasedHandler::new(replayer),
+                        program,
+                        LayerAt::Tool,
+                        &self.world,
+                    );
+                    RegisteredTool::from_handler(handler).expect("a tool-family handler")
                 }
                 _ => {
                     let replayer = EffectLogReplayer::for_key(&self.log, &key)
@@ -1952,6 +2488,12 @@ pub fn build_agent_unchecked(
     if let Some(conversation) = program.conversation {
         let memory = EffectLogReplayer::for_key(source, &replay.memory_key)
             .expect("the conversation's records");
+        let memory = layered(
+            rig_core::serve::ErasedHandler::new(memory),
+            program,
+            LayerAt::Memory,
+            &replay.world,
+        );
         builder = builder.memory_handler(memory).conversation(conversation);
     }
     // A route is the agent's to register (`model_route_handler`), as the
@@ -2041,6 +2583,11 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     {
                         failed_as_expected = true;
                     }
+                    Err(StreamingError::Report(report))
+                        if program.ending == Ending::Failed(report.kind) =>
+                    {
+                        failed_as_expected = true;
+                    }
                     Err(StreamingError::Completion(_))
                         if program.ending == Ending::ProviderError =>
                     {
@@ -2079,7 +2626,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
             runner = runner
                 .max_invalid_tool_call_retries(program.invalid_retries)
                 .unhandled_invalid_tool_call(unhandled_policy(program));
-            if program.cancel_at_nested_child {
+            if program.cancel_when_reached {
                 // The run is dropped once the nested child is reached: the
                 // tool call and its chain are cancelled together.
                 let reached = replay.reached.clone().expect("a nesting program");
@@ -2102,6 +2649,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 (Err(PromptError::Report(report)), Ending::ProviderError)
                     if report.kind == rig_core::error::ErrorKind::ProviderResponse =>
                 {
+                    None
+                }
+                (Err(PromptError::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
                     None
                 }
                 (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected))
@@ -2188,9 +2738,38 @@ pub async fn call_tools(
         } else {
             call.tool_call.function.arguments.to_string()
         };
-        let answer = within(handle.call(name.clone(), args, ToolContext::new()))
-            .await
-            .expect("the replayer answered the recorded call");
+        // The bus's answer, mapped as the engine maps it: a layer's denial
+        // is the skipped result the model sees, a cancel stops the run, any
+        // other failure is a failed result the model sees.
+        let answer = match within(handle.call(name.clone(), args, ToolContext::new())).await {
+            Ok(answer) => answer,
+            Err(report) if report.kind == ErrorKind::Cancelled => {
+                return Err(CANCEL_ADD_DISPATCH);
+            }
+            Err(report) if report.kind == ErrorKind::Denied => {
+                return Ok(tool_result_output(
+                    call.tool_call.id.clone(),
+                    call.tool_call.provider.clone(),
+                    name,
+                    rig_core::tool::ToolResult::skipped(report.message)
+                        .output()
+                        .clone(),
+                ));
+            }
+            Err(report) => {
+                return Ok(tool_result_output(
+                    call.tool_call.id.clone(),
+                    call.tool_call.provider.clone(),
+                    name,
+                    rig_core::tool::ToolResult::failed(
+                        rig_core::tool::ToolExecutionError::other(report.message.clone())
+                            .with_model_feedback(report.message),
+                    )
+                    .output()
+                    .clone(),
+                ));
+            }
+        };
         // The outcome hook's dispatch, inside the tool's dispatch as the
         // engine fires it (Matrix I).
         if hooks.contains(&Hook::NoteAtOutcome) {
@@ -2279,6 +2858,8 @@ fn hook_name(hook: Hook) -> String {
         Hook::SelectLate => "SelectLate",
         Hook::StopAfterTurnN(n) => return format!("StopAfterTurn({n})"),
         Hook::RerankDocs => "RerankDocs",
+        Hook::NoteDeniedAtStart => "NoteDeniedAtStart",
+        Hook::HistoryIsReplaced => "HistoryIsReplaced",
     };
     name.to_owned()
 }
@@ -2308,6 +2889,7 @@ pub fn assert_header_names_the_program(replay: &Replay, program: &Program) {
         .map(|_| "DynamicContext".to_owned())
         .into_iter()
         .chain(program.hooks.iter().map(|hook| hook_name(*hook)))
+        .chain(layer_names(program, &replay.log_owner()))
         .collect();
     assert_eq!(
         header.hooks, hooks,
@@ -2536,7 +3118,12 @@ async fn hand_drive(program: &Program, resume: bool) {
             .registrar
             .register_erased(
                 replay.memory_key.clone(),
-                rig_core::serve::ErasedHandler::new(replayer),
+                layered(
+                    rig_core::serve::ErasedHandler::new(replayer),
+                    program,
+                    LayerAt::Memory,
+                    &replay.world,
+                ),
             )
             .expect("a fresh key");
         let handle: MemoryHandle = replay
@@ -2613,7 +3200,13 @@ async fn hand_drive(program: &Program, resume: bool) {
             (None, Some((handle, id))) => match within(handle.load(id.clone())).await {
                 Ok(history) => Some(history),
                 Err(report) if program.ending == Ending::MemoryError => {
-                    assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
+                    assert!(
+                        matches!(
+                            report.kind,
+                            rig_core::error::ErrorKind::MemoryBackend | ErrorKind::Denied
+                        ),
+                        "{report:?}"
+                    );
                     load_failed = true;
                     None
                 }
@@ -2651,6 +3244,19 @@ async fn hand_drive(program: &Program, resume: bool) {
         // The run-start hooks' dispatches, before the first completion.
         if program.hooks.contains(&Hook::NoteAtStart) {
             note("start").await;
+        }
+        if program.hooks.contains(&Hook::NoteDeniedAtStart) {
+            // The host's layer denies the note: the hook sees `Denied`.
+            let host = replay
+                .dispatcher
+                .bind(&note_key())
+                .expect("the host serves notes");
+            let report = within(host.dispatch(Note {
+                at: "start".to_owned(),
+            }))
+            .await
+            .expect_err("denied by the host's layer");
+            assert_eq!(report.kind, ErrorKind::Denied, "{report:?}");
         }
         if program.hooks.contains(&Hook::NoteTwice) {
             let host = notes.as_ref().expect("a note hook");
@@ -2836,6 +3442,10 @@ async fn hand_drive(program: &Program, resume: bool) {
                                     provider_failed = true;
                                     break;
                                 }
+                                Err(report) if program.ending == Ending::Failed(report.kind) => {
+                                    provider_failed = true;
+                                    break;
+                                }
                                 Err(report) => {
                                     panic!(
                                         "the replayer re-emitted the recorded stream: {report:?}"
@@ -3005,6 +3615,9 @@ async fn hand_drive(program: &Program, resume: bool) {
                             {
                                 break None;
                             }
+                            (Err(report), Ending::Failed(kind)) if report.kind == kind => {
+                                break None;
+                            }
                             (Err(report), _) => {
                                 panic!("the replayer recognised the request: {report:?}")
                             }
@@ -3093,7 +3706,7 @@ async fn hand_drive(program: &Program, resume: bool) {
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
-                    if program.cancel_at_nested_child {
+                    if program.cancel_when_reached {
                         // As the engine: the calls are dropped once the nested
                         // child is reached, and the chain is cancelled.
                         let reached = replay.reached.clone().expect("a nesting program");

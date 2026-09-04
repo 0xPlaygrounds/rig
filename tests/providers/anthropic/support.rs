@@ -396,6 +396,18 @@ pub(super) async fn with_anthropic_corpus_memory_cassette<F, Fut>(
     with_anthropic_cassette(spec, test_body).await;
 }
 
+/// The effect corpus's layers matrix (Matrix P):
+/// `tests/cassettes/anthropic/corpus_layers/`.
+pub(super) async fn with_anthropic_corpus_layers_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
 /// The effect corpus's causal-dispatch matrix (Matrix Q):
 /// `tests/cassettes/anthropic/corpus_causal/`.
 pub(super) async fn with_anthropic_corpus_causal_cassette<F, Fut>(
