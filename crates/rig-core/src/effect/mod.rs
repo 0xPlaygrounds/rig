@@ -3,7 +3,7 @@
 //! An *effect* is one request an agent (or any host) makes of the outside
 //! world — a completion, a tool call, an embedding, a conversation-memory
 //! operation, a retrieval — expressed as a value rather than as a call on a
-//! trait object. The bus (`rig_bus`) carries these values to the
+//! trait object. The bus (`rig_agent::bus`) carries these values to the
 //! handler registered for a [`HandlerKey`] and carries the [`Outcome`] back;
 //! an `EffectLog` (`rig_effect_log`) records every exchange so a run can be
 //! replayed.

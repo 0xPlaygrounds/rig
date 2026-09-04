@@ -5,7 +5,7 @@ edition = { workspace = true }
 license = "MIT"
 description = "rig inside a Bevy World: effects as entities, handlers as entities, the driver as a system."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Published once rig-bus is; rig-verify is the precedent.
+# Not published yet; rig-verify is the precedent.
 publish = false
 
 [package.metadata.docs.rs]
@@ -52,7 +52,7 @@ tracing = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
 
 # The module executed on `wasm32-unknown-unknown` (`tests/bus_wasm.rs`),
-# under `wasm-bindgen-test-runner`, as rig-bus's `tests/wasm.rs` is.
+# under `wasm-bindgen-test-runner`, as rig-agent's `tests/bus_wasm.rs` is.
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 

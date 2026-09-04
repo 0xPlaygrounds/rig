@@ -12,6 +12,5 @@ publish = false
 # its dependency graph; keep `rig`, tokio, reqwest and rmcp out of it.
 [dependencies]
 rig-agent = { path = "../../../crates/rig-agent", default-features = false }
-rig-bus = { path = "../../../crates/rig-bus" }
 rig-core = { path = "../../../crates/rig-core", default-features = false }
 serde_json = "1.0.150"

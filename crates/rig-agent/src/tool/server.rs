@@ -23,8 +23,8 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
+use crate::bus::Registrar;
 use indexmap::IndexMap;
-use rig_bus::Registrar;
 use rig_core::serve::adapters::RetrieveAdapter;
 use rig_core::{
     effect::Key,

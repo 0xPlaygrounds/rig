@@ -1,7 +1,7 @@
 //! The effect bus is rig-core's only erasure.
 //!
 //! After the bus, the only `dyn` over a behaviour trait stored anywhere in
-//! rig-core, rig-bus or rig-agent is the handler table inside rig-bus's driver. This guard
+//! rig-core or rig-agent is the handler table inside rig-agent's bus driver. This guard
 //! scans both crates' non-test sources for `Arc<dyn …>` / `Box<dyn …>` over
 //! the six impl-side traits — `CompletionModel`, `EmbeddingModel`, `Tool`,
 //! `ConversationMemory`, `VectorStoreIndex`, `RerankModel` — or over any
@@ -25,18 +25,12 @@ fn crate_src(name: &str) -> PathBuf {
 }
 
 /// The crates the guard scans: rig-core (the vocabulary, the handler seam
-/// and the one erasure), rig-bus (the runtime), rig-effect-log (record and
-/// replay), rig-agent (the engine over them) and rig-ecs (the second
+/// and the one erasure), rig-effect-log (record and replay), rig-agent (the
+/// bus runtime, `bus/`, and the engine over it) and rig-ecs (the second
 /// runtime: the bus in a `World`). A crate that is not listed is not
 /// scanned: a future runtime must be added here the commit it appears, or
 /// a `dyn` it stores escapes the guard silently.
-const SCANNED: [&str; 5] = [
-    "rig-core",
-    "rig-bus",
-    "rig-effect-log",
-    "rig-agent",
-    "rig-ecs",
-];
+const SCANNED: [&str; 4] = ["rig-core", "rig-effect-log", "rig-agent", "rig-ecs"];
 
 /// Every `.rs` file under `root`, skipping test modules (`tests.rs`,
 /// `*_tests.rs`, and `tests/` directories) — tests may build erased values
@@ -398,13 +392,13 @@ fn typed_views_implement_no_consumer_facing_trait() {
     // The scan sees impls at all: the handle file's own inherent impls.
     let handle = sources()
         .into_iter()
-        .find(|source| source.krate == "rig-bus" && source.relative == "handle.rs")
-        .expect("rig-bus's handle.rs exists");
+        .find(|source| source.krate == "rig-agent" && source.relative == "bus/handle.rs")
+        .expect("rig-agent's bus/handle.rs exists");
     assert!(
         impl_headers(&handle.text)
             .iter()
             .any(|(_, type_head)| TYPED_VIEWS.contains(&type_head.as_str())),
-        "the impl scan finds rig-bus's typed-view impls"
+        "the impl scan finds the bus's typed-view impls"
     );
 }
 
@@ -424,13 +418,14 @@ fn the_impl_scan_reads_qualified_and_wrapped_headers() {
 }
 
 /// The bus has no `unsafe`: the handler's thread affinity is carried by the
-/// type that carries the handler (`Registrar`), so nothing in rig-bus or in
-/// rig-core's handler seam needs to assert `Send` or `Sync` by hand.
+/// type that carries the handler (`Registrar`), so nothing in rig-agent's
+/// `bus/` or in rig-core's handler seam needs to assert `Send` or `Sync`
+/// by hand.
 #[test]
 fn bus_has_no_unsafe() {
     let mut offenders = Vec::new();
     for source in sources() {
-        let in_scope = source.krate == "rig-bus"
+        let in_scope = (source.krate == "rig-agent" && source.relative.starts_with("bus/"))
             || (source.krate == "rig-core" && source.relative.starts_with("serve/"));
         if !in_scope {
             continue;
@@ -469,7 +464,7 @@ fn bus_has_no_unsafe() {
 fn bus_reads_no_thread_identity() {
     let mut offenders = Vec::new();
     for source in sources() {
-        if source.krate != "rig-bus" {
+        if !(source.krate == "rig-agent" && source.relative.starts_with("bus/")) {
             continue;
         }
         for (line_number, line) in source.text.lines().enumerate() {

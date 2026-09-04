@@ -10388,7 +10388,6 @@ dependencies = [
  "reqwest-retry",
  "rig-agent",
  "rig-bedrock",
- "rig-bus",
  "rig-candle",
  "rig-core",
  "rig-derive",
@@ -10445,7 +10444,6 @@ dependencies = [
  "http 1.4.2",
  "indexmap 2.14.0",
  "loom",
- "rig-bus",
  "rig-core",
  "rig-derive",
  "rig-effect-log",
@@ -10459,6 +10457,8 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "tracing-subscriber",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -10484,21 +10484,6 @@ dependencies = [
  "tracing-futures",
  "tracing-subscriber",
  "uuid",
-]
-
-[[package]]
-name = "rig-bus"
-version = "0.42.0"
-dependencies = [
- "futures",
- "loom",
- "rig-core",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
 ]
 
 [[package]]
@@ -10577,7 +10562,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rig-agent",
- "rig-bus",
  "rig-core",
  "rig-reqwest",
  "schemars 1.2.1",
@@ -10613,7 +10597,6 @@ name = "rig-effect-log"
 version = "0.42.0"
 dependencies = [
  "futures",
- "rig-bus",
  "rig-core",
  "serde",
  "serde_json",
@@ -10944,7 +10927,6 @@ dependencies = [
  "futures",
  "proptest",
  "rig-agent",
- "rig-bus",
  "rig-core",
  "rig-ecs",
  "rig-effect-log",

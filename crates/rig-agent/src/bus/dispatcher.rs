@@ -10,7 +10,7 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use super::sync::{
+use crate::sync::{
     Mutex, RwLock,
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };

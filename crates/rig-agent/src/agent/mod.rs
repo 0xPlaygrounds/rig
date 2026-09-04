@@ -117,6 +117,7 @@ mod typed;
 /// configured name.
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
+pub use crate::bus::ModelHandle;
 pub use crate::run::response::{CompletionCall, PromptResponse};
 pub use crate::run::spec::RunSpec;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
@@ -130,7 +131,6 @@ pub use hook::{
     StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
-pub use rig_bus::ModelHandle;
 pub use rig_core::completion::ModelRef;
 /// The provider-neutral identity carrier, re-exported from rig-core so agent
 /// callers name one type across core responses, stream terminals, completion
