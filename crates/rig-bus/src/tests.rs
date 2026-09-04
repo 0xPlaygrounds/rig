@@ -946,7 +946,6 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
         EffectKind::ToolCall {
             name: "add".into(),
             args: r#"{"a": 2, "b": 3}"#.into(),
-            context: ToolContext::new(),
         },
     ))
     .await
@@ -961,7 +960,6 @@ async fn tool_memory_and_fn_adapters_serve_their_families() {
         EffectKind::ToolCall {
             name: "shout".into(),
             args: r#"{"text": "hi"}"#.into(),
-            context: ToolContext::new(),
         },
     ))
     .await
@@ -1594,6 +1592,8 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
             kind: custom(json!(1)),
             parent: None,
             scope: None,
+            context: None,
+            published: None,
             reply: super::dispatcher::Reply::Unary(reply),
             span: tracing::Span::none(),
             cancel,

@@ -154,6 +154,7 @@ fn dispatch_event(kind: &EffectKind) -> DispatchEvent<'_> {
         kind,
         turn: 1,
         block_id: Some(&BLOCK),
+        context: None,
     }
 }
 
@@ -168,6 +169,20 @@ fn outcome_event<'a>(
         outcome,
         turn: 1,
         block_id: Some(&BLOCK),
+        context: None,
+    }
+}
+
+/// [`outcome_event`] with the context the tool answered with, beside the
+/// outcome as the engine carries it (format 5).
+fn outcome_event_with<'a>(
+    kind: &'a EffectKind,
+    outcome: &'a Result<Outcome, ErrorReport>,
+    context: &'a ToolContext,
+) -> OutcomeEvent<'a> {
+    OutcomeEvent {
+        context: Some(context),
+        ..outcome_event(kind, outcome)
     }
 }
 
@@ -231,7 +246,6 @@ async fn tool_call_rewrites_chain_in_registration_order() {
     let kind = EffectKind::ToolCall {
         name: "tool".into(),
         args: r#"{"step":0}"#.into(),
-        context: ToolContext::new(),
     };
     let action = stack
         .on_dispatch(&HookContext::new(false, None, None), dispatch_event(&kind))
@@ -297,12 +311,11 @@ async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
     let kind = tool_call_kind();
     let outcome = Ok(Outcome::ToolResult {
         result: raw.clone(),
-        context: context.clone(),
     });
     let action = stack
         .on_outcome(
             &HookContext::new(false, None, None),
-            outcome_event(&kind, &outcome),
+            outcome_event_with(&kind, &outcome, &context),
         )
         .await;
 
@@ -379,7 +392,6 @@ async fn stop_outcome_threads_to_later_hooks_and_surfaces_as_cancelled() {
     let kind = tool_call_kind();
     let outcome = Ok(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text("ok")),
-        context: ToolContext::new(),
     });
     let action = stack
         .on_outcome(
@@ -733,7 +745,6 @@ fn tool_call_kind() -> EffectKind {
     EffectKind::ToolCall {
         name: "add".into(),
         args: "{}".into(),
-        context: ToolContext::new(),
     }
 }
 fn completion_call_event() -> CompletionCall<'static> {

@@ -6,13 +6,16 @@
 use rig_core::{
     completion::{
         CompletionRequest, Document, ToolDefinition,
-        message::{AssistantContent, Message, ToolChoice, UserContent},
+        message::{AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, UserContent},
     },
-    effect::HandlerDescriptor,
+    effect::{HandlerDescriptor, Outcome},
+    error::{ErrorKind, ErrorReport},
     json_utils::to_canonical_string,
+    tool::{ToolExecutionError, ToolResult},
+    transcript::{tool_result_message, tool_result_output},
 };
 
-use crate::agent::{MessageParts, OutputKind};
+use crate::agent::{Failure, MessageParts, OutputKind};
 
 /// The strings the goldens pin, written once. Each has a test in
 /// `policy::tests` that compares it to the golden that pins it, cited by
@@ -51,6 +54,11 @@ pub mod text {
 
     /// The separator between the preamble and an augmentation.
     pub const AUGMENTATION_SEPARATOR: &str = "\n\n";
+
+    /// The result every other call of a turn gets when one call was
+    /// retried or skipped: none of the turn's calls ran.
+    pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
+        "Tool not executed because another tool call in the same assistant turn was invalid.";
 }
 
 /// Whether the tool choice permits the output tool's call.
@@ -273,6 +281,180 @@ pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition>
         | rig_core::effect::FamilyDescriptor::Retrieve { .. }
         | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
     }
+}
+
+/// A tool call's result as the model sees it (CONTRACT §8.1): the
+/// outcome's model-visible output for a result, a skipped result for a
+/// denial, a failed result carrying the report's message for any other
+/// report — or the failure the run ends in (a cancel; a report the bus
+/// could not serve).
+pub fn tool_result_part(
+    id: ToolCallId,
+    provider: Option<ProviderCallId>,
+    name: String,
+    outcome: &Result<Outcome, ErrorReport>,
+) -> Result<UserContent, Failure> {
+    if let Some(failure) = tool_failure(outcome) {
+        return Err(failure);
+    }
+    let result = match outcome {
+        Ok(Outcome::ToolResult { result }) => result.clone(),
+        Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
+            "the tool handler answered with a {} outcome",
+            other.family()
+        ))),
+        Err(report) if report.kind == ErrorKind::Denied => {
+            ToolResult::skipped(report.message.clone())
+        }
+        Err(report) => ToolResult::failed(
+            ToolExecutionError::other(report.message.clone())
+                .with_model_feedback(report.message.clone()),
+        ),
+    };
+    Ok(tool_result_output(
+        id,
+        provider,
+        name,
+        result.output().clone(),
+    ))
+}
+
+/// The failure a tool call's outcome ends the run in, if any: a cancel,
+/// or a report the bus could not serve the call with (closed, no handler,
+/// a replay divergence). Every other outcome is a result the model sees.
+pub fn tool_failure(outcome: &Result<Outcome, ErrorReport>) -> Option<Failure> {
+    match outcome {
+        Ok(_) => None,
+        Err(report) if report.kind == ErrorKind::Cancelled => {
+            Some(Failure::Cancelled(report.clone()))
+        }
+        Err(report)
+            if matches!(
+                report.kind,
+                ErrorKind::BusClosed | ErrorKind::HandlerUnavailable | ErrorKind::Divergence
+            ) =>
+        {
+            Some(Failure::Tool(report.clone()))
+        }
+        Err(_) => None,
+    }
+}
+
+/// The user utterance a retried or skipped turn answers with (CONTRACT
+/// §8.2): `text` as the tool result of the call `id`, the invalid-peer
+/// notice for every other call of `content`, in call order.
+pub fn invalid_peer_results(content: &[AssistantContent], id: &str, text: &str) -> MessageParts {
+    let parts = content
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::ToolCall(call) => Some(tool_result_message(
+                call.id.clone(),
+                call.provider.clone(),
+                call.function.name.clone(),
+                if call.id.as_str() == id {
+                    text.to_owned()
+                } else {
+                    text::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned()
+                },
+            )),
+            AssistantContent::Text(_)
+            | AssistantContent::Reasoning(_)
+            | AssistantContent::Image(_) => None,
+        })
+        .collect();
+    MessageParts::User { content: parts }
+}
+
+/// The turn as it stood when an invalid call surfaced mid-stream (CONTRACT
+/// §8.2, the delta wire): a streamed turn whose invalid call is retried or
+/// skipped is abandoned at that call — history keeps the parts before it
+/// and the call as it stood: a call built from deltas has no provider id
+/// yet and its arguments only when they streamed before its name (`events`
+/// says which: the call's block's first delta); a call whose block was
+/// delivered whole, or a unary turn, is kept whole.
+pub fn partial_turn_at(
+    content: &[AssistantContent],
+    events: Option<&[rig_core::streaming::StreamEvent]>,
+    invalid_id: &str,
+) -> Vec<AssistantContent> {
+    use rig_core::streaming::{BlockKind, Delta, StreamEvent};
+    let Some(events) = events else {
+        return content.to_vec();
+    };
+    // The tool-call blocks in the order they started, each with whether its
+    // first delta was the name.
+    let mut blocks: Vec<(rig_core::streaming::BlockId, Option<bool>)> = Vec::new();
+    for event in events {
+        match event {
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::ToolCall,
+            } => blocks.push((id.clone(), None)),
+            StreamEvent::BlockDelta { id, delta } => {
+                if let Some((_, first)) = blocks.iter_mut().find(|(block, _)| block == id)
+                    && first.is_none()
+                {
+                    *first = Some(match delta {
+                        Delta::ToolName { .. } => true,
+                        Delta::ToolArguments { .. }
+                        | Delta::Text { .. }
+                        | Delta::TextMeta { .. }
+                        | Delta::Reasoning { .. } => false,
+                    });
+                }
+            }
+            StreamEvent::BlockStart { .. }
+            | StreamEvent::BlockEnd { .. }
+            | StreamEvent::Final(_)
+            | StreamEvent::Unknown(_) => {}
+        }
+    }
+    if blocks.is_empty() {
+        return content.to_vec();
+    }
+    let mut kept = Vec::new();
+    let mut call_index = 0;
+    for part in content {
+        match part {
+            AssistantContent::ToolCall(call) => {
+                let name_first = blocks.get(call_index).and_then(|(_, first)| *first);
+                call_index += 1;
+                if call.id.as_str() == invalid_id {
+                    // A call built from deltas surfaced before its block
+                    // ended: no provider id yet, and no arguments unless
+                    // they streamed before the name. A block delivered
+                    // whole is kept whole.
+                    let mut partial = call.clone();
+                    match name_first {
+                        Some(true) => {
+                            partial.provider = None;
+                            partial.function.arguments = serde_json::Value::Null;
+                        }
+                        Some(false) => partial.provider = None,
+                        None => {}
+                    }
+                    kept.push(AssistantContent::ToolCall(partial));
+                    return kept;
+                }
+                kept.push(part.clone());
+            }
+            AssistantContent::Text(_)
+            | AssistantContent::Reasoning(_)
+            | AssistantContent::Image(_) => kept.push(part.clone()),
+        }
+    }
+    kept
+}
+
+/// The query a retrieval asks with (CONTRACT §12): the last utterance with
+/// text, from the end — the prompt on the first turn, still the prompt
+/// after a tool turn whose last utterance is a result.
+pub fn retrieval_query(utterances: &[MessageParts]) -> String {
+    utterances
+        .iter()
+        .rev()
+        .find_map(|parts| parts.to_message().rag_text())
+        .unwrap_or_default()
 }
 
 /// The text of an assistant answer: its text parts concatenated.

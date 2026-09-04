@@ -170,14 +170,14 @@ pub struct ToolContext {
     inbound: BTreeMap<String, serde_json::Value>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     result: BTreeMap<String, serde_json::Value>,
-    /// The driver's scope for the call — not data: never on the wire, not
+    /// The driver's scopes for the call — not data: never on the wire, not
     /// part of equality, dropped by the adapter before the result is
-    /// resolved. The adapter copies it from the sink it serves
-    /// (`OutcomeSink::scope`) so a tool can reach its runtime by type —
+    /// resolved. The adapter copies them from the sink it serves
+    /// (`OutcomeSink::scopes`) so a tool can reach its runtime by type —
     /// rig-bus hands a `Dispatcher` whose every dispatch, and every agent
-    /// built over it, descends from this call. Absent for an inline call.
+    /// built over it, descends from this call. Empty for an inline call.
     #[serde(skip)]
-    scope: Option<std::sync::Arc<dyn Any + Send + Sync>>,
+    scopes: Vec<std::sync::Arc<dyn Any + Send + Sync>>,
 }
 
 impl PartialEq for ToolContext {
@@ -255,7 +255,7 @@ impl ToolContext {
         Self {
             inbound: BTreeMap::new(),
             result: BTreeMap::new(),
-            scope: None,
+            scopes: Vec::new(),
         }
     }
 
@@ -320,27 +320,33 @@ impl ToolContext {
         Self {
             inbound: self.inbound.clone(),
             result: BTreeMap::new(),
-            scope: self.scope.clone(),
+            scopes: self.scopes.clone(),
         }
     }
 
-    /// Attach the driver's scope for the call (see the field).
+    /// Attach one of the driver's scopes for the call (see the field).
     pub fn with_scope(mut self, scope: std::sync::Arc<dyn Any + Send + Sync>) -> Self {
-        self.scope = Some(scope);
+        self.scopes.push(scope);
         self
     }
 
-    /// The driver's scope for the call, as the type the driver attached;
-    /// `None` inline, or under another runtime.
-    pub fn scope<T: Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
-        self.scope
-            .clone()
-            .and_then(|scope| std::sync::Arc::downcast::<T>(scope).ok())
+    /// Attach the driver's scopes for the call, as the sink carries them.
+    pub fn with_scopes(mut self, scopes: Vec<std::sync::Arc<dyn Any + Send + Sync>>) -> Self {
+        self.scopes.extend(scopes);
+        self
     }
 
-    /// Drop the scope: the call is over and the context is data again.
+    /// The driver's scope of type `T` for the call, if the driver attached
+    /// one; `None` inline, or under another runtime.
+    pub fn scope<T: Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.scopes
+            .iter()
+            .find_map(|scope| std::sync::Arc::downcast::<T>(scope.clone()).ok())
+    }
+
+    /// Drop the scopes: the call is over and the context is data again.
     pub fn clear_scope(&mut self) {
-        self.scope = None;
+        self.scopes.clear();
     }
 
     /// Publish the result metadata a dispatch produced (see
@@ -361,6 +367,46 @@ impl std::fmt::Debug for ToolContext {
             .field("inbound_types", &self.inbound.keys().collect::<Vec<_>>())
             .field("result_types", &self.result.keys().collect::<Vec<_>>())
             .finish()
+    }
+}
+
+/// What a tool published into its dispatch context, handed back beside the
+/// sink rather than on the wire: the driver attaches an empty one to the
+/// sink's scope (`OutcomeSink::with_scope`), the adapter fills it once the
+/// tool ran, the driver reads it after the outcome. One per dispatch; a
+/// second publish replaces the first.
+#[derive(Debug, Default)]
+pub struct PublishedContext(std::sync::Mutex<Option<ToolContext>>);
+
+impl PublishedContext {
+    /// An empty one, shared between the driver and the sink.
+    pub fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self::default())
+    }
+
+    /// The adapter's write: the context after the tool ran, scopes cleared.
+    pub fn publish(&self, mut context: ToolContext) {
+        context.clear_scope();
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(context);
+    }
+
+    /// The driver's read: what was published, if anything, leaving nothing.
+    pub fn take(&self) -> Option<ToolContext> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+
+    /// Whether the tool published.
+    pub fn is_published(&self) -> bool {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_some()
     }
 }
 
@@ -399,6 +445,8 @@ impl From<ToolContextError> for ToolExecutionError {
 const _: fn() = || {
     fn assert_wire<T: Send + Sync + 'static + Serialize + DeserializeOwned>() {}
     assert_wire::<ToolContext>();
+    fn assert_shared<T: Send + Sync + 'static>() {}
+    assert_shared::<PublishedContext>();
 };
 
 #[cfg(test)]

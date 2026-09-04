@@ -182,7 +182,6 @@ fn every_kind_round_trips_and_names_itself() {
             EffectKind::ToolCall {
                 name: "add".into(),
                 args: r#"{"a":1}"#.into(),
-                context: ToolContext::new(),
             },
             "tool_call",
             EffectFamily::Tool,
@@ -299,28 +298,24 @@ fn every_outcome_round_trips() {
         (
             Outcome::ToolResult {
                 result: ToolResult::success(ToolOutput::json(json!({"sum": 3}))),
-                context: ToolContext::new(),
             },
             EffectFamily::Tool,
         ),
         (
             Outcome::ToolResult {
                 result: ToolResult::failed(tool_error),
-                context: ToolContext::new(),
             },
             EffectFamily::Tool,
         ),
         (
             Outcome::ToolResult {
                 result: ToolResult::failed(ToolExecutionError::refused("no")),
-                context: ToolContext::new(),
             },
             EffectFamily::Tool,
         ),
         (
             Outcome::ToolResult {
                 result: ToolResult::skipped("policy"),
-                context: ToolContext::new(),
             },
             EffectFamily::Tool,
         ),
@@ -426,16 +421,14 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     let tool = family::Tool::wrap(ToolCallRequest {
         name: "add".into(),
         args: "{}".into(),
-        context: ToolContext::new(),
     })
     .expect("a request has a wire form");
     assert_eq!(tool.family(), EffectFamily::Tool);
     let answer = family::Tool::unwrap(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text("3")),
-        context: ToolContext::new(),
     })
     .expect("own family");
-    assert_eq!(answer.result.output().as_text(), Some("3"));
+    assert_eq!(answer.output().as_text(), Some("3"));
 
     let memory = family::Memory::wrap(MemoryOp::Clear {
         conversation: crate::id::ConversationId::new("c"),

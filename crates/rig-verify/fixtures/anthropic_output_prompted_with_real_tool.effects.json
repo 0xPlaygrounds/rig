@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 4,
+    "format": 5,
     "run_spec": 3927627128604115063,
     "handlers": [
       {
@@ -191,8 +191,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "add",
-        "args": "{\"x\":17,\"y\":25}",
-        "context": {}
+        "args": "{\"x\":17,\"y\":25}"
       },
       "outcome": {
         "Ok": {
@@ -205,8 +204,7 @@
                 "value": 42
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     },

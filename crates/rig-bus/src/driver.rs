@@ -285,6 +285,8 @@ impl BusDriver {
             kind,
             parent,
             scope,
+            context,
+            published,
             reply,
             span,
             mut cancel,
@@ -315,11 +317,19 @@ impl BusDriver {
             id,
             scope.clone(),
         );
-        let sink = reply
+        let mut sink = reply
             .into_sink(id)
             .with_done(done)
             .with_cancel(flag.marker())
             .with_scope(Arc::new(scoped));
+        // A tool call's context, beside the effect: the inbound values the
+        // tool runs with, and where what it publishes comes back.
+        if let Some(context) = context {
+            sink = sink.with_scope(Arc::new(context));
+        }
+        if let Some(published) = published {
+            sink = sink.with_scope(published);
+        }
         let sink = match &self.recorder {
             Some(recorder) => {
                 (recorder.begin)(id, key.clone(), kind.clone(), Origin { parent, scope });

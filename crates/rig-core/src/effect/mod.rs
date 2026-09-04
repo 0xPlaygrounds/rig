@@ -48,7 +48,7 @@ use crate::{
     id::ConversationId,
     rerank::RerankResponse,
     streaming::StreamEvent,
-    tool::{ToolContext, ToolResult},
+    tool::ToolResult,
     vector_store::request::{Filter, VectorSearchRequest},
     wasm_compat::WasmCompatSend,
 };
@@ -374,29 +374,20 @@ impl<F: Family> Served for F {
     const SERVED: Option<EffectFamily> = Some(F::FAMILY);
 }
 
-/// A tool call as a typed request: the raw JSON arguments and the
-/// dispatch-scoped context.
+/// A tool call as a typed request: the name and the raw JSON arguments.
+/// The context the tool runs with is not part of the request: it travels
+/// beside the dispatch, attached by the driver to the handler's sink
+/// (`OutcomeSink::scope::<ToolContext>()`), and what the tool publishes
+/// comes back the same way ([`crate::tool::PublishedContext`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCallRequest {
     /// The tool's name (the name the model calls it by).
     pub name: String,
     /// The arguments as a JSON string.
     pub args: String,
-    /// The context the tool runs with.
-    pub context: ToolContext,
 }
 
-/// A tool call's typed answer: the result and the context the tool
-/// published.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolAnswer {
-    /// The result.
-    pub result: ToolResult,
-    /// The dispatch context after the tool ran.
-    pub context: ToolContext,
-}
-
-/// A host's own effect, typed the way a [`ToolContext`] value is: a
+/// A host's own effect, typed the way a [`ToolContext`](crate::tool::ToolContext) value is: a
 /// declared kind label and a declared answer type, both serde. The wire
 /// form is [`EffectKind::Custom`] / [`Outcome::Custom`]; the type never
 /// crosses it.
@@ -428,13 +419,14 @@ pub mod family {
 
     use super::{
         CustomEffect, EffectFamily, EffectKind, EmbedInputs, EmbedOutputs, Family, MemoryOp,
-        MemoryOutcome, Outcome, RerankRequest, RetrieveQuery, RetrievedDocuments, ToolAnswer,
-        ToolCallRequest, sealed::Sealed,
+        MemoryOutcome, Outcome, RerankRequest, RetrieveQuery, RetrievedDocuments, ToolCallRequest,
+        sealed::Sealed,
     };
     use crate::{
         completion::{CompletionRequest, CompletionResponse},
         error::{ErrorKind, ErrorReport},
         rerank::RerankResponse,
+        tool::ToolResult,
     };
 
     macro_rules! marker {
@@ -473,10 +465,10 @@ pub mod family {
                 other => Err(Completion::mismatch(&other)),
             };
         /// The tool family.
-        Tool => Tool, ToolCallRequest, ToolAnswer,
-            |request| EffectKind::ToolCall { name: request.name, args: request.args, context: request.context },
+        Tool => Tool, ToolCallRequest, ToolResult,
+            |request| EffectKind::ToolCall { name: request.name, args: request.args },
             |outcome| match outcome {
-                Outcome::ToolResult { result, context } => Ok(ToolAnswer { result, context }),
+                Outcome::ToolResult { result } => Ok(result),
                 other => Err(Tool::mismatch(&other)),
             };
         /// The embedding family.
@@ -724,14 +716,13 @@ pub enum EffectKind {
         /// Whether the response streams (`dispatch_stream`) or is unary.
         stream: bool,
     },
-    /// A tool call.
+    /// A tool call. The context the tool runs with is not on the wire:
+    /// see [`ToolCallRequest`].
     ToolCall {
         /// The tool's name.
         name: String,
         /// The raw JSON arguments as the model produced them.
         args: String,
-        /// The dispatch-scoped tool context.
-        context: ToolContext,
     },
     /// An embedding request.
     Embed {
@@ -880,12 +871,12 @@ pub enum RetrieveQuery {
 pub enum Outcome {
     /// A unary completion.
     Completion(CompletionResponse),
-    /// A tool call's result and the context it published.
+    /// A tool call's result. The values the tool published into its
+    /// context are not on the wire: they come back beside the sink
+    /// ([`crate::tool::PublishedContext`]).
     ToolResult {
         /// The result.
         result: ToolResult,
-        /// The dispatch context after the tool ran.
-        context: ToolContext,
     },
     /// Embeddings.
     Embeddings(EmbedOutputs),

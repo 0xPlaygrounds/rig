@@ -230,11 +230,10 @@ impl AgentHook for Boundary {
             .expect("lock")
             .push((event.id.as_u64(), event.kind.family()));
         match event.kind {
-            EffectKind::ToolCall { name, context, .. } if name == "slow" => {
+            EffectKind::ToolCall { name, .. } if name == "slow" => {
                 DispatchAction::patch(EffectKind::ToolCall {
                     name: name.clone(),
                     args: json!({"delay_ms": 0, "tag": "patched"}).to_string(),
-                    context: context.clone(),
                 })
             }
             _ => DispatchAction::proceed(),

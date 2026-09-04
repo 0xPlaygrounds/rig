@@ -65,6 +65,11 @@
 //! | `mock_delta_repair` | a name-delta call repaired by the head |
 //! | `gemini_retrieval_context_and_tools` | the head's retrievals; the tail retrieves again for its turn |
 //!
+//! Every row is also a world cell (`world_resumed`): the world interpreter
+//! saves the world as a `WorldScene` at the same cut and a fresh world
+//! over the log's tail loads it (`corpus::world_resume`). A resumed world
+//! keeps its state, so the append is the resumed run's — the same tail.
+//!
 //! # What the matrix found
 //!
 //! - A resumed run never appends to memory: `resume` skips the history
@@ -247,6 +252,22 @@ macro_rules! resumed {
                 #[tokio::test]
                 async fn $name() {
                     crate::corpus::resume_reproduces(&super::$program).await;
+                }
+            )*
+        }
+        /// The same rows through the world interpreter: the world saved
+        /// after the first tool turn's results as a scene, loaded in a
+        /// fresh world over the log's tail (`corpus::world_resume`).
+        mod world_resumed {
+            $(
+                #[test]
+                fn $name() {
+                    crate::corpus::world_resume::world_resume_reproduces(
+                        &super::$program,
+                        1,
+                        rig_effect_log::RequestCheck::Payload,
+                        crate::corpus::Against::Tail,
+                    );
                 }
             )*
         }

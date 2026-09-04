@@ -8,9 +8,10 @@ use rig_effect_log::{EffectLogRecorder, stable_hash};
 use crate::{
     agent::{
         AdditionalParams, Context, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Grant,
-        MaxTokens, Order, Output, OutputKind, Preamble, Temperature, ToolChoiceSpec, UsesModel,
+        MaxTokens, Order, Output, OutputKind, Preamble, Remembers, Retrieves, Route, RunOf,
+        Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::Bound,
+    bus::{Bound, Scope},
 };
 
 /// The JSON the header's `run_spec` hashes for `agent`: the shape
@@ -90,8 +91,9 @@ pub fn spec_hash(world: &mut World, agent: Entity) -> Option<u64> {
     stable_hash(&spec_json(world, agent)).ok()
 }
 
-/// The agent's required effect row: its model, and every tool it grants,
-/// by their bound keys.
+/// The agent's required effect row: its model, every route, every tool it
+/// grants (retrievable or not), every index it retrieves from, and its
+/// memory, by their bound keys.
 pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     let mut row = EffectRow::new();
     let model = world.get::<UsesModel>(agent).map(|uses| uses.0);
@@ -111,24 +113,134 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
         {
             row.insert(bound.key.clone(), bound.descriptor.family.family());
         }
+        let route = world.get::<Route>(link).map(|route| route.0);
+        if let Some(route) = route
+            && let Some(bound) = world.get::<Bound>(route)
+        {
+            row.insert(bound.key.clone(), EffectFamily::Completion);
+        }
+        let index = world.get::<Retrieves>(link).map(|retrieves| retrieves.0);
+        if let Some(index) = index
+            && let Some(bound) = world.get::<Bound>(index)
+        {
+            row.insert(bound.key.clone(), EffectFamily::Retrieve);
+        }
+    }
+    let memory = world.get::<Remembers>(agent).map(|remembers| remembers.0);
+    if let Some(memory) = memory
+        && let Some(bound) = world.get::<Bound>(memory)
+    {
+        row.insert(bound.key.clone(), EffectFamily::Memory);
     }
     row
 }
 
-/// Stamp `recorder`'s header with `agent`'s identity: the spec hash, an
-/// empty hook list (the world has no hooks), the required row, and the
-/// bus policy the world runs under.
+/// Stamp `recorder`'s header with `agent`'s identity: the spec hash, the
+/// program's hook list as it declares it (`hooks` — the world has no hook
+/// stack to name; a program with none passes an empty list), the required
+/// row, and the bus policy the world runs under.
 pub fn stamp_header(
     world: &mut World,
     agent: Entity,
     recorder: &EffectLogRecorder,
     bus: Option<rig_core::serve::ServingPolicy>,
+    hooks: Vec<String>,
 ) {
     if let Some(hash) = spec_hash(world, agent) {
         recorder.set_run_spec(hash);
     }
     let required = required_row(world, agent);
-    recorder.set_program(Vec::new(), required, bus);
+    recorder.set_program(hooks, required, bus);
+}
+
+/// Stamp `run`'s program identity under its scope
+/// ([`rig_effect_log::LogHeader::programs`]): the agent's required row and
+/// policy hash, keyed by the run's `Scope`. A world running several
+/// programs into one log names each this way.
+pub fn stamp_run(world: &mut World, run: Entity, recorder: &EffectLogRecorder) {
+    let Some(agent) = world.get::<RunOf>(run).map(|run_of| run_of.0) else {
+        return;
+    };
+    let Some(scope) = world.get::<Scope>(run).map(|scope| scope.0.clone()) else {
+        return;
+    };
+    let Some(policy) = spec_hash(world, agent) else {
+        return;
+    };
+    let required = required_row(world, agent);
+    recorder.set_program_identity(scope, rig_effect_log::ProgramIdentity { required, policy });
+}
+
+/// Whether `agent` is the program `log` was recorded by: refused by name
+/// when the log's identity (a `programs` entry with this agent's policy,
+/// else the header's `run_spec`) is not this agent's, when the required
+/// row differs (every difference named), or when the log's handlers do
+/// not serve the row.
+pub fn check_replayable(
+    world: &mut World,
+    agent: Entity,
+    log: &rig_effect_log::EffectLog,
+) -> Result<(), rig_core::error::ErrorReport> {
+    use rig_core::error::{ErrorKind, ErrorReport};
+    let policy = spec_hash(world, agent)
+        .ok_or_else(|| ErrorReport::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
+    let required = required_row(world, agent);
+    let (recorded_policy, recorded_row) = if log.header.programs.is_empty() {
+        (log.header.run_spec, log.header.required.clone())
+    } else {
+        match log
+            .header
+            .programs
+            .values()
+            .find(|identity| identity.policy == policy)
+        {
+            Some(identity) => (Some(identity.policy), identity.required.clone()),
+            None => {
+                return Err(ErrorReport::new(
+                    ErrorKind::Internal,
+                    format!(
+                        "replay refused: no program in the log has this agent's policy ({policy:#018x}); the log names {}",
+                        log.header
+                            .programs
+                            .keys()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+            }
+        }
+    };
+    if recorded_policy != Some(policy) {
+        return Err(ErrorReport::new(
+            ErrorKind::Internal,
+            format!(
+                "replay refused: the log was recorded under policy {:?}, this agent's is {policy:#018x}",
+                recorded_policy.map(|hash| format!("{hash:#018x}"))
+            ),
+        ));
+    }
+    let differences = required.diff(&recorded_row);
+    if !differences.is_empty() {
+        return Err(ErrorReport::new(
+            ErrorKind::Internal,
+            format!(
+                "replay refused: the required row differs from the log's: {}",
+                differences
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        ));
+    }
+    if let Err(gap) = required.is_subset_of(&log.header.handlers) {
+        return Err(ErrorReport::new(
+            ErrorKind::HandlerUnavailable,
+            format!("replay refused: the log's handlers do not serve the row: {gap}"),
+        ));
+    }
+    Ok(())
 }
 
 /// The key an agent mints for its model: `<owner>/model:<label>`.

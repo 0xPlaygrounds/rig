@@ -186,9 +186,25 @@ pub async fn serve_inline(
     handler: &ErasedHandler,
     kind: EffectKind,
 ) -> Result<Outcome, ErrorReport> {
+    serve_inline_with(handler, kind, Vec::new()).await
+}
+
+/// [`serve_inline`] with `scopes` attached to the sink: the way an inline
+/// tool call hands the tool its [`ToolContext`](crate::tool::ToolContext)
+/// and the [`PublishedContext`](crate::tool::PublishedContext) it
+/// publishes into, exactly as a driver would.
+pub async fn serve_inline_with(
+    handler: &ErasedHandler,
+    kind: EffectKind,
+    scopes: Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+) -> Result<Outcome, ErrorReport> {
     let id = EffectId::from_raw(0);
     let (reply, receiver) = oneshot::channel();
-    handler.handle(kind, OutcomeSink::unary(id, reply)).await;
+    let mut sink = OutcomeSink::unary(id, reply);
+    for scope in scopes {
+        sink = sink.with_scope(scope);
+    }
+    handler.handle(kind, sink).await;
     match receiver.await {
         Ok(outcome) => outcome,
         Err(oneshot::Canceled) => Err(ErrorReport::new(
@@ -229,15 +245,17 @@ pub struct OutcomeSink {
     /// sink's dispatch in flight — its serial slot, its `in_flight` count
     /// — after the handler future that detached it has returned.
     done: Option<oneshot::Sender<()>>,
-    /// The driver's scope for dispatches the handler makes while serving
-    /// this one: an opaque value the driver attaches ([`with_scope`]) and a
-    /// runtime crate reads back by type — rig-bus hands a `Dispatcher` whose
-    /// dispatches carry this dispatch's id as their parent. rig-core names
-    /// no runtime, so the slot is `Any`; a handler served inline or by a
-    /// driver that attached none has no scope.
+    /// The driver's scopes for this dispatch: opaque values the driver
+    /// attaches ([`with_scope`]) and a runtime crate or an adapter reads
+    /// back by type — rig-bus hands a `Dispatcher` whose dispatches carry
+    /// this dispatch's id as their parent; a tool call's driver hands the
+    /// `ToolContext` the tool runs with and the [`PublishedContext`] it
+    /// publishes into. rig-core names no runtime, so the slots are `Any`;
+    /// a handler served inline or by a driver that attached none has none.
     ///
     /// [`with_scope`]: OutcomeSink::with_scope
-    scope: Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+    /// [`PublishedContext`]: crate::tool::PublishedContext
+    scopes: Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
     /// Set by the driver when the dispatch is cancelled from above — its
     /// parent's consumer went away — so the sink is closed to the handler
     /// (`is_closed`) and a drop reports a cancellation, exactly as when the
@@ -282,9 +300,14 @@ impl std::fmt::Debug for DetachedSink {
 }
 
 impl DetachedSink {
-    /// The driver's scope for nested dispatches; see [`OutcomeSink::scope`].
+    /// The driver's scope of type `T`; see [`OutcomeSink::scope`].
     pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
         self.0.scope::<T>()
+    }
+
+    /// Every scope the driver attached; see [`OutcomeSink::scopes`].
+    pub fn scopes(&self) -> Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+        self.0.scopes()
     }
 
     /// The dispatch this sink answers.
@@ -470,7 +493,7 @@ impl OutcomeSink {
             },
             observer: None,
             done: None,
-            scope: None,
+            scopes: Vec::new(),
             cancelled: None,
         }
     }
@@ -484,7 +507,7 @@ impl OutcomeSink {
             },
             observer: None,
             done: None,
-            scope: None,
+            scopes: Vec::new(),
             cancelled: None,
         }
     }
@@ -505,25 +528,25 @@ impl OutcomeSink {
         self
     }
 
-    /// Attach the driver's scope for nested dispatches (see the field).
+    /// Attach one of the driver's scopes (see the field).
     pub fn with_scope(mut self, scope: std::sync::Arc<dyn std::any::Any + Send + Sync>) -> Self {
-        self.scope = Some(scope);
+        self.scopes.push(scope);
         self
     }
 
-    /// The driver's scope for nested dispatches, read back as the type the
-    /// driver attached; `None` when no driver attached one or it is another
+    /// The driver's scope of type `T`, read back as the type the driver
+    /// attached; `None` when no driver attached one or it is another
     /// runtime's.
     pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
-        self.scope
-            .clone()
-            .and_then(|scope| std::sync::Arc::downcast::<T>(scope).ok())
+        self.scopes
+            .iter()
+            .find_map(|scope| std::sync::Arc::downcast::<T>(scope.clone()).ok())
     }
 
-    /// The driver's scope untyped, for an adapter that passes it on (to a
-    /// tool's [`ToolContext`](crate::tool::ToolContext)).
-    pub fn scope_any(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-        self.scope.clone()
+    /// Every scope the driver attached, untyped, for an adapter that passes
+    /// them on (to a tool's [`ToolContext`](crate::tool::ToolContext)).
+    pub fn scopes(&self) -> Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+        self.scopes.clone()
     }
 
     /// Leave the handler: the dispatch stays in flight until the returned
@@ -567,7 +590,7 @@ impl OutcomeSink {
     /// marker, so a nested dispatch from the inner handler descends from the
     /// same dispatch and a cancel from above reaches it.
     pub(crate) fn inheriting(mut self, outer: &Self) -> Self {
-        self.scope = outer.scope.clone();
+        self.scopes = outer.scopes.clone();
         self.cancelled = outer.cancelled.clone();
         self
     }

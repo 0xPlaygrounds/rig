@@ -30,7 +30,7 @@ mod log;
 mod recorder;
 mod replay;
 
-pub use log::{Checkpoint, EFFECT_LOG_FORMAT, EffectLog, LogHeader, stable_hash};
+pub use log::{Checkpoint, EFFECT_LOG_FORMAT, EffectLog, LogHeader, ProgramIdentity, stable_hash};
 pub use recorder::EffectLogRecorder;
 pub use replay::{EffectLogReplayer, RequestCheck};
 

@@ -339,7 +339,7 @@ impl Serve for Echo {
     }
 
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        let EffectKind::ToolCall { args, context, .. } = kind else {
+        let EffectKind::ToolCall { args, .. } = kind else {
             sink.resolve(Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Request,
                 "not a tool call",
@@ -349,7 +349,6 @@ impl Serve for Echo {
         };
         sink.resolve(Ok(Outcome::ToolResult {
             result: rig_core::tool::ToolResult::success(args.into()),
-            context,
         }))
         .await;
     }
@@ -429,8 +428,11 @@ fn a_loaded_scene_never_collides_with_minted_ids() {
                     "saved answered",
                 ))),
                 parent: None,
+                parent_ref: None,
                 scope: None,
                 held: false,
+                tool_inputs: None,
+                tool_outputs: None,
             })
             .collect(),
     };

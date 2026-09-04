@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 4,
+    "format": 5,
     "run_spec": 9258363232016223254,
     "handlers": [
       {
@@ -347,8 +347,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "subtract",
-        "args": "{\"x\":2,\"y\":5}",
-        "context": {}
+        "args": "{\"x\":2,\"y\":5}"
       },
       "outcome": {
         "Ok": {
@@ -361,8 +360,7 @@
                 "value": -3
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     },

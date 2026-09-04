@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 4,
+    "format": 5,
     "run_spec": 8449702089946067695,
     "handlers": [
       {
@@ -189,8 +189,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "add",
-        "args": "{\"x\":17,\"y\":25}",
-        "context": {}
+        "args": "{\"x\":17,\"y\":25}"
       },
       "outcome": {
         "Ok": {
@@ -203,8 +202,7 @@
                 "value": 42
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     },
@@ -383,8 +381,7 @@
       "kind": {
         "effect": "tool_call",
         "name": "add",
-        "args": "{\"x\":17,\"y\":25}",
-        "context": {}
+        "args": "{\"x\":17,\"y\":25}"
       },
       "outcome": {
         "Ok": {
@@ -397,8 +394,7 @@
                 "value": 42
               }
             ]
-          },
-          "context": {}
+          }
         }
       }
     }

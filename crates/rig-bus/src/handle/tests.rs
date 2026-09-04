@@ -219,7 +219,7 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
         .handle(&HandlerKey::from("double"))
         .expect("tool");
     assert_eq!(tool.name(), "double");
-    let rig_core::effect::ToolAnswer { result, .. } =
+    let crate::ToolAnswer { result, .. } =
         within(tool.call("double", r#"{"x": 21}"#, ToolContext::new()))
             .await
             .expect("called");

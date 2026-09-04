@@ -12,8 +12,8 @@ The request the model sees is derived, never authored: a run entity, utterances 
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
 | Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
 | Run | `Run`, `RunOf` → agent, `RunSeq`, `Streamed`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
-| Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `systems::{Fresh, Folded, Materialised}` |
-| Effect | the bus module's, `ChildOf` the turn |
+| Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
+| Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
 | the scene | `agent::scene::RunScene` beside the bus's `Scene` |
 
@@ -25,54 +25,51 @@ The agent's sets, around the bus's:
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
 | `RigSet::Assemble` | a fresh turn's graph is complete | the fold spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
+| `RigSet::Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to the concurrency, in call order |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
 | `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
-| `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them |
-| `RigSet::Materialise` | a complete turn is unread | the assistant utterance, the answer, a reprompt, an invalid call, or a failure |
+| `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |
+| `RigSet::Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: one user utterance of the results in call order (CONTRACT §8), or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure |
 | `RigSet::Settle` | a run settled or failed | observers on `Settled` / `Failed` |
+
+`tests/tool_batch.rs` pins the batch: two calls are two children dispatched in call order and one utterance of results; `ToolPolicy` sets how many fly at once; a `Judge` system's replacement reaches history while the record keeps the answer; a `Gate` denial is a skipped result and no record; a despawned child fails the run `Cancelled`; a system's `Resolution::{Repair, Retry}` renames or retries an invalid call (`Skip` and `Ignore` likewise). The corpus's nesting cells (matrix Q) run through a key the world serves (`Handlers::register_open`), the `lookup` tool answered by a system that spawns its child `ChildOf` the call.
 
 The first steering slot is any system before `Assemble`: it edits the graph. `tests/run_graph.rs` pins the wins: an utterance despawned leaves the next request; one document entity feeds two runs; a grant link advertises a tool and its removal un-advertises it; a model swapped on the run changes the next key; a `Patch` system's rewrite reaches the handler and the record; a system before `Assemble` rewrites an utterance. `tests/run_scene.rs` pins that the graph is the state: a run saved mid-turn resumes in a fresh world to the same second request.
 
 ## Every rig-agent hook action, as a system
 
-| rig-agent | here |
-|---|---|
-| `on_run_start` | an observer `On<Add, Run>` |
-| `on_model_select` / routing | a system before `RigSet::Select` inserting `UsesModel` on the run |
-| `on_completion_call` — patch the request | a system in `RigSet::Patch` editing the `PendingEffect`; or, before `Assemble`, editing the graph (utterances, `Attachment`s, `Grant`s, settings) |
-| `on_completion_call` — stop | a system in `Patch` despawning the effect (the run fails `Cancelled`) |
-| `on_dispatch` deny / patch | the bus's `Gate`: `Held`, `EffectOutcome(Err(Denied))`, or a rewrite |
-| `on_outcome` replace | the bus's `Judge` (an `EffectOutcome`), or `RigSet::Judge` (the turn's `Outputs`) |
-| deltas | `Changed<Streamed>` on the effect, `Changed<Outputs>` on the turn |
-| `on_invalid_tool_call` | a system before `Materialise` writing `Resolution` on an `InvalidCall` entity |
-| `on_turn_finished` / `on_run_settled` | observers on `Materialised`, `Settled`, `Failed` |
+No hook trait: a user system writes a component at a set boundary, a library system reads it later (CONTRACT §9). One row per rig-agent hook method and action, each naming the corpus cell that pins it (`crates/rig-verify/tests/corpus/world_hooks.rs` writes every one of them for the corpus; `tests/steer_hooks.rs` pins the library's side).
 
-None of these exists yet as a shipped policy; stage 4 reproduces every hook-recorded golden as one of them.
+| rig-agent | here | pinned by |
+|---|---|---|
+| `on_run_start` — observe, dispatch | an observer `On<Add, Run>` (a dispatch: spawn a `PendingEffect` `ChildOf` the run — its `Seq` precedes the first completion's) | `anthropic_host_custom_at_start`, `anthropic_hooks_lookup_before_run`, `openai_host_embed_prompt`, `mock_oracle_rerank` |
+| `on_run_start` — `stop(reason)` | insert `Cancelled(reason)` on the run | `mock_endings_stop_at_start` |
+| `on_run_start` — `rewrite(prompt)` | rewrite the prompt `Utterance`'s `Parts` before `Assemble` | `run_graph::a_system_before_assemble_rewrites_an_utterance` |
+| `on_model_select` — `select(label)` | a system after `RigSet::Advance`, before `RigSet::Select`, inserting `UsesModel(route)` on the run (`Route` links on the agent put the route in the required row) | `anthropic_serving_model_route`, `anthropic_shaping_route_on_first_turn`, `anthropic_shaping_late_route` |
+| `on_model_select` — `stop` | `Cancelled` on the run, same moment | `mock_endings_stop_at_model_select` |
+| `on_completion_call` — `patch(RequestPatch)` | `RequestPatch` on the fresh turn (a system on `Added<Fresh>` before `Assemble`); several merge in schedule order | `anthropic_hooks_preamble_override`, `anthropic_shaping_*` (every field), `anthropic_shaping_merged_three` |
+| `on_completion_call` — dispatch | spawn the effect on `Added<Fresh>` before `Assemble`, so it precedes the completion | `anthropic_host_custom_at_completion_call` |
+| `on_completion_call` — `stop` | `Cancelled` on the run, before or in `Patch` (the folded effect is despawned unissued: no record) | `mock_endings_stop_at_completion_call` |
+| `on_dispatch` — `patch(kind)` on a tool | rewrite the tool child's `PendingEffect` in the bus's `Gate` | `anthropic_hooks_patch_tool_args{,_streamed}` |
+| `on_dispatch` — `deny(reason)` / `skip` | `EffectOutcome(Err(Denied))` on the tool child in `Gate`: the skipped result the model sees, no record | `anthropic_hooks_deny_tool{,_streamed}` |
+| `on_dispatch` — `stop` | `Cancelled` on the run from `Gate`: the child is despawned unissued | `anthropic_endings_tool_dispatch_cancelled{,_streamed}` |
+| `on_outcome` — `replace` a tool result | rewrite the tool child's `EffectOutcome` in the bus's `Judge`: history holds the replacement, the record the answer | `anthropic_hooks_replace_tool_result`, `anthropic_hooks_two_hooks` |
+| `on_outcome` — `replace` a completion | rewrite the turn's `Outputs.content` in `RigSet::Judge` | `anthropic_hooks_replace_answer` |
+| `on_outcome` — `stop` after a tool | `Cancelled` from `On<Add, EffectOutcome>` on the tool child (the record holds the real answer, nothing is committed) | `anthropic_endings_tool_outcome_cancelled{,_streamed}` |
+| `on_outcome` — `stop` on an answer | `Cancelled` in `RigSet::Judge` | `anthropic_endings_answer_outcome_cancelled` |
+| `on_outcome` — dispatch | spawn from `On<Add, EffectOutcome>` on the tool child | `anthropic_host_custom_at_outcome{,_streamed}`, `anthropic_oracle_concurrent_notes` |
+| `on_model_turn_finished` — `retry_with_feedback` / `repeat` | `Retry { feedback }` on the turn in `RigSet::Judge`; `materialise` makes the turn and the feedback history and asks again | `anthropic_hooks_demand_done` |
+| `on_model_turn_finished` — `stop` | `Cancelled` in `RigSet::Judge` (a stateful stop reads `Cursor.turn`) | `anthropic_endings_turn_finished_stop{,_streamed}`, `anthropic_endings_answer_turn_stop`, `anthropic_oracle_stop_after_turn_two` |
+| `on_invalid_tool_call` — `Retry { feedback }` / `Repair { tool_name }` / `Skip { reason }` / `Fail` / (unhandled: `Ignore`) | `Resolution::{Retry { feedback }, Repair { to }, Skip { reason }, Fail, Ignore}` on the `InvalidCall` entity, before `RigSet::Materialise` (CONTRACT §8.2) | `mock_invalid_*`, `mock_delta_{retry,repair,skip}`, `mock_hooks_retry_twice` |
+| `on_text_delta` / `on_tool_call_delta` / `on_reasoning_delta` — observe, `stop` | a system after `RigSet::Fold` on `Changed<Outputs>` (text) or the effect's `Changed<Streamed>` (tool-call, reasoning deltas); a stop inserts `Cancelled`, the stream is the handler's to end | `anthropic_endings_text_delta_stop`, `anthropic_endings_tool_call_delta_stop`, `mock_delta_stop_on_{name,arguments}` |
+| `on_run_settled` — observe, dispatch | an observer `On<Add, Settled>` / `On<Add, Failed>` | `anthropic_host_custom_at_settled`, `anthropic_host_custom_start_and_settled` |
+| `observes(kind)` | a query; nothing to declare | `anthropic_hooks_observe_everything` |
+| `tool_concurrency` | `ToolPolicy { concurrency }` on the run or the agent | `anthropic_serving_concurrent_concurrency_two` |
+| `HookContext::bind` refused (a key nothing serves) | the system finds no `Bound` for the key and dispatches nothing | `anthropic_host_custom_unserved` |
+| a hook's effect with no wire form | `PendingEffect::custom` refuses it; nothing is spawned | `mock_leftovers_unserializable_from_hook` |
+| the chaining rules (`HookStack`) | schedule order: two systems patching one turn run in order; the first `Cancelled` ends the run; a `Retry` short-circuits because `materialise` reads it before committing | `anthropic_shaping_merged_three` |
 
-
-The `bus` module is written as if it were already its own crate (every item `pub` or private to its file, no import from a sibling module, no agent-shaped identifier, its tests in `tests/bus_*.rs`, a root guard enforcing all four) and becomes `rig-bevy` by a `git mv` when a second consumer exists. The agent runtime the later modules add consumes it through its public items only.
-
-```rust,ignore
-App::new()
-    .add_plugins((ScheduleRunnerPlugin::default(), BusPlugin::default()))
-    .add_systems(Startup, (register_the_model, ask).chain())
-    .add_observer(print_the_answer)
-    .run();
-
-fn register_the_model(mut handlers: Handlers) {
-    handlers.register("model", CompletionAdapter::new("gpt", client)).ok();
-}
-
-fn ask(mut commands: Commands) {
-    commands.spawn(PendingEffect::new("model", EffectKind::Completion { request, stream: false }));
-}
-
-fn print_the_answer(answered: On<Add, EffectOutcome>, outcomes: Query<&EffectOutcome>) {
-    println!("{:?}", outcomes.get(answered.event().entity));
-}
-```
-
-`examples/hello_model.rs` is that program over a scripted mock.
+Every hook cell of the corpus is written against the public sets and components above with no library change beyond the sets — the claim of `how-the-ecs-dissolves-rig-agent.md` §12, tested; the one set stage 4 added is `RigSet::Release` (stage 3's, between `Patch` and the bus's `Gate`). Memory and retrieval are components on the agent, not hooks: `Remembers(memory)` + `Conversation(id)` make a run load before its first turn and append at its settle (a `ClearAtStart` hook is an observer on the load's outcome, a `ClearAtSettled` one a system after `RigSet::Settle` on the append); `Retrieves(index)` + `Retrieval { samples, what }` links make `Advance` mark the turn `Retrieving` and `Assemble`'s first pass spawn one `Retrieve` effect per link before every fold, and `attach_retrieved` turn the results into attachments and adverts (a `Retrievable` grant is advertised only when retrieved). CONTRACT §11–§12.
 
 ## Vocabulary
 
@@ -82,16 +79,17 @@ fn print_the_answer(answered: On<Add, EffectOutcome>, outcomes: Query<&EffectOut
 | dispatch order | `Seq`, stamped on add from `SeqCounter` (global, reserved) |
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a scene's or a log's id |
 | taken, in flight | `InFlight { key }` plus `Serving(Task)` (unary) or `Streaming { task, events, fold }` (stream) |
-| a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` |
+| a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by inserting `EffectOutcome` |
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, text, outcome }` |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
+| a tool call's context (format 5: beside the effect, never in it) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's sink by `Dispatch`; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
 | a handler | an entity with `Bound { key, descriptor }`; the erased handler in the `NonSend` `HandlerTable` |
-| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
+| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
 | interception | user systems in `BusSet::Gate` (patch, deny, hold) and `BusSet::Judge` (replace) |
-| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay` |
+| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for a handler whose descriptor names layers, `Dispatch` installs a sink observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
 | a scene | `Scene::{save, load, first_gap}` |
 | replay | `Replay::{register, load}`, by id |
 | the policy | `Policy(ServingPolicy)`: intake per tick, stream buffer, serial keys |
@@ -115,7 +113,7 @@ Under `ServingPolicy::serial_per_handler`, `Dispatch` takes a key only when noth
 
 ## Handlers that are systems
 
-`Handlers::register_world::<E>(key)` binds a `WorldEffect` (a `CustomEffect` whose payload and answer are `Send + Sync`). A dispatch to the key lands as `Asked<E>` on the effect entity; a user system with any `World` access inserts `Answer<E>`; the plugin turns it into the `EffectOutcome`. No sink, no mailbox, no task. Unary only: a system answers once. A handler that must reach the world is one of these; a handler served as a task cannot.
+`Handlers::register_world::<E>(key)` binds a `WorldEffect` (a `CustomEffect` whose payload and answer are `Send + Sync`). A dispatch to the key lands as `Asked<E>` on the effect entity; a user system with any `World` access inserts `Answer<E>`; the plugin turns it into the `EffectOutcome`. `Handlers::register_open(key, family)` binds a key of any family to the world itself: the dispatch is taken and left on its entity, `InFlight`, for a system to answer by inserting the `EffectOutcome` — a tool a system serves, nesting what it needs as effects `ChildOf` the call (`bus_world::a_system_serves_an_open_tool_key_and_nests_a_completion_under_it`). No sink, no mailbox, no task. Unary only: a system answers once. A handler that must reach the world is one of these; a handler served as a task cannot.
 
 ## The proofs
 
@@ -152,7 +150,19 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 
 ## What it deliberately does not have
 
-No hook trait, no history vector, no step enum, no run struct copied from anywhere: steering is a system between sets. Not yet: tool dispatch (stage 3), hooks as shipped systems (stage 4), memory, retrieval, routing and two runs on one agent (stage 5); a run that calls a granted tool fails `Unsupported`, named. The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). No `reflect` yet: `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save until the `reflect` PR extends it. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Memory is the graph and retrieval attaches (`tests/memory_graph.rs`); two runs on one agent are two `spawn_run`s; resume is a scene load (`agent::scene::{save_world, load_world}`, every resume and checkpoint row of the corpus as a world cell, CONTRACT §13). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+
+## The prelude and the features
+
+`rig_ecs::prelude` names what a user's systems need and nothing else: the sets (`RigSet`, `BusSet`), the components a user writes (`Cancelled`, `RequestPatch`, `Retry`, `Resolution`, `Held`, `UsesModel`, `Grant`, `Context`, `Remembers`, `Retrieves`) and the components a user reads (`Streamed`, `Outputs`, `EffectOutcome`, `RunResult`, `Settled`, `Failed`, `Usage`).
+
+`reflect` (off by default): every component of the bus and the graph derives `Reflect`, the rig-core values they hold reflect through opaque remote wrappers (`bus::reflect`, `agent::reflect` — serialized as their wire form, so an inspector shows an effect entity's payload as the log would), `reflect::ReflectPlugin` registers them all, and `reflect::ReflectedScene` is the world as reflected data beside the serde scene: canonical (entities ordered by content, an `Entity` in a component as its index in the scene, a relationship target's indexes sorted), so a world and the world its `WorldScene` loads into export the same JSON (`tests/reflect_scene.rs`); every component round-trips through `ReflectSerializer` / `ReflectDeserializer` / `FromReflect` by value (`tests/reflect_roundtrip.rs`). The runtime-only components (`Serving`, `Streaming`, `Publishing`, `Observed`, `Asked`, `Answer`, `Typed`, and the asset handles) reflect nothing. rig-core takes no Bevy dependency.
+
+`assets` (off by default, implies `reflect`): `assets::Prompt` (a `.md` / `.txt` file) and `assets::ToolDefinitions` (a `.json` array of `{ name, description, parameters }`) are `bevy_asset` assets with loaders; `PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and its `Grant`s — one per definition, in file order, to the bound handler whose descriptor is the tool of that name; a definition nothing serves is not granted — the tick the asset loads, once (`Applied<A>`). `assets::AssetsPlugin` after `bevy_asset::AssetPlugin`. `tests/assets_prompt.rs`, `examples/prompt_from_assets.rs` (an in-memory source; a directory with the default one).
+
+## The examples, side by side
+
+The same programs as rig's root examples, each a page of user code over a scripted mock (`examples/support`), so the translation is shown: `agent_with_tools` (`Grant` links and a run entity for `dynamic_tools` and `prompt`), `human_in_the_loop` (a system in `BusSet::Gate` reading stdin for `AgentHook::on_dispatch`: approve, deny with an `EffectOutcome`, abort with `Cancelled`), `best_of_n` (`agent::fork` n − 1 times, a judging system over the settled runs, for a parallel fan-out), `streaming_ui` (a streamed run and a system after `RigSet::Fold` on `Changed<Streamed>` for a polled stream), `prompt_from_assets` (the `assets` feature). `cargo run -p rig-ecs --example <name>` — none needs a key.
 
 ## On wasm
 

@@ -293,11 +293,10 @@ impl rig::agent::AgentHook for LookupBeforeRun {
             .dispatch(rig::effect::ToolCallRequest {
                 name: "add".to_owned(),
                 args: LOOKUP_ARGS.to_owned(),
-                context: rig::tool::ToolContext::new(),
             })
             .await
             .expect("add answers");
-        assert_eq!(answer.result.output().render(), "3");
+        assert_eq!(answer.output().render(), "3");
         rig::agent::RunStartAction::continue_run()
     }
 }
@@ -1532,10 +1531,9 @@ pub(crate) struct Lookup {
 }
 
 #[allow(dead_code)]
-fn tool_text(context: rig::tool::ToolContext, text: String) -> rig::effect::Outcome {
+fn tool_text(text: String) -> rig::effect::Outcome {
     rig::effect::Outcome::ToolResult {
         result: rig::core::tool::ToolResult::success(rig::core::tool::ToolOutput::text(text)),
-        context,
     }
 }
 
@@ -1650,7 +1648,7 @@ impl rig::serve::Serve for Lookup {
     }
 
     async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
-        let rig::effect::EffectKind::ToolCall { args, context, .. } = kind else {
+        let rig::effect::EffectKind::ToolCall { args, .. } = kind else {
             sink.resolve(Err(rig::error::ErrorReport::new(
                 rig::error::ErrorKind::Request,
                 "a tool call",
@@ -1660,8 +1658,7 @@ impl rig::serve::Serve for Lookup {
         };
         let args: LookupArgs = serde_json::from_str(&args).unwrap_or_default();
         if args.leaf {
-            sink.resolve(Ok(tool_text(context, "leaf".to_owned())))
-                .await;
+            sink.resolve(Ok(tool_text("leaf".to_owned()))).await;
             return;
         }
         if self.nesting.detached {
@@ -1677,14 +1674,14 @@ impl rig::serve::Serve for Lookup {
             };
             tokio::spawn(async move {
                 let text = lookup.nest(dispatcher, args).await;
-                sink.resolve(Ok(tool_text(context, text))).await;
+                sink.resolve(Ok(tool_text(text))).await;
             });
             return;
         }
         let dispatcher = rig::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
         assert_eq!(dispatcher.parent(), Some(sink.id()));
         let text = self.nest(dispatcher, args).await;
-        sink.resolve(Ok(tool_text(context, text))).await;
+        sink.resolve(Ok(tool_text(text))).await;
     }
 }
 
@@ -1811,11 +1808,10 @@ fn is_add(kind: &rig::effect::EffectKind) -> bool {
 #[allow(dead_code)]
 fn patch_add(kind: &rig::effect::EffectKind, args: &str) -> rig::serve::Decision {
     match kind {
-        rig::effect::EffectKind::ToolCall { name, context, .. } if name == "add" => {
+        rig::effect::EffectKind::ToolCall { name, .. } if name == "add" => {
             rig::serve::Decision::Patch(rig::effect::EffectKind::ToolCall {
                 name: name.clone(),
                 args: args.to_owned(),
-                context: context.clone(),
             })
         }
         _ => rig::serve::Decision::Proceed,
@@ -1921,12 +1917,11 @@ impl rig::serve::Intercept for ReplaceAddResultLayer {
         outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
     ) -> rig::serve::Verdict {
         match outcome {
-            Ok(rig::effect::Outcome::ToolResult { result, context }) if is_add(kind) => {
+            Ok(rig::effect::Outcome::ToolResult { result }) if is_add(kind) => {
                 rig::serve::Verdict::Replace(Ok(rig::effect::Outcome::ToolResult {
                     result: result
                         .clone()
                         .with_output(rig::tool::ToolOutput::text(REPLACED_RESULT)),
-                    context: context.clone(),
                 }))
             }
             _ => rig::serve::Verdict::Keep,

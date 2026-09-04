@@ -112,7 +112,9 @@ fn rig_effect_log_needs_rig_bus_only_for_replay() {
 /// and rig-effect-log (the `replay` feature), never rig-bus — its driver is
 /// a system, not a client of the bus's — never rig-agent (a rewrite, held
 /// to rig-agent's bytes by the corpus alone), never the `bevy` facade, no
-/// runtime, no transport, no MCP, no reflection yet.
+/// runtime, no transport, no MCP. Reflection and assets are features:
+/// `bevy_reflect` and `bevy_asset` are absent by default and present with
+/// every feature on (programme stage 6), and nothing else joins either way.
 #[test]
 fn rig_ecs_is_rig_core_and_bevy_only() {
     let forbidden = [
@@ -121,12 +123,11 @@ fn rig_ecs_is_rig_core_and_bevy_only() {
         "rig-rmcp",
         "rmcp",
         "bevy",
-        "bevy_reflect",
-        "bevy_asset",
         "tokio",
         "reqwest",
     ];
     assert_absent("rig-ecs", &[], &forbidden);
+    assert_absent("rig-ecs", &[], &["bevy_reflect", "bevy_asset"]);
     assert_absent("rig-ecs", &["--all-features"], &forbidden);
     assert_absent("rig-ecs", &["--no-default-features"], &["rig-effect-log"]);
     let names = normal_dependency_names("rig-ecs", &[]);
@@ -140,6 +141,13 @@ fn rig_ecs_is_rig_core_and_bevy_only() {
         assert!(
             names.iter().any(|name| name == required),
             "`rig-ecs` must depend on `{required}`"
+        );
+    }
+    let with_features = normal_dependency_names("rig-ecs", &["--all-features"]);
+    for feature_dependency in ["bevy_reflect", "bevy_asset"] {
+        assert!(
+            with_features.iter().any(|name| name == feature_dependency),
+            "`rig-ecs` (--all-features) must depend on `{feature_dependency}`"
         );
     }
 }

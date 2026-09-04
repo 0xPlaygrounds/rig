@@ -43,7 +43,7 @@ use rig_core::{
     effect::{
         CustomEffect, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, Family,
         FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, RerankRequest,
-        RetrieveQuery, RetrievedDocuments, ToolCallRequest, family,
+        RetrieveQuery, RetrievedDocuments, family,
     },
     embeddings::{Embedding, EmbeddingResponse, ImageEmbeddingResponse},
     error::{ErrorKind, ErrorReport},
@@ -242,8 +242,66 @@ impl<F: Family, T> Future for Typed<F, T> {
 
 /// A completion dispatch in flight.
 pub type Completion = Typed<family::Completion>;
-/// A tool call in flight: the result and the context the tool published.
-pub type ToolCall = Typed<family::Tool>;
+
+/// A tool call's answer: the result, and the context the tool published
+/// — handed back beside the sink, never on the wire.
+#[derive(Debug, Clone)]
+pub struct ToolAnswer {
+    /// The result.
+    pub result: rig_core::tool::ToolResult,
+    /// The dispatch context after the tool ran: the inbound values it ran
+    /// with and the result metadata it published.
+    pub context: ToolContext,
+}
+
+/// A tool call in flight ([`ToolHandle::call`]): the result and the
+/// context the tool published. `Unpin`, cancelled by drop.
+pub struct ToolCall {
+    pending: Pending,
+    published: Option<std::sync::Arc<rig_core::tool::PublishedContext>>,
+}
+
+impl ToolCall {
+    /// The dispatch this one was made from, if a handler made it.
+    pub const fn parent(&self) -> Option<EffectId> {
+        self.pending.parent()
+    }
+
+    /// The dispatch's id.
+    pub const fn id(&self) -> EffectId {
+        self.pending.id()
+    }
+}
+
+impl fmt::Debug for ToolCall {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ToolCall").field("id", &self.id()).finish()
+    }
+}
+
+impl Unpin for ToolCall {}
+
+impl Future for ToolCall {
+    type Output = Result<ToolAnswer, ErrorReport>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.pending).poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(report)) => Poll::Ready(Err(report)),
+            Poll::Ready(Ok(outcome)) => Poll::Ready(family::Tool::unwrap(outcome).map(|result| {
+                ToolAnswer {
+                    result,
+                    context: this
+                        .published
+                        .as_ref()
+                        .and_then(|published| published.take())
+                        .unwrap_or_default(),
+                }
+            })),
+        }
+    }
+}
 /// A retrieval in flight, deserialized on this side of the bus.
 pub type Retrieval<T> = Typed<family::Retrieve, Vec<(f64, String, T)>>;
 
@@ -329,18 +387,27 @@ impl ToolHandle {
         }
     }
 
-    /// Call the tool with raw JSON `args` and a dispatch-scoped context.
+    /// Call the tool with raw JSON `args` under `context`: the context
+    /// travels beside the effect to the tool (never on the wire), and the
+    /// answer carries what the tool published.
     pub fn call(
         &self,
         name: impl Into<String>,
         args: impl Into<String>,
         context: ToolContext,
     ) -> ToolCall {
-        self.dispatch(ToolCallRequest {
+        let kind = EffectKind::ToolCall {
             name: name.into(),
             args: args.into(),
+        };
+        let pending = self.dispatcher.dispatch_tool_with_id(
+            self.dispatcher.mint_id(),
+            &self.descriptor.key,
+            kind,
             context,
-        })
+        );
+        let published = pending.published_context();
+        ToolCall { pending, published }
     }
 }
 

@@ -158,10 +158,15 @@ futures = "0.3"
 # Runtime-agnostic executor used by the `agent_no_tokio` example, and the
 # pool rig-ecs runs handler futures on. Bevy 0.19.1: crates.io, never git;
 # `tests/core/bevy_pin.rs` guards the pin. Each Bevy crate with default
-# features off and only what rig-ecs's `bus` module needs.
+# features off and only what rig-ecs needs: the `bus` module's three, and
+# `bevy_reflect` / `bevy_asset` behind rig-ecs's `reflect` / `assets`
+# features (the inspector's view of the graph; prompts and tool
+# definitions as assets).
 bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
 bevy_ecs = { version = "0.19.1", default-features = false, features = ["std", "multi_threaded"] }
 bevy_app = { version = "0.19.1", default-features = false, features = ["std"] }
+bevy_reflect = { version = "0.19.1", default-features = false, features = ["std"] }
+bevy_asset = { version = "0.19.1", default-features = false }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"

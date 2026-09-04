@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::serve::{ErasedHandler, Serve, serve_inline};
+use rig_core::serve::{ErasedHandler, Serve};
 use rig_core::{
     completion::{Document, ToolDefinition},
     effect::{
@@ -202,21 +202,21 @@ impl RegisteredTool {
     /// into `context` — the inline path of a standalone tool set.
     pub async fn execute(&self, args: String, context: &mut ToolContext) -> ToolResult {
         let name = self.definition.name.clone();
-        let outcome = serve_inline(
+        // The context travels beside the call, never in it (format 5): the
+        // inline sink carries it and the slot the tool publishes into.
+        let published = rig_core::tool::PublishedContext::new();
+        let outcome = rig_core::serve::serve_inline_with(
             &self.handler,
-            EffectKind::ToolCall {
-                name,
-                args,
-                context: std::mem::take(context),
-            },
+            EffectKind::ToolCall { name, args },
+            vec![
+                std::sync::Arc::new(std::mem::take(context)),
+                published.clone() as std::sync::Arc<dyn std::any::Any + Send + Sync>,
+            ],
         )
         .await;
         match outcome {
-            Ok(Outcome::ToolResult {
-                result,
-                context: published,
-            }) => {
-                *context = published;
+            Ok(Outcome::ToolResult { result }) => {
+                *context = published.take().unwrap_or_default();
                 result
             }
             Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(

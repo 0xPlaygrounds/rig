@@ -2,19 +2,23 @@
 //! turn and invalid call as serde, relationships as indices into the scene
 //! (or, for a handler entity, its bound key), so a fresh world rebuilds the
 //! graph exactly and the driver re-issues what has no outcome. Saved
-//! beside the bus module's `Scene`, which carries the effects.
+//! beside the bus module's `Scene`, which carries the effects: the pair is
+//! [`WorldScene`], and an effect `ChildOf` a turn keeps that parent across
+//! the two by index ([`save_world`], [`load_world`]).
 
 use bevy_ecs::prelude::*;
 use rig_core::effect::HandlerKey;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Context, Cursor,
-    DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant, InvalidCall,
-    InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, Order, OrderCounter, Output, OutputRetries,
-    OutputToolName, Outputs, Owner, Parts, Preamble, Reprompt, Resolution, Role, Run, RunCounter,
-    RunOf, RunResult, RunSeq, Settled, Streamed, Temperature, ToolChoiceSpec, Turn, Usage,
-    UsesModel, Utterance,
+    AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
+    Conversation, Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant,
+    InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns, Order,
+    OrderCounter, Output, OutputRetries, OutputToolName, Outputs, Owner, Parts, Preamble,
+    Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools,
+    Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run, RunCounter, RunOf,
+    RunResult, RunSeq, Settled, Streamed, Temperature, ToolCallSlot, ToolChoiceSpec,
+    ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
 use crate::bus::{Bound, Scope};
 
@@ -65,8 +69,8 @@ pub struct SceneEntity {
     /// Its `ChildOf`, by index.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<usize>,
-    /// Its relationships: `uses_model`, `run_of`, `grant`, `context`,
-    /// `attachment`, `advert`.
+    /// Its relationships: `uses_model`, `run_of`, `grant`, `route`,
+    /// `context`, `attachment`, `advert`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relations: Vec<(String, Target)>,
 }
@@ -112,11 +116,110 @@ macro_rules! give {
     };
 }
 
+/// The whole state of the agent runtime in a world: the run graph and the
+/// bus module's effects, saved together so an effect `ChildOf` a turn is
+/// `ChildOf` it again after a load — which is what lets a run saved with
+/// its model call in flight resume: the effect is re-issued under its saved
+/// id, answered, and read by the turn it belongs to.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorldScene {
+    /// The graph.
+    pub graph: RunScene,
+    /// The effects, with [`crate::bus::SceneEffect::parent_ref`] indexing
+    /// `graph.entities`.
+    pub effects: crate::bus::Scene,
+    /// Which call each tool effect is ([`ToolCallSlot`]), by index into
+    /// `effects.effects`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<(usize, ToolCallSlot)>,
+    /// Which index each retrieval effect asks for ([`Retrieval`]), by
+    /// index into `effects.effects`: a run cut while retrieving resumes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retrievals: Vec<(usize, Retrieval)>,
+}
+
+/// What [`load_world`] spawned, by scene index.
+#[derive(Debug, Clone, Default)]
+pub struct Loaded {
+    /// The graph's entities, by [`RunScene::entities`] index.
+    pub graph: Vec<Entity>,
+    /// The effect entities, by [`crate::bus::Scene::effects`] index.
+    pub effects: Vec<Entity>,
+}
+
+/// Save the graph and the effects of `world` as one [`WorldScene`].
+pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::ErrorReport> {
+    let (graph, entities) = RunScene::take(world)?;
+    let effects = crate::bus::Scene::save_with(world, |parent| {
+        entities.iter().position(|entity| *entity == parent)
+    });
+    // The effects in the scene's order, to pair each tool effect's slot.
+    let mut rows: Vec<(Entity, crate::bus::Seq)> = world
+        .query::<(Entity, &crate::bus::Seq, &crate::bus::PendingEffect)>()
+        .iter(world)
+        .map(|(entity, seq, _)| (entity, *seq))
+        .collect();
+    rows.sort_by_key(|(_, seq)| *seq);
+    let slots = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (entity, _))| {
+            world
+                .get::<ToolCallSlot>(*entity)
+                .map(|slot| (index, slot.clone()))
+        })
+        .collect();
+    let retrievals = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (entity, _))| {
+            world
+                .get::<Retrieval>(*entity)
+                .map(|retrieval| (index, *retrieval))
+        })
+        .collect();
+    Ok(WorldScene {
+        graph,
+        effects,
+        slots,
+        retrievals,
+    })
+}
+
+/// Load `scene` into `world`: the graph first, then the effects, each
+/// effect `ChildOf` the graph entity its `parent_ref` names. Handlers are
+/// the host's to bind first, as for [`RunScene::load`].
+pub fn load_world(
+    scene: &WorldScene,
+    world: &mut World,
+) -> Result<Loaded, rig_core::error::ErrorReport> {
+    let graph = scene.graph.load(world)?;
+    let effects = scene
+        .effects
+        .load_with(world, |index| graph.get(index).copied());
+    for (index, slot) in &scene.slots {
+        if let Some(effect) = effects.get(*index).copied() {
+            world.entity_mut(effect).insert(slot.clone());
+        }
+    }
+    for (index, retrieval) in &scene.retrievals {
+        if let Some(effect) = effects.get(*index).copied() {
+            world.entity_mut(effect).insert(*retrieval);
+        }
+    }
+    Ok(Loaded { graph, effects })
+}
+
 impl RunScene {
     /// Take the graph of `world`: agents and documents first, then their
     /// links, then runs, then utterances, turns and invalid calls, each
     /// after its parent.
     pub fn save(world: &mut World) -> Result<Self, rig_core::error::ErrorReport> {
+        Self::take(world).map(|(scene, _)| scene)
+    }
+
+    /// [`RunScene::save`], with the entity each scene index was taken from.
+    pub fn take(world: &mut World) -> Result<(Self, Vec<Entity>), rig_core::error::ErrorReport> {
         let mut order: Vec<(u8, Entity)> = Vec::new();
         for (entity, _) in world.query::<(Entity, &Owner)>().iter(world) {
             order.push((0, entity));
@@ -125,7 +228,7 @@ impl RunScene {
             order.push((1, entity));
         }
         for entity in world
-            .query_filtered::<Entity, Or<(With<Grant>, With<Context>)>>()
+            .query_filtered::<Entity, Or<(With<Grant>, With<Context>, With<Route>, With<Retrieves>)>>()
             .iter(world)
         {
             order.push((2, entity));
@@ -189,6 +292,12 @@ impl RunScene {
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
+                ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
+                ResolvingTools => "resolving_tools", Batch => "batch",
+                Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
+                Conversation => "conversation", Remembered => "remembered",
+                Remembering => "remembering", LoadingMemory => "loading_memory",
+                Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
@@ -232,6 +341,21 @@ impl RunScene {
             {
                 relations.push(("grant".to_owned(), target));
             }
+            if let Some(Route(model)) = world.get::<Route>(entity)
+                && let Some(target) = target_of(world, *model)
+            {
+                relations.push(("route".to_owned(), target));
+            }
+            if let Some(Remembers(memory)) = world.get::<Remembers>(entity)
+                && let Some(target) = target_of(world, *memory)
+            {
+                relations.push(("remembers".to_owned(), target));
+            }
+            if let Some(Retrieves(index)) = world.get::<Retrieves>(entity)
+                && let Some(target) = target_of(world, *index)
+            {
+                relations.push(("retrieves".to_owned(), target));
+            }
             if let Some(Context(document)) = world.get::<Context>(entity)
                 && let Some(target) = target_of(world, *document)
             {
@@ -254,11 +378,14 @@ impl RunScene {
                 relations,
             });
         }
-        Ok(Self {
-            entities: saved,
-            next_order: world.get_resource::<OrderCounter>().map_or(0, |c| c.0),
-            next_run: world.get_resource::<RunCounter>().map_or(0, |c| c.0),
-        })
+        Ok((
+            Self {
+                entities: saved,
+                next_order: world.get_resource::<OrderCounter>().map_or(0, |c| c.0),
+                next_run: world.get_resource::<RunCounter>().map_or(0, |c| c.0),
+            },
+            entities,
+        ))
     }
 
     /// Spawn the graph into `world`. Handlers are the host's to bind first:
@@ -304,6 +431,12 @@ impl RunScene {
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
+                ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
+                ResolvingTools => "resolving_tools", Batch => "batch",
+                Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
+                Conversation => "conversation", Remembered => "remembered",
+                Remembering => "remembering", LoadingMemory => "loading_memory",
+                Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
             );
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
@@ -352,6 +485,15 @@ impl RunScene {
                     }
                     "grant" => {
                         entity.insert(Grant(to));
+                    }
+                    "route" => {
+                        entity.insert(Route(to));
+                    }
+                    "remembers" => {
+                        entity.insert(Remembers(to));
+                    }
+                    "retrieves" => {
+                        entity.insert(Retrieves(to));
                     }
                     "context" => {
                         entity.insert(Context(to));

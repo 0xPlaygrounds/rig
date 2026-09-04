@@ -9,25 +9,33 @@ use rig_core::{
 };
 
 use super::{
-    effect::{EffectOutcome, InFlight, Issued, Serving, Streamed, Streaming},
+    effect::{
+        EffectOutcome, InFlight, Issued, Publishing, Serving, Streamed, Streaming, ToolOutputs,
+    },
     plugin::Progress,
-    record::Recording,
+    record::{Observed, Recording},
 };
 
 /// A unary handler's task finished: its outcome lands as [`EffectOutcome`]
-/// and the task leaves the entity. A non-blocking check per in-flight task
+/// and the task leaves the entity; a tool call's published context lands
+/// beside it as [`ToolOutputs`]. A non-blocking check per in-flight task
 /// (`check_ready`), no waker kept, nothing awaited.
 pub fn collect_tasks(
     mut commands: Commands,
-    mut serving: Query<(Entity, &mut Serving), With<InFlight>>,
+    mut serving: Query<(Entity, &mut Serving, Option<&Publishing>), With<InFlight>>,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, mut serving) in &mut serving {
+    for (entity, mut serving, publishing) in &mut serving {
         if let Some(outcome) = check_ready(&mut serving.0) {
-            commands
-                .entity(entity)
+            let mut entity_commands = commands.entity(entity);
+            entity_commands
                 .remove::<Serving>()
                 .insert(EffectOutcome(outcome));
+            if let Some(Publishing(published)) = publishing {
+                entity_commands
+                    .remove::<Publishing>()
+                    .insert(ToolOutputs(published.take().unwrap_or_default()));
+            }
             progress.mark();
         }
     }
@@ -40,15 +48,17 @@ pub fn collect_tasks(
 /// report when no terminal came — lands as [`EffectOutcome`].
 pub fn collect_streams(
     mut commands: Commands,
-    mut streaming: Query<(Entity, &Issued, &mut Streaming, &mut Streamed), With<InFlight>>,
+    mut streaming: Query<StreamingView, With<InFlight>>,
     recording: Option<Res<Recording>>,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, Issued(id), mut streaming, mut streamed) in &mut streaming {
+    for (entity, Issued(id), mut streaming, mut streamed, observed) in &mut streaming {
         loop {
             match streaming.events.try_recv() {
                 Ok(item) => {
-                    if let (Some(recording), Ok(event)) = (&recording, &item)
+                    // A layered handler's events are the observer's to
+                    // record, from the innermost hop.
+                    if let (Some(recording), Ok(event), false) = (&recording, &item, observed)
                         && recording.keep_events()
                     {
                         recording.event(*id, event);
@@ -90,6 +100,16 @@ pub fn collect_streams(
     }
 }
 
+/// What `collect_streams` reads of a streaming effect: its id, the task
+/// and channel, the fold so far, and whether a layer's observer records.
+pub type StreamingView = (
+    Entity,
+    &'static Issued,
+    &'static mut Streaming,
+    &'static mut Streamed,
+    Has<Observed>,
+);
+
 /// An outcome that landed on an effect still in flight.
 pub type Landed = (Added<EffectOutcome>, With<InFlight>);
 
@@ -99,15 +119,22 @@ pub type Landed = (Added<EffectOutcome>, With<InFlight>);
 /// is not re-recorded: decisions are program, never record.
 pub fn settle(
     mut commands: Commands,
-    landed: Query<(Entity, &Issued, &EffectOutcome), Landed>,
+    landed: Query<(Entity, &Issued, &EffectOutcome, Option<&Observed>), Landed>,
     recording: Option<Res<Recording>>,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, Issued(id), outcome) in &landed {
-        if let Some(recording) = &recording {
-            recording.resolve(*id, outcome.0.clone());
+    for (entity, &Issued(id), outcome, observed) in &landed {
+        // A layered handler: the record holds what the innermost handler
+        // answered (the observer's), never a layer's verdict; a dispatch a
+        // layer discarded is no record.
+        let discarded = observed.is_some_and(|observed| observed.0.is_discarded());
+        let recorded = observed
+            .and_then(|observed| observed.0.take_outcome())
+            .unwrap_or_else(|| outcome.0.clone());
+        if let (Some(recording), false) = (&recording, discarded) {
+            recording.resolve(id, recorded);
         }
-        commands.entity(entity).remove::<InFlight>();
+        commands.entity(entity).remove::<(InFlight, Observed)>();
         progress.mark();
     }
 }

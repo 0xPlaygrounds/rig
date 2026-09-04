@@ -915,6 +915,9 @@ pub struct DispatchEvent<'a> {
     pub turn: usize,
     /// The block the effect answers, for a tool call the model emitted.
     pub block_id: Option<&'a BlockId>,
+    /// The context a tool call runs with: beside the effect, never in it
+    /// (effect-log format 5), so the event carries it.
+    pub context: Option<&'a ToolContext>,
 }
 
 /// What a hook decides at the dispatch boundary. Closed on purpose.
@@ -966,10 +969,9 @@ impl DispatchAction {
     /// `Proceed` when `kind` is not a tool call.
     pub fn rewrite_tool_args(kind: &EffectKind, args: impl Into<serde_json::Value>) -> Self {
         match kind {
-            EffectKind::ToolCall { name, context, .. } => Self::Patch(EffectKind::ToolCall {
+            EffectKind::ToolCall { name, .. } => Self::Patch(EffectKind::ToolCall {
                 name: name.clone(),
                 args: json_utils::serialize_json_value(&args.into()),
-                context: context.clone(),
             }),
             _ => Self::Proceed,
         }
@@ -1003,10 +1005,7 @@ impl<'a> DispatchEvent<'a> {
 
     /// The dispatch context, for a tool-call effect.
     pub fn tool_context(&self) -> Option<&'a ToolContext> {
-        match self.kind {
-            EffectKind::ToolCall { context, .. } => Some(context),
-            _ => None,
-        }
+        self.context
     }
 
     /// The request about to be sent, for a completion effect.
@@ -1031,6 +1030,9 @@ pub struct OutcomeEvent<'a> {
     pub turn: usize,
     /// The block the effect answered, for a tool call the model emitted.
     pub block_id: Option<&'a BlockId>,
+    /// The context the tool answered with — the values it published —
+    /// for a tool call: beside the outcome, never in it (format 5).
+    pub context: Option<&'a ToolContext>,
 }
 
 /// What a hook decides after an effect resolved. Closed on purpose.
@@ -1069,9 +1071,8 @@ impl OutcomeAction {
     /// did not resolve to a tool result.
     pub fn rewrite_tool_output(event: &OutcomeEvent<'_>, output: ToolOutput) -> Self {
         match event.outcome {
-            Ok(Outcome::ToolResult { result, context }) => Self::Replace(Ok(Outcome::ToolResult {
+            Ok(Outcome::ToolResult { result }) => Self::Replace(Ok(Outcome::ToolResult {
                 result: result.clone().with_output(output),
-                context: context.clone(),
             })),
             _ => Self::Proceed,
         }
@@ -1094,10 +1095,7 @@ impl<'a> OutcomeEvent<'a> {
 
     /// The dispatch context the tool answered with, for a tool-call effect.
     pub fn tool_context(&self) -> Option<&'a ToolContext> {
-        match self.outcome {
-            Ok(Outcome::ToolResult { context, .. }) => Some(context),
-            _ => None,
-        }
+        self.context
     }
 
     /// The completion this outcome carries, for a completion effect.

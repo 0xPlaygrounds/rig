@@ -130,19 +130,15 @@ fn model_for(case: &Case) -> MockCompletionModel {
 }
 
 /// What one interpreter did: every effect it performed — the request as
-/// data, with the tool context stripped (it is the one field the two
-/// interpreters legitimately fill differently) — and what it got back, in
-/// the order it performed them.
+/// data (the tool context is not on the wire since format 5) — and what it
+/// got back, in the order it performed them.
 type Trace = Vec<(serde_json::Value, serde_json::Value)>;
 
 fn trace_of<'a>(records: impl IntoIterator<Item = &'a EffectRecord>) -> Trace {
     records
         .into_iter()
         .map(|record| {
-            let mut kind = serde_json::to_value(&record.kind).expect("a kind serializes");
-            if let Some(object) = kind.as_object_mut() {
-                object.remove("context");
-            }
+            let kind = serde_json::to_value(&record.kind).expect("a kind serializes");
             let outcome = serde_json::to_value(&record.outcome).expect("an outcome serializes");
             (kind, outcome)
         })

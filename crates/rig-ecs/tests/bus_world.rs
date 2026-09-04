@@ -8,6 +8,8 @@
 //! | 11 a decision suspended, then made from a system next tick; a denial is no record | `a_held_effect_is_denied_or_approved_from_a_system_next_tick` |
 //! | 12 nested dispatch: `ChildOf`, `parent` in the record, same-key nesting refused, despawn ⇒ `Cancelled` | `a_child_effect_records_its_parent_and_a_reentrant_one_is_refused`, `despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queued` |
 //! | — patch in `Gate`; replace in `Judge`; the record keeps the handler's answer | `gate_patches_and_judge_replaces_but_the_record_keeps_the_answer` |
+//! | — an open key of the tool family, answered by a system that nests a completion under it | `a_system_serves_an_open_tool_key_and_nests_a_completion_under_it` |
+//! | — a layered handler: a layer's denial is no record, its patch is the record's request, its replacement never reaches the record | `a_layers_decisions_reach_the_record_through_the_sinks_observer` |
 
 #![allow(
     clippy::expect_used,
@@ -25,9 +27,10 @@ use bevy_ecs::prelude::*;
 use bus_support::*;
 use rig_core::{
     completion::Message,
-    effect::{CustomEffect, EffectId, EffectKind, HandlerKey, Outcome},
+    effect::{CustomEffect, EffectId, EffectKind, FamilyDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     serve::Decision,
+    tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::bus::{
     Answer, Asked, BusSet, EffectLogResource, EffectOutcome, Handlers, Held, InFlight, Issued,
@@ -513,4 +516,217 @@ fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queue
     );
     assert_eq!(log.records.len(), 2, "the queued child has no record");
     let _ = Outcome::Custom(serde_json::Value::Null);
+}
+
+/// A tool key the world serves: the system spawns a completion `ChildOf`
+/// the tool effect and answers the tool with the completion's text.
+fn serve_lookup(
+    asked: Query<
+        (Entity, &PendingEffect),
+        (With<InFlight>, Without<EffectOutcome>, Without<ChildEffect>),
+    >,
+    mut commands: Commands,
+) {
+    for (entity, effect) in &asked {
+        if effect.key != HandlerKey::from("tool:lookup") {
+            continue;
+        }
+        let child = commands
+            .spawn((PendingEffect::new("model", completion()), ChildOf(entity)))
+            .id();
+        commands.entity(entity).insert(ChildEffect(child));
+    }
+}
+
+fn finish_lookup(
+    asked: Query<(Entity, &ChildEffect), (With<InFlight>, Without<EffectOutcome>)>,
+    answered: Query<&EffectOutcome>,
+    mut commands: Commands,
+) {
+    for (entity, ChildEffect(child)) in &asked {
+        if let Ok(outcome) = answered.get(*child) {
+            commands
+                .entity(entity)
+                .insert(EffectOutcome(Ok(Outcome::ToolResult {
+                    result: ToolResult::success(ToolOutput::text(format!(
+                        "looked up: {}",
+                        text_of(&outcome.0)
+                    ))),
+                })));
+        }
+    }
+}
+
+#[test]
+fn a_system_serves_an_open_tool_key_and_nests_a_completion_under_it() {
+    let counters = Arc::new(Counters::default());
+    let mut app = serial_app();
+    EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
+    register(&mut app, "model", MockModel::new(&counters));
+    let bound = Handlers::with(app.world_mut(), |handlers| {
+        handlers
+            .register_open(
+                "tool:lookup",
+                FamilyDescriptor::Tool {
+                    name: "lookup".to_owned(),
+                    description: "looks a question up".to_owned(),
+                    parameters: serde_json::json!({"type": "object"}),
+                    embedding: None,
+                },
+            )
+            .expect("a fresh key")
+    })
+    .expect("a bus");
+    add_after_judge(&mut app, (serve_lookup, finish_lookup).chain());
+    let descriptor = Handlers::with(app.world_mut(), |handlers| {
+        handlers.descriptor(&HandlerKey::from("tool:lookup"))
+    })
+    .expect("a bus")
+    .expect("bound");
+    assert!(
+        matches!(descriptor.family, FamilyDescriptor::Tool { ref name, .. } if name == "lookup"),
+        "advertised as the tool it is"
+    );
+    let call = app
+        .world_mut()
+        .spawn(PendingEffect::new(
+            "tool:lookup",
+            EffectKind::ToolCall {
+                name: "lookup".to_owned(),
+                args: "{}".to_owned(),
+            },
+        ))
+        .id();
+    tick_until(&mut app, "the tool answered", |world| {
+        world.get::<EffectOutcome>(call).is_some()
+    });
+    let world = app.world();
+    let Some(EffectOutcome(Ok(Outcome::ToolResult { result, .. }))) =
+        world.get::<EffectOutcome>(call)
+    else {
+        panic!("a tool result");
+    };
+    assert_eq!(result.output().render(), "looked up: hello from the world");
+    assert!(
+        world.get::<InFlight>(call).is_none(),
+        "the outcome closed the flight"
+    );
+    let log = world.resource::<EffectLogResource>().log();
+    assert_eq!(log.records.len(), 2, "{:?}", log.records);
+    assert_eq!(log.records[0].key, HandlerKey::from("tool:lookup"));
+    assert_eq!(log.records[1].key, HandlerKey::from("model"));
+    assert_eq!(
+        log.records[1].parent,
+        Some(log.records[0].id),
+        "the completion names the tool call as its parent"
+    );
+    assert!(world.get::<rig_ecs::bus::Bound>(bound).is_some());
+}
+
+/// A layer that denies the first dispatch, patches the second's request,
+/// and replaces the third's answer.
+struct Deciding;
+
+impl rig_core::serve::Intercept for Deciding {
+    fn name(&self) -> String {
+        "Deciding".to_owned()
+    }
+    async fn before(&self, id: EffectId, kind: &EffectKind) -> Decision {
+        match id.as_u64() {
+            0 => Decision::deny("not this one"),
+            1 => {
+                let EffectKind::Completion {
+                    mut request,
+                    stream,
+                } = kind.clone()
+                else {
+                    return Decision::Proceed;
+                };
+                request
+                    .chat_history
+                    .push(Message::user("patched by the layer"));
+                Decision::Patch(EffectKind::Completion { request, stream })
+            }
+            _ => Decision::Proceed,
+        }
+    }
+    async fn after(
+        &self,
+        id: EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Outcome, ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        if id.as_u64() == 2 {
+            rig_core::serve::Verdict::Replace(Err(ErrorReport::new(
+                ErrorKind::Timeout,
+                "replaced by the layer",
+            )))
+        } else {
+            rig_core::serve::Verdict::Keep
+        }
+    }
+}
+
+#[test]
+fn a_layers_decisions_reach_the_record_through_the_sinks_observer() {
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers
+            .register_erased(
+                "model",
+                rig_core::serve::ErasedHandler::new(MockModel::new(&counters)).layered(Deciding),
+            )
+            .expect("a fresh key")
+    })
+    .expect("a bus");
+    let effects: Vec<Entity> = (0..3)
+        .map(|_| {
+            app.world_mut()
+                .spawn(PendingEffect::new("model", completion()))
+                .id()
+        })
+        .collect();
+    tick_until(&mut app, "all answered", |world| {
+        effects
+            .iter()
+            .all(|effect| world.get::<EffectOutcome>(*effect).is_some())
+    });
+    let world = app.world();
+    // The denied one: the world sees `Denied`, the record has nothing.
+    let denied = world.get::<EffectOutcome>(effects[0]).expect("answered");
+    assert_eq!(
+        denied.0.as_ref().expect_err("denied").kind,
+        ErrorKind::Denied
+    );
+    // The replaced one: the world sees the verdict.
+    let replaced = world.get::<EffectOutcome>(effects[2]).expect("answered");
+    assert_eq!(
+        replaced.0.as_ref().expect_err("replaced").kind,
+        ErrorKind::Timeout
+    );
+    let log = world.resource::<EffectLogResource>().log();
+    assert_eq!(
+        log.records.len(),
+        2,
+        "the denial is no record: {:?}",
+        log.records
+    );
+    let EffectKind::Completion { request, .. } = &log.records[0].kind else {
+        panic!("a completion");
+    };
+    assert_eq!(
+        request.chat_history.len(),
+        2,
+        "the record's request is what the innermost handler served: the patched one"
+    );
+    assert!(
+        log.records[1].outcome.is_ok(),
+        "the record keeps the handler's answer, not the layer's verdict"
+    );
+    assert!(
+        world.get::<rig_ecs::bus::Observed>(effects[2]).is_none(),
+        "the observer leaves the entity with the flight"
+    );
 }

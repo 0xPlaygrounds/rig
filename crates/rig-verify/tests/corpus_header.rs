@@ -290,7 +290,7 @@ async fn a_log_of_another_format_is_refused_by_number() {
         .to_string();
     assert_eq!(
         by_the_replayer,
-        "replay refused: the log is format 3, this rig reads format 4"
+        "replay refused: the log is format 3, this rig reads format 5"
     );
     // The agent's check reads the header first, before its own fields.
     let by_the_agent = refusal(&TOOLS, |log| log.header.format = 3).await;

@@ -123,6 +123,26 @@ where
     }
 }
 
+/// The context a tool call runs with: the driver's inbound values from
+/// the sink's scope (`ToolContext`, as `for_dispatch`), else empty, with
+/// every scope of the sink attached so the tool reaches its runtime by
+/// type for the length of the call.
+fn dispatch_context(sink: &OutcomeSink) -> crate::tool::ToolContext {
+    sink.scope::<crate::tool::ToolContext>()
+        .map(|inbound| inbound.for_dispatch())
+        .unwrap_or_default()
+        .with_scopes(sink.scopes())
+}
+
+/// Hand what the tool published back beside the sink, when the driver
+/// asked for it ([`PublishedContext`](crate::tool::PublishedContext) in
+/// the sink's scope); the result carries data only.
+fn publish(sink: &OutcomeSink, context: crate::tool::ToolContext) {
+    if let Some(published) = sink.scope::<crate::tool::PublishedContext>() {
+        published.publish(context);
+    }
+}
+
 /// A [`Tool`] as a handler, keyed by its name.
 pub struct ToolAdapter<T> {
     tool: T,
@@ -181,17 +201,11 @@ where
 
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         match kind {
-            EffectKind::ToolCall { args, context, .. } => {
-                // The tool reaches its runtime through the context's scope
-                // for the length of the call; the result carries data only.
-                let mut context = match sink.scope_any() {
-                    Some(scope) => context.with_scope(scope),
-                    None => context,
-                };
+            EffectKind::ToolCall { args, .. } => {
+                let mut context = dispatch_context(&sink);
                 let result = ErasedTool::execute(&self.tool, args, &mut context).await;
-                context.clear_scope();
-                sink.resolve(Ok(Outcome::ToolResult { result, context }))
-                    .await;
+                publish(&sink, context);
+                sink.resolve(Ok(Outcome::ToolResult { result })).await;
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
@@ -285,17 +299,13 @@ where
 
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         match kind {
-            EffectKind::ToolCall { args, context, .. } => {
-                let mut context = match sink.scope_any() {
-                    Some(scope) => context.with_scope(scope),
-                    None => context,
-                };
+            EffectKind::ToolCall { args, .. } => {
+                let mut context = dispatch_context(&sink);
                 let result =
                     crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
                         .await;
-                context.clear_scope();
-                sink.resolve(Ok(Outcome::ToolResult { result, context }))
-                    .await;
+                publish(&sink, context);
+                sink.resolve(Ok(Outcome::ToolResult { result })).await;
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
