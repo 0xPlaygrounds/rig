@@ -192,6 +192,13 @@ pub enum Hook {
     /// `on_run_start` observes the history the run starts with and asserts
     /// it is the replacement a memory layer made (Matrix P).
     HistoryIsReplaced,
+    /// `on_run_start` dispatches a custom effect that does not serialize:
+    /// the hook sees `Request` with the serde message, nothing reaches the
+    /// bus, the run goes on (Matrix T, L3).
+    NoteUnserializableAtStart,
+    /// `on_run_start` → `n` host notes, one after another, named by `n`
+    /// (Matrix T, L2: two hundred records beside the streamed one).
+    NotesAtStart(usize),
 }
 
 pub const SKIP_REASON: &str = "no such tool; skipped";
@@ -1009,6 +1016,79 @@ impl AgentHook for NoteDeniedAtStart {
             .expect_err("the host's layer denies the note");
         assert_eq!(report.kind, ErrorKind::Denied, "{report:?}");
         assert_eq!(report.message, HOST_DENY_REASON);
+        RunStartAction::continue_run()
+    }
+}
+
+/// A host effect whose `Serialize` fails: it never has a wire form, so it
+/// never reaches the bus (L3).
+#[derive(Debug)]
+pub struct Unserializable;
+
+impl serde::Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom(
+            "this effect refuses to serialize",
+        ))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Unserializable {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <()>::deserialize(deserializer).map(|()| Self)
+    }
+}
+
+impl rig_core::effect::CustomEffect for Unserializable {
+    const KIND: &'static str = "corpus:unserializable";
+    type Answer = NoteAck;
+}
+
+pub const UNSERIALIZABLE_KEY: &str = "host/unserializable";
+
+pub fn unserializable_key()
+-> rig_core::effect::Key<rig_core::effect::family::Custom<Unserializable>> {
+    rig_core::effect::Key::new_unchecked(HandlerKey::from(UNSERIALIZABLE_KEY))
+}
+
+/// What the hook sees when its effect has no wire form.
+pub fn assert_unserializable(report: &rig_core::error::ErrorReport) {
+    assert_eq!(report.kind, ErrorKind::Request, "{report:?}");
+    assert!(
+        report.message.contains("did not serialize")
+            && report.message.contains("refuses to serialize"),
+        "{}",
+        report.message
+    );
+}
+
+struct NoteUnserializableAtStart;
+
+impl AgentHook for NoteUnserializableAtStart {
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        let host = ctx
+            .bind(&unserializable_key())
+            .expect("the host serves the kind");
+        let report = host
+            .dispatch(Unserializable)
+            .await
+            .expect_err("no wire form, no dispatch");
+        assert_unserializable(&report);
+        RunStartAction::continue_run()
+    }
+}
+
+struct NotesAtStart(usize);
+
+impl AgentHook for NotesAtStart {
+    fn name(&self) -> Option<String> {
+        Some(format!("NotesAtStart({})", self.0))
+    }
+
+    async fn on_run_start(&self, ctx: &HookContext, _event: RunStart<'_>) -> RunStartAction {
+        for n in 0..self.0 {
+            take_note(ctx, &format!("start-{n}")).await;
+        }
         RunStartAction::continue_run()
     }
 }
@@ -1859,7 +1939,9 @@ fn hook_patch(hook: Hook, turn: usize) -> Option<RequestPatch> {
         | Hook::StopAfterTurnN(_)
         | Hook::RerankDocs
         | Hook::NoteDeniedAtStart
-        | Hook::HistoryIsReplaced => None,
+        | Hook::HistoryIsReplaced
+        | Hook::NoteUnserializableAtStart
+        | Hook::NotesAtStart(_) => None,
     }
 }
 
@@ -2043,6 +2125,8 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::RerankDocs => builder.add_hook(RerankDocs),
             Hook::NoteDeniedAtStart => builder.add_hook(NoteDeniedAtStart),
             Hook::HistoryIsReplaced => builder.add_hook(HistoryIsReplaced),
+            Hook::NoteUnserializableAtStart => builder.add_hook(NoteUnserializableAtStart),
+            Hook::NotesAtStart(n) => builder.add_hook(NotesAtStart(*n)),
         };
     }
     builder
@@ -2860,6 +2944,8 @@ fn hook_name(hook: Hook) -> String {
         Hook::RerankDocs => "RerankDocs",
         Hook::NoteDeniedAtStart => "NoteDeniedAtStart",
         Hook::HistoryIsReplaced => "HistoryIsReplaced",
+        Hook::NoteUnserializableAtStart => "NoteUnserializableAtStart",
+        Hook::NotesAtStart(n) => return format!("NotesAtStart({n})"),
     };
     name.to_owned()
 }
@@ -3148,6 +3234,7 @@ async fn hand_drive(program: &Program, resume: bool) {
                     | Hook::NoteAtOutcome
                     | Hook::NoteAtSettled
                     | Hook::NoteTwice
+                    | Hook::NotesAtStart(_)
             )
         })
         .then(|| {
@@ -3244,6 +3331,27 @@ async fn hand_drive(program: &Program, resume: bool) {
         // The run-start hooks' dispatches, before the first completion.
         if program.hooks.contains(&Hook::NoteAtStart) {
             note("start").await;
+        }
+        if let Some(Hook::NotesAtStart(n)) = program
+            .hooks
+            .iter()
+            .find(|hook| matches!(hook, Hook::NotesAtStart(_)))
+        {
+            for n in 0..*n {
+                note(Box::leak(format!("start-{n}").into_boxed_str())).await;
+            }
+        }
+        if program.hooks.contains(&Hook::NoteUnserializableAtStart) {
+            // The hook's effect has no wire form: refused at the send,
+            // nothing reaches the bus.
+            let host = replay
+                .dispatcher
+                .bind(&unserializable_key())
+                .expect("the host serves the kind");
+            let report = within(host.dispatch(Unserializable))
+                .await
+                .expect_err("no wire form, no dispatch");
+            assert_unserializable(&report);
         }
         if program.hooks.contains(&Hook::NoteDeniedAtStart) {
             // The host's layer denies the note: the hook sees `Denied`.

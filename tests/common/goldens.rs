@@ -2193,3 +2193,123 @@ pub(crate) fn add_tool_under(
         )
         .run()
 }
+
+// ---------------------------------------------------------------------------
+// Matrix T's L3 and L4 cells: a host effect that does not serialize; host
+// handlers a program registers and never dispatches to.
+
+/// A host effect whose `Serialize` fails: it never has a wire form.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub(crate) struct Unserializable;
+
+impl serde::Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom(
+            "this effect refuses to serialize",
+        ))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Unserializable {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <()>::deserialize(deserializer).map(|()| Self)
+    }
+}
+
+impl rig::effect::CustomEffect for Unserializable {
+    const KIND: &'static str = "corpus:unserializable";
+    type Answer = NoteAck;
+}
+
+#[allow(dead_code)]
+pub(crate) const UNSERIALIZABLE_KEY: &str = "host/unserializable";
+
+#[allow(dead_code)]
+fn unserializable_key() -> rig::effect::Key<rig::effect::family::Custom<Unserializable>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(UNSERIALIZABLE_KEY))
+}
+
+/// The host's handler for the kind: counts what reaches it (nothing
+/// should) and would acknowledge.
+#[allow(dead_code)]
+pub(crate) struct NeverAsked {
+    pub reached: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl rig::serve::Serve for NeverAsked {
+    type Family = rig::effect::family::Custom<Unserializable>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(UNSERIALIZABLE_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <Unserializable as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        self.reached
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        sink.resolve(Ok(rig::effect::Outcome::Custom(
+            serde_json::to_value(NoteAck {
+                accepted: true,
+                at: "never".to_owned(),
+            })
+            .expect("an ack serializes"),
+        )))
+        .await;
+    }
+}
+
+/// `on_run_start` dispatches the unserializable effect: the hook sees
+/// `Request` with the serde message and the run goes on.
+#[allow(dead_code)]
+pub(crate) struct NoteUnserializableAtStart;
+
+impl rig::agent::AgentHook for NoteUnserializableAtStart {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let host = ctx
+            .bind(&unserializable_key())
+            .expect("the host serves the kind");
+        let report = host
+            .dispatch(Unserializable)
+            .await
+            .expect_err("no wire form, no dispatch");
+        assert_eq!(report.kind, rig::error::ErrorKind::Request, "{report:?}");
+        assert!(
+            report.message.contains("did not serialize")
+                && report.message.contains("refuses to serialize"),
+            "{}",
+            report.message
+        );
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` → `n` host notes, one after another; named by `n`.
+#[allow(dead_code)]
+pub(crate) struct NotesAtStart(pub usize);
+
+impl rig::agent::AgentHook for NotesAtStart {
+    fn name(&self) -> Option<String> {
+        Some(format!("NotesAtStart({})", self.0))
+    }
+
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        for n in 0..self.0 {
+            take_note(ctx, &format!("start-{n}")).await;
+        }
+        rig::agent::RunStartAction::continue_run()
+    }
+}
