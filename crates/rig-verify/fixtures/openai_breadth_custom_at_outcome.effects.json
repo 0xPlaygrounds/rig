@@ -1,0 +1,483 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 9072754608376111302,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "host/note",
+        "family": {
+          "family": "custom",
+          "kind": "corpus:note"
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool",
+      "host/note": "custom"
+    },
+    "hooks": [
+      "NoteAtOutcome"
+    ],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "call_REDACTED_1",
+              "provider": {
+                "call_id": "call_REDACTED_1",
+                "item_id": "fc_REDACTED_1"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 99,
+            "output_tokens": 18,
+            "total_tokens": 117,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 99,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 18,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 117
+            },
+            "output": [
+              {
+                "id": "fc_REDACTED_1",
+                "arguments": "{\"x\":17,\"y\":25}",
+                "call_id": "call_REDACTED_1",
+                "name": "add",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "add",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "description": "The first number to add",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The second number to add",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "description": "Add x and y together",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":17,\"y\":25}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 42
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "key": "host/note",
+      "kind": {
+        "effect": "custom",
+        "kind": "corpus:note",
+        "payload": {
+          "at": "outcome"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "custom",
+          "accepted": true,
+          "at": "outcome"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "call_REDACTED_1",
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "call_REDACTED_1",
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 42
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 125,
+            "output_tokens": 3,
+            "total_tokens": 128,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "id": "resp_REDACTED_2",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.",
+            "max_output_tokens": null,
+            "model": "gpt-4o-2024-08-06",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 125,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 3,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 128
+            },
+            "output": [
+              {
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "42",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "add",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "description": "The first number to add",
+                      "type": "number"
+                    },
+                    "y": {
+                      "description": "The second number to add",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "description": "Add x and y together",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    }
+  ]
+}
