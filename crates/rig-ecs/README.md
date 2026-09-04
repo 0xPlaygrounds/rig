@@ -89,7 +89,7 @@ Every hook cell of the corpus is written against the public sets and components 
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
 | interception | user systems in `BusSet::Gate` (patch, deny, hold) and `BusSet::Judge` (replace) |
-| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay` |
+| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for a handler whose descriptor names layers, `Dispatch` installs a sink observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
 | a scene | `Scene::{save, load, first_gap}` |
 | replay | `Replay::{register, load}`, by id |
 | the policy | `Policy(ServingPolicy)`: intake per tick, stream buffer, serial keys |
@@ -150,7 +150,7 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 
 ## What it deliberately does not have
 
-No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Not yet: layers with the record's discard (stage 4's C6), program identity in the header, memory, retrieval and two runs on one agent (stage 5). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). No `reflect` yet: `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save until the `reflect` PR extends it. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Not yet: memory, retrieval and two runs on one agent (stage 5). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). No `reflect` yet: `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save until the `reflect` PR extends it. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
 
 ## On wasm
 

@@ -8,10 +8,10 @@ use rig_effect_log::{EffectLogRecorder, stable_hash};
 use crate::{
     agent::{
         AdditionalParams, Context, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Grant,
-        MaxTokens, Order, Output, OutputKind, Preamble, Route, Temperature, ToolChoiceSpec,
+        MaxTokens, Order, Output, OutputKind, Preamble, Route, RunOf, Temperature, ToolChoiceSpec,
         UsesModel,
     },
-    bus::Bound,
+    bus::{Bound, Scope},
 };
 
 /// The JSON the header's `run_spec` hashes for `agent`: the shape
@@ -138,6 +138,96 @@ pub fn stamp_header(
     }
     let required = required_row(world, agent);
     recorder.set_program(hooks, required, bus);
+}
+
+/// Stamp `run`'s program identity under its scope
+/// ([`rig_effect_log::LogHeader::programs`]): the agent's required row and
+/// policy hash, keyed by the run's `Scope`. A world running several
+/// programs into one log names each this way.
+pub fn stamp_run(world: &mut World, run: Entity, recorder: &EffectLogRecorder) {
+    let Some(agent) = world.get::<RunOf>(run).map(|run_of| run_of.0) else {
+        return;
+    };
+    let Some(scope) = world.get::<Scope>(run).map(|scope| scope.0.clone()) else {
+        return;
+    };
+    let Some(policy) = spec_hash(world, agent) else {
+        return;
+    };
+    let required = required_row(world, agent);
+    recorder.set_program_identity(scope, rig_effect_log::ProgramIdentity { required, policy });
+}
+
+/// Whether `agent` is the program `log` was recorded by: refused by name
+/// when the log's identity (a `programs` entry with this agent's policy,
+/// else the header's `run_spec`) is not this agent's, when the required
+/// row differs (every difference named), or when the log's handlers do
+/// not serve the row.
+pub fn check_replayable(
+    world: &mut World,
+    agent: Entity,
+    log: &rig_effect_log::EffectLog,
+) -> Result<(), rig_core::error::ErrorReport> {
+    use rig_core::error::{ErrorKind, ErrorReport};
+    let policy = spec_hash(world, agent)
+        .ok_or_else(|| ErrorReport::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
+    let required = required_row(world, agent);
+    let (recorded_policy, recorded_row) = if log.header.programs.is_empty() {
+        (log.header.run_spec, log.header.required.clone())
+    } else {
+        match log
+            .header
+            .programs
+            .values()
+            .find(|identity| identity.policy == policy)
+        {
+            Some(identity) => (Some(identity.policy), identity.required.clone()),
+            None => {
+                return Err(ErrorReport::new(
+                    ErrorKind::Internal,
+                    format!(
+                        "replay refused: no program in the log has this agent's policy ({policy:#018x}); the log names {}",
+                        log.header
+                            .programs
+                            .keys()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+            }
+        }
+    };
+    if recorded_policy != Some(policy) {
+        return Err(ErrorReport::new(
+            ErrorKind::Internal,
+            format!(
+                "replay refused: the log was recorded under policy {:?}, this agent's is {policy:#018x}",
+                recorded_policy.map(|hash| format!("{hash:#018x}"))
+            ),
+        ));
+    }
+    let differences = required.diff(&recorded_row);
+    if !differences.is_empty() {
+        return Err(ErrorReport::new(
+            ErrorKind::Internal,
+            format!(
+                "replay refused: the required row differs from the log's: {}",
+                differences
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        ));
+    }
+    if let Err(gap) = required.is_subset_of(&log.header.handlers) {
+        return Err(ErrorReport::new(
+            ErrorKind::HandlerUnavailable,
+            format!("replay refused: the log's handlers do not serve the row: {gap}"),
+        ));
+    }
+    Ok(())
 }
 
 /// The key an agent mints for its model: `<owner>/model:<label>`.

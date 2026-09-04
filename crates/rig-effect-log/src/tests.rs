@@ -292,3 +292,38 @@ async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
     assert!(report.message.contains("payload"), "{}", report.message);
     assert!(!report.message.contains("hash "), "{}", report.message);
 }
+
+/// A header with program identities round-trips, and a log without any
+/// carries no `programs` field at all (an agent's golden is untouched).
+#[test]
+fn program_identity_is_per_scope_and_absent_by_default() {
+    use super::{LogHeader, ProgramIdentity};
+    use rig_core::effect::{EffectFamily, EffectRow, HandlerKey};
+    let bare = serde_json::to_value(LogHeader::default()).expect("serializes");
+    assert!(
+        bare.get("programs").is_none(),
+        "no programs, no field: {bare}"
+    );
+    let recorder = super::EffectLogRecorder::new();
+    let mut required = EffectRow::new();
+    required.insert(
+        HandlerKey::from("golden/model:default"),
+        EffectFamily::Completion,
+    );
+    recorder.set_program_identity(
+        "golden/run#0",
+        ProgramIdentity {
+            required: required.clone(),
+            policy: 7,
+        },
+    );
+    let json = serde_json::to_string(&recorder.header()).expect("serializes");
+    let restored: LogHeader = serde_json::from_str(&json).expect("restores");
+    assert_eq!(
+        restored.programs.get("golden/run#0"),
+        Some(&ProgramIdentity {
+            required,
+            policy: 7
+        })
+    );
+}

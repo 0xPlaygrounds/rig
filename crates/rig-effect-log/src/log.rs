@@ -48,6 +48,23 @@ pub struct LogHeader {
     /// replay under a different one is a stated choice, not a surprise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bus: Option<ServingPolicy>,
+    /// Program identity as data, per scope (`EffectRecord::scope`): what
+    /// each program that wrote to this log could dispatch to and the hash
+    /// of its policy. Written by a world that runs several programs in one
+    /// log; absent from a log one agent wrote (`run_spec` and `required`
+    /// are that agent's), so nothing re-stamps.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub programs: BTreeMap<String, ProgramIdentity>,
+}
+
+/// One program's identity in a shared log: its required effect row and
+/// the stable hash of its policy (what `run_spec` is for a single agent).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgramIdentity {
+    /// Every key the program could dispatch to, with the family it needs.
+    pub required: EffectRow,
+    /// [`stable_hash`] of the program's policy.
+    pub policy: u64,
 }
 
 impl Default for LogHeader {
@@ -60,6 +77,7 @@ impl Default for LogHeader {
             hooks: Vec::new(),
             required: EffectRow::new(),
             bus: None,
+            programs: BTreeMap::new(),
         }
     }
 }

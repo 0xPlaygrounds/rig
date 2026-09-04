@@ -213,7 +213,7 @@ A `PendingEffect` the system spawns `ChildOf` the run at the hook's moment (its 
 
 ### 9.6 Layers
 
-A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record — the world's `Dispatch` installs the sink observer that hears `discard` and `patch` for a handler whose descriptor names layers, so the recorder forgets the slot or takes the patched request as the record's — and a verdict after leaves the handler's answer in the record. The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
+A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a sink observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for a handler whose descriptor names layers — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). This is the substrate gap the PR reports beyond ruling 1's two: without the observer the world recorded a layer's denial and verdict. The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
 
 | cell | records | pinned by |
 |---|---|---|

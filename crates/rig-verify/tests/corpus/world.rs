@@ -49,9 +49,6 @@ pub fn unsupported(program: &Program) -> Option<&'static str> {
     if program.dynamic_context.is_some() || program.retrieved_tools.is_some() {
         return Some("retrieval (stage 4)");
     }
-    if !program.layers.is_empty() {
-        return Some("layers on the program's handlers (stage 4)");
-    }
     if program.second_prompt.is_some() {
         return Some("two runs on one agent (stage 5)");
     }
@@ -116,10 +113,48 @@ pub fn world_agent_reproduces(program: &Program) {
     // world's, which mints only what it dispatches. Position holds because
     // the pool below is one thread: a handler task's first poll — where the
     // replayer pops its record — comes in spawn order, which is `Seq` order.
+    // The world a suspending layer asks: a thread answering as the program
+    // says, signalling when it holds an answer forever.
+    let reached = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let asks = program
+        .layers
+        .iter()
+        .find_map(|spec| match spec.layer {
+            super::LayerKind::Approval(answer) => Some(answer),
+            _ => None,
+        })
+        .map(|answer| approval_world(answer, std::sync::Arc::clone(&reached)));
+    let owner = program.owner.to_owned();
+    let layer_at = |key: &HandlerKey| -> Option<super::LayerAt> {
+        match key.as_str() {
+            k if k == format!("{owner}/tool:add#0") => Some(super::LayerAt::Tool),
+            k if k == format!("{owner}/model:default") => Some(super::LayerAt::Model),
+            k if k == format!("{owner}/memory") => Some(super::LayerAt::Memory),
+            super::NOTE_KEY => Some(super::LayerAt::Note),
+            _ => None,
+        }
+    };
     let mut handler_entities: Vec<(HandlerKey, Entity)> = Vec::new();
     Handlers::with(world, |handlers| {
         for replayer in EffectLogReplayer::for_log(&log).expect("the golden's replayers") {
             let key = replayer.key().clone();
+            // The program's layers, on the handler exactly as `Replay::open`
+            // wraps them: the world registers the layered handler.
+            if let Some(at) = layer_at(&key)
+                && program.layers.iter().any(|spec| spec.at == at)
+            {
+                let handler = super::layered(
+                    rig_core::serve::ErasedHandler::new(replayer),
+                    program,
+                    at,
+                    &asks,
+                );
+                let entity = handlers
+                    .register_erased(key.clone(), handler)
+                    .expect("a fresh key");
+                handler_entities.push((key, entity));
+                continue;
+            }
             // The nesting program's keys are program, not record: the world
             // serves them itself (`world_nesting`), the replayers answer
             // only the leaves.
@@ -179,11 +214,15 @@ pub fn world_agent_reproduces(program: &Program) {
     if let Some(concurrency) = program.tool_concurrency {
         world.entity_mut(run).insert(ToolPolicy { concurrency });
     }
+    rig_ecs::replay::stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone());
 
     let start = Instant::now();
     loop {
         app.update();
-        if program.cancel_when_reached && super::world_nesting::reached(app.world_mut()) {
+        if program.cancel_when_reached
+            && (super::world_nesting::reached(app.world_mut())
+                || reached.load(std::sync::atomic::Ordering::SeqCst))
+        {
             // The producer dropped the run once the never-answering handler
             // was reached: the run entity goes, and the whole tree with it
             // — the tool call and its child are cancelled, a queued child
@@ -255,6 +294,7 @@ pub fn world_agent_reproduces(program: &Program) {
             if report.kind == ErrorKind::ProviderResponse => {}
         ((None, Some(Failed(Failure::Provider(report)))), Ending::Failed(kind))
         | ((None, Some(Failed(Failure::Tool(report)))), Ending::Failed(kind))
+        | ((None, Some(Failed(Failure::Cancelled(report)))), Ending::Failed(kind))
             if report.kind == kind => {}
         (other, ending) => panic!(
             "{}: the run ends in {ending:?}, the world says {other:?}",
@@ -387,4 +427,31 @@ fn spawn_agent(world: &mut World, program: &Program, handlers: &[(HandlerKey, En
     }
     world.resource_mut::<rig_ecs::agent::OrderCounter>().0 = order;
     agent
+}
+
+/// The world a suspending layer asks, as a thread: answers as the program
+/// says; on `Never`, signals `reached` and holds the answer forever.
+fn approval_world(
+    answer: super::Answer,
+    reached: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> super::Asks {
+    let (asks, mut asked): (super::Asks, _) = tokio::sync::mpsc::unbounded_channel();
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        while let Some((_, decide)) = asked.blocking_recv() {
+            match answer {
+                super::Answer::Approve => {
+                    let _ = decide.send(rig_core::serve::Decision::Proceed);
+                }
+                super::Answer::Deny => {
+                    let _ = decide.send(rig_core::serve::Decision::deny(super::WORLD_DENY_REASON));
+                }
+                super::Answer::Never => {
+                    reached.store(true, std::sync::atomic::Ordering::SeqCst);
+                    held.push(decide);
+                }
+            }
+        }
+    });
+    asks
 }

@@ -89,7 +89,7 @@ pub mod scene;
 #[cfg(feature = "replay")]
 pub mod replay;
 
-pub use collect::{Landed, collect_streams, collect_tasks, settle};
+pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
     Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
@@ -102,7 +102,9 @@ pub use handlers::{
 pub use plugin::{
     BusPlugin, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, run_to_quiescence,
 };
-pub use record::{Recording, record_bound, record_cancelled};
+pub use record::{
+    Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
+};
 pub use scene::{Scene, SceneEffect};
 
 #[cfg(feature = "replay")]

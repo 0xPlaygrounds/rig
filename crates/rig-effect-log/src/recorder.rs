@@ -109,6 +109,17 @@ impl EffectLogRecorder {
         header.bus = bus;
     }
 
+    /// Stamp one program's identity under its scope
+    /// ([`LogHeader::programs`]): a world writing several programs' effects
+    /// into one log names each by its scope.
+    pub fn set_program_identity(&self, scope: impl Into<String>, identity: super::ProgramIdentity) {
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .programs
+            .insert(scope.into(), identity);
+    }
+
     /// Describe handlers: a key already described is re-described in place,
     /// a new one appended, so the header lists every handler the driver
     /// served during the recording, in installation order.
