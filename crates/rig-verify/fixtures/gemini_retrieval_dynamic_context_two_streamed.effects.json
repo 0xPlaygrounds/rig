@@ -1,6 +1,6 @@
 {
   "header": {
-    "format": 3,
+    "format": 4,
     "run_spec": 10072942899351225430,
     "handlers": [
       {
@@ -60,14 +60,14 @@
           "retrieved": "scored",
           "results": [
             [
-              0.6483787167257034,
-              "doc0",
-              "A flurbo is a green alien that lives on cold planets."
-            ],
-            [
               0.8021126156790721,
               "doc1",
               "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+            ],
+            [
+              0.6483787167257034,
+              "doc0",
+              "A flurbo is a green alien that lives on cold planets."
             ]
           ]
         }
@@ -97,12 +97,12 @@
           ],
           "documents": [
             {
-              "id": "doc0",
-              "text": "\"A flurbo is a green alien that lives on cold planets.\""
-            },
-            {
               "id": "doc1",
               "text": "\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\""
+            },
+            {
+              "id": "doc0",
+              "text": "\"A flurbo is a green alien that lives on cold planets.\""
             }
           ],
           "tools": [],
@@ -126,11 +126,11 @@
           "usage": {
             "input_tokens": 95,
             "output_tokens": 27,
-            "total_tokens": 209,
+            "total_tokens": 239,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 87
+            "reasoning_tokens": 117
           },
           "message_id": null,
           "response_id": "id_REDACTED_1",
@@ -141,8 +141,8 @@
             "usage_metadata": {
               "promptTokenCount": 95,
               "candidatesTokenCount": 27,
-              "totalTokenCount": 209,
-              "thoughtsTokenCount": 87,
+              "totalTokenCount": 239,
+              "thoughtsTokenCount": 117,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -169,15 +169,7 @@
           "id": "minted:text:0",
           "delta": {
             "delta": "text",
-            "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": " the land."
+            "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
           }
         },
         {
@@ -185,11 +177,11 @@
           "usage": {
             "input_tokens": 95,
             "output_tokens": 27,
-            "total_tokens": 209,
+            "total_tokens": 239,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 87
+            "reasoning_tokens": 117
           },
           "finish_reason": "stop",
           "message_id": null,
@@ -200,8 +192,8 @@
             "usage_metadata": {
               "promptTokenCount": 95,
               "candidatesTokenCount": 27,
-              "totalTokenCount": 209,
-              "thoughtsTokenCount": 87,
+              "totalTokenCount": 239,
+              "thoughtsTokenCount": 117,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",

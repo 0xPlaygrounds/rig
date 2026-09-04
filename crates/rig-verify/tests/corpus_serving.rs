@@ -1,7 +1,7 @@
 //! Matrix C: serving policy, routing and bus ownership.
 //!
 //! The bus-level axes: how the bus serves a program's dispatches
-//! (`BusConfig`), which model answers each turn (`model_route` and
+//! (`ServingPolicy`), which model answers each turn (`model_route` and
 //! `on_model_select`), and whose bus it is (the agent's own, or a host's
 //! via `over_bus`). The claim of the serving cells is that the trace is
 //! independent of the policy: the same program under serial or concurrent

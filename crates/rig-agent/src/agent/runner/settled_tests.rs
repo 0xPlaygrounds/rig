@@ -74,6 +74,7 @@ mod slow_stream {
                     model: rig_core::completion::ModelRef::new("slow"),
                     capabilities: rig_core::completion::ProviderCapabilities::default(),
                 },
+                layers: Vec::new(),
             }
         }
 

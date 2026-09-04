@@ -841,6 +841,7 @@ impl rig::serve::Serve for NoteTaker {
             family: rig::effect::FamilyDescriptor::Custom {
                 kind: <Note as rig::effect::CustomEffect>::KIND.to_owned(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1413,6 +1414,902 @@ impl rig::agent::AgentHook for RerankDocs {
             .await
             .expect("the host reranks");
         assert_eq!(ranked.results.len(), 2, "{ranked:?}");
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix Q: causal dispatch. The `lookup` tool dispatches from inside its
+// own service through the dispatcher its sink carries, so the child record
+// names the tool's record as its parent; the host's relay nests once more;
+// the host's `never` handler holds a dispatch until its consumer goes. The
+// rig-verify replay registers the same handlers (`corpus/mod.rs`): program,
+// not record.
+
+#[allow(dead_code)]
+pub(crate) const NESTING_TOOL_KEY: &str = "golden/tool:lookup#0";
+#[allow(dead_code)]
+pub(crate) const RELAY_KEY: &str = "host/relay";
+#[allow(dead_code)]
+pub(crate) const NEVER_KEY: &str = "host/never";
+#[allow(dead_code)]
+pub(crate) const NESTED_PREAMBLE: &str = "Answer in one word.";
+
+/// What the `lookup` tool dispatches, and from where.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) struct Nesting {
+    pub child: NestedChild,
+    /// The nested dispatch is made from a spawned OS thread, blocking on
+    /// its first poll (serial programs only: the refusal is decided at the
+    /// send).
+    pub from_thread: bool,
+    /// The tool detaches its sink; a spawned task answers, dispatching the
+    /// child through the detached sink's dispatcher.
+    pub detached: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum NestedChild {
+    /// A completion on the agent's model key: the question in the args.
+    Completion,
+    /// A host note.
+    Note,
+    /// The tool's own key with `leaf: true`: refused under serial serving,
+    /// served under concurrent.
+    Same,
+    /// The host's relay, which itself dispatches a note: a chain of three.
+    Relay,
+    /// The host's never-answering handler: the child is in flight when the
+    /// run is dropped.
+    Never,
+    /// Two dispatches to the never-answering handler at once: under a
+    /// serial host the second is queued when the run is dropped.
+    NeverTwice,
+}
+
+/// The relay's effect.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct RelayNote {
+    pub at: String,
+}
+
+impl rig::effect::CustomEffect for RelayNote {
+    const KIND: &'static str = "corpus:relay";
+    type Answer = NoteAck;
+}
+
+/// The never-answering effect.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct Hold;
+
+impl rig::effect::CustomEffect for Hold {
+    const KIND: &'static str = "corpus:hold";
+    type Answer = NoteAck;
+}
+
+#[allow(dead_code)]
+fn relay_key() -> rig::effect::Key<rig::effect::family::Custom<RelayNote>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(RELAY_KEY))
+}
+
+#[allow(dead_code)]
+fn never_key() -> rig::effect::Key<rig::effect::family::Custom<Hold>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(NEVER_KEY))
+}
+
+/// The `lookup` tool's arguments: a question, or a leaf marker.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct LookupArgs {
+    #[serde(default)]
+    pub q: String,
+    #[serde(default)]
+    pub leaf: bool,
+}
+
+#[allow(dead_code)]
+pub(crate) fn lookup_parameters() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "q": {"type": "string", "description": "The question to look up"},
+            "leaf": {"type": "boolean", "description": "Answer directly, without looking further"}
+        },
+        "required": ["q"]
+    })
+}
+
+/// A tool that dispatches from inside its own service, through the
+/// dispatcher its sink carries.
+#[allow(dead_code)]
+pub(crate) struct Lookup {
+    pub nesting: Nesting,
+    pub model_key: rig::effect::HandlerKey,
+}
+
+#[allow(dead_code)]
+fn tool_text(context: rig::tool::ToolContext, text: String) -> rig::effect::Outcome {
+    rig::effect::Outcome::ToolResult {
+        result: rig::core::tool::ToolResult::success(rig::core::tool::ToolOutput::text(text)),
+        context,
+    }
+}
+
+impl Lookup {
+    #[allow(dead_code)]
+    async fn nest(&self, dispatcher: rig::bus::Dispatcher, args: LookupArgs) -> String {
+        match self.nesting.child {
+            NestedChild::Completion => {
+                let model: rig::bus::ModelHandle =
+                    dispatcher.handle(&self.model_key).expect("the model");
+                let request =
+                    rig::core::completion::CompletionRequestBuilder::unbound(args.q.as_str())
+                        .preamble(NESTED_PREAMBLE.to_owned())
+                        .temperature(0.0)
+                        .build();
+                let response = model
+                    .complete(request)
+                    .await
+                    .expect("the nested completion");
+                response
+                    .choice
+                    .iter()
+                    .filter_map(|content| match content {
+                        rig::core::message::AssistantContent::Text(text) => {
+                            Some(text.text.trim().to_owned())
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+            NestedChild::Note => {
+                let ack = dispatcher
+                    .bind(&note_key())
+                    .expect("the host serves notes")
+                    .dispatch(Note {
+                        at: "lookup".to_owned(),
+                    })
+                    .await
+                    .expect("acknowledged");
+                format!("noted:{}", ack.at)
+            }
+            NestedChild::Same => {
+                let handle: rig::bus::ToolHandle = dispatcher
+                    .handle(&rig::effect::HandlerKey::from(NESTING_TOOL_KEY))
+                    .expect("the tool's own key");
+                let call = handle.call(
+                    "lookup",
+                    r#"{"q":"","leaf":true}"#,
+                    rig::tool::ToolContext::new(),
+                );
+                let answer = if self.nesting.from_thread {
+                    std::thread::spawn(move || futures::executor::block_on(call))
+                        .join()
+                        .expect("the nested thread")
+                } else {
+                    call.await
+                };
+                match answer {
+                    Ok(answer) => format!("served:{}", answer.result.output().render()),
+                    Err(report) => format!("refused:{:?}", report.kind),
+                }
+            }
+            NestedChild::Relay => {
+                let ack = dispatcher
+                    .bind(&relay_key())
+                    .expect("the host serves the relay")
+                    .dispatch(RelayNote {
+                        at: "lookup".to_owned(),
+                    })
+                    .await
+                    .expect("relayed");
+                format!("relayed:{}", ack.at)
+            }
+            NestedChild::Never => {
+                let held = dispatcher
+                    .bind(&never_key())
+                    .expect("the host holds")
+                    .dispatch(Hold);
+                match held.await {
+                    Ok(ack) => format!("answered:{}", ack.at),
+                    Err(report) => format!("failed:{:?}", report.kind),
+                }
+            }
+            NestedChild::NeverTwice => {
+                let host = dispatcher.bind(&never_key()).expect("the host holds");
+                let first = host.dispatch(Hold);
+                let second = host.dispatch(Hold);
+                match futures::join!(first, second) {
+                    (Ok(first), Ok(second)) => format!("answered:{}:{}", first.at, second.at),
+                    (Err(report), _) | (_, Err(report)) => format!("failed:{:?}", report.kind),
+                }
+            }
+        }
+    }
+}
+
+impl rig::serve::Serve for Lookup {
+    type Family = rig::effect::family::Tool;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(NESTING_TOOL_KEY),
+            family: rig::effect::FamilyDescriptor::Tool {
+                name: "lookup".to_owned(),
+                description: "Look a question up".to_owned(),
+                parameters: lookup_parameters(),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        let rig::effect::EffectKind::ToolCall { args, context, .. } = kind else {
+            sink.resolve(Err(rig::error::ErrorReport::new(
+                rig::error::ErrorKind::Request,
+                "a tool call",
+            )))
+            .await;
+            return;
+        };
+        let args: LookupArgs = serde_json::from_str(&args).unwrap_or_default();
+        if args.leaf {
+            sink.resolve(Ok(tool_text(context, "leaf".to_owned())))
+                .await;
+            return;
+        }
+        if self.nesting.detached {
+            let sink = sink.detach();
+            let dispatcher = rig::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+            assert_eq!(dispatcher.parent(), Some(sink.id()));
+            let lookup = Lookup {
+                nesting: Nesting {
+                    detached: false,
+                    ..self.nesting
+                },
+                model_key: self.model_key.clone(),
+            };
+            tokio::spawn(async move {
+                let text = lookup.nest(dispatcher, args).await;
+                sink.resolve(Ok(tool_text(context, text))).await;
+            });
+            return;
+        }
+        let dispatcher = rig::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+        assert_eq!(dispatcher.parent(), Some(sink.id()));
+        let text = self.nest(dispatcher, args).await;
+        sink.resolve(Ok(tool_text(context, text))).await;
+    }
+}
+
+/// The host's relay: takes a note through its own sink's dispatcher.
+#[allow(dead_code)]
+pub(crate) struct Relay;
+
+impl rig::serve::Serve for Relay {
+    type Family = rig::effect::family::Custom<RelayNote>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(RELAY_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <RelayNote as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        let rig::effect::EffectKind::Custom { payload, .. } = kind else {
+            sink.resolve(Err(rig::error::ErrorReport::new(
+                rig::error::ErrorKind::Request,
+                "a relay note",
+            )))
+            .await;
+            return;
+        };
+        let note: RelayNote = serde_json::from_value(payload).expect("a relay note");
+        let dispatcher = rig::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+        let ack = dispatcher
+            .bind(&note_key())
+            .expect("the host serves notes")
+            .dispatch(Note {
+                at: format!("relay<{}", note.at),
+            })
+            .await
+            .expect("acknowledged");
+        sink.resolve(Ok(rig::effect::Outcome::Custom(
+            serde_json::to_value(NoteAck {
+                accepted: ack.accepted,
+                at: ack.at,
+            })
+            .expect("an ack serializes"),
+        )))
+        .await;
+    }
+}
+
+/// The host's handler that never answers: it signals that it was reached
+/// and holds the dispatch until the consumer goes.
+#[allow(dead_code)]
+pub(crate) struct Never {
+    pub reached: std::sync::Arc<tokio::sync::Notify>,
+}
+
+impl rig::serve::Serve for Never {
+    type Family = rig::effect::family::Custom<Hold>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(NEVER_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <Hold as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        self.reached.notify_one();
+        futures::future::pending::<()>().await;
+        drop(sink);
+    }
+}
+
+/// The parent of every record, by position in the log.
+#[allow(dead_code)]
+pub(crate) fn parent_positions(log: &EffectLog) -> Vec<Option<usize>> {
+    log.records
+        .iter()
+        .map(|record| {
+            record.parent.map(|parent| {
+                log.records
+                    .iter()
+                    .position(|r| r.id == parent)
+                    .expect("a parent in the log")
+            })
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Matrix P: the layers, hand-written `Intercept`s; Matrix T's `Denied`
+// cells. Program, not record: `crates/rig-verify/tests/corpus/mod.rs`
+// holds the same types verbatim.
+
+#[allow(dead_code)]
+pub(crate) const PATCHED_ARGS: &str = r#"{"x":40,"y":2}"#;
+#[allow(dead_code)]
+pub(crate) const PATCHED_AGAIN_ARGS: &str = r#"{"x":30,"y":12}"#;
+#[allow(dead_code)]
+pub(crate) const HOST_DENY_REASON: &str = "denied by the host";
+#[allow(dead_code)]
+pub(crate) const WORLD_DENY_REASON: &str = "blocked by the world";
+#[allow(dead_code)]
+pub(crate) const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
+
+/// The history the memory layer answers a `Load` with: two turns naming Ada.
+#[allow(dead_code)]
+pub(crate) fn replaced_history() -> Vec<Message> {
+    vec![
+        Message::user("My name is Ada."),
+        Message::assistant("Hello, Ada."),
+    ]
+}
+
+#[allow(dead_code)]
+fn is_add(kind: &rig::effect::EffectKind) -> bool {
+    matches!(kind, rig::effect::EffectKind::ToolCall { name, .. } if name == "add")
+}
+
+#[allow(dead_code)]
+fn patch_add(kind: &rig::effect::EffectKind, args: &str) -> rig::serve::Decision {
+    match kind {
+        rig::effect::EffectKind::ToolCall { name, context, .. } if name == "add" => {
+            rig::serve::Decision::Patch(rig::effect::EffectKind::ToolCall {
+                name: name.clone(),
+                args: args.to_owned(),
+                context: context.clone(),
+            })
+        }
+        _ => rig::serve::Decision::Proceed,
+    }
+}
+
+macro_rules! keep_after {
+    () => {
+        async fn after(
+            &self,
+            _id: rig::effect::EffectId,
+            _kind: &rig::effect::EffectKind,
+            _outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+        ) -> rig::serve::Verdict {
+            rig::serve::Verdict::Keep
+        }
+    };
+}
+
+macro_rules! proceed_before {
+    () => {
+        async fn before(
+            &self,
+            _id: rig::effect::EffectId,
+            _kind: &rig::effect::EffectKind,
+        ) -> rig::serve::Decision {
+            rig::serve::Decision::Proceed
+        }
+    };
+}
+
+/// The hook `DenyAdd`, as a layer.
+#[allow(dead_code)]
+pub(crate) struct DenyAddLayer;
+
+impl rig::serve::Intercept for DenyAddLayer {
+    fn name(&self) -> String {
+        "DenyAddLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        if is_add(kind) {
+            rig::serve::Decision::deny(DENY_REASON)
+        } else {
+            rig::serve::Decision::Proceed
+        }
+    }
+    keep_after!();
+}
+
+/// The hook `PatchAddArgs`, as a layer.
+#[allow(dead_code)]
+pub(crate) struct PatchAddArgsLayer;
+
+impl rig::serve::Intercept for PatchAddArgsLayer {
+    fn name(&self) -> String {
+        "PatchAddArgsLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        patch_add(kind, PATCHED_ARGS)
+    }
+    keep_after!();
+}
+
+/// The host's own patch of `add`'s arguments, beneath the agent's.
+#[allow(dead_code)]
+pub(crate) struct PatchAgainLayer;
+
+impl rig::serve::Intercept for PatchAgainLayer {
+    fn name(&self) -> String {
+        "PatchAgainLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        patch_add(kind, PATCHED_AGAIN_ARGS)
+    }
+    keep_after!();
+}
+
+/// The hook `ReplaceAddResult`, as a layer.
+#[allow(dead_code)]
+pub(crate) struct ReplaceAddResultLayer;
+
+impl rig::serve::Intercept for ReplaceAddResultLayer {
+    fn name(&self) -> String {
+        "ReplaceAddResultLayer".to_owned()
+    }
+    proceed_before!();
+    async fn after(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+        outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+    ) -> rig::serve::Verdict {
+        match outcome {
+            Ok(rig::effect::Outcome::ToolResult { result, context }) if is_add(kind) => {
+                rig::serve::Verdict::Replace(Ok(rig::effect::Outcome::ToolResult {
+                    result: result
+                        .clone()
+                        .with_output(rig::tool::ToolOutput::text(REPLACED_RESULT)),
+                    context: context.clone(),
+                }))
+            }
+            _ => rig::serve::Verdict::Keep,
+        }
+    }
+}
+
+/// The world a suspending layer asks.
+#[allow(dead_code)]
+pub(crate) type Asks = tokio::sync::mpsc::UnboundedSender<(
+    rig::effect::EffectId,
+    futures::channel::oneshot::Sender<rig::serve::Decision>,
+)>;
+
+/// An approval gate: `before` sends the dispatch to the world and waits.
+#[allow(dead_code)]
+pub(crate) struct ApprovalLayer {
+    pub asks: Asks,
+}
+
+impl rig::serve::Intercept for ApprovalLayer {
+    fn name(&self) -> String {
+        "ApprovalLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        let (decide, decided) = futures::channel::oneshot::channel();
+        self.asks.send((id, decide)).expect("the world listens");
+        match decided.await {
+            Ok(decision) => decision,
+            Err(futures::channel::oneshot::Canceled) => {
+                rig::serve::Decision::Deny(rig::error::ErrorReport::new(
+                    rig::error::ErrorKind::Internal,
+                    "layer `ApprovalLayer`: the world closed the answer channel without deciding",
+                ))
+            }
+        }
+    }
+    keep_after!();
+}
+
+/// What the world answers a suspended dispatch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum Answer {
+    Approve,
+    Deny,
+    /// Never: the world signals it was asked and holds the channel.
+    Never,
+}
+
+/// Spawn the world: answers as `answer` says; signals `reached` when it
+/// holds an answer forever.
+#[allow(dead_code)]
+pub(crate) fn spawn_world(answer: Answer, reached: std::sync::Arc<tokio::sync::Notify>) -> Asks {
+    let (asks, mut asked): (Asks, _) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Some((_, decide)) = asked.recv().await {
+            match answer {
+                Answer::Approve => {
+                    let _ = decide.send(rig::serve::Decision::Proceed);
+                }
+                Answer::Deny => {
+                    let _ = decide.send(rig::serve::Decision::deny(WORLD_DENY_REASON));
+                }
+                Answer::Never => {
+                    reached.notify_one();
+                    held.push(decide);
+                }
+            }
+        }
+    });
+    asks
+}
+
+/// A patch of another family: never a dispatch.
+#[allow(dead_code)]
+pub(crate) struct WrongFamilyLayer;
+
+impl rig::serve::Intercept for WrongFamilyLayer {
+    fn name(&self) -> String {
+        "WrongFamilyLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        if is_add(kind) {
+            rig::serve::Decision::Patch(rig::effect::EffectKind::Custom {
+                kind: std::sync::Arc::from("corpus:wrong"),
+                payload: serde_json::Value::Null,
+            })
+        } else {
+            rig::serve::Decision::Proceed
+        }
+    }
+    keep_after!();
+}
+
+/// `after` on a completion → the answer is cancelled.
+#[allow(dead_code)]
+pub(crate) struct CancelStreamLayer;
+
+impl rig::serve::Intercept for CancelStreamLayer {
+    fn name(&self) -> String {
+        "CancelStreamLayer".to_owned()
+    }
+    proceed_before!();
+    async fn after(
+        &self,
+        _id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+        _outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+    ) -> rig::serve::Verdict {
+        rig::serve::Verdict::Replace(Err(rig::error::ErrorReport::new(
+            rig::error::ErrorKind::Cancelled,
+            CANCEL_STREAM_REASON,
+        )))
+    }
+}
+
+/// `after` on a memory `Load` → the replacement history in the store's place.
+#[allow(dead_code)]
+pub(crate) struct ReplaceLoadLayer;
+
+impl rig::serve::Intercept for ReplaceLoadLayer {
+    fn name(&self) -> String {
+        "ReplaceLoadLayer".to_owned()
+    }
+    proceed_before!();
+    async fn after(
+        &self,
+        _id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+        outcome: &Result<rig::effect::Outcome, rig::error::ErrorReport>,
+    ) -> rig::serve::Verdict {
+        match outcome {
+            Ok(rig::effect::Outcome::Memory(rig::effect::MemoryOutcome::Loaded { .. })) => {
+                rig::serve::Verdict::Replace(Ok(rig::effect::Outcome::Memory(
+                    rig::effect::MemoryOutcome::Loaded {
+                        messages: replaced_history(),
+                    },
+                )))
+            }
+            _ => rig::serve::Verdict::Keep,
+        }
+    }
+}
+
+/// The host denies everything on the key.
+#[allow(dead_code)]
+pub(crate) struct DenyAllLayer;
+
+impl rig::serve::Intercept for DenyAllLayer {
+    fn name(&self) -> String {
+        "DenyAllLayer".to_owned()
+    }
+    async fn before(
+        &self,
+        _id: rig::effect::EffectId,
+        _kind: &rig::effect::EffectKind,
+    ) -> rig::serve::Decision {
+        rig::serve::Decision::deny(HOST_DENY_REASON)
+    }
+    keep_after!();
+}
+
+/// `on_run_start` → a host note the host's layer denies; the hook sees
+/// `Denied` and the run goes on.
+#[allow(dead_code)]
+pub(crate) struct NoteDeniedAtStart;
+
+impl rig::agent::AgentHook for NoteDeniedAtStart {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let host = ctx.bind(&note_key()).expect("the host serves notes");
+        let report = host
+            .dispatch(Note {
+                at: "start".to_owned(),
+            })
+            .await
+            .expect_err("the host's layer denies the note");
+        assert_eq!(report.kind, rig::error::ErrorKind::Denied, "{report:?}");
+        assert_eq!(report.message, HOST_DENY_REASON);
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` asserts the run starts with the history the memory
+/// layer put in the `Load`'s place.
+#[allow(dead_code)]
+pub(crate) struct HistoryIsReplaced;
+
+impl rig::agent::AgentHook for HistoryIsReplaced {
+    async fn on_run_start(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        assert_eq!(event.history, replaced_history());
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// The `add` tool of the anthropic cells (`tests/common/support.rs`'s
+/// `Adder`, verbatim in name, description and schema, so a layered cell's
+/// handler table and requests are the hook cells' bytes), available to
+/// every target.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[allow(dead_code)]
+pub(crate) struct AddArgs {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[allow(dead_code)]
+pub(crate) struct Adder;
+
+impl rig::tool::Tool for Adder {
+    const NAME: &'static str = "add";
+    type Error = rig::tool::ToolExecutionError;
+    type Args = AddArgs;
+    type Output = i32;
+
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::from_str(
+            r#"{"type":"object","properties":{"x":{"type":"number","description":"The first number to add"},"y":{"type":"number","description":"The second number to add"}},"required":["x","y"]}"#,
+        )
+        .expect("adder schema should deserialize")
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        Ok(args.x + args.y)
+    }
+}
+
+/// The agent's `add` tool under `layers` (outermost first), registered
+/// through a tool server named `golden` so the key is `golden/tool:add#0`.
+#[allow(dead_code)]
+pub(crate) fn add_tool_under(
+    layers: impl FnOnce(rig::serve::ErasedHandler) -> rig::serve::ErasedHandler,
+) -> rig::agent::tool::server::ToolServerHandle {
+    let adder = rig::serve::ErasedHandler::new(rig::serve::adapters::ToolAdapter::new(Adder));
+    rig::agent::tool::server::ToolServer::new()
+        .owner("golden")
+        .registered_tool(
+            rig::tool::RegisteredTool::from_handler(layers(adder)).expect("a tool-family handler"),
+        )
+        .run()
+}
+
+// ---------------------------------------------------------------------------
+// Matrix T's L3 and L4 cells: a host effect that does not serialize; host
+// handlers a program registers and never dispatches to.
+
+/// A host effect whose `Serialize` fails: it never has a wire form.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub(crate) struct Unserializable;
+
+impl serde::Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom(
+            "this effect refuses to serialize",
+        ))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Unserializable {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <()>::deserialize(deserializer).map(|()| Self)
+    }
+}
+
+impl rig::effect::CustomEffect for Unserializable {
+    const KIND: &'static str = "corpus:unserializable";
+    type Answer = NoteAck;
+}
+
+#[allow(dead_code)]
+pub(crate) const UNSERIALIZABLE_KEY: &str = "host/unserializable";
+
+#[allow(dead_code)]
+fn unserializable_key() -> rig::effect::Key<rig::effect::family::Custom<Unserializable>> {
+    rig::effect::Key::new_unchecked(rig::effect::HandlerKey::from(UNSERIALIZABLE_KEY))
+}
+
+/// The host's handler for the kind: counts what reaches it (nothing
+/// should) and would acknowledge.
+#[allow(dead_code)]
+pub(crate) struct NeverAsked {
+    pub reached: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl rig::serve::Serve for NeverAsked {
+    type Family = rig::effect::family::Custom<Unserializable>;
+
+    fn descriptor(&self) -> rig::effect::HandlerDescriptor {
+        rig::effect::HandlerDescriptor {
+            key: rig::effect::HandlerKey::from(UNSERIALIZABLE_KEY),
+            family: rig::effect::FamilyDescriptor::Custom {
+                kind: <Unserializable as rig::effect::CustomEffect>::KIND.to_owned(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
+        self.reached
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        sink.resolve(Ok(rig::effect::Outcome::Custom(
+            serde_json::to_value(NoteAck {
+                accepted: true,
+                at: "never".to_owned(),
+            })
+            .expect("an ack serializes"),
+        )))
+        .await;
+    }
+}
+
+/// `on_run_start` dispatches the unserializable effect: the hook sees
+/// `Request` with the serde message and the run goes on.
+#[allow(dead_code)]
+pub(crate) struct NoteUnserializableAtStart;
+
+impl rig::agent::AgentHook for NoteUnserializableAtStart {
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        let host = ctx
+            .bind(&unserializable_key())
+            .expect("the host serves the kind");
+        let report = host
+            .dispatch(Unserializable)
+            .await
+            .expect_err("no wire form, no dispatch");
+        assert_eq!(report.kind, rig::error::ErrorKind::Request, "{report:?}");
+        assert!(
+            report.message.contains("did not serialize")
+                && report.message.contains("refuses to serialize"),
+            "{}",
+            report.message
+        );
+        rig::agent::RunStartAction::continue_run()
+    }
+}
+
+/// `on_run_start` → `n` host notes, one after another; named by `n`.
+#[allow(dead_code)]
+pub(crate) struct NotesAtStart(pub usize);
+
+impl rig::agent::AgentHook for NotesAtStart {
+    fn name(&self) -> Option<String> {
+        Some(format!("NotesAtStart({})", self.0))
+    }
+
+    async fn on_run_start(
+        &self,
+        ctx: &rig::agent::HookContext,
+        _event: rig::agent::RunStart<'_>,
+    ) -> rig::agent::RunStartAction {
+        for n in 0..self.0 {
+            take_note(ctx, &format!("start-{n}")).await;
+        }
         rig::agent::RunStartAction::continue_run()
     }
 }

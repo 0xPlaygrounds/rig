@@ -98,6 +98,7 @@ impl Serve for Echo {
             family: FamilyDescriptor::Custom {
                 kind: "test:echo".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -135,6 +136,7 @@ impl Serve for Ordered {
             family: FamilyDescriptor::Custom {
                 kind: "test:ordered".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -192,6 +194,7 @@ impl Serve for CutShort {
                 model: rig_core::completion::ModelRef::new("cut"),
                 capabilities: rig_core::completion::ProviderCapabilities::default(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -215,6 +218,7 @@ impl Serve for WrongFamilyAnswer {
                 model: rig_core::completion::ModelRef::new("wrong"),
                 capabilities: rig_core::completion::ProviderCapabilities::default(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -625,6 +629,7 @@ impl Serve for Held {
             family: FamilyDescriptor::Custom {
                 kind: "test:held".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -708,6 +713,8 @@ async fn a_tool_call_under_a_different_context_is_a_divergence() {
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
+            parent: None,
+            scope: None,
             id: EffectId::from_raw(1),
             key: key.clone(),
             kind: EffectKind::ToolCall {
@@ -793,4 +800,150 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
         within(stream.next()).await.is_none(),
         "and nothing after it"
     );
+}
+
+/// A custom effect whose `Serialize` fails.
+#[derive(Debug, serde::Deserialize)]
+struct Unserializable;
+
+impl serde::Serialize for Unserializable {
+    fn serialize<S: serde::Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("no wire form"))
+    }
+}
+
+impl rig_core::effect::CustomEffect for Unserializable {
+    const KIND: &'static str = "test:echo";
+    type Answer = serde_json::Value;
+}
+
+/// A custom effect that does not serialize never reaches a handler: the
+/// typed dispatch resolves `Request` with the serde message before any
+/// send, the handler's counter stays at zero, and the log holds no record.
+#[tokio::test]
+async fn a_custom_effect_that_does_not_serialize_never_reaches_a_handler() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("a fresh key");
+    let recorder = EffectLogRecorder::new();
+    driver.record_to(recorder.clone());
+    let driver = spawn(driver);
+    let key: rig_core::effect::Key<rig_core::effect::family::Custom<Unserializable>> =
+        rig_core::effect::Key::new_unchecked(HandlerKey::from("echo"));
+    let handle = dispatcher.bind(&key).expect("bound by family");
+    let report = within(handle.dispatch(Unserializable))
+        .await
+        .expect_err("no wire form");
+    assert_eq!(report.kind, ErrorKind::Request);
+    assert!(report.message.contains("no wire form"), "{report:?}");
+    assert_eq!(served.load(Ordering::SeqCst), 0, "the handler never served");
+    drop((handle, dispatcher));
+    within(driver).await.expect("the driver finishes");
+    let log = recorder.take();
+    assert!(log.records.is_empty(), "no record: {:?}", log.records);
+}
+
+/// Dispatches to `echo` through its sink's dispatcher and answers with the
+/// child's outcome.
+struct Nesting;
+
+impl Serve for Nesting {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("nesting"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:nesting".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        let dispatcher = rig_bus::SinkDispatch::dispatcher(&sink).expect("served by a bus driver");
+        let child = dispatcher
+            .dispatch(&HandlerKey::from("echo"), custom(json!({"who": "child"})))
+            .await;
+        sink.resolve(child).await;
+    }
+}
+
+#[tokio::test]
+async fn a_record_names_the_dispatch_it_was_made_from() {
+    let recorder = EffectLogRecorder::new();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    driver.register("nesting", Nesting).expect("register");
+    driver.record_to(recorder.clone());
+    let _task = spawn(driver);
+    let outer = dispatcher.dispatch(&HandlerKey::from("nesting"), custom(json!("outer")));
+    let outer_id = outer.id();
+    let outcome = within(outer).await.expect("served");
+    assert!(matches!(&outcome, Outcome::Custom(payload) if *payload == json!({"who": "child"})));
+    // A consumer's own dispatch, for the contrast.
+    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"who": "own"}))))
+        .await
+        .expect("served");
+    let log = recorder.take();
+    assert_eq!(log.len(), 3, "the parent, its child, the consumer's own");
+    assert_eq!(log[0].key.as_str(), "nesting");
+    assert_eq!(log[0].parent, None, "a consumer's dispatch has no parent");
+    assert_eq!(log[1].key.as_str(), "echo");
+    assert_eq!(
+        log[1].parent,
+        Some(outer_id),
+        "the child names the dispatch it was made from"
+    );
+    assert_eq!(log[2].parent, None);
+    let json: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&log).expect("serializes")).expect("json");
+    assert_eq!(
+        json["records"][1]["parent"], json["records"][0]["id"],
+        "the parent travels on the wire by id"
+    );
+    assert!(json["records"][0]["parent"].is_null());
+}
+
+#[tokio::test]
+async fn a_record_names_the_scope_of_the_program_that_made_it() {
+    // A scoped dispatcher stamps every dispatch made through it, and a
+    // handler's nested dispatch inherits the scope of the dispatch it
+    // serves; a plain dispatcher stamps nothing.
+    let recorder = EffectLogRecorder::new();
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    driver.register("nesting", Nesting).expect("register");
+    driver.record_to(recorder.clone());
+    let _task = spawn(driver);
+    let run = dispatcher.scoped("run-1");
+    assert_eq!(run.scope().map(|scope| &**scope), Some("run-1"));
+    assert_eq!(dispatcher.scope(), None, "the original is unscoped");
+    within(run.dispatch(
+        &HandlerKey::from("nesting"),
+        custom(json!({"who": "outer"})),
+    ))
+    .await
+    .expect("served");
+    within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"who": "own"}))))
+        .await
+        .expect("served");
+    let log = recorder.take();
+    assert_eq!(log.len(), 3);
+    assert_eq!(log[0].scope.as_deref(), Some("run-1"));
+    assert_eq!(
+        log[1].scope.as_deref(),
+        Some("run-1"),
+        "the nested dispatch inherits the scope of the one it descends from"
+    );
+    assert_eq!(log[1].parent, Some(log[0].id));
+    assert_eq!(log[2].scope, None, "an unscoped dispatcher stamps nothing");
+    let json: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&log).expect("serializes")).expect("json");
+    assert_eq!(json["records"][0]["scope"], json!("run-1"));
+    assert!(json["records"][2]["scope"].is_null(), "absent when none");
+    let restored: EffectLog = serde_json::from_value(json).expect("restores");
+    assert_eq!(restored[1].scope.as_deref(), Some("run-1"));
 }

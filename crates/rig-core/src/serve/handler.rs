@@ -133,6 +133,14 @@ impl ErasedHandler {
         Self(Arc::new(handler))
     }
 
+    /// Wrap this handler in a [`Layer`](super::Layer): `intercept` sees
+    /// every dispatch before this handler does and every answer after.
+    /// `handler.layered(a).layered(b)` puts `b` outermost — `b.before`
+    /// first, `a.after` first.
+    pub fn layered(self, intercept: impl super::Intercept) -> Self {
+        Self::new(super::Layer::new(self, intercept))
+    }
+
     /// What the erased handler is.
     pub fn descriptor(&self) -> HandlerDescriptor {
         self.0.descriptor()
@@ -220,6 +228,22 @@ pub struct OutcomeSink {
     /// sink's dispatch in flight — its serial slot, its `in_flight` count
     /// — after the handler future that detached it has returned.
     done: Option<oneshot::Sender<()>>,
+    /// The driver's scope for dispatches the handler makes while serving
+    /// this one: an opaque value the driver attaches ([`with_scope`]) and a
+    /// runtime crate reads back by type — rig-bus hands a `Dispatcher` whose
+    /// dispatches carry this dispatch's id as their parent. rig-core names
+    /// no runtime, so the slot is `Any`; a handler served inline or by a
+    /// driver that attached none has no scope.
+    ///
+    /// [`with_scope`]: OutcomeSink::with_scope
+    scope: Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+    /// Set by the driver when the dispatch is cancelled from above — its
+    /// parent's consumer went away — so the sink is closed to the handler
+    /// (`is_closed`) and a drop reports a cancellation, exactly as when the
+    /// dispatch's own consumer left. Attached with [`with_cancel`].
+    ///
+    /// [`with_cancel`]: OutcomeSink::with_cancel
+    cancelled: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 /// An [`OutcomeSink`] that has left its handler: the external-resolver seam.
@@ -257,6 +281,11 @@ impl std::fmt::Debug for DetachedSink {
 }
 
 impl DetachedSink {
+    /// The driver's scope for nested dispatches; see [`OutcomeSink::scope`].
+    pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.0.scope::<T>()
+    }
+
     /// The dispatch this sink answers.
     pub const fn id(&self) -> EffectId {
         self.0.id()
@@ -299,11 +328,22 @@ pub type OnOutcome = Box<dyn Fn(&Result<Outcome, ErrorReport>) + Send + Sync>;
 /// What a bus tap observes of a stream: each event, as it is sent.
 pub type OnEvent = Box<dyn Fn(&StreamEvent) + Send + Sync>;
 
+/// What a bus tap observes when a dispatch is decided before any handler
+/// served it: the record it opened is forgotten.
+pub type OnDiscard = Box<dyn Fn() + Send + Sync>;
+
+/// What a bus tap observes when a layer serves another effect of the same
+/// family in place of the one that began: the record's request is what
+/// the innermost handler served.
+pub type OnPatch = Box<dyn Fn(&EffectKind) + Send + Sync>;
+
 /// A bus tap installed by the driver: observes the outcome as it resolves,
 /// and each streamed event when asked to.
-struct Tap {
+pub(crate) struct Tap {
     on_outcome: OnOutcome,
     on_event: Option<OnEvent>,
+    on_discard: OnDiscard,
+    on_patch: OnPatch,
     stream: StreamTap,
     fired: bool,
 }
@@ -360,6 +400,25 @@ impl Drop for OutcomeSink {
             };
             self.tap_outcome(&Err(report));
         }
+        // Cancelled from above with a consumer still listening (a child whose
+        // `Pending` outlived its parent's handler): that consumer is told the
+        // dispatch was cancelled, not that a handler misbehaved.
+        let cancelled_from_above = self
+            .cancelled
+            .as_ref()
+            .is_some_and(|cancelled| cancelled.load(std::sync::atomic::Ordering::SeqCst));
+        if unanswered && cancelled_from_above {
+            match &mut self.inner {
+                SinkInner::Unary { reply, .. } => {
+                    if let Some(reply) = reply.take() {
+                        let _ = reply.send(Err(cancelled()));
+                    }
+                }
+                SinkInner::Stream { events, .. } => {
+                    let _ = events.try_send(Err(cancelled()));
+                }
+            }
+        }
     }
 }
 
@@ -405,6 +464,8 @@ impl OutcomeSink {
             },
             tap: None,
             done: None,
+            scope: None,
+            cancelled: None,
         }
     }
 
@@ -417,6 +478,8 @@ impl OutcomeSink {
             },
             tap: None,
             done: None,
+            scope: None,
+            cancelled: None,
         }
     }
 
@@ -429,20 +492,98 @@ impl OutcomeSink {
         self
     }
 
+    /// Attach the driver's cancel marker (see the field): once set, the
+    /// sink is closed.
+    pub fn with_cancel(mut self, cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.cancelled = Some(cancelled);
+        self
+    }
+
+    /// Attach the driver's scope for nested dispatches (see the field).
+    pub fn with_scope(mut self, scope: std::sync::Arc<dyn std::any::Any + Send + Sync>) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+
+    /// The driver's scope for nested dispatches, read back as the type the
+    /// driver attached; `None` when no driver attached one or it is another
+    /// runtime's.
+    pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.scope
+            .clone()
+            .and_then(|scope| std::sync::Arc::downcast::<T>(scope).ok())
+    }
+
+    /// The driver's scope untyped, for an adapter that passes it on (to a
+    /// tool's [`ToolContext`](crate::tool::ToolContext)).
+    pub fn scope_any(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+        self.scope.clone()
+    }
+
     /// Leave the handler: the dispatch stays in flight until the returned
     /// sink answers or is dropped. See [`DetachedSink`].
     pub fn detach(self) -> DetachedSink {
         DetachedSink(self)
     }
 
-    pub fn with_tap(mut self, on_outcome: OnOutcome, on_event: Option<OnEvent>) -> Self {
+    /// The driver seam: install the recorder's tap. `on_outcome` sees the
+    /// outcome as it resolves (a stream's, folded); `on_event` each streamed
+    /// event when the recorder keeps them; `on_discard` a decision that
+    /// ended the dispatch before any handler served it (no record);
+    /// `on_patch` an effect served in the place of the one that began.
+    pub fn with_tap(
+        mut self,
+        on_outcome: OnOutcome,
+        on_event: Option<OnEvent>,
+        on_discard: OnDiscard,
+        on_patch: OnPatch,
+    ) -> Self {
         self.tap = Some(Tap {
             on_outcome,
             on_event,
+            on_discard,
+            on_patch,
             stream: StreamTap::new(),
             fired: false,
         });
         self
+    }
+
+    /// The layer seam: a layer serves `kind` in place of what began, so the
+    /// record's request is what the handler beneath will see.
+    pub(crate) fn patched(&self, kind: &EffectKind) {
+        if let Some(tap) = &self.tap {
+            (tap.on_patch)(kind);
+        }
+    }
+
+    /// The layer seam: the tap moves to the innermost hop, so the record
+    /// holds what the handler answered, never a layer's verdict.
+    pub(crate) fn take_tap(&mut self) -> Option<Tap> {
+        self.tap.take()
+    }
+
+    pub(crate) fn with_tap_slot(mut self, tap: Option<Tap>) -> Self {
+        self.tap = tap;
+        self
+    }
+
+    /// The layer seam: an inner sink carries the outer's scope and cancel
+    /// marker, so a nested dispatch from the inner handler descends from the
+    /// same dispatch and a cancel from above reaches it.
+    pub(crate) fn inheriting(mut self, outer: &Self) -> Self {
+        self.scope = outer.scope.clone();
+        self.cancelled = outer.cancelled.clone();
+        self
+    }
+
+    /// The layer seam: the dispatch was decided before any handler served
+    /// it, so it is no record — the tap is told and dropped; what the sink
+    /// then resolves reaches the consumer only.
+    pub(crate) fn discard(&mut self) {
+        if let Some(tap) = self.tap.take() {
+            (tap.on_discard)();
+        }
     }
 
     fn tap_outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
@@ -475,10 +616,15 @@ impl OutcomeSink {
 
     /// Whether the consumer is still listening.
     pub fn is_closed(&self) -> bool {
-        match &self.inner {
-            SinkInner::Unary { reply, .. } => reply.as_ref().is_none_or(|r| r.is_canceled()),
-            SinkInner::Stream { events, finished } => *finished || events.is_closed(),
-        }
+        let cancelled_from_above = self
+            .cancelled
+            .as_ref()
+            .is_some_and(|cancelled| cancelled.load(std::sync::atomic::Ordering::SeqCst));
+        cancelled_from_above
+            || match &self.inner {
+                SinkInner::Unary { reply, .. } => reply.as_ref().is_none_or(|r| r.is_canceled()),
+                SinkInner::Stream { events, finished } => *finished || events.is_closed(),
+            }
     }
 
     /// Resolve a unary dispatch. On a streaming dispatch a completion is

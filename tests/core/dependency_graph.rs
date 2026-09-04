@@ -70,13 +70,12 @@ fn rig_bus_is_runtime_free_and_below_rig_core() {
     assert_absent("rig-bus", &[], &["rig-effect-log"]);
 }
 
-/// The recorder is a handler-side seam (`rig_core::serve::Recorder`), so
-/// rig-effect-log's only use of the bus runtime is the replayer's
+/// The recorder is a handler-side seam (`rig_core::serve::Recorder`) and
+/// the serving policy a serve-side type (`rig_core::serve::ServingPolicy`),
+/// so rig-effect-log's only use of the bus runtime is the replayer's
 /// `register_all(&mut BusDriver)`: every other file of the crate compiles
-/// against rig-core alone, except for the one data type it stores — the
-/// log header carries the program's `rig_bus::BusConfig` (a `Copy` policy
-/// struct, no runtime behind it). Checked at the source level, on code
-/// lines (doc comments may name the driver).
+/// against rig-core alone. Checked at the source level, on code lines
+/// (doc comments may name the driver).
 #[test]
 fn rig_effect_log_needs_rig_bus_only_for_replay() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-effect-log/src");
@@ -97,7 +96,7 @@ fn rig_effect_log_needs_rig_bus_only_for_replay() {
             if code.starts_with("//") {
                 continue;
             }
-            if code.contains("rig_bus") && !code.contains("rig_bus::BusConfig") {
+            if code.contains("rig_bus") {
                 offenders.push(format!("{name}:{}: {}", number + 1, line.trim()));
             }
         }

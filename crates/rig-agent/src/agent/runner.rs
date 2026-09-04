@@ -612,6 +612,9 @@ pub(crate) fn memory_error_from_report(
         rig_core::error::ErrorKind::MemoryBackend => {
             rig_core::memory::MemoryError::Backend(Box::new(report))
         }
+        // A layer on the memory key denied the load: policy, and the run
+        // fails at the record.
+        rig_core::error::ErrorKind::Denied => rig_core::memory::MemoryError::Policy(report.message),
         rig_core::error::ErrorKind::Http { .. }
         | rig_core::error::ErrorKind::Json
         | rig_core::error::ErrorKind::Url

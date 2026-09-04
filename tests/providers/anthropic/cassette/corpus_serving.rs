@@ -44,7 +44,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 /// concurrency: the record is in dispatch order whatever the policy.
 async fn two_tools(
     client: rig::providers::anthropic::Client,
-    bus: rig::bus::BusConfig,
+    bus: rig::serve::ServingPolicy,
     concurrency: usize,
     events: bool,
 ) -> rig::effect_log::EffectLog {
@@ -100,9 +100,9 @@ async fn serial_concurrency_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let serial = rig::bus::BusConfig {
+            let serial = rig::serve::ServingPolicy {
                 serial_per_handler: true,
-                ..rig::bus::BusConfig::default()
+                ..rig::serve::ServingPolicy::default()
             };
             let log = two_tools(client, serial, 1, false).await;
             crate::goldens::golden_effects("anthropic_serving_serial_concurrency_one", &log);
@@ -116,7 +116,7 @@ async fn concurrent_concurrency_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let log = two_tools(client, rig::bus::BusConfig::default(), 1, false).await;
+            let log = two_tools(client, rig::serve::ServingPolicy::default(), 1, false).await;
             crate::goldens::golden_effects("anthropic_serving_concurrent_concurrency_one", &log);
         },
     )
@@ -128,7 +128,7 @@ async fn concurrent_concurrency_two_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let log = two_tools(client, rig::bus::BusConfig::default(), 2, false).await;
+            let log = two_tools(client, rig::serve::ServingPolicy::default(), 2, false).await;
             crate::goldens::golden_effects("anthropic_serving_concurrent_concurrency_two", &log);
         },
     )
@@ -142,7 +142,7 @@ async fn concurrent_concurrency_two_events_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let log = two_tools(client, rig::bus::BusConfig::default(), 2, true).await;
+            let log = two_tools(client, rig::serve::ServingPolicy::default(), 2, true).await;
             crate::goldens::golden_effects(
                 "anthropic_serving_concurrent_concurrency_two_events",
                 &log,
@@ -159,7 +159,7 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
-            let bus = rig::bus::BusConfig {
+            let bus = rig::serve::ServingPolicy {
                 command_capacity: 1,
                 stream_capacity: 1,
                 serial_per_handler: false,
@@ -179,9 +179,9 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
         let agent = client
             .agent(CLAUDE_SONNET_4_6)
             .name("golden")
-            .configure_bus(rig::bus::BusConfig {
+            .configure_bus(rig::serve::ServingPolicy {
                 serial_per_handler: true,
-                ..rig::bus::BusConfig::default()
+                ..rig::serve::ServingPolicy::default()
             })
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)

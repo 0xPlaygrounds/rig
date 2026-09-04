@@ -167,6 +167,30 @@ mod arc_str {
     }
 }
 
+/// `Option<Arc<str>>` as an optional string on the wire.
+mod opt_arc_str {
+    use std::sync::Arc;
+
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(
+        value: &Option<Arc<str>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(value) => serializer.serialize_some(&**value),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<Arc<str>>, D::Error> {
+        let value = <Option<std::borrow::Cow<'de, str>>>::deserialize(deserializer)?;
+        Ok(value.map(|value| Arc::from(&*value)))
+    }
+}
+
 /// The families of effect — the discriminant a typed view checks at bind
 /// time and the label a log line prints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -223,8 +247,11 @@ pub trait Family: sealed::Sealed + Clone + Copy + Send + Sync + 'static {
     type Request: WasmCompatSend + 'static;
     /// What it resolves to.
     type Answer: WasmCompatSend + 'static;
-    /// The wire form of a request.
-    fn wrap(request: Self::Request) -> EffectKind;
+    /// The wire form of a request, or the report for a request that has
+    /// none (a [`CustomEffect`] whose `Serialize` fails). The in-tree
+    /// families always have one; a typed dispatch of a request without one
+    /// is pre-failed by the bus and never reaches a handler or a log.
+    fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport>;
     /// The typed answer, or the report for an outcome of another family.
     fn unwrap(outcome: Outcome) -> Result<Self::Answer, ErrorReport>;
     /// The report [`Family::unwrap`] gives for an outcome of another family.
@@ -336,9 +363,9 @@ pub mod family {
                 type Request = $request;
                 type Answer = $answer;
 
-                fn wrap(request: Self::Request) -> EffectKind {
+                fn wrap(request: Self::Request) -> Result<EffectKind, ErrorReport> {
                     let wrap: fn(Self::Request) -> EffectKind = $wrap;
-                    wrap(request)
+                    Ok(wrap(request))
                 }
 
                 fn unwrap(outcome: Outcome) -> Result<Self::Answer, ErrorReport> {
@@ -454,20 +481,22 @@ pub mod family {
         type Request = E;
         type Answer = E::Answer;
 
-        fn wrap(request: E) -> EffectKind {
-            match serde_json::to_value(&request) {
-                Ok(payload) => EffectKind::Custom {
+        fn wrap(request: E) -> Result<EffectKind, ErrorReport> {
+            // An effect that does not serialize is a defect in `E`: the
+            // dispatch is refused with the serde error as its report, so no
+            // handler serves and no log records a request that had no
+            // wire form.
+            serde_json::to_value(&request)
+                .map(|payload| EffectKind::Custom {
                     kind: std::sync::Arc::from(E::KIND),
                     payload,
-                },
-                // An effect that does not serialize is a defect in `E`; the
-                // dispatch carries the error as its payload so the handler
-                // (and the log) see it rather than a silent `null`.
-                Err(error) => EffectKind::Custom {
-                    kind: std::sync::Arc::from(E::KIND),
-                    payload: serde_json::json!({ "error": error.to_string() }),
-                },
-            }
+                })
+                .map_err(|error| {
+                    ErrorReport::new(
+                        ErrorKind::Request,
+                        format!("the `{}` effect did not serialize: {error}", E::KIND),
+                    )
+                })
         }
 
         fn unwrap(outcome: Outcome) -> Result<E::Answer, ErrorReport> {
@@ -494,6 +523,13 @@ pub struct HandlerDescriptor {
     pub key: HandlerKey,
     /// The family and its advertised metadata.
     pub family: FamilyDescriptor,
+    /// The layers wrapped around the handler, outermost first: each
+    /// [`Intercept`](crate::serve::Intercept)'s name. Part of what serves
+    /// the key — a log's handler table names them, and a program recorded
+    /// under one layer stack refuses a replay under another, as it refuses
+    /// another hook stack. Empty for a bare handler.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<String>,
 }
 
 /// The family-keyed description of a handler. The variant *is* the family:
@@ -844,6 +880,224 @@ pub struct EffectRecord {
     /// boundaries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<StreamEvent>>,
+    /// The dispatch this one was made from — a handler serving `parent`
+    /// dispatched it through its sink's dispatcher — or `None` for a
+    /// dispatch the consumer made itself. Causality as data: a host parents
+    /// the effect's entity by it, a replay reads the chain off the record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<EffectId>,
+    /// The scope of the program that made the dispatch: a stable serde id
+    /// of the dispatching run or agent — never a runtime handle — stamped
+    /// by a scoped dispatcher, so one log written by several programs in
+    /// one world can be read per program. `None` when the dispatcher had
+    /// no scope, which is every record today.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_arc_str")]
+    pub scope: Option<std::sync::Arc<str>>,
+}
+
+/// The effect row of a program: which keys it can dispatch to, and of
+/// which family — the effect type of the program, as a row of
+/// `key: family` entries (Leijen's effect rows, with the key as the
+/// label). One type, three readers: the log's header stores the program's
+/// row and the trace's signature, the agent checks its row against a
+/// log's handler table on replay, and a host checks a scene's row against
+/// its bus at startup — all with [`EffectRow::is_subset_of`], which names
+/// the first gap.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct EffectRow(std::collections::BTreeMap<HandlerKey, EffectFamily>);
+
+/// The first entry of a row a set of handlers does not serve: the key,
+/// the family the row needs, and what serves the key instead, if anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowGap {
+    /// The key the row names.
+    pub key: HandlerKey,
+    /// The family the row needs it as.
+    pub needed: EffectFamily,
+    /// The family a handler serves it as, or `None` when nothing serves it.
+    pub served: Option<EffectFamily>,
+}
+
+impl std::fmt::Display for RowGap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.served {
+            Some(served) => write!(
+                f,
+                "`{}` is needed as {} but served as {served}",
+                self.key, self.needed
+            ),
+            None => write!(f, "`{}` ({}) is not served", self.key, self.needed),
+        }
+    }
+}
+
+/// One difference between two rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowDiff {
+    /// The other row lacks this entry.
+    Missing {
+        /// The key this row names.
+        key: HandlerKey,
+        /// The family this row names it as.
+        family: EffectFamily,
+    },
+    /// The other row has an entry this one lacks.
+    Extra {
+        /// The key the other row names.
+        key: HandlerKey,
+        /// The family the other row names it as.
+        family: EffectFamily,
+    },
+    /// Both rows name the key, as different families.
+    Family {
+        /// The key both name.
+        key: HandlerKey,
+        /// This row's family for it.
+        this: EffectFamily,
+        other: EffectFamily,
+    },
+}
+
+impl std::fmt::Display for RowDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Missing { key, family } => write!(f, "`{key}` ({family}) is missing"),
+            Self::Extra { key, family } => write!(f, "`{key}` ({family}) is extra"),
+            Self::Family { key, this, other } => {
+                write!(f, "`{key}` is {this} here and {other} there")
+            }
+        }
+    }
+}
+
+impl EffectRow {
+    /// An empty row.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Name `key` as `family`; a key already named is re-named.
+    pub fn insert(&mut self, key: HandlerKey, family: EffectFamily) -> Option<EffectFamily> {
+        self.0.insert(key, family)
+    }
+
+    /// Name `key` as `family` unless the row already names it.
+    pub fn insert_if_absent(&mut self, key: HandlerKey, family: EffectFamily) {
+        self.0.entry(key).or_insert(family);
+    }
+
+    /// Remove `key` from the row; the family it named, if it was there.
+    pub fn remove(&mut self, key: &HandlerKey) -> Option<EffectFamily> {
+        self.0.remove(key)
+    }
+
+    /// The family the row names `key` as.
+    pub fn get(&self, key: &HandlerKey) -> Option<&EffectFamily> {
+        self.0.get(key)
+    }
+
+    /// Whether the row names `key`.
+    pub fn contains_key(&self, key: &HandlerKey) -> bool {
+        self.0.contains_key(key)
+    }
+
+    /// The keys, in order.
+    pub fn keys(&self) -> impl Iterator<Item = &HandlerKey> {
+        self.0.keys()
+    }
+
+    /// The entries, in key order.
+    pub fn iter(&self) -> impl Iterator<Item = (&HandlerKey, &EffectFamily)> {
+        self.0.iter()
+    }
+
+    /// How many keys the row names.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether the row names no key.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Whether every entry of this row is served by `handlers` as the
+    /// family the row needs: `Ok` when it is, else the first gap in key
+    /// order — a key nothing serves, or one served as another family.
+    pub fn is_subset_of(&self, handlers: &[HandlerDescriptor]) -> Result<(), RowGap> {
+        for (key, needed) in &self.0 {
+            let served = handlers
+                .iter()
+                .find(|descriptor| &descriptor.key == key)
+                .map(|descriptor| descriptor.family.family());
+            match served {
+                Some(served) if served == *needed => {}
+                served => {
+                    return Err(RowGap {
+                        key: key.clone(),
+                        needed: *needed,
+                        served,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Every difference between this row and `other`, in key order:
+    /// entries `other` lacks, entries it has and this row lacks, and keys
+    /// both name as different families.
+    pub fn diff(&self, other: &EffectRow) -> Vec<RowDiff> {
+        let mut diffs = Vec::new();
+        for (key, family) in &self.0 {
+            match other.0.get(key) {
+                None => diffs.push(RowDiff::Missing {
+                    key: key.clone(),
+                    family: *family,
+                }),
+                Some(theirs) if theirs != family => diffs.push(RowDiff::Family {
+                    key: key.clone(),
+                    this: *family,
+                    other: *theirs,
+                }),
+                Some(_) => {}
+            }
+        }
+        for (key, family) in &other.0 {
+            if !self.0.contains_key(key) {
+                diffs.push(RowDiff::Extra {
+                    key: key.clone(),
+                    family: *family,
+                });
+            }
+        }
+        diffs
+    }
+}
+
+impl FromIterator<(HandlerKey, EffectFamily)> for EffectRow {
+    fn from_iter<I: IntoIterator<Item = (HandlerKey, EffectFamily)>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<'a> IntoIterator for &'a EffectRow {
+    type Item = (&'a HandlerKey, &'a EffectFamily);
+    type IntoIter = std::collections::btree_map::Iter<'a, HandlerKey, EffectFamily>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl IntoIterator for EffectRow {
+    type Item = (HandlerKey, EffectFamily);
+    type IntoIter = std::collections::btree_map::IntoIter<HandlerKey, EffectFamily>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
 }
 
 // The protocol crosses threads and serializes on every target.
@@ -866,6 +1120,7 @@ const _: fn() = || {
     assert_wire::<MemoryOutcome>();
     assert_wire::<RetrievedDocuments>();
     assert_wire::<EffectRecord>();
+    assert_wire::<EffectRow>();
     assert_wire::<StreamEvent>();
 };
 

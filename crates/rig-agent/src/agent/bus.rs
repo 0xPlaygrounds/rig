@@ -27,8 +27,9 @@ use super::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
-use rig_bus::{BusConfig, BusDriver, Dispatcher, Registrar};
+use rig_bus::{BusDriver, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
+use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::CompletionAdapter;
 use rig_core::{
     completion::{CompletionModel, ModelRef},
@@ -85,7 +86,7 @@ pub(crate) struct AgentBus {
     recorder: Option<EffectLogRecorder>,
     anonymous_models: Arc<AtomicUsize>,
     /// The policy the owned bus was created with; `None` over a host's bus.
-    config: Option<BusConfig>,
+    config: Option<ServingPolicy>,
 }
 
 impl std::fmt::Debug for AgentBus {
@@ -104,7 +105,7 @@ impl AgentBus {
         registrar: Registrar,
         driver: BusDriver,
         owner: String,
-        config: BusConfig,
+        config: ServingPolicy,
     ) -> Self {
         Self {
             dispatcher,
@@ -119,7 +120,7 @@ impl AgentBus {
     }
 
     /// The policy the owned bus runs under; `None` over a host's bus.
-    pub(crate) fn config(&self) -> Option<BusConfig> {
+    pub(crate) fn config(&self) -> Option<ServingPolicy> {
         self.config
     }
 
@@ -288,9 +289,9 @@ impl AgentBus {
     /// Move the driver out. Fails when another clone of the agent still
     /// shares it — every clone drives, so the driver cannot leave while
     /// one of them may still run.
-    pub(crate) fn try_into_parts(self) -> Result<(Dispatcher, BusDriver), Self> {
+    pub(crate) fn try_into_parts(self) -> Result<(Dispatcher, BusDriver), Box<Self>> {
         let Some(driver) = self.driver else {
-            return Err(self);
+            return Err(Box::new(self));
         };
         match Arc::try_unwrap(driver) {
             Ok(mutex) => Ok((
@@ -299,10 +300,10 @@ impl AgentBus {
                     .into_inner()
                     .unwrap_or_else(std::sync::PoisonError::into_inner),
             )),
-            Err(driver) => Err(Self {
+            Err(driver) => Err(Box::new(Self {
                 driver: Some(driver),
                 ..self
-            }),
+            })),
         }
     }
 

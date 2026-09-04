@@ -2353,6 +2353,16 @@ pub(crate) async fn dispatch_tool_call(
         Err(report) if report.kind == ErrorKind::Cancelled => {
             return Err(ToolDispatchAbort::Cancelled(report.message));
         }
+        // A layer on the tool's key denied the call: the model sees the
+        // skipped result, as it does for a hook's denial.
+        Err(report) if report.kind == ErrorKind::Denied => {
+            tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call denied");
+            ToolCallDispatch {
+                result: ToolResult::skipped(report.message),
+                context: tool_context.for_dispatch(),
+                args: effective_args,
+            }
+        }
         // The bus could not serve the call, or a replayer refused it as a
         // divergence: the run fails with the report rather than telling the
         // model its tool failed — a replay that continues on an answer the

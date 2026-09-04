@@ -16,8 +16,9 @@
 
 use std::sync::{Arc, OnceLock};
 
-use rig_bus::{Bus, BusConfig, Dispatcher, Registrar};
+use rig_bus::{Bus, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
+use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
 use rig_core::{
     completion::{CompletionModel, Document, ModelRef},
@@ -116,7 +117,7 @@ pub struct WithBuilderTools(ToolServer);
 /// Where the built agent's bus comes from.
 enum BusSource {
     /// The agent's own bus, created at build with this sizing.
-    Owned(BusConfig),
+    Owned(ServingPolicy),
     /// A host's bus; the host drives it. The agent registers on it through
     /// the host's registrar.
     Host(Dispatcher, Registrar),
@@ -387,15 +388,15 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// governed by the runner, which the cassette corpus was recorded with
     /// at its default of one. An agent over a host's bus reports the
     /// default: the host sized its bus.
-    pub fn bus_config(&self) -> BusConfig {
+    pub fn bus_config(&self) -> ServingPolicy {
         match &self.bus {
             BusSource::Owned(config) => *config,
-            BusSource::Host(..) => BusConfig::default(),
+            BusSource::Host(..) => ServingPolicy::default(),
         }
     }
 
     /// Size the agent's own bus. No effect on an agent over a host's bus.
-    pub fn configure_bus(mut self, bus_config: BusConfig) -> Self {
+    pub fn configure_bus(mut self, bus_config: ServingPolicy) -> Self {
         if let BusSource::Owned(config) = &mut self.bus {
             *config = bus_config;
         }
@@ -556,12 +557,16 @@ impl AgentBuilder<NoToolConfig> {
     where
         M: CompletionModel + 'static,
     {
-        Self::with_bus_config(BusConfig::default(), label, model)
+        Self::with_bus_config(ServingPolicy::default(), label, model)
     }
 
     /// An agent over its own bus created with `bus_config`, with `model`
     /// registered under `label`.
-    pub fn with_bus_config<M>(bus_config: BusConfig, label: impl Into<ModelRef>, model: M) -> Self
+    pub fn with_bus_config<M>(
+        bus_config: ServingPolicy,
+        label: impl Into<ModelRef>,
+        model: M,
+    ) -> Self
     where
         M: CompletionModel + 'static,
     {
@@ -596,7 +601,8 @@ impl AgentBuilder<NoToolConfig> {
     fn start(bus: BusSource, owner: Option<String>, model: DefaultModel) -> Self {
         // The config's bus and model key are placeholders until build mints
         // the real ones under the owner.
-        let (placeholder, placeholder_registrar, _driver) = Bus::channel_with(BusConfig::default());
+        let (placeholder, placeholder_registrar, _driver) =
+            Bus::channel_with(ServingPolicy::default());
         let key = Key::new_unchecked(match &model {
             DefaultModel::Labelled(label, _) => HandlerKey::from(label.as_str()),
             DefaultModel::Key(key, _) => key.clone(),

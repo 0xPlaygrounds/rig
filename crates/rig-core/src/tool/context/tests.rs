@@ -148,3 +148,37 @@ fn insert_replaces_an_undecodable_displaced_value_and_returns_none() {
         })
     );
 }
+
+#[test]
+fn the_scope_is_not_data() {
+    // The driver's scope rides on the context for the call and nowhere
+    // else: not on the wire, not in equality, gone once cleared.
+    let scope: std::sync::Arc<dyn Any + Send + Sync> = std::sync::Arc::new(7u32);
+    let mut scoped = ToolContext::new().with_scope(scope);
+    assert_eq!(scoped.scope::<u32>().as_deref(), Some(&7));
+    assert_eq!(
+        scoped.scope::<String>(),
+        None,
+        "another type is not the scope"
+    );
+    assert_eq!(
+        scoped,
+        ToolContext::new(),
+        "the scope is not part of equality"
+    );
+    let json = serde_json::to_value(&scoped).expect("serializes");
+    assert_eq!(json, serde_json::json!({}), "never on the wire");
+    let dispatch = scoped.for_dispatch();
+    assert_eq!(
+        dispatch.scope::<u32>().as_deref(),
+        Some(&7),
+        "a nested inline call keeps the scope"
+    );
+    scoped.clear_scope();
+    assert_eq!(scoped.scope::<u32>(), None);
+    assert_eq!(
+        ToolContext::new().scope::<u32>(),
+        None,
+        "an inline call has none"
+    );
+}

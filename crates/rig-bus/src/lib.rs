@@ -114,7 +114,7 @@
 //!
 //! ```ignore
 //! let (dispatcher, registrar) = rig_bus::Bus::new_with(
-//!     rig_bus::BusConfig::default(),
+//!     rig_core::serve::ServingPolicy::default(),
 //!     |driver| {
 //!         driver
 //!             .register("model", rig_core::serve::adapters::CompletionAdapter::new("gpt", model))
@@ -147,6 +147,70 @@
 //!   sizes (and the dispatcher's, the registrar's, a key's) are budgeted at
 //!   compile time, so a field that grows one past its budget fails to
 //!   compile rather than quietly costing every dispatch.
+//! - No handler survives a driver. [`Bus::reopen`] gives a bus whose driver
+//!   is gone a new one with an empty handler table; the handles bound
+//!   before keep working, the handlers do not come back on their own. A
+//!   host that restarts its driver (a state transition) keeps every
+//!   [`ErasedHandler`](rig_core::serve::ErasedHandler) it registered — an
+//!   erased handler is `Clone` — and registers it again through the new
+//!   registrar; that is the plugin's rule, not the bus's.
+//! - A ticking host probes what ended, not everything in flight:
+//!   [`Dispatcher::take_resolved`] drains the completion inbox — the id of
+//!   every dispatch that ended since the last drain — so a tick polls only
+//!   those values; the inbox is bounded and [`Dispatcher::inbox_dropped`]
+//!   says when a host fell behind.
+//!
+//! # Layers
+//!
+//! Interception is handler composition: an
+//! [`ErasedHandler::layered`](rig_core::serve::ErasedHandler::layered)
+//! wraps a handler in an [`Intercept`](rig_core::serve::Intercept) — a
+//! policy that sees every dispatch before the handler
+//! ([`Decision`](rig_core::serve::Decision): proceed, patch, deny) and
+//! every answer after ([`Verdict`](rig_core::serve::Verdict): keep,
+//! replace) — and the result registers like any handler, under the inner
+//! descriptor with the layer's name in `layers`. Decisions are program,
+//! never record: the recorder taps the innermost hop, so a denial
+//! (`ErrorKind::Denied` on the consumer's outcome) leaves no record and a
+//! replacement leaves the handler's real answer in it. A layer that
+//! suspends in `before` — an approval answered by a system next tick —
+//! keeps the dispatch in flight and its serial slot busy until it decides.
+//!
+//! # Causal dispatch
+//!
+//! A handler's way back onto the bus is its sink's dispatcher
+//! ([`SinkDispatch::dispatcher`]): every dispatch made through it — and
+//! every [`Handle`] bound from it — carries the served dispatch's id as its
+//! **parent**, readable on the [`Pending`]/[`EffectStream`]/[`Typed`]
+//! (`parent()`) and passed to the recorder, so a record names the dispatch
+//! it was made from and a host can parent the effect's entity at dispatch.
+//! Two rules follow from the chain, as data rather than from the thread the
+//! driver happens to poll on:
+//!
+//! - Under serial serving, a dispatch that descends from a dispatch in
+//!   flight on its own key would queue behind that ancestor and wait on
+//!   itself; it is refused (`ErrorKind::Request`, "re-entrant") — from a
+//!   spawned task exactly as from the handler's own poll.
+//! - A cancel reaches the chain: dropping a [`Pending`] whose handler
+//!   dispatched children flags every descendant in flight (its handler is
+//!   dropped, its sink reads closed, its record and any consumer still
+//!   holding it say `Cancelled`) and drops the ones still queued or
+//!   buffered unserved — no handler poll, no record.
+//!
+//! A consumer's dispatcher holds the bus open for commands; the scoped one
+//! a handler reads off its sink does not — the dispatch it serves does.
+//! What the chain cannot see it cannot refuse: a nested run made on the
+//! *same* dispatcher that made the outer call — an agent prompting itself
+//! from inside its own tool over its own bus — carries no parent, and
+//! under serial serving it queues behind the call that waits on it. Run
+//! the nested work over the call's scope instead.
+//!
+//! Beside the parent, a dispatch carries a **scope**: [`Dispatcher::scoped`]
+//! stamps every dispatch made through the clone it returns — and every
+//! nested dispatch a handler makes while serving one — with a stable id of
+//! the program dispatching (a run id, an agent name; never a runtime
+//! handle), recorded as `EffectRecord::scope`, so a log several programs
+//! write in one world reads per program. `None` when nothing set it.
 //!
 //! # Writing a handler
 //!
@@ -170,12 +234,13 @@ mod registrar;
 mod sync;
 
 pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
-pub use driver::{BusConfig, BusDriver};
+pub use driver::BusDriver;
 pub use handle::{
     Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
-    Retrieval, ToolCall, ToolHandle, Typed, wrap_stream,
+    Retrieval, SinkDispatch, ToolCall, ToolHandle, Typed, wrap_stream,
 };
 pub use registrar::Registrar;
+use rig_core::serve::ServingPolicy;
 
 use std::sync::Arc;
 
@@ -197,15 +262,15 @@ const _: () = {
 pub struct Bus;
 
 impl Bus {
-    /// A bus with the default [`BusConfig`]: the dispatcher, the registrar
+    /// A bus with the default [`ServingPolicy`]: the dispatcher, the registrar
     /// and the driver. Register handlers on the driver, then drive it or
     /// spawn it; register through the registrar once it is spawned.
     pub fn channel() -> (Dispatcher, Registrar, BusDriver) {
-        Self::channel_with(BusConfig::default())
+        Self::channel_with(ServingPolicy::default())
     }
 
     /// A bus with an explicit config.
-    pub fn channel_with(config: BusConfig) -> (Dispatcher, Registrar, BusDriver) {
+    pub fn channel_with(config: ServingPolicy) -> (Dispatcher, Registrar, BusDriver) {
         let shared = Arc::new(dispatcher::Shared::new(config));
         let mailbox = Arc::new(registrar::Mailbox::new());
         let dispatcher = Dispatcher::open(shared.clone(), config.stream_capacity.max(1));
@@ -247,7 +312,7 @@ impl Bus {
     /// its handler table. `spawn` is the host's executor entry point
     /// (`tokio::spawn`, a task pool, `spawn_local`); rig-bus supplies none.
     pub fn new_with(
-        config: BusConfig,
+        config: ServingPolicy,
         register: impl FnOnce(&mut BusDriver),
         spawn: impl FnOnce(BusDriver),
     ) -> (Dispatcher, Registrar) {

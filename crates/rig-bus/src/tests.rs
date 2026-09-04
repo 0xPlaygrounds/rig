@@ -10,7 +10,7 @@ use std::{
 use futures::{FutureExt, StreamExt, channel::oneshot, future::poll_fn, task::noop_waker_ref};
 use serde_json::json;
 
-use super::{Bus, BusConfig, BusDriver, Dispatcher, ModelHandle, Registrar};
+use super::{Bus, BusDriver, Dispatcher, ModelHandle, Registrar, ServingPolicy};
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
     OutcomeSink, Serve,
@@ -104,6 +104,7 @@ impl Serve for Echo {
             family: FamilyDescriptor::Custom {
                 kind: "test:echo".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -141,6 +142,7 @@ impl Serve for Ordered {
             family: FamilyDescriptor::Custom {
                 kind: "test:ordered".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -233,7 +235,7 @@ async fn a_dropped_driver_answers_bus_closed_before_and_after_the_send() {
     assert!(dispatcher.is_closed());
 
     // `new_with` whose spawner drops the driver: the same answer.
-    let (dispatcher, _registrar) = Bus::new_with(BusConfig::default(), |_| {}, drop);
+    let (dispatcher, _registrar) = Bus::new_with(ServingPolicy::default(), |_| {}, drop);
     let report = within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1))))
         .await
         .expect_err("closed");
@@ -344,9 +346,9 @@ async fn descriptor_is_a_snapshot_that_needs_no_driver() {
 async fn serial_per_handler_serves_in_arrival_order_and_concurrent_may_not() {
     async fn run(serial: bool) -> Vec<u64> {
         let served = Arc::new(Mutex::new(Vec::new()));
-        let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+        let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
             serial_per_handler: serial,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         });
         driver
             .register(
@@ -405,9 +407,9 @@ async fn concurrent_serving_across_keys_is_the_default() {
 
 #[test]
 fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
-    let (dispatcher, _registrar, driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let waker = noop_waker_ref();
     let mut cx = Context::from_waker(waker);
@@ -443,9 +445,9 @@ fn dispatch_never_blocks_the_caller_even_when_the_channel_is_full() {
 
 #[test]
 fn a_dispatch_parked_on_the_bound_is_sent_once_the_driver_drains() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -498,9 +500,9 @@ fn a_buffered_dispatch_answers_bus_closed_when_the_driver_drops_before_taking_it
 
 #[test]
 fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -525,9 +527,9 @@ fn a_dispatch_dropped_while_parked_on_the_bound_sends_nothing() {
 
 #[test]
 fn deregistering_a_serial_key_drains_its_queue_with_handler_unavailable() {
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (blocked, open) = Echo::gated();
     let key = HandlerKey::from("echo");
@@ -595,6 +597,7 @@ impl Serve for SelfCaller {
             family: FamilyDescriptor::Custom {
                 kind: "test:self-caller".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -603,9 +606,19 @@ impl Serve for SelfCaller {
             sink.resolve(Ok(Outcome::Custom(json!("plain")))).await;
             return;
         }
-        let dispatcher = self.dispatcher.clone();
+        // The way back onto the bus is the sink's dispatcher: its dispatches
+        // carry this dispatch as their parent, which is what the serial
+        // re-entrancy rule reads. The captured consumer dispatcher is kept
+        // only to show a handler needs no dispatcher of its own.
+        let dispatcher =
+            super::SinkDispatch::dispatcher(&sink).unwrap_or_else(|| self.dispatcher.clone());
         let key = self.key.clone();
         {
+            assert_eq!(
+                dispatcher.parent(),
+                Some(sink.id()),
+                "scoped to the served dispatch"
+            );
             let mut nested = dispatcher.dispatch(&key, custom(json!("nested")));
             // The first poll of the nested dispatch runs inside this
             // handler's poll: the bus must answer it, not queue it.
@@ -627,9 +640,9 @@ impl Serve for SelfCaller {
 
 #[test]
 fn a_reentrant_dispatch_to_the_in_flight_key_under_serial_serving_is_refused() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let key = HandlerKey::from("self");
     driver
@@ -829,6 +842,7 @@ async fn dropping_the_stream_cancels_the_handler() {
                     model: "chatty".into(),
                     capabilities: Default::default(),
                 },
+                layers: Vec::new(),
             }
         }
         async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
@@ -844,9 +858,9 @@ async fn dropping_the_stream_cancels_the_handler() {
     }
     let sends = Arc::new(AtomicUsize::new(0));
     let cancelled = Arc::new(AtomicUsize::new(0));
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         stream_capacity: 4,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     driver
         .register(
@@ -1099,6 +1113,7 @@ impl Serve for Hanging {
             family: FamilyDescriptor::Custom {
                 kind: "test:hanging".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1281,6 +1296,7 @@ impl Serve for RegistersOnDrop {
             family: FamilyDescriptor::Custom {
                 kind: "test:echo".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1339,6 +1355,7 @@ impl Serve for DropCounter {
             family: FamilyDescriptor::Custom {
                 kind: "test:flag".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1412,6 +1429,7 @@ impl Serve for AskUserHandler {
             family: FamilyDescriptor::Custom {
                 kind: AskUser::KIND.into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -1572,6 +1590,8 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
             id: rig_core::effect::EffectId::from_raw(9),
             key: HandlerKey::from("echo"),
             kind: custom(json!(1)),
+            parent: None,
+            scope: None,
             reply: super::dispatcher::Reply::Unary(reply),
             span: tracing::Span::none(),
             cancel,
@@ -1619,6 +1639,7 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
                     model: "writer".into(),
                     capabilities: Default::default(),
                 },
+                layers: Vec::new(),
             }
         }
 
@@ -1824,13 +1845,24 @@ async fn a_non_clone_rerank_model_registers_and_its_error_is_a_report() {
 struct Counting {
     begun: Arc<AtomicUsize>,
     resolved: Arc<AtomicUsize>,
+    discarded: Arc<AtomicUsize>,
 }
 
 impl rig_core::serve::Recorder for Counting {
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
-    fn begin(&self, _id: rig_core::effect::EffectId, _key: HandlerKey, _kind: EffectKind) {
+    fn begin(
+        &self,
+        _id: rig_core::effect::EffectId,
+        _key: HandlerKey,
+        _kind: EffectKind,
+        _origin: rig_core::serve::Origin,
+    ) {
         self.begun.fetch_add(1, Ordering::SeqCst);
     }
+    fn discard(&self, _id: rig_core::effect::EffectId) {
+        self.discarded.fetch_add(1, Ordering::SeqCst);
+    }
+    fn patch(&self, _id: rig_core::effect::EffectId, _kind: EffectKind) {}
     fn keep_events(&self) -> bool {
         false
     }
@@ -1895,9 +1927,9 @@ fn a_pending_dropped_before_the_driver_polls_never_reaches_its_handler() {
 
 #[test]
 fn a_serial_key_is_not_occupied_by_a_dispatch_cancelled_before_it_was_served() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -1950,9 +1982,9 @@ fn a_probe_resolves_a_dispatch_without_an_executor() {
 fn ten_thousand_probes_on_a_full_bus_keep_one_waker() {
     // A frame-ticked host probes a parked dispatch once per frame; the bus
     // keeps one slot per parked value, not one waker per probe.
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -1995,9 +2027,9 @@ impl futures::task::ArcWake for CountingWake {
 
 #[test]
 fn a_parked_value_dropped_before_the_drain_leaves_no_slot_to_wake() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         command_capacity: 1,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let (echo, _served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -2033,6 +2065,7 @@ impl Serve for Detaching {
             family: FamilyDescriptor::Custom {
                 kind: "test:world".into(),
             },
+            layers: Vec::new(),
         }
     }
 
@@ -2043,9 +2076,9 @@ impl Serve for Detaching {
 
 #[test]
 fn a_detached_sink_keeps_its_serial_slot_until_answered() {
-    let (dispatcher, _registrar, mut driver) = Bus::channel_with(BusConfig {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     });
     let mailbox = Arc::new(Mutex::new(Vec::new()));
     driver
@@ -2260,6 +2293,7 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
             model: "gpt".into(),
             capabilities: Default::default(),
         },
+        layers: Vec::new(),
     };
     let handle: ModelHandle = super::Handle::rebind(dispatcher.clone(), stored.clone());
     assert_eq!(handle.key(), &HandlerKey::from("model"));
@@ -2378,4 +2412,624 @@ fn a_bind_on_a_closed_bus_is_bus_closed_not_unavailable() {
             .handle::<rig_core::effect::family::Completion>(&HandlerKey::from("model"))
             .is_ok()
     );
+}
+
+// ---------------------------------------------------------------------------
+// Causal dispatch: a command carries its parent; re-entrancy is a chain, a
+// cancel reaches the chain.
+
+/// Dispatches to `child` through its sink's dispatcher (the way back onto
+/// the bus), from the calling thread or from a spawned one, and reports the
+/// nested dispatch's first poll as its own outcome. The child `Pending` is
+/// parked in `held` when a slot is given, so a test can watch a child whose
+/// parent handler is gone.
+struct Parent {
+    key: HandlerKey,
+    child: HandlerKey,
+    from_another_thread: bool,
+    held: Option<Arc<Mutex<Vec<super::Pending>>>>,
+    /// Await the child's answer and report it (else report the child's
+    /// first poll and let it go).
+    await_child: bool,
+}
+
+impl Serve for Parent {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: self.key.clone(),
+            family: FamilyDescriptor::Custom {
+                kind: "test:parent".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+        let dispatcher = super::SinkDispatch::dispatcher(&sink).expect("served by a bus driver");
+        assert_eq!(dispatcher.parent(), Some(sink.id()));
+        let child = self.child.clone();
+        let first_poll = move |dispatcher: Dispatcher| {
+            let mut nested = dispatcher.dispatch(&child, custom(json!("nested")));
+            let mut cx = Context::from_waker(noop_waker_ref());
+            let first = nested.poll_unpin(&mut cx);
+            (first, nested)
+        };
+        let (first, nested) = if self.from_another_thread {
+            std::thread::spawn(move || first_poll(dispatcher))
+                .join()
+                .expect("the nested thread")
+        } else {
+            first_poll(dispatcher)
+        };
+        if let Some(held) = &self.held {
+            held.lock().expect("held").push(nested);
+            // The parent stays in flight until its consumer goes.
+            futures::future::pending::<()>().await;
+            return;
+        }
+        if self.await_child {
+            let outcome = match first {
+                Poll::Ready(result) => result,
+                Poll::Pending => nested.await,
+            };
+            let outcome = match outcome {
+                Ok(outcome) => Ok(outcome),
+                Err(report) => Ok(Outcome::Custom(json!({
+                    "kind": format!("{:?}", report.kind),
+                    "message": report.message,
+                }))),
+            };
+            sink.resolve(outcome).await;
+            return;
+        }
+        let outcome = match first {
+            Poll::Ready(Err(report)) => Ok(Outcome::Custom(json!({
+                "kind": format!("{:?}", report.kind),
+                "message": report.message,
+            }))),
+            Poll::Ready(Ok(outcome)) => Ok(outcome),
+            Poll::Pending => Ok(Outcome::Custom(json!("accepted"))),
+        };
+        sink.resolve(outcome).await;
+    }
+}
+
+/// Poll `pending` and the driver by turns until the dispatch resolves;
+/// `None` when sixteen rounds were not enough.
+fn drive_to_outcome(
+    driver: &mut BusDriver,
+    pending: &mut super::Pending,
+) -> Option<Result<Outcome, ErrorReport>> {
+    let mut cx = Context::from_waker(noop_waker_ref());
+    for _ in 0..16 {
+        if let Poll::Ready(result) = pending.poll_unpin(&mut cx) {
+            return Some(result);
+        }
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    None
+}
+
+#[test]
+fn a_dispatch_made_through_the_sinks_dispatcher_carries_its_parent() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let held = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "parent",
+            Parent {
+                key: HandlerKey::from("parent"),
+                child: HandlerKey::from("echo"),
+                from_another_thread: false,
+                held: Some(held.clone()),
+                await_child: false,
+            },
+        )
+        .expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
+    assert_eq!(outer.parent(), None, "a consumer's dispatch has no parent");
+    assert!(outer.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let mut child = held
+        .lock()
+        .expect("held")
+        .pop()
+        .expect("the child was parked");
+    assert_eq!(
+        child.parent(),
+        Some(outer.id()),
+        "the nested dispatch names the dispatch it was made from"
+    );
+    // The child is served while its parent is in flight.
+    let outcome = drive_to_outcome(&mut driver, &mut child)
+        .expect("resolved")
+        .expect("served");
+    assert!(
+        matches!(&outcome, Outcome::Custom(payload) if *payload == json!("nested")),
+        "{outcome:?}"
+    );
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert_eq!(driver.in_flight(), 1, "the parent");
+    drop(outer);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 0);
+    let stream = dispatcher.dispatch_stream(&HandlerKey::from("echo"), custom(json!(1)));
+    assert_eq!(stream.parent(), None);
+}
+
+#[test]
+fn a_nested_serial_dispatch_from_another_thread_is_refused_by_its_chain() {
+    // The old rule read the polling thread: a handler that dispatched to its
+    // own key from a spawned thread queued behind itself and hung. The chain
+    // is data on the command, so the thread does not matter.
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    });
+    driver
+        .register(
+            "parent",
+            Parent {
+                key: HandlerKey::from("parent"),
+                child: HandlerKey::from("parent"),
+                from_another_thread: true,
+                held: None,
+                await_child: false,
+            },
+        )
+        .expect("register");
+    let mut outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
+    let outcome = drive_to_outcome(&mut driver, &mut outer)
+        .expect("resolved, never hung")
+        .expect("served");
+    let Outcome::Custom(payload) = outcome else {
+        panic!("custom outcome expected, got {outcome:?}");
+    };
+    assert_eq!(payload["kind"], json!("Request"), "{payload}");
+    assert!(
+        payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("re-entrant")),
+        "{payload}"
+    );
+}
+
+#[test]
+fn a_grandchild_on_the_ancestors_serial_key_is_refused_too() {
+    // parent -> middle -> parent: the grandchild would queue behind the
+    // grandparent. The chain is walked — two hops — not just the immediate
+    // parent. The parent awaits the middle, the middle awaits its child
+    // (the grandchild), so the refusal travels back as data.
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    });
+    driver
+        .register(
+            "parent",
+            Parent {
+                key: HandlerKey::from("parent"),
+                child: HandlerKey::from("middle"),
+                from_another_thread: false,
+                held: None,
+                await_child: true,
+            },
+        )
+        .expect("register");
+    driver
+        .register(
+            "middle",
+            Parent {
+                key: HandlerKey::from("middle"),
+                child: HandlerKey::from("parent"),
+                from_another_thread: false,
+                held: None,
+                await_child: true,
+            },
+        )
+        .expect("register");
+    let mut outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
+    let outcome = drive_to_outcome(&mut driver, &mut outer)
+        .expect("resolved, never hung")
+        .expect("served");
+    // The middle's answer is the parent's answer: the grandchild's refusal.
+    let Outcome::Custom(payload) = outcome else {
+        panic!("custom outcome expected, got {outcome:?}");
+    };
+    assert_eq!(payload["kind"], json!("Request"), "{payload}");
+    assert!(
+        payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("re-entrant")),
+        "{payload}"
+    );
+    // From the other end — middle -> parent -> middle — the walk finds the
+    // middle's own key two hops up and names it.
+    let mut middle = dispatcher.dispatch(&HandlerKey::from("middle"), custom(json!("m")));
+    let outcome = drive_to_outcome(&mut driver, &mut middle)
+        .expect("resolved, never hung")
+        .expect("served");
+    let Outcome::Custom(payload) = outcome else {
+        panic!("custom outcome expected, got {outcome:?}");
+    };
+    assert_eq!(payload["kind"], json!("Request"), "{payload}");
+    assert!(
+        payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("`middle`")),
+        "{payload}"
+    );
+    assert_eq!(driver.in_flight(), 0, "nothing hung behind itself");
+}
+
+#[test]
+fn a_parent_cancel_reaches_a_child_in_flight_whose_pending_lives_elsewhere() {
+    // The child `Pending` is parked outside the parent's future, so dropping
+    // the parent drops no child. The cancel reaches it by the chain: the
+    // child's handler is dropped and its parked `Pending` resolves.
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, _never_open) = Echo::gated();
+    driver.register("echo", echo).expect("register");
+    let held = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "parent",
+            Parent {
+                key: HandlerKey::from("parent"),
+                child: HandlerKey::from("echo"),
+                from_another_thread: false,
+                held: Some(held.clone()),
+                await_child: false,
+            },
+        )
+        .expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
+    let mut outer = Box::pin(outer);
+    assert!(outer.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.in_flight(), 2, "parent and child in flight");
+    let mut child = held
+        .lock()
+        .expect("held")
+        .pop()
+        .expect("the child was parked");
+    assert!(child.poll_unpin(&mut cx).is_pending(), "gated");
+    drop(outer);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    let report = child
+        .poll_unpin(&mut cx)
+        .map(|result| result.expect_err("cancelled with its parent"));
+    assert!(
+        matches!(report, Poll::Ready(ref report) if report.kind == ErrorKind::Cancelled),
+        "{report:?}"
+    );
+    assert_eq!(driver.in_flight(), 0);
+}
+
+#[test]
+fn a_parent_cancel_reaches_a_child_still_queued() {
+    // Serial serving, the child's key busy with another consumer's dispatch:
+    // the child is queued when its parent is cancelled. It is never served —
+    // no handler poll for a dispatch nobody wants.
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    });
+    let (echo, open) = Echo::gated();
+    driver.register("echo", echo).expect("register");
+    let held = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "parent",
+            Parent {
+                key: HandlerKey::from("parent"),
+                child: HandlerKey::from("echo"),
+                from_another_thread: false,
+                held: Some(held.clone()),
+                await_child: false,
+            },
+        )
+        .expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut busy = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!("busy")));
+    assert!(busy.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let mut outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
+    assert!(outer.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(
+        driver.in_flight(),
+        2,
+        "busy and parent; the child is queued"
+    );
+    assert_eq!(driver.queued(), 1);
+    let mut child = held
+        .lock()
+        .expect("held")
+        .pop()
+        .expect("the child was parked");
+    drop(outer);
+    let _ = driver.poll_unpin(&mut cx);
+    // The key frees: the queued child is reached and dropped unserved.
+    open.send(()).expect("gate");
+    let served = drive_to_outcome(&mut driver, &mut busy)
+        .expect("resolved")
+        .expect("the busy one is served");
+    assert!(
+        matches!(&served, Outcome::Custom(payload) if *payload == json!("busy")),
+        "{served:?}"
+    );
+    let report = child
+        .poll_unpin(&mut cx)
+        .map(|result| result.expect_err("dropped with its parent"));
+    assert!(
+        matches!(report, Poll::Ready(ref report) if report.kind == ErrorKind::Cancelled),
+        "{report:?}"
+    );
+    assert_eq!(driver.in_flight(), 0);
+    assert_eq!(driver.queued(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Layers on the bus: a suspending layer keeps its serial slot and observes
+// cancellation; the world side's channel closing is the layer's failure.
+
+/// An approval gate: `before` sends the dispatch to the "world" and waits
+/// for its decision on a oneshot.
+struct Approval {
+    asks: std::sync::mpsc::Sender<(EffectId, oneshot::Sender<rig_core::serve::Decision>)>,
+}
+
+impl rig_core::serve::Intercept for Approval {
+    fn name(&self) -> String {
+        "approval".to_owned()
+    }
+
+    async fn before(&self, id: EffectId, _kind: &EffectKind) -> rig_core::serve::Decision {
+        let (decide, decided) = oneshot::channel();
+        self.asks.send((id, decide)).expect("the world listens");
+        match decided.await {
+            Ok(decision) => decision,
+            Err(oneshot::Canceled) => rig_core::serve::Decision::Deny(ErrorReport::new(
+                ErrorKind::Internal,
+                "layer `approval`: the world closed the answer channel without deciding",
+            )),
+        }
+    }
+
+    async fn after(
+        &self,
+        _id: EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Outcome, ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        rig_core::serve::Verdict::Keep
+    }
+}
+
+use rig_core::effect::EffectId;
+
+#[test]
+fn a_suspending_layer_keeps_its_serial_slot_and_observes_cancellation() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    });
+    let (asks, world) = std::sync::mpsc::channel();
+    let (echo, served) = Echo::new();
+    driver
+        .register_erased(
+            HandlerKey::from("echo"),
+            rig_core::serve::ErasedHandler::new(echo).layered(Approval { asks }),
+        )
+        .expect("register");
+    assert_eq!(
+        dispatcher
+            .descriptor(&HandlerKey::from("echo"))
+            .expect("published")
+            .layers,
+        ["approval"],
+        "the descriptor names the layer"
+    );
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let key = HandlerKey::from("echo");
+    let mut first = dispatcher.dispatch(&key, custom(json!(1)));
+    assert!(first.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    // Suspended in `before`: the dispatch is in flight, the key busy.
+    let (id, decide) = world.try_recv().expect("the world was asked");
+    assert_eq!(id, first.id());
+    assert_eq!(driver.in_flight(), 1);
+    let mut second = dispatcher.dispatch(&key, custom(json!(2)));
+    assert!(second.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(
+        driver.queued(),
+        1,
+        "the second waits for the suspended first"
+    );
+    assert_eq!(served.load(Ordering::SeqCst), 0, "nothing served yet");
+    // The consumer goes: the world side sees its channel closed, and must
+    // not panic on it; the slot frees and the second is served.
+    drop(first);
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(
+        decide.is_canceled(),
+        "the world sees the cancel on its sender"
+    );
+    assert!(decide.send(rig_core::serve::Decision::Proceed).is_err());
+    let (_, decide_second) = world.try_recv().expect("the second was asked");
+    decide_second
+        .send(rig_core::serve::Decision::Proceed)
+        .expect("the layer listens");
+    let outcome = drive_to_outcome(&mut driver, &mut second)
+        .expect("resolved")
+        .expect("served");
+    assert!(matches!(&outcome, Outcome::Custom(payload) if *payload == json!(2)));
+    assert_eq!(served.load(Ordering::SeqCst), 1);
+    assert_eq!(driver.in_flight(), 0);
+}
+
+#[test]
+fn a_suspending_layer_whose_world_closes_the_channel_resolves_internal_naming_the_layer() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (asks, world) = std::sync::mpsc::channel();
+    let (echo, served) = Echo::new();
+    driver
+        .register_erased(
+            HandlerKey::from("echo"),
+            rig_core::serve::ErasedHandler::new(echo).layered(Approval { asks }),
+        )
+        .expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let (_, decide) = world.try_recv().expect("asked");
+    drop(decide);
+    let report = drive_to_outcome(&mut driver, &mut pending)
+        .expect("resolved")
+        .expect_err("the world never decided");
+    assert_eq!(report.kind, ErrorKind::Internal);
+    assert!(
+        report.message.contains("layer `approval`"),
+        "{}",
+        report.message
+    );
+    assert_eq!(served.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_denied_dispatch_is_denied_on_the_consumers_pending_and_leaves_no_record() {
+    struct Wall;
+    impl rig_core::serve::Intercept for Wall {
+        fn name(&self) -> String {
+            "wall".to_owned()
+        }
+        async fn before(&self, _id: EffectId, _kind: &EffectKind) -> rig_core::serve::Decision {
+            rig_core::serve::Decision::deny("blocked by policy")
+        }
+        async fn after(
+            &self,
+            _id: EffectId,
+            _kind: &EffectKind,
+            _outcome: &Result<Outcome, ErrorReport>,
+        ) -> rig_core::serve::Verdict {
+            rig_core::serve::Verdict::Keep
+        }
+    }
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, served) = Echo::new();
+    driver
+        .register_erased(
+            HandlerKey::from("echo"),
+            rig_core::serve::ErasedHandler::new(echo).layered(Wall),
+        )
+        .expect("register");
+    let counting = Counting::default();
+    driver.record_to(counting.clone());
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    let report = drive_to_outcome(&mut driver, &mut pending)
+        .expect("resolved")
+        .expect_err("denied");
+    assert_eq!(report.kind, ErrorKind::Denied);
+    assert!(!report.retryable);
+    assert_eq!(served.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        counting.begun.load(Ordering::SeqCst),
+        1,
+        "the dispatch began"
+    );
+    assert_eq!(
+        counting.discarded.load(Ordering::SeqCst),
+        1,
+        "and was discarded"
+    );
+    assert_eq!(
+        counting.resolved.load(Ordering::SeqCst),
+        0,
+        "never resolved: no record"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The completion inbox: what ended since the last drain, bounded.
+
+#[test]
+fn the_inbox_names_every_dispatch_that_ended_since_the_last_drain() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(dispatcher.take_resolved().is_empty());
+    let mut a = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    let mut b = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(2)));
+    assert!(a.poll_unpin(&mut cx).is_pending());
+    assert!(b.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(
+        dispatcher.take_resolved(),
+        [a.id(), b.id()],
+        "in the order they ended"
+    );
+    assert!(dispatcher.take_resolved().is_empty(), "drained");
+    assert!(a.poll_unpin(&mut cx).is_ready());
+    assert!(b.poll_unpin(&mut cx).is_ready());
+    // A cancelled dispatch ends too; an unknown key's answers at once.
+    let c = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(3)));
+    let c_id = c.id();
+    let mut c = c;
+    assert!(c.poll_unpin(&mut cx).is_pending());
+    drop(c);
+    let _ = driver.poll_unpin(&mut cx);
+    let mut d = dispatcher.dispatch(&HandlerKey::from("nope"), custom(json!(4)));
+    assert!(d.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let ended = dispatcher.take_resolved();
+    assert_eq!(
+        ended,
+        [c_id, d.id()],
+        "every command the driver took ends in the inbox: the one dropped unserved, the one answered on the spot"
+    );
+    assert!(d.poll_unpin(&mut cx).is_ready());
+    // A dispatch refused before any send was never taken.
+    let refused = dispatcher.refused(ErrorReport::new(ErrorKind::Request, "no wire form"));
+    assert!(dispatcher.take_resolved().is_empty());
+    drop(refused);
+    assert_eq!(dispatcher.inbox_dropped(), 0);
+}
+
+#[test]
+fn the_inbox_is_bounded_and_counts_what_it_dropped() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
+        command_capacity: 1,
+        ..ServingPolicy::default()
+    });
+    let (echo, _) = Echo::new();
+    driver.register("echo", echo).expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    // The cap is command_capacity * 64 = 64: the 65th push drops the oldest.
+    let mut first = None;
+    for n in 0..65u64 {
+        let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(n)));
+        first.get_or_insert(pending.id());
+        while pending.poll_unpin(&mut cx).is_pending() {
+            let _ = driver.poll_unpin(&mut cx);
+        }
+    }
+    assert_eq!(dispatcher.inbox_dropped(), 1);
+    let ended = dispatcher.take_resolved();
+    assert_eq!(ended.len(), 64);
+    assert!(!ended.contains(&first.expect("a first")), "the oldest went");
 }

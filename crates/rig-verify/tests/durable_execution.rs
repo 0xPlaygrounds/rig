@@ -31,7 +31,7 @@ use rig_core::{
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
+use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -141,9 +141,9 @@ impl Scenario {
 
     fn builder(self) -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
         AgentBuilder::with_bus_config(
-            rig_bus::BusConfig {
+            rig_core::serve::ServingPolicy {
                 serial_per_handler: self.serial_per_handler,
-                ..rig_bus::BusConfig::default()
+                ..rig_core::serve::ServingPolicy::default()
             },
             "default",
             self.model(),
@@ -294,9 +294,9 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         "the hand driver's record is the reference log's head, request and outcome"
     );
     let continuation: EffectLog = reference_log.tail(partial_log.len());
-    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_bus::BusConfig {
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::serve::ServingPolicy {
         serial_per_handler: scenario.serial_per_handler,
-        ..rig_bus::BusConfig::default()
+        ..rig_core::serve::ServingPolicy::default()
     });
     EffectLogReplayer::register_all(&continuation, &mut driver).expect("fresh keys");
     let recorder = EffectLogRecorder::new();
@@ -567,4 +567,124 @@ async fn a_resumed_run_loads_nothing_from_memory() {
             .collect::<Vec<_>>(),
         "the resumed log is the reference log without its memory ends"
     );
+}
+
+/// The property through a checkpoint (L9): the interruption's state and
+/// position become a `Checkpoint` beside the reference log's tail; a fresh
+/// image loads both, `EffectLog::from_checkpoint` names the continuation,
+/// the replayers serve it under `check`, and the resumed run performs
+/// exactly the tail. The full log in the tail's place is refused by its
+/// first id before any dispatch.
+async fn resumes_from_a_checkpoint(
+    scenario: Scenario,
+    tools_before_stop: usize,
+    check: RequestCheck,
+) {
+    let (reference_output, reference_log) = reference_run(scenario).await;
+    let (suspended, partial_log) = drive_until_tool(scenario, tools_before_stop).await;
+    let (checkpoint, tail) = reference_log.checkpoint(
+        partial_log.len(),
+        serde_json::to_value(&suspended).expect("the run state serializes"),
+    );
+    assert_eq!(checkpoint.at, partial_log.len());
+    let persisted = (
+        serde_json::to_string(&checkpoint).expect("a checkpoint serializes"),
+        serde_json::to_string(&tail).expect("the tail serializes"),
+    );
+
+    // A fresh image: the checkpoint and the tail restored, the continuation
+    // named, the state deserialized from the checkpoint.
+    let checkpoint: Checkpoint = serde_json::from_str(&persisted.0).expect("a checkpoint restores");
+    let tail: EffectLog = serde_json::from_str(&persisted.1).expect("the tail restores");
+    let refused = EffectLog::from_checkpoint(&checkpoint, reference_log.clone())
+        .expect_err("the full log is not the tail");
+    assert!(
+        refused
+            .message
+            .starts_with("resume refused: the checkpoint at"),
+        "{}",
+        refused.message
+    );
+    let continuation = EffectLog::from_checkpoint(&checkpoint, tail).expect("the tail follows");
+    let restored: AgentRun =
+        serde_json::from_value(checkpoint.state.clone()).expect("the run state restores");
+    let (dispatcher, registrar, mut driver) = Bus::channel_with(rig_core::serve::ServingPolicy {
+        serial_per_handler: scenario.serial_per_handler,
+        ..rig_core::serve::ServingPolicy::default()
+    });
+    EffectLogReplayer::register_all_checking(&continuation, &mut driver, check)
+        .expect("fresh keys");
+    let recorder = EffectLogRecorder::new();
+    driver.record_to(recorder.clone());
+    let replay_task = tokio::spawn(driver);
+    let model_key = reference_log[0].key.clone();
+    let tool_key = reference_log
+        .iter()
+        .find(|record| record.kind.family() == EffectFamily::Tool)
+        .expect("a tool record")
+        .key
+        .clone();
+    let tool_replayer = EffectLogReplayer::for_key(&continuation, &tool_key)
+        .expect("the tool's records")
+        .checking(check);
+    let resumed_agent =
+        AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key)
+            .tool_server_handle({
+                let server = rig_agent::tool::server::ToolServer::new().run();
+                server.add_registered_tool(
+                    rig_agent::tool::RegisteredTool::from_handler(tool_replayer)
+                        .expect("a tool-family replayer"),
+                );
+                server
+            })
+            .build();
+    let response = within(
+        resumed_agent
+            .runner("ignored")
+            .tool_concurrency(scenario.tool_concurrency)
+            .resume(restored)
+            .run(),
+    )
+    .await
+    .expect("the resumed run");
+    assert_eq!(response.output, reference_output);
+    let resumed_log = recorder.take();
+    assert_eq!(
+        resumed_log
+            .iter()
+            .map(|record| (record.key.clone(), as_data(record)))
+            .collect::<Vec<_>>(),
+        continuation
+            .iter()
+            .map(|record| (record.key.clone(), as_data(record)))
+            .collect::<Vec<_>>(),
+        "the resumed run performed exactly the checkpoint's continuation"
+    );
+    // Head and tail together are the reference log.
+    let mut whole: Vec<_> = partial_log.iter().map(as_data).collect();
+    whole.extend(resumed_log.iter().map(as_data));
+    assert_eq!(whole, reference_log.iter().map(as_data).collect::<Vec<_>>());
+    drop((resumed_agent, dispatcher, registrar));
+    within(replay_task).await.expect("replay driver");
+}
+
+#[tokio::test]
+async fn a_run_resumes_from_a_checkpoint_and_its_tail() {
+    let scenario = Scenario {
+        two_calls: false,
+        tool_concurrency: 1,
+        serial_per_handler: false,
+    };
+    resumes_from_a_checkpoint(scenario, 1, RequestCheck::Payload).await;
+}
+
+#[tokio::test]
+async fn a_run_resumes_from_a_checkpoint_under_hash_checked_replay() {
+    let scenario = Scenario {
+        two_calls: true,
+        tool_concurrency: 2,
+        serial_per_handler: false,
+    };
+    // The two calls are one batch: the interruption is before it.
+    resumes_from_a_checkpoint(scenario, 0, RequestCheck::Hash).await;
 }

@@ -22,7 +22,8 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_bus::{BusConfig, ModelHandle, ToolHandle};
+use rig_bus::{ModelHandle, ToolHandle};
+use rig_core::serve::ServingPolicy;
 use rig_core::{
     completion::CompletionRequestBuilder,
     effect::{EffectKind, EffectRecord},
@@ -150,9 +151,9 @@ fn trace_of<'a>(records: impl IntoIterator<Item = &'a EffectRecord>) -> Trace {
 
 async fn bus_interpreter(case: &Case) -> (String, Trace) {
     let agent = AgentBuilder::with_bus_config(
-        BusConfig {
+        ServingPolicy {
             serial_per_handler: case.serial_per_handler,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         },
         "default",
         model_for(case),
@@ -188,9 +189,9 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
     // by hand: the model and the tools are reached through typed views,
     // never called directly, so the record is the bus's, as the engine's is.
     let agent = AgentBuilder::with_bus_config(
-        BusConfig {
+        ServingPolicy {
             serial_per_handler: case.serial_per_handler,
-            ..BusConfig::default()
+            ..ServingPolicy::default()
         },
         "default",
         model_for(case),

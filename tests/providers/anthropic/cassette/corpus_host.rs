@@ -9,10 +9,11 @@
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
-use rig::bus::{Bus, BusConfig};
+use rig::bus::Bus;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::serve::ServingPolicy;
 
 use super::super::support::with_anthropic_corpus_host_cassette;
 use crate::goldens::{
@@ -83,9 +84,9 @@ async fn over_host(
     host: Host,
     hooks: Hooks,
 ) -> rig::effect_log::EffectLog {
-    let config = BusConfig {
+    let config = ServingPolicy {
         serial_per_handler: host.serial,
-        ..BusConfig::default()
+        ..ServingPolicy::default()
     };
     let (dispatcher, registrar, mut driver) = Bus::channel_with(config);
     let model_key = HandlerKey::from("golden/model:default");

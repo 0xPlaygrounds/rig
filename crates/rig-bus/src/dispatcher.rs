@@ -2,8 +2,9 @@
 //! values a dispatch returns.
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
+    future::Future,
     pin::Pin,
     sync::{Arc, PoisonError, Weak},
     task::{Context, Poll, Waker},
@@ -52,12 +53,19 @@ pub(super) struct Shared {
     /// Serial serving (one command in flight per key), copied from the
     /// config so a dispatch can refuse to queue behind itself.
     serial_per_handler: bool,
-    /// The key whose handler the driver is polling *right now*, on which
-    /// thread. A dispatch to that key made during that poll, on that thread,
-    /// comes from inside the handler (a tool running a nested prompt); under
-    /// serial serving it would queue behind the very command that waits on
-    /// it, so it is refused instead of hung.
-    serving: Mutex<Option<(HandlerKey, std::thread::ThreadId)>>,
+    /// Causality: every dispatch in flight, by id, with the key it is served
+    /// on and the dispatch it was made from. A nested dispatch carries its
+    /// parent on the command, so a dispatch that would queue behind an
+    /// ancestor on the same serial key is refused here (`is_reentrant`), and
+    /// a cancelled dispatch reaches its descendants (`cancel_descendants`).
+    /// What a thread id used to approximate, as data.
+    causality: Mutex<Causality>,
+    /// The completion inbox: every dispatch that ended (answered,
+    /// cancelled, failed) pushes its id once, for a host that probes only
+    /// what resolved this tick ([`Dispatcher::take_resolved`]) instead of
+    /// every value in flight. Bounded: a host that never drains it pays
+    /// `command_capacity * 64` ids, then the oldest are dropped and counted.
+    inbox: Mutex<Inbox>,
     /// Set by the driver's drop guard: every reply that comes back
     /// `Canceled` after this is `BusClosed`, not a handler defect. Cleared
     /// by [`Shared::reopen`].
@@ -76,7 +84,7 @@ pub(super) struct Shared {
     /// — no in-flight work is resurrected across a restart.
     generation: AtomicU64,
     /// The config the bus was opened with; a reopened driver keeps it.
-    config: super::BusConfig,
+    config: rig_core::serve::ServingPolicy,
 }
 
 /// A bus's identity while it lives (see [`Dispatcher::id`]).
@@ -124,10 +132,15 @@ struct CommandQueue {
 }
 
 impl Shared {
-    pub(super) fn new(config: super::BusConfig) -> Self {
+    pub(super) fn new(config: rig_core::serve::ServingPolicy) -> Self {
         Self {
             serial_per_handler: config.serial_per_handler,
-            serving: Mutex::new(None),
+            causality: Mutex::new(Causality::default()),
+            inbox: Mutex::new(Inbox {
+                ids: VecDeque::new(),
+                cap: config.command_capacity.saturating_mul(64).max(1),
+                dropped: 0,
+            }),
             next_id: AtomicU64::new(1),
             descriptors: RwLock::new(BTreeMap::new()),
             queue: Mutex::new(CommandQueue {
@@ -145,9 +158,28 @@ impl Shared {
         }
     }
 
-    /// The driver stopped draining: no dispatcher is left to send.
-    pub(super) fn close_commands(&self) {
-        self.commands_closed.store(true, Ordering::SeqCst);
+    /// Close the bus for commands if nothing can send one any more: no
+    /// dispatcher is open and nothing is buffered. Decided and stored
+    /// **under the queue lock**, as `mark_closed` stores `closed`: `enqueue`
+    /// reads the flag under the same lock, so a `Pending` that outlived its
+    /// dispatcher cannot land a command in the buffer between this check and
+    /// this store — which would have been a command the driver, already
+    /// `Ready`, never takes. Returns whether the bus is now closed for
+    /// commands.
+    pub(super) fn try_close_commands(&self) -> bool {
+        let queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        if queue.commands.is_empty() && self.dispatchers() == 0 {
+            self.commands_closed.store(true, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Whether the bus is closed for commands (the loom models' probe).
+    #[cfg(rig_loom)]
+    pub(super) fn commands_closed(&self) -> bool {
+        self.commands_closed.load(Ordering::SeqCst)
     }
 
     /// A bus's identity while it lives: two buses in one process never
@@ -166,7 +198,7 @@ impl Shared {
             .collect()
     }
 
-    pub(super) fn config(&self) -> super::BusConfig {
+    pub(super) fn config(&self) -> rig_core::serve::ServingPolicy {
         self.config
     }
 
@@ -203,6 +235,7 @@ impl Shared {
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.closed.store(false, Ordering::SeqCst);
         self.commands_closed.store(false, Ordering::SeqCst);
+        self.forget_the_dead_driver();
         true
     }
 
@@ -227,7 +260,9 @@ impl Shared {
             )
         };
         for command in commands {
+            let id = command.id;
             command.reply.fail(bus_closed());
+            self.resolved(id);
         }
         wake_parked(senders);
     }
@@ -243,7 +278,7 @@ impl Shared {
         parked: &Arc<AtomicWaker>,
         cx: &Context<'_>,
     ) -> Enqueue {
-        if self.is_reentrant(&command.key) {
+        if self.is_reentrant(&command) {
             return Enqueue::Refused(command);
         }
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
@@ -358,6 +393,7 @@ impl Shared {
             HandlerDescriptor {
                 key,
                 family: descriptor.family,
+                layers: descriptor.layers,
             },
         );
         Ok(())
@@ -390,18 +426,170 @@ impl Shared {
         }
     }
 
-    /// Mark (or clear) the key whose handler the driver is polling.
-    pub(super) fn set_serving(&self, key: Option<HandlerKey>) {
-        *self.serving.lock().unwrap_or_else(PoisonError::into_inner) =
-            key.map(|key| (key, std::thread::current().id()));
+    /// A dispatch begins under the driver: its id, key and parent enter the
+    /// causality table and the flag it returns is set when an ancestor is
+    /// cancelled. `Err` when an ancestor was cancelled already: the check
+    /// and the insert are one critical section, so a child beginning while
+    /// its parent's cancel runs is either flagged by the cancel or refused
+    /// here — never in flight unflagged.
+    pub(super) fn begin_in_flight(
+        &self,
+        id: EffectId,
+        key: HandlerKey,
+        parent: Option<EffectId>,
+    ) -> Result<Arc<CancelFlag>, ChainCancelled> {
+        let mut causality = self
+            .causality
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if causality.chain_cancelled(parent) {
+            return Err(ChainCancelled);
+        }
+        let flag = Arc::new(CancelFlag::default());
+        causality.in_flight.insert(
+            id,
+            InFlightEntry {
+                key,
+                parent,
+                cancelled: Arc::clone(&flag),
+            },
+        );
+        Ok(flag)
     }
 
-    fn is_reentrant(&self, key: &HandlerKey) -> bool {
-        self.serial_per_handler
-            && matches!(
-                &*self.serving.lock().unwrap_or_else(PoisonError::into_inner),
-                Some((serving, thread)) if serving == key && *thread == std::thread::current().id()
-            )
+    /// A command the driver took ended — answered, failed, cancelled or
+    /// dropped unserved: its id goes to the inbox, the oldest going when
+    /// the host has not drained it.
+    pub(super) fn resolved(&self, id: EffectId) {
+        let mut inbox = self.inbox.lock().unwrap_or_else(PoisonError::into_inner);
+        if inbox.ids.len() >= inbox.cap {
+            inbox.ids.pop_front();
+            inbox.dropped += 1;
+        }
+        inbox.ids.push_back(id);
+    }
+
+    pub(super) fn take_resolved(&self) -> Vec<EffectId> {
+        std::mem::take(
+            &mut self
+                .inbox
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .ids,
+        )
+        .into()
+    }
+
+    /// A new driver starts with no history: the causality table and the
+    /// inbox of the driver that died are cleared with the flags.
+    fn forget_the_dead_driver(&self) {
+        let mut causality = self
+            .causality
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        causality.in_flight.clear();
+        causality.cancelled.clear();
+        drop(causality);
+        let mut inbox = self.inbox.lock().unwrap_or_else(PoisonError::into_inner);
+        inbox.ids.clear();
+        inbox.dropped = 0;
+    }
+
+    pub(super) fn inbox_dropped(&self) -> usize {
+        self.inbox
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .dropped
+    }
+
+    /// A dispatch left the driver. Returns whether it had been cancelled
+    /// from above or below — its consumer's, or an ancestor's, departure —
+    /// in which case the driver sweeps the children it still holds
+    /// (queued, or buffered: [`Shared::fail_buffered_children`]); those in
+    /// flight were flagged by the cancel itself.
+    pub(super) fn end_in_flight(&self, id: EffectId) -> bool {
+        let mut causality = self
+            .causality
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        causality.in_flight.remove(&id);
+        causality.cancelled.remove(&id)
+    }
+
+    /// Fail, as cancelled, every buffered command made from `id`: a child
+    /// dispatched by a handler whose dispatch was cancelled before the
+    /// driver took the child. The queue lock is held for the sweep only.
+    pub(super) fn fail_buffered_children(&self, id: EffectId) {
+        let orphans: Vec<Box<Command>> = {
+            let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
+            let (orphans, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut queue.commands)
+                .into_iter()
+                .partition(|command| command.parent == Some(id));
+            queue.commands = kept.into();
+            orphans
+        };
+        for orphan in orphans {
+            let id = orphan.id;
+            orphan.reply.fail(rig_core::serve::cancelled());
+            self.resolved(id);
+        }
+    }
+
+    /// The consumer of `id` is gone: every descendant in flight is flagged
+    /// (and woken), and `id` and each of them are remembered as cancelled
+    /// until they leave the driver, so a child that is still queued or
+    /// buffered, or begins meanwhile, is refused by its parent's id.
+    pub(super) fn cancel_descendants(&self, id: EffectId) {
+        let mut causality = self
+            .causality
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let descendants: Vec<(EffectId, Arc<CancelFlag>)> = causality
+            .in_flight
+            .iter()
+            .filter(|(child, _)| **child != id && causality.descends_from(**child, id))
+            .map(|(child, entry)| (*child, Arc::clone(&entry.cancelled)))
+            .collect();
+        causality.cancelled.insert(id);
+        causality
+            .cancelled
+            .extend(descendants.iter().map(|(child, _)| *child));
+        let flags: Vec<Arc<CancelFlag>> = descendants.into_iter().map(|(_, flag)| flag).collect();
+        drop(causality);
+        for flag in flags {
+            flag.set();
+        }
+    }
+
+    /// Under serial serving, a dispatch that descends from a dispatch in
+    /// flight on its own key would queue behind that ancestor and wait on
+    /// itself; it is refused instead. The chain is walked by parent ids,
+    /// so a nested dispatch made from a spawned task — invisible to a
+    /// thread check — is refused too, not hung.
+    fn is_reentrant(&self, command: &Command) -> bool {
+        if !self.serial_per_handler {
+            return false;
+        }
+        let causality = self
+            .causality
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let mut next = command.parent;
+        let mut hops = 0usize;
+        while let Some(id) = next {
+            let Some(entry) = causality.in_flight.get(&id) else {
+                break;
+            };
+            if entry.key == command.key {
+                return true;
+            }
+            next = entry.parent;
+            hops += 1;
+            if hops > causality.in_flight.len() {
+                break;
+            }
+        }
+        false
     }
 
     /// The descriptor published under `key`.
@@ -432,11 +620,117 @@ fn wake_parked(senders: Vec<Weak<AtomicWaker>>) {
     }
 }
 
+/// The ids of dispatches that ended, waiting for the host's next drain.
+pub(super) struct Inbox {
+    ids: VecDeque<EffectId>,
+    cap: usize,
+    dropped: usize,
+}
+
+/// The dispatches in flight and the cancels they descend from.
+#[derive(Default)]
+pub(super) struct Causality {
+    in_flight: BTreeMap<EffectId, InFlightEntry>,
+    /// Dispatches whose consumer is gone, kept while a descendant may still
+    /// be queued behind them; cleared when the dispatch itself leaves.
+    cancelled: BTreeSet<EffectId>,
+}
+
+/// The dispatch descends from one whose consumer is gone.
+pub(super) struct ChainCancelled;
+
+impl Causality {
+    /// Whether a dispatch made from `parent` was cancelled from above. The
+    /// parent's id suffices: a cancel remembers every descendant in flight
+    /// along with the root, so a grandchild's parent is in the set too.
+    fn chain_cancelled(&self, parent: Option<EffectId>) -> bool {
+        parent.is_some_and(|parent| self.cancelled.contains(&parent))
+    }
+
+    fn descends_from(&self, mut id: EffectId, ancestor: EffectId) -> bool {
+        let mut hops = 0usize;
+        while let Some(entry) = self.in_flight.get(&id) {
+            match entry.parent {
+                Some(parent) if parent == ancestor => return true,
+                Some(parent) => id = parent,
+                None => return false,
+            }
+            hops += 1;
+            if hops > self.in_flight.len() {
+                return false;
+            }
+        }
+        false
+    }
+}
+
+struct InFlightEntry {
+    key: HandlerKey,
+    parent: Option<EffectId>,
+    cancelled: Arc<CancelFlag>,
+}
+
+/// Set when an ancestor of the dispatch is cancelled; the serving future
+/// polls it and drops the handler when it is, and the sink shares the
+/// marker so the handler sees a closed sink and the record a cancellation.
+/// (`std` atomics on purpose: the marker crosses into rig-core's sink, and
+/// under loom the flag is data, not a protocol under test.)
+#[derive(Default)]
+pub(super) struct CancelFlag {
+    set: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    waker: AtomicWaker,
+}
+
+impl CancelFlag {
+    fn set(&self) {
+        self.set.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.waker.wake();
+    }
+
+    pub(super) fn is_set(&self) -> bool {
+        self.set.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// The marker the sink shares.
+    pub(super) fn marker(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        std::sync::Arc::clone(&self.set)
+    }
+
+    /// Resolves when the flag is set.
+    pub(super) fn wait(self: &Arc<Self>) -> CancelWait {
+        CancelWait(Arc::clone(self))
+    }
+}
+
+pub(super) struct CancelWait(Arc<CancelFlag>);
+
+impl Future for CancelWait {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.0.is_set() {
+            return Poll::Ready(());
+        }
+        self.0.waker.register(cx.waker());
+        if self.0.is_set() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
 /// One command on the channel: a dispatch and its reply half.
 pub(super) struct Command {
     pub(super) id: EffectId,
     pub(super) key: HandlerKey,
     pub(super) kind: EffectKind,
+    /// The dispatch this one was made from: a handler dispatching through
+    /// its sink's dispatcher, or `None` for a consumer's own dispatch.
+    pub(super) parent: Option<EffectId>,
+    /// The scope of the program that made the dispatch, if its dispatcher
+    /// was scoped ([`Dispatcher::scoped`]).
+    pub(super) scope: Option<Arc<str>>,
     pub(super) reply: Reply,
     /// The tracing span current at dispatch: the handler runs inside it,
     /// so a provider's telemetry parents under the caller's span exactly
@@ -484,13 +778,22 @@ impl Reply {
 /// [`Dispatcher::dispatch_stream`] return immediately, and the *first poll*
 /// of the returned [`Pending`]/[`EffectStream`] performs the (possibly
 /// back-pressured) send. The command buffer is bounded **bus-wide** by
-/// [`BusConfig::command_capacity`](super::BusConfig::command_capacity):
+/// [`ServingPolicy::command_capacity`](rig_core::serve::ServingPolicy::command_capacity):
 /// a full buffer lands its pressure on the value being polled, never on the
 /// caller — a system that dispatches from inside a frame cannot deadlock the
 /// app, and a burst of dispatches cannot grow the buffer past the bound.
 pub struct Dispatcher {
     pub(super) shared: Arc<Shared>,
     pub(super) stream_capacity: usize,
+    /// The dispatch every dispatch made through this value descends from:
+    /// `None` for a consumer's dispatcher, the served dispatch's id for the
+    /// one a handler reads off its sink ([`crate::SinkDispatch`]).
+    pub(super) parent: Option<EffectId>,
+    /// The scope every dispatch made through this value carries: a stable
+    /// serde id of the run or agent dispatching (never a runtime handle),
+    /// `None` until [`Dispatcher::scoped`] sets it. A handler's scoped
+    /// dispatcher inherits the scope of the dispatch it serves.
+    pub(super) scope: Option<Arc<str>>,
 }
 
 impl Dispatcher {
@@ -499,19 +802,98 @@ impl Dispatcher {
         Self {
             shared,
             stream_capacity,
+            parent: None,
+            scope: None,
         }
+    }
+
+    /// A dispatcher whose dispatches descend from `parent`: what a handler
+    /// serving `parent` dispatches through.
+    ///
+    /// A consumer's dispatcher holds the bus open for commands; a handler's
+    /// scoped one does not — the dispatch it serves does, while it is in
+    /// flight. So the count of open dispatchers is the count of consumers',
+    /// and a bus whose consumers are all gone closes for commands even with
+    /// handlers in flight, exactly as before.
+    pub(super) fn parented(
+        shared: Arc<Shared>,
+        stream_capacity: usize,
+        parent: EffectId,
+        scope: Option<Arc<str>>,
+    ) -> Self {
+        Self {
+            shared,
+            stream_capacity,
+            parent: Some(parent),
+            scope,
+        }
+    }
+
+    /// The dispatch every dispatch made through this value descends from,
+    /// if any.
+    pub const fn parent(&self) -> Option<EffectId> {
+        self.parent
+    }
+
+    /// A dispatcher whose every dispatch — and every handle bound from it,
+    /// and every nested dispatch a handler makes while serving one —
+    /// carries `scope`: the record's `scope`, a stable id of the program
+    /// dispatching, so a log several programs write in one world reads per
+    /// program. The id is the caller's (a run id, an agent name), never a
+    /// runtime handle.
+    pub fn scoped(&self, scope: impl Into<Arc<str>>) -> Self {
+        let mut dispatcher = self.clone();
+        dispatcher.scope = Some(scope.into());
+        dispatcher
+    }
+
+    /// The scope every dispatch made through this value carries, if any.
+    pub fn scope(&self) -> Option<&Arc<str>> {
+        self.scope.as_ref()
+    }
+
+    /// The completion inbox, drained: the id of every command the driver
+    /// took that ended since the last drain — answered, failed, cancelled
+    /// or dropped unserved — in the order the driver saw them end, which
+    /// is one driver poll after the sink's reply (a host that answers a
+    /// detached sink and drains in the same tick finds the id on the next).
+    /// A dispatch refused before any send ([`Dispatcher::dispatch`] of a
+    /// request with no wire form) was never taken and is not named. A
+    /// ticking host probes those values only (`poll_outcome`/`poll_item`
+    /// on the ones it maps the ids to) instead of every value in flight.
+    /// Bounded at `command_capacity * 64`: past it the oldest ids are
+    /// dropped and [`Dispatcher::inbox_dropped`] counts them, so a host that
+    /// never drains pays a bounded vector and can tell it fell behind. A
+    /// [`Bus::reopen`](crate::Bus::reopen) starts an empty inbox.
+    pub fn take_resolved(&self) -> Vec<EffectId> {
+        self.shared.take_resolved()
+    }
+
+    /// How many inbox ids were dropped for want of a drain.
+    pub fn inbox_dropped(&self) -> usize {
+        self.shared.inbox_dropped()
     }
 }
 
 impl Clone for Dispatcher {
     fn clone(&self) -> Self {
-        Self::open(Arc::clone(&self.shared), self.stream_capacity)
+        let mut dispatcher = match self.parent {
+            None => Self::open(Arc::clone(&self.shared), self.stream_capacity),
+            Some(parent) => {
+                Self::parented(Arc::clone(&self.shared), self.stream_capacity, parent, None)
+            }
+        };
+        dispatcher.scope = self.scope.clone();
+        dispatcher
     }
 }
 
 impl Drop for Dispatcher {
     fn drop(&mut self) {
-        self.shared.dispatcher_closed();
+        // Only a consumer's dispatcher was counted (see `parented`).
+        if self.parent.is_none() {
+            self.shared.dispatcher_closed();
+        }
     }
 }
 
@@ -552,16 +934,38 @@ impl Dispatcher {
         let (cancel_guard, cancel) = oneshot::channel();
         Pending {
             id,
+            parent: self.parent,
             state: PendingState::Sending {
                 command: Some(Box::new(Command {
                     id,
                     key: key.clone(),
                     kind,
+                    parent: self.parent,
+                    scope: self.scope.clone(),
                     reply: Reply::Unary(reply),
                     span: tracing::Span::current(),
                     cancel,
                 })),
             },
+            receiver,
+            shared: self.shared.clone(),
+            parked: Arc::new(AtomicWaker::new()),
+            generation: self.shared.generation(),
+            _cancel_guard: cancel_guard,
+        }
+    }
+
+    /// A dispatch refused before any send — a typed request with no wire
+    /// form — as a [`Pending`] that resolves `report` on its first poll. It
+    /// never reaches the buffer, a handler or a recorder; the id is minted so
+    /// a host's bookkeeping keys it like any dispatch.
+    pub(crate) fn refused(&self, report: ErrorReport) -> Pending {
+        let (_reply, receiver) = oneshot::channel();
+        let (cancel_guard, _cancel) = oneshot::channel();
+        Pending {
+            id: self.mint_id(),
+            parent: self.parent,
+            state: PendingState::Failed(Some(Box::new(report))),
             receiver,
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
@@ -590,6 +994,7 @@ impl Dispatcher {
             return EffectStream {
                 _cancel_guard: None,
                 id,
+                parent: self.parent,
                 state: StreamState::Failed(Some(ErrorReport::new(
                     ErrorKind::Request,
                     format!(
@@ -606,11 +1011,14 @@ impl Dispatcher {
         let (cancel_guard, cancel) = oneshot::channel();
         EffectStream {
             id,
+            parent: self.parent,
             state: StreamState::Sending {
                 command: Some(Box::new(Command {
                     id,
                     key: key.clone(),
                     kind,
+                    parent: self.parent,
+                    scope: self.scope.clone(),
                     reply: Reply::Stream(events),
                     span: tracing::Span::current(),
                     cancel,
@@ -662,7 +1070,7 @@ impl Dispatcher {
     }
 
     /// Commands buffered on the bus and not yet taken by the driver — at
-    /// most [`BusConfig::command_capacity`](super::BusConfig::command_capacity).
+    /// most [`ServingPolicy::command_capacity`](rig_core::serve::ServingPolicy::command_capacity).
     /// A dispatch that finds the buffer full parks at its send stage (its
     /// poll stays `Pending`) until the driver drains; the pressure is on the
     /// `Pending`/`EffectStream`, never on the caller.
@@ -712,8 +1120,15 @@ fn reply_dropped(shared: &Shared, generation: u64) -> ErrorReport {
 }
 
 enum PendingState {
-    Sending { command: Option<Box<Command>> },
+    Sending {
+        command: Option<Box<Command>>,
+    },
     Waiting,
+    /// Refused before any send: the request had no wire form
+    /// ([`rig_core::effect::Family::wrap`] failed). Resolves the report on
+    /// the first poll; nothing reaches a handler or a recorder. Boxed so
+    /// the rare arm costs the common ones nothing (`Pending`'s budget).
+    Failed(Option<Box<ErrorReport>>),
 }
 
 /// A unary dispatch in flight: a plain `Unpin` future with no executor
@@ -725,6 +1140,8 @@ enum PendingState {
 /// executor, no waker minted per frame.
 pub struct Pending {
     id: EffectId,
+    /// The dispatch this one was made from, if a handler made it.
+    parent: Option<EffectId>,
     state: PendingState,
     receiver: oneshot::Receiver<Result<Outcome, ErrorReport>>,
     shared: Arc<Shared>,
@@ -739,6 +1156,12 @@ pub struct Pending {
 }
 
 impl Pending {
+    /// The dispatch this one was made from: `Some` when a handler dispatched
+    /// it through its sink's dispatcher, `None` for a consumer's own.
+    pub const fn parent(&self) -> Option<EffectId> {
+        self.parent
+    }
+
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.id
@@ -794,6 +1217,17 @@ impl Future for Pending {
                         Enqueue::Closed => return Poll::Ready(Err(bus_closed())),
                     }
                 }
+                PendingState::Failed(report) => {
+                    return Poll::Ready(Err(report.take().map_or_else(
+                        || {
+                            ErrorReport::new(
+                                ErrorKind::Internal,
+                                "a refused dispatch was polled twice",
+                            )
+                        },
+                        |report| *report,
+                    )));
+                }
                 PendingState::Waiting => {
                     return match Pin::new(&mut this.receiver).poll(cx) {
                         Poll::Pending => Poll::Pending,
@@ -830,6 +1264,8 @@ enum StreamState {
 /// [`EffectStream::poll_item`].
 pub struct EffectStream {
     id: EffectId,
+    /// The dispatch this one was made from, if a handler made it.
+    parent: Option<EffectId>,
     state: StreamState,
     shared: Arc<Shared>,
     /// This value's one slot in the parked-sender list (see [`Pending`]).
@@ -841,6 +1277,11 @@ pub struct EffectStream {
 }
 
 impl EffectStream {
+    /// The dispatch this one was made from, if a handler made it.
+    pub const fn parent(&self) -> Option<EffectId> {
+        self.parent
+    }
+
     /// The dispatch's id.
     pub const fn id(&self) -> EffectId {
         self.id
@@ -974,15 +1415,15 @@ const _: () = {
     assert_send::<Pending>();
     assert_send::<EffectStream>();
     assert!(
-        size_of::<Dispatcher>() <= 32,
-        "Dispatcher budget: 32 bytes (measured 16 natively)"
+        size_of::<Dispatcher>() <= 48,
+        "Dispatcher budget: 48 bytes (measured 48 natively: the shared half, the stream capacity, the parent, the scope)"
     );
     assert!(
-        size_of::<Pending>() <= 64,
-        "Pending budget: 64 bytes (measured 64 natively: one parked-sender slot, one generation)"
+        size_of::<Pending>() <= 80,
+        "Pending budget: 80 bytes (measured 80 natively: one parked-sender slot, one generation, one parent)"
     );
     assert!(
-        size_of::<EffectStream>() <= 160,
-        "EffectStream budget: 160 bytes (measured 160 natively: one parked-sender slot, one generation)"
+        size_of::<EffectStream>() <= 176,
+        "EffectStream budget: 176 bytes (measured 176 natively: one parked-sender slot, one generation, one parent)"
     );
 };

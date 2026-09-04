@@ -57,6 +57,8 @@ fn command(id: u64) -> (Box<Command>, Receiver) {
                 kind: std::sync::Arc::from("m"),
                 payload: serde_json::Value::Null,
             },
+            parent: None,
+            scope: None,
             reply: Reply::Unary(reply),
             span: tracing::Span::none(),
             cancel,
@@ -70,9 +72,9 @@ fn command(id: u64) -> (Box<Command>, Receiver) {
 #[test]
 fn loom_close_fails_what_the_driver_never_took() {
     loom::model(|| {
-        let shared = Arc::new(Shared::new(super::BusConfig {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
             command_capacity: 4,
-            ..super::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         }));
         let sender = {
             let shared = Arc::clone(&shared);
@@ -123,6 +125,7 @@ impl Serve for Nothing {
         HandlerDescriptor {
             key: HandlerKey::from("k"),
             family: FamilyDescriptor::Custom { kind: "m".into() },
+            layers: Vec::new(),
         }
     }
 
@@ -135,9 +138,9 @@ impl Serve for Nothing {
 #[test]
 fn loom_a_registration_before_a_dispatch_is_installed_first() {
     loom::model(|| {
-        let shared = Arc::new(Shared::new(super::BusConfig {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
             command_capacity: 4,
-            ..super::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         }));
         let mailbox = Arc::new(Mailbox::new());
         let poster = {
@@ -194,9 +197,9 @@ fn loom_a_registration_before_a_dispatch_is_installed_first() {
 #[test]
 fn loom_bound_is_never_exceeded_and_no_sender_is_lost() {
     loom::model(|| {
-        let shared = Arc::new(Shared::new(super::BusConfig {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
             command_capacity: 1,
-            ..super::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         }));
         let mut senders = Vec::new();
         for id in 1..=2u64 {
@@ -284,6 +287,7 @@ impl Serve for Counted {
         HandlerDescriptor {
             key: HandlerKey::from("k"),
             family: FamilyDescriptor::Custom { kind: "m".into() },
+            layers: Vec::new(),
         }
     }
 
@@ -317,9 +321,17 @@ struct Begun {
 
 impl rig_core::serve::Recorder for Begun {
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
-    fn begin(&self, _id: EffectId, _key: HandlerKey, _kind: EffectKind) {
+    fn begin(
+        &self,
+        _id: EffectId,
+        _key: HandlerKey,
+        _kind: EffectKind,
+        _origin: rig_core::serve::Origin,
+    ) {
         self.begun.fetch_add(1, StdOrdering::SeqCst);
     }
+    fn discard(&self, _id: EffectId) {}
+    fn patch(&self, _id: EffectId, _kind: EffectKind) {}
     fn keep_events(&self) -> bool {
         false
     }
@@ -457,5 +469,141 @@ fn loom_reopen_races_the_last_in_flight_reply() {
             0,
             "the new driver served the old dispatch"
         );
+    });
+}
+
+/// The close for commands races a late enqueue from a `Pending` that
+/// outlived its dispatcher: every interleaving ends with the command
+/// either buffered on a bus still open for commands (the driver's next
+/// poll takes it) or refused as `BusClosed` — never buffered on a bus
+/// closed for commands, which nothing would ever take. The decision and
+/// the store are one critical section with the enqueue's check.
+#[test]
+fn loom_close_for_commands_never_strands_a_late_enqueue() {
+    loom::model(|| {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
+            command_capacity: 4,
+            ..rig_core::serve::ServingPolicy::default()
+        }));
+        // No dispatcher is open: the sender is a `Pending` that outlived its.
+        let sender = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                let (cmd, _receiver) = command(1);
+                let (_flag, waker) = recording();
+                let cx = Context::from_waker(&waker);
+                let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
+                match shared.enqueue(cmd, &parked, &cx) {
+                    Enqueue::Sent => false,
+                    Enqueue::Closed => true,
+                    Enqueue::Parked(_) | Enqueue::Refused(_) => panic!("neither"),
+                }
+            })
+        };
+        let closer = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || shared.try_close_commands())
+        };
+        let refused = sender.join().unwrap();
+        let closed = closer.join().unwrap();
+        assert!(
+            !(shared.commands_closed() && shared.buffered() > 0),
+            "a command is buffered on a bus closed for commands (refused: {refused}, closed: {closed})"
+        );
+        if closed {
+            assert!(
+                refused,
+                "the close saw an empty buffer, so the send came after it"
+            );
+        }
+    });
+}
+
+/// Causality: a nested dispatch under serial serving is refused by its
+/// chain, whichever thread enqueues it. A dispatch is in flight on `k`; a
+/// command made from it, to `k`, is enqueued from a spawned thread while
+/// another thread begins and ends an unrelated dispatch. Every interleaving
+/// refuses the nested command — the old thread-id rule accepted it (and
+/// hung) whenever the enqueuing thread was not the polling one.
+#[test]
+fn loom_a_nested_serial_dispatch_is_refused_from_any_thread() {
+    loom::model(|| {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
+            command_capacity: 4,
+            serial_per_handler: true,
+            ..rig_core::serve::ServingPolicy::default()
+        }));
+        shared.dispatcher_opened();
+        let _outer = shared
+            .begin_in_flight(EffectId::from_raw(1), HandlerKey::from("k"), None)
+            .ok()
+            .expect("nothing cancelled");
+        let nested = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                let (mut cmd, _receiver) = command(2);
+                cmd.parent = Some(EffectId::from_raw(1));
+                let (_flag, waker) = recording();
+                let cx = Context::from_waker(&waker);
+                let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
+                matches!(shared.enqueue(cmd, &parked, &cx), Enqueue::Refused(_))
+            })
+        };
+        let sibling = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                let _flag = shared
+                    .begin_in_flight(EffectId::from_raw(3), HandlerKey::from("j"), None)
+                    .ok()
+                    .expect("nothing cancelled");
+                shared.end_in_flight(EffectId::from_raw(3));
+            })
+        };
+        let refused = nested.join().unwrap();
+        sibling.join().unwrap();
+        assert!(refused, "the nested dispatch queued behind its ancestor");
+        assert_eq!(shared.buffered(), 0);
+    });
+}
+
+/// Causality: a parent's cancel reaches a child that begins concurrently.
+/// One thread cancels the descendants of dispatch 1; another begins
+/// dispatch 2 as 1's child. Whichever order the model picks, the child is
+/// either refused at `begin_in_flight` (the cancel came first) or flagged
+/// (it was in flight when the cancel scanned) — never in flight unflagged,
+/// which is what a separate check-then-insert would allow.
+#[test]
+fn loom_a_parent_cancel_reaches_a_child_that_begins_meanwhile() {
+    loom::model(|| {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy::default()));
+        let _parent = shared
+            .begin_in_flight(EffectId::from_raw(1), HandlerKey::from("k"), None)
+            .ok()
+            .expect("nothing cancelled");
+        let cancelling = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || shared.cancel_descendants(EffectId::from_raw(1)))
+        };
+        let beginning = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                shared
+                    .begin_in_flight(
+                        EffectId::from_raw(2),
+                        HandlerKey::from("j"),
+                        Some(EffectId::from_raw(1)),
+                    )
+                    .ok()
+            })
+        };
+        cancelling.join().unwrap();
+        let child = beginning.join().unwrap();
+        match child {
+            None => {}
+            Some(flag) => assert!(
+                flag.is_set(),
+                "a child in flight escaped its parent's cancel"
+            ),
+        }
     });
 }

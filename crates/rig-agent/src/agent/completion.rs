@@ -536,7 +536,7 @@ impl Agent {
     /// the log here before committing it as a golden.
     pub fn stamp(&self, mut log: EffectLog) -> EffectLog {
         log.header.run_spec = Some(self.run_spec_hash());
-        log.header.hooks = self.config.hooks.names();
+        log.header.hooks = self.program_names();
         log.header.required = self.required_row();
         log.header.bus = self.config.bus.config();
         log
@@ -546,12 +546,9 @@ impl Agent {
     /// the registry serves, its memory backend and its retrieval indexes,
     /// each with the family it needs — from the registry, not from what a
     /// run happened to dispatch.
-    pub fn required_row(
-        &self,
-    ) -> std::collections::BTreeMap<rig_core::effect::HandlerKey, rig_core::effect::EffectFamily>
-    {
+    pub fn required_row(&self) -> rig_core::effect::EffectRow {
         use rig_core::effect::EffectFamily;
-        let mut row = std::collections::BTreeMap::new();
+        let mut row = rig_core::effect::EffectRow::new();
         row.insert(
             self.config.model_key.raw().clone(),
             EffectFamily::Completion,
@@ -593,7 +590,8 @@ impl Agent {
             }
         }
         // Hooks are program: a different stack re-makes different decisions.
-        let mine = self.config.hooks.names();
+        // So are the layers on the bus's keys.
+        let mine = self.program_names();
         if log.header.hooks != mine {
             return Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Internal,
@@ -636,52 +634,45 @@ impl Agent {
             }
         }
         // The program's required row must be served by the log's handlers.
-        let served: std::collections::BTreeMap<_, _> = log
-            .header
-            .handlers
-            .iter()
-            .map(|descriptor| (descriptor.key.clone(), descriptor.family.family()))
-            .collect();
-        for (key, family) in self.required_row() {
-            match served.get(&key) {
-                Some(recorded) if *recorded == family => {}
-                Some(recorded) => {
-                    return Err(rig_core::error::ErrorReport::new(
-                        rig_core::error::ErrorKind::HandlerUnavailable,
-                        format!(
-                            "replay refused: this agent needs `{key}` as {family}, the log served it as {recorded}"
-                        ),
-                    ));
-                }
-                None => {
-                    return Err(rig_core::error::ErrorReport::new(
-                        rig_core::error::ErrorKind::HandlerUnavailable,
-                        format!(
-                            "replay refused: this agent needs `{key}` ({family}), which the log never served"
-                        ),
-                    ));
-                }
-            }
-        }
-        // And the row itself is program identity: a program that needs a
-        // key the recorded one did not (or the reverse) advertises a
-        // different tool set, memory or retrieval than the record's
-        // requests hold.
-        let mine = self.required_row();
-        if log.header.required != mine {
+        if let Err(gap) = self.required_row().is_subset_of(&log.header.handlers) {
             return Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::HandlerUnavailable,
                 format!(
-                    "replay refused: the log was recorded by a program requiring {:?}, this agent requires {mine:?}",
-                    log.header.required
+                    "replay refused: this agent needs `{}` ({}), which the log never served: {gap}",
+                    gap.key, gap.needed
+                ),
+            ));
+        }
+        let mine = self.required_row();
+        let diffs = log.header.required.diff(&mine);
+        if !diffs.is_empty() {
+            let diffs: Vec<String> = diffs.iter().map(ToString::to_string).collect();
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::HandlerUnavailable,
+                format!(
+                    "replay refused: the log was recorded by a program requiring {:?}, this agent requires {mine:?}: {}",
+                    log.header.required,
+                    diffs.join("; ")
                 ),
             ));
         }
         Ok(())
     }
 
+    /// What decides on this agent's behalf: its hook stack's names, then
+    /// every layer on the bus's handlers (the handler table's order,
+    /// outermost in). The log's `hooks`; a replay under another stack of
+    /// either is refused.
+    pub fn program_names(&self) -> Vec<String> {
+        let mut names = self.config.hooks.names();
+        for descriptor in self.config.bus.dispatcher().descriptors() {
+            names.extend(descriptor.layers);
+        }
+        names
+    }
+
     /// The policy this agent's own bus runs under; `None` over a host's bus.
-    pub fn bus_config(&self) -> Option<rig_bus::BusConfig> {
+    pub fn bus_config(&self) -> Option<rig_core::serve::ServingPolicy> {
         self.config.bus.config()
     }
 
@@ -713,7 +704,7 @@ impl Agent {
                 },
             }),
             Err(bus) => {
-                config.bus = bus;
+                config.bus = *bus;
                 Err(Box::new(Agent {
                     config,
                     tool_server_handle,

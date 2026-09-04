@@ -182,9 +182,9 @@ async fn the_header_names_the_program_and_the_agent_refuses_another() {
     let serial = AgentBuilder::new(MockCompletionModel::text("hi"))
         .name("planner")
         .add_hook(Tagger)
-        .configure_bus(rig_bus::BusConfig {
+        .configure_bus(rig_core::serve::ServingPolicy {
             serial_per_handler: true,
-            ..rig_bus::BusConfig::default()
+            ..rig_core::serve::ServingPolicy::default()
         })
         .build();
     let refusal = serial
