@@ -556,7 +556,11 @@ fn after_fold(
                     Some(STOP_ON_REASONING_DELTA)
                 }
                 Delta::Text { .. } if hooks.has(Hook::StopOnTextDelta) => Some(STOP_ON_TEXT_DELTA),
-                _ => None,
+                Delta::Text { .. }
+                | Delta::TextMeta { .. }
+                | Delta::Reasoning { .. }
+                | Delta::ToolName { .. }
+                | Delta::ToolArguments { .. } => None,
             };
             if stop.is_some() {
                 break;
@@ -597,7 +601,9 @@ fn judge_turn(
             .iter()
             .filter_map(|part| match part {
                 AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
+                AssistantContent::ToolCall(_)
+                | AssistantContent::Reasoning(_)
+                | AssistantContent::Image(_) => None,
             })
             .collect();
         for hook in hooks.hooks {

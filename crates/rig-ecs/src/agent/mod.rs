@@ -693,7 +693,7 @@ pub struct Retry {
 #[cfg_attr(
     feature = "reflect",
     derive(bevy_reflect::Reflect),
-    reflect(opaque, Debug, PartialEq, Serialize, Deserialize)
+    reflect(opaque, Component, Debug, PartialEq, Serialize, Deserialize)
 )]
 pub struct RequestPatch {
     /// The preamble the system message is built from, instead of the
@@ -827,13 +827,15 @@ const _: () = {
     assert_serde::<Retrieval>();
 };
 
-/// Fork `run`: a clone of the run entity and its whole subtree (the
-/// utterances, the turns, their effects — `ChildOf` is linked, so the
-/// clone is deep) under the next run number and its own scope, on the
-/// same agent. Best-of-n is `fork` n − 1 times and a system that judges
-/// the settled runs (design §3.4). Fork a run at rest — between turns,
-/// no effect in flight: a task is not cloned, an in-flight effect's clone
-/// would wait forever.
+/// Fork `run`: a clone of the run entity and its graph (the utterances,
+/// the turns — `ChildOf` is linked, so the clone is deep) under the next
+/// run number and its own scope, on the same agent. The effects are not
+/// carried: an effect's identity (`Seq`, `Issued`, its answer) belongs to
+/// the one dispatch it was, so the clone's turn children hold no effect
+/// — a turn already read needs none, and a fresh one folds its own.
+/// Best-of-n is `fork` n − 1 times and a system that judges the settled
+/// runs (design §3.4). Fork a run at rest — between turns — so no turn
+/// is waiting on an effect the clone does not have.
 pub fn fork(world: &mut World, run: Entity) -> Entity {
     let seq = {
         let mut counter = world.resource_mut::<RunCounter>();
@@ -849,7 +851,16 @@ pub fn fork(world: &mut World, run: Entity) -> Entity {
     let clone = world
         .entity_mut(run)
         .clone_and_spawn_with_opt_out(|builder| {
-            builder.linked_cloning(true);
+            builder.linked_cloning(true).deny::<(
+                crate::bus::PendingEffect,
+                crate::bus::Seq,
+                crate::bus::Issued,
+                crate::bus::Reserved,
+                crate::bus::EffectOutcome,
+                crate::bus::ToolInputs,
+                crate::bus::ToolOutputs,
+                ToolCallSlot,
+            )>();
         });
     world
         .entity_mut(clone)

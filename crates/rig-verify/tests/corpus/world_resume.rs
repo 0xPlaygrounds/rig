@@ -18,7 +18,7 @@ use rig_ecs::{
         Assembling, Cursor, Failed, MessageParts, Run, RunOf, Settled,
         scene::{WorldScene, load_world, save_world},
     },
-    bus::{EffectLogResource, IdCounter, RigSchedule},
+    bus::{EffectLogResource, EffectOutcome, IdCounter, RigSchedule},
     replay::{stamp_header, stamp_run},
     systems::{Fresh, spawn_run},
 };
@@ -116,6 +116,18 @@ pub fn world_resume_reproduces(
         );
         std::thread::yield_now();
     }
+    // No open record at the cut: every answered effect has been settled
+    // (`InFlight` gone), so the head's log holds every answer given.
+    let unsettled = app
+        .world_mut()
+        .query_filtered::<(), (With<EffectOutcome>, With<rig_ecs::bus::InFlight>)>()
+        .iter(app.world())
+        .count();
+    assert_eq!(
+        unsettled, 0,
+        "{}: {unsettled} record(s) open at the cut",
+        program.fixture
+    );
     let next_id = app.world().resource::<IdCounter>().0;
     let scene = save_world(app.world_mut()).expect("every component serializes");
     let head = app.world().resource::<EffectLogResource>().log();

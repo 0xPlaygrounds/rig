@@ -552,7 +552,7 @@ pub fn attach_retrieved(
 /// (CONTRACT §11).
 pub fn land_memory(
     mut commands: Commands,
-    runs: Query<Entity, With<LoadingMemory>>,
+    runs: Query<Entity, (With<LoadingMemory>, Without<Failed>)>,
     children: Query<&Children>,
     loads: Query<(&PendingEffect, &EffectOutcome)>,
     utterances: Query<(Entity, &Order), With<Utterance>>,
@@ -1044,8 +1044,8 @@ pub fn fold(
 }
 
 /// The default policy for an invalid call nothing resolved: the run's
-/// `InvalidCalls.unhandled`, written last in `Materialise`'s chain so a
-/// user system before it wins.
+/// `InvalidCalls.unhandled`, written at the head of `Materialise`'s chain
+/// (after `land_memory`), so a user system before the set wins.
 pub fn resolve_invalid_defaults(
     mut commands: Commands,
     calls: Query<(Entity, &ChildOf), Unresolved>,
@@ -1188,16 +1188,18 @@ pub fn land_batch(
             if !started_landed {
                 continue;
             }
-            for (entity, _, issued, outcome, _) in &calls {
-                if !*issued && outcome.is_none() {
-                    commands.entity(*entity).despawn();
-                }
-            }
+            // The ending first, so the despawns' observer finds the run
+            // ended with this failure and leaves it.
             commands.entity(turn).remove::<Batch>();
             commands
                 .entity(run)
                 .remove::<ResolvingTools>()
                 .insert(Failed(failure));
+            for (entity, _, issued, outcome, _) in &calls {
+                if !*issued && outcome.is_none() {
+                    commands.entity(*entity).despawn();
+                }
+            }
             progress.mark();
             continue;
         }
@@ -1804,16 +1806,21 @@ pub fn effect_cancelled(
 /// left to its handler: the record is the handler's.
 pub fn run_cancelled(
     added: On<Add, Cancelled>,
-    reasons: Query<&Cancelled>,
+    reasons: Query<(&Cancelled, Has<Settled>, Has<Failed>)>,
     children: Query<&Children>,
     turns: Query<(), With<Turn>>,
     effects: Query<Has<Issued>, With<PendingEffect>>,
     mut commands: Commands,
 ) {
     let run = added.event().entity;
-    let Ok(Cancelled(reason)) = reasons.get(run) else {
+    let Ok((Cancelled(reason), settled, failed)) = reasons.get(run) else {
         return;
     };
+    // A run that ended keeps its ending: a cancel after the fact is a
+    // no-op, never a second ending.
+    if settled || failed {
+        return;
+    }
     let mut pending: Vec<Entity> = Vec::new();
     let mut unread: Vec<Entity> = Vec::new();
     for child in children
@@ -1844,7 +1851,7 @@ pub fn run_cancelled(
     // finds the run ended with this reason and leaves it.
     commands
         .entity(run)
-        .remove::<(Assembling, AwaitingModel, ResolvingTools)>()
+        .remove::<(Assembling, AwaitingModel, ResolvingTools, LoadingMemory)>()
         .insert(Failed(Failure::Cancelled(
             rig_core::error::ErrorReport::new(ErrorKind::Cancelled, reason.clone()),
         )));

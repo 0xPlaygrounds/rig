@@ -17,7 +17,7 @@ use rig_core::{
     message::AssistantContent,
     tool::{ToolOutput, ToolResult},
 };
-use rig_ecs::bus::{BusSet, EffectOutcome, InFlight, Issued, PendingEffect, RigSchedule};
+use rig_ecs::bus::{BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule};
 
 use super::{
     Hold, LookupArgs, NESTED_PREAMBLE, NESTING_TOOL_KEY, NEVER_KEY, NOTE_KEY, NestedChild, Nesting,
@@ -259,7 +259,3 @@ fn tool_text(text: String) -> EffectOutcome {
         result: ToolResult::success(ToolOutput::text(text)),
     }))
 }
-
-// `Issued` is what the record keys on; the world mints it at dispatch.
-#[allow(dead_code)]
-fn _issued(_: &Issued) {}

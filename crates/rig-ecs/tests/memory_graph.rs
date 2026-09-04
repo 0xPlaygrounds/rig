@@ -421,16 +421,19 @@ fn memory_retrieval_attaches_documents_and_tools() {
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
         Some("2")
     );
-    // Both indexes, before every turn, with the prompt and the samples.
-    assert_eq!(
-        &*queries.lock().unwrap(),
-        &[
-            ("subtract one from three".to_owned(), 2),
-            ("subtract one from three".to_owned(), 1),
-            ("subtract one from three".to_owned(), 2),
-            ("subtract one from three".to_owned(), 1),
-        ]
-    );
+    // Both indexes, before every turn, with the prompt and the samples: the
+    // two effects of a turn are dispatched together, so within a turn the
+    // order is the pool's — sorted per turn.
+    let queries = queries.lock().unwrap();
+    let mut per_turn: Vec<Vec<(String, u64)>> = queries.chunks(2).map(<[_]>::to_vec).collect();
+    for turn in &mut per_turn {
+        turn.sort();
+    }
+    let both = vec![
+        ("subtract one from three".to_owned(), 1),
+        ("subtract one from three".to_owned(), 2),
+    ];
+    assert_eq!(per_turn, vec![both.clone(), both]);
     let requests = requests.lock().unwrap();
     for request in requests.iter() {
         // The static document, then the results in order; the string value

@@ -147,7 +147,12 @@ fn a_turn_with_two_calls_is_a_batch_and_the_results_are_one_utterance() {
         .iter()
         .filter_map(|r| match &r.kind {
             EffectKind::ToolCall { args, .. } => Some(args.as_str()),
-            _ => None,
+            EffectKind::Completion { .. }
+            | EffectKind::Embed { .. }
+            | EffectKind::Rerank { .. }
+            | EffectKind::Memory { .. }
+            | EffectKind::Retrieve { .. }
+            | EffectKind::Custom { .. } => None,
         })
         .collect();
     assert_eq!(args, [r#"{"x":1,"y":2}"#, r#"{"x":3,"y":4}"#], "call order");

@@ -160,7 +160,7 @@ Stage 4 (ruling 4). No hook trait: a user system writes a component at a set bou
 
 | the stop | the write | what the library does | pinned by |
 |---|---|---|---|
-| any hook's `stop(reason)` | `agent::Cancelled(reason)` inserted on the run, at any moment | the observer `run_cancelled` fails the run `Failed(Cancelled(report))` with `report.message == reason` and `kind == Cancelled`, removes its phase marker, marks its current turn read, and despawns every effect of the run that was never issued (never dispatched: no record); an effect in flight is left to its handler, so the record is the handler's — a stream that ended stays a completion, one still streaming ends as the replayer or provider ends it | every `Ending::Cancelled` cell; the reason asserted |
+| any hook's `stop(reason)` | `agent::Cancelled(reason)` inserted on the run, at any moment before it ended (after `Settled` or `Failed` it is a no-op: a run has one ending) | the observer `run_cancelled` fails the run `Failed(Cancelled(report))` with `report.message == reason` and `kind == Cancelled`, removes its phase marker (`Assembling`, `AwaitingModel`, `ResolvingTools`, `LoadingMemory`), marks its current turn read, and despawns every effect of the run that was never issued (never dispatched: no record); an effect in flight is left to its handler, so the record is the handler's — a stream that ended stays a completion, one still streaming ends as the replayer or provider ends it | every `Ending::Cancelled` cell; the reason asserted |
 | `on_run_start` → stop | an `On<Add, Run>` observer inserts `Cancelled` | no record | `mock_endings_stop_at_start` (`[]`, `stopped at run start`) |
 | `on_model_select` → stop | a system between `Advance` and `Select` | no record: the turn is fresh, the effect not yet folded | `mock_endings_stop_at_model_select` |
 | `on_completion_call` → stop | a system before `Assemble` (on `Added<Fresh>`), or in `Patch` | no record: the completion effect is despawned before `Dispatch` | `mock_endings_stop_at_completion_call` |
@@ -231,13 +231,13 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 | what | where | pinned by |
 |---|---|---|
 | `LogHeader::hooks` | the program's declaration — the corpus's `hook_name` list, then `layer_names` — passed to `replay::stamp_header(world, agent, recorder, bus, hooks)`; the world has no hook stack to name | every golden's `/header/hooks`, asserted by the interpreter |
-| `LogHeader::programs: BTreeMap<Arc<str>, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_header` (`policy` = `stable_hash(spec_json)`), `#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]`: rig-agent's goldens carry none, no re-stamp; a world's own log carries its scopes | `rig-effect-log`'s round-trip test |
+| `LogHeader::programs: BTreeMap<String, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_header` (`policy` = `stable_hash(spec_json)`), `#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]`: rig-agent's goldens carry none, no re-stamp; a world's own log carries its scopes | `rig-effect-log`'s round-trip test |
 | `replay::check_replayable(world, agent, &log)` | refuses a foreign golden: the scope's `required` not served by the log's handlers, or its `policy` ≠ the agent's `spec_hash`; falls back to `run_spec`/`required` for a golden without `programs` | `run_identity.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
 
 ## 11. Memory is the graph
 
-Stage 5 (ruling 5). The conversation graph *is* memory; a memory handler is where it persists. `agent::Remembers(entity)` on the agent names the memory handler entity; `agent::Conversation(id)` the conversation (the run's, else the agent's). Every op is an effect entity `ChildOf` the run, recorded like any other.
+Stage 5 (ruling 5). The conversation graph *is* memory; a memory handler is where it persists. `agent::Remembers(entity)` on the agent names the memory handler entity; `agent::Conversation(id)` on the agent the conversation (the run carries a copy of it once spawned). Every op is an effect entity `ChildOf` the run, recorded like any other.
 
 | moment | what happens | pinned by |
 |---|---|---|

@@ -4,8 +4,10 @@
 //! on an agent ([`PromptHandle`], [`ToolsHandle`]) becomes the agent's
 //! [`Preamble`] and its [`Grant`]s — to the bound handlers the definitions
 //! name, in file order — the tick the asset is loaded, once (the marker
-//! [`Applied`] says so). The host adds `bevy_asset::AssetPlugin` first,
-//! then [`AssetsPlugin`].
+//! [`Applied`] says so — a later change to the asset is not re-applied).
+//! The systems run in `Update` before the bus's quiescence loop, so a run
+//! spawned the tick an asset loads folds with it. The host adds
+//! `bevy_asset::AssetPlugin` first, then [`AssetsPlugin`].
 
 use std::marker::PhantomData;
 
@@ -21,7 +23,8 @@ use crate::{
     systems::next_order_in,
 };
 
-/// A prompt: the file's text.
+/// A prompt: the file's text (the preamble it becomes is trimmed at the
+/// end, so a file's final newline is not the model's).
 #[derive(Asset, TypePath, Debug, Clone, PartialEq, Eq)]
 pub struct Prompt {
     /// The text, as the file has it.
@@ -177,6 +180,9 @@ impl Plugin for AssetsPlugin {
             .register_asset_loader(PromptLoader)
             .init_asset::<ToolDefinitions>()
             .register_asset_loader(ToolDefinitionsLoader)
-            .add_systems(Update, (apply_prompts, grant_tools));
+            .add_systems(
+                Update,
+                (apply_prompts, grant_tools).before(crate::bus::run_to_quiescence),
+            );
     }
 }

@@ -341,3 +341,111 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
         serde_json::to_value(&log.records[0].outcome).expect("serde")
     );
 }
+
+/// A run saved while its retrievals are out resumes: the scene carries
+/// each retrieval effect's `Retrieval`, so the loaded turn attaches the
+/// results and folds (the review's P1).
+#[test]
+fn a_run_saved_while_retrieving_resumes_and_attaches() {
+    use rig_core::{
+        effect::{FamilyDescriptor, HandlerDescriptor, RetrieveQuery, RetrievedDocuments},
+        serve::{OutcomeSink, Serve},
+    };
+    use rig_ecs::agent::{Retrieval, RetrievalKind, Retrieves, Retrieving};
+
+    /// An index that never answers in the first world and answers at once
+    /// in the second.
+    struct Index {
+        answers: bool,
+    }
+    impl Serve for Index {
+        type Family = rig_core::effect::family::Retrieve;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: HandlerKey::from("t/retrieve:context#0"),
+                family: FamilyDescriptor::Retrieve {},
+                layers: Vec::new(),
+            }
+        }
+        async fn serve(&self, kind: rig_core::effect::EffectKind, sink: OutcomeSink) {
+            let rig_core::effect::EffectKind::Retrieve {
+                query: RetrieveQuery::TopN { .. },
+            } = kind
+            else {
+                return;
+            };
+            if !self.answers {
+                std::future::pending::<()>().await;
+            }
+            sink.resolve(Ok(rig_core::effect::Outcome::Documents(
+                RetrievedDocuments::Scored(vec![(0.9, "d1".to_owned(), serde_json::json!("a"))]),
+            )))
+            .await;
+        }
+    }
+    fn world(answers: bool) -> (App, Entity, Entity) {
+        let mut app = run_support::app();
+        let (model, _) = run_support::Capturing::new("t/model:default", "ok");
+        let model = run_support::register(&mut app, "t/model:default", model);
+        let index = run_support::register(&mut app, "t/retrieve:context#0", Index { answers });
+        (app, model, index)
+    }
+
+    let (mut app, model, index) = world(false);
+    app.world_mut().resource_mut::<IdCounter>().0 = 1;
+    let agent = run_support::spawn_agent(app.world_mut(), "t", model);
+    app.world_mut().spawn((
+        Retrieves(index),
+        Retrieval {
+            samples: 1,
+            what: RetrievalKind::Documents,
+        },
+        rig_ecs::agent::Order(0),
+        ChildOf(agent),
+    ));
+    let _run = spawn_run(app.world_mut(), agent, &[], "what?", false, Some(1));
+    run_support::tick_until(&mut app, "the retrieval out", |world| {
+        world
+            .query_filtered::<(), (
+                With<rig_ecs::agent::Retrieval>,
+                With<rig_ecs::bus::InFlight>,
+            )>()
+            .iter(world)
+            .count()
+            == 1
+    });
+    assert!(
+        app.world_mut()
+            .query_filtered::<(), With<Retrieving>>()
+            .iter(app.world())
+            .count()
+            == 1
+    );
+    let saved = rig_ecs::agent::scene::save_world(app.world_mut()).expect("serializes");
+    assert_eq!(
+        saved.retrievals.len(),
+        1,
+        "the retrieval effect's marker is saved"
+    );
+    let json = serde_json::to_string(&saved).expect("serde");
+    drop(app);
+
+    let (mut app, _, _) = world(true);
+    let saved: rig_ecs::agent::scene::WorldScene = serde_json::from_str(&json).expect("serde");
+    let loaded = rig_ecs::agent::scene::load_world(&saved, app.world_mut()).expect("bound");
+    let run = loaded
+        .graph
+        .iter()
+        .copied()
+        .find(|entity| app.world().get::<rig_ecs::agent::Run>(*entity).is_some())
+        .expect("the run");
+    run_support::tick_until(&mut app, "the resumed run", |world| {
+        world.get::<Settled>(run).is_some()
+    });
+    let attachments = app
+        .world_mut()
+        .query::<&rig_ecs::agent::Attachment>()
+        .iter(app.world())
+        .count();
+    assert_eq!(attachments, 1, "the retrieved document is attached");
+}

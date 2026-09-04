@@ -132,6 +132,10 @@ pub struct WorldScene {
     /// `effects.effects`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub slots: Vec<(usize, ToolCallSlot)>,
+    /// Which index each retrieval effect asks for ([`Retrieval`]), by
+    /// index into `effects.effects`: a run cut while retrieving resumes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retrievals: Vec<(usize, Retrieval)>,
 }
 
 /// What [`load_world`] spawned, by scene index.
@@ -165,10 +169,20 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
                 .map(|slot| (index, slot.clone()))
         })
         .collect();
+    let retrievals = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (entity, _))| {
+            world
+                .get::<Retrieval>(*entity)
+                .map(|retrieval| (index, *retrieval))
+        })
+        .collect();
     Ok(WorldScene {
         graph,
         effects,
         slots,
+        retrievals,
     })
 }
 
@@ -186,6 +200,11 @@ pub fn load_world(
     for (index, slot) in &scene.slots {
         if let Some(effect) = effects.get(*index).copied() {
             world.entity_mut(effect).insert(slot.clone());
+        }
+    }
+    for (index, retrieval) in &scene.retrievals {
+        if let Some(effect) = effects.get(*index).copied() {
+            world.entity_mut(effect).insert(*retrieval);
         }
     }
     Ok(Loaded { graph, effects })
