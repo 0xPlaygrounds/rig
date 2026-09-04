@@ -160,7 +160,7 @@ futures = "0.3"
 # `tests/core/bevy_pin.rs` guards the pin. Each Bevy crate with default
 # features off and only what rig-ecs's `bus` module needs.
 bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
-bevy_ecs = { version = "0.19.1", default-features = false, features = ["std"] }
+bevy_ecs = { version = "0.19.1", default-features = false, features = ["std", "multi_threaded"] }
 bevy_app = { version = "0.19.1", default-features = false, features = ["std"] }
 futures-timer = "3"
 glob = "0.3"

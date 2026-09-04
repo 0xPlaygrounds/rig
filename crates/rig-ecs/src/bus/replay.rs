@@ -69,7 +69,10 @@ impl Replay {
 
     /// Spawn one [`PendingEffect`] per record of `log`, in id order, each
     /// with its recorded id [`Reserved`] and `ChildOf` the entity of its
-    /// recorded parent. Returns the entities, in record order.
+    /// recorded parent. A parent outside `log` (a log's tail loaded over a
+    /// checkpoint) is not in the world, so that child carries no `ChildOf`
+    /// and its new record names no parent. Returns the entities, in record
+    /// order.
     pub fn load(world: &mut World, log: &EffectLog) -> Vec<Entity> {
         let mut records: Vec<&rig_core::effect::EffectRecord> = log.iter().collect();
         records.sort_by_key(|record| record.id);

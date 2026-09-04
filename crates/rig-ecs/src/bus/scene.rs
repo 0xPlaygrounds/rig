@@ -133,10 +133,17 @@ impl Scene {
             if effect.held {
                 entity.insert(Held);
             }
-            if let Some(parent) = effect.parent.and_then(|index| spawned.get(index).copied()) {
-                entity.insert(ChildOf(parent));
-            }
             spawned.push(entity.id());
+        }
+        // Parents in a second pass, so a child saved before its parent (a
+        // re-parented entity) keeps its causality.
+        for (index, effect) in self.effects.iter().enumerate() {
+            if let (Some(parent), Some(child)) = (
+                effect.parent.and_then(|at| spawned.get(at).copied()),
+                spawned.get(index).copied(),
+            ) {
+                world.entity_mut(child).insert(ChildOf(parent));
+            }
         }
         spawned
     }

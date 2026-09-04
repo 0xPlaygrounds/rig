@@ -114,7 +114,10 @@ fn stamp_seq(mut world: DeferredWorld<'_>, context: HookContext) {
 }
 
 /// The world's one effect-id counter: `Dispatch` mints ids from it, strictly
-/// increasing, unless the entity carries a [`Reserved`] id.
+/// increasing, unless the entity carries a [`Reserved`] id. Every
+/// `Reserved` or `Issued` inserted anywhere (a scene load, a log load, a
+/// host's own) bumps it past that id, so a minted id never collides with
+/// a saved one.
 #[derive(Resource, Debug, Default)]
 pub struct IdCounter(pub u64);
 
@@ -122,12 +125,28 @@ pub struct IdCounter(pub u64);
 /// replayed record's. Consumed by `Dispatch`, which bumps [`IdCounter`]
 /// past it so a minted id never collides with a reserved one.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[component(on_insert = bump_ids_past_reserved)]
 pub struct Reserved(pub EffectId);
+
+fn bump_ids_past_reserved(mut world: DeferredWorld<'_>, context: HookContext) {
+    if let Some(Reserved(id)) = world.get::<Reserved>(context.entity).copied() {
+        let mut counter = world.resource_mut::<IdCounter>();
+        counter.0 = counter.0.max(id.as_u64() + 1);
+    }
+}
+
+fn bump_ids_past_issued(mut world: DeferredWorld<'_>, context: HookContext) {
+    if let Some(Issued(id)) = world.get::<Issued>(context.entity).copied() {
+        let mut counter = world.resource_mut::<IdCounter>();
+        counter.0 = counter.0.max(id.as_u64() + 1);
+    }
+}
 
 /// The id the effect was dispatched under. Inserted by `Dispatch` and kept
 /// for the entity's life: what a child's record names as its `parent`, what
 /// a scene saves.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[component(on_insert = bump_ids_past_issued)]
 pub struct Issued(pub EffectId);
 
 /// A pending effect a user system is still deciding about: `Dispatch`

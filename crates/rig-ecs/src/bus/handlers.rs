@@ -134,11 +134,14 @@ fn ask<E: WorldEffect>(
 /// `E` by [`Handlers::register_world`].
 pub fn answered<E: WorldEffect>(
     added: On<Add, Answer<E>>,
-    answers: Query<&Answer<E>>,
+    answers: Query<&Answer<E>, With<Asked<E>>>,
     mut commands: Commands,
 ) {
     let entity = added.event().entity;
     let Ok(answer) = answers.get(entity) else {
+        // An answer with no question — a second answer, or one on an effect
+        // a task is serving — is dropped, never an outcome.
+        commands.entity(entity).remove::<Answer<E>>();
         return;
     };
     let outcome = serde_json::to_value(&answer.0)
@@ -165,6 +168,10 @@ pub struct HandlerTable {
     served: HashMap<Entity, Served>,
     /// The `E`s whose answer observer is installed.
     world_kinds: HashSet<TypeId>,
+    /// The key each served entity is bound to: what `bind` consults for a
+    /// registration made earlier in the same system, whose `Bound` the
+    /// query cannot see yet (commands are deferred).
+    keys: HashMap<HandlerKey, Entity>,
 }
 
 impl HandlerTable {
@@ -185,6 +192,7 @@ impl HandlerTable {
 
     /// Forget `entity`'s handler: the `Bound` removal observer's call.
     pub fn remove(&mut self, entity: Entity) -> Option<Served> {
+        self.keys.retain(|_, bound| *bound != entity);
         self.served.remove(&entity)
     }
 }
@@ -299,11 +307,54 @@ impl Handlers<'_, '_> {
         served: Served,
     ) -> Result<Entity, ErrorReport> {
         let family = descriptor.family.family();
-        let entity = match self.bound.iter().find(|(_, bound)| bound.key == key) {
+        let known = self
+            .table
+            .keys
+            .get(&key)
+            .copied()
+            .and_then(|entity| {
+                self.bound
+                    .get(entity)
+                    .ok()
+                    .map(|(_, bound)| (entity, bound.clone()))
+            })
+            .or_else(|| {
+                self.bound
+                    .iter()
+                    .find(|(_, bound)| bound.key == key)
+                    .map(|(entity, bound)| (entity, bound.clone()))
+            });
+        // A registration earlier in this borrow, not yet a `Bound` the query
+        // can see: the table knows its entity and its family.
+        let known = known.or_else(|| {
+            self.table.keys.get(&key).copied().and_then(|entity| {
+                self.table.served.get(&entity).map(|served| {
+                    let family = match served {
+                        Served::Task(handler) => handler.descriptor().family,
+                        Served::World(world) => FamilyDescriptor::Custom {
+                            kind: world.kind.to_owned(),
+                        },
+                    };
+                    (
+                        entity,
+                        Bound {
+                            key: key.clone(),
+                            descriptor: HandlerDescriptor {
+                                key: key.clone(),
+                                family,
+                                layers: Vec::new(),
+                            },
+                        },
+                    )
+                })
+            })
+        });
+        let entity = match known {
             Some((entity, bound)) if bound.family() == family => {
-                self.commands
-                    .entity(entity)
-                    .insert(Bound { key, descriptor });
+                self.commands.entity(entity).insert(Bound {
+                    key: key.clone(),
+                    descriptor,
+                });
                 entity
             }
             Some((_, bound)) => {
@@ -315,8 +366,15 @@ impl Handlers<'_, '_> {
                     ),
                 ));
             }
-            None => self.commands.spawn(Bound { key, descriptor }).id(),
+            None => self
+                .commands
+                .spawn(Bound {
+                    key: key.clone(),
+                    descriptor,
+                })
+                .id(),
         };
+        self.table.keys.insert(key, entity);
         self.table.served.insert(entity, served);
         Ok(entity)
     }
@@ -324,9 +382,15 @@ impl Handlers<'_, '_> {
     /// Remove the handler bound to `key`: its entity despawns. Returns
     /// whether one was bound.
     pub fn deregister(&mut self, key: &HandlerKey) -> bool {
-        match self.bound.iter().find(|(_, bound)| &bound.key == key) {
-            Some((entity, _)) => {
-                self.table.served.remove(&entity);
+        let entity = self.table.keys.get(key).copied().or_else(|| {
+            self.bound
+                .iter()
+                .find(|(_, bound)| &bound.key == key)
+                .map(|(entity, _)| entity)
+        });
+        match entity {
+            Some(entity) => {
+                self.table.remove(entity);
                 self.commands.entity(entity).despawn();
                 true
             }

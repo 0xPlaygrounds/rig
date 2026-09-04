@@ -57,6 +57,9 @@ pub fn collect_streams(
                         && let Some(outcome) = streaming.fold.observe(&item)
                     {
                         streamed.outcome = Some(outcome);
+                        // The fold's outcome is a transition; a delta is not —
+                        // a fast handler must not spin the quiescence loop.
+                        progress.mark();
                     }
                     if let Ok(event) = item {
                         if let StreamEvent::BlockDelta {
@@ -68,7 +71,6 @@ pub fn collect_streams(
                         }
                         streamed.events.push(event);
                     }
-                    progress.mark();
                 }
                 Err(TryRecvError::Closed) => {
                     let outcome = streamed

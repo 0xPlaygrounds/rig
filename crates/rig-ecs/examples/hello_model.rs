@@ -100,7 +100,9 @@ fn text(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> String {
             .iter()
             .filter_map(|content| match content {
                 AssistantContent::Text(text) => Some(text.text.clone()),
-                _ => None,
+                AssistantContent::Reasoning(_)
+                | AssistantContent::Image(_)
+                | AssistantContent::ToolCall(_) => None,
             })
             .collect(),
         Ok(other) => format!("a {} answer", other.family()),

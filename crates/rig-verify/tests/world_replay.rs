@@ -8,8 +8,11 @@
 //! and registers a by-id replayer per key (`Replay::register`); the
 //! world's `Dispatch` re-issues them, the replayers answer each from the
 //! record of its own id, and `Collect` lands the outcomes. The world's own
-//! log of the replay must then be the golden again: the same ids, keys,
-//! outcomes, parents and — through `Streamed` — the same events in order.
+//! log of the replay must then be the golden again, record for record: the
+//! same ids, keys, requests, outcomes, parents, scopes and — through
+//! `Streamed` — the same events in order. The header is not compared: the
+//! world writes no hook list, no run spec and no program row, which are
+//! the agent interpreters' (and rig-ecs PR 2's contract).
 //!
 //! No agent loop runs here: this is the bus half of the corpus, over every
 //! golden the two agent interpreters produced, so a golden that neither
@@ -154,6 +157,7 @@ fn replay_through_a_world(name: &str, log: &EffectLog) -> usize {
         assert_eq!(mine.id, theirs.id, "{name}");
         assert_eq!(mine.key, theirs.key, "{name}");
         assert_eq!(mine.parent, theirs.parent, "{name}: causality survives");
+        assert_eq!(mine.scope, theirs.scope, "{name}: the scope survives");
         assert_eq!(
             serde_json::to_value(&mine.kind).expect("serde"),
             serde_json::to_value(&theirs.kind).expect("serde"),

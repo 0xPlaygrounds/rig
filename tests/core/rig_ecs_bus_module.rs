@@ -216,10 +216,24 @@ fn no_serde_type_holds_an_entity() {
         let mut index = 0;
         while index < lines.len() {
             let line = lines[index];
-            if line.contains("derive(") && line.contains("Serialize") {
-                // Skip attributes until the item, then take its body up to
-                // the closing brace at the item's indentation.
-                let mut cursor = index + 1;
+            if line.trim_start().starts_with("#[derive(") {
+                // The derive may span lines (rustfmt splits long ones):
+                // gather it up to its `)]`, then the attributes that follow,
+                // then take the item's body up to the closing brace at the
+                // item's indentation.
+                let mut derive = String::new();
+                let mut cursor = index;
+                while cursor < lines.len() {
+                    derive.push_str(lines[cursor]);
+                    cursor += 1;
+                    if derive.contains(")]") {
+                        break;
+                    }
+                }
+                if !derive.contains("Serialize") {
+                    index = cursor;
+                    continue;
+                }
                 while cursor < lines.len() && lines[cursor].trim_start().starts_with('#') {
                     cursor += 1;
                 }

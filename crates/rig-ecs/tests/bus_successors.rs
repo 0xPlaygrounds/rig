@@ -66,7 +66,7 @@ fn a_reopened_bus_serves_handles_bound_before_the_drop() {
 #[test]
 fn reopen_while_a_driver_is_alive_is_refused() {
     let counters = Arc::new(Counters::default());
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let mut app = app();
     register(&mut app, "model", MockModel::new(&counters));
     let effect = app
@@ -82,7 +82,7 @@ fn reopen_while_a_driver_is_alive_is_refused() {
         rig_ecs::bus::run_to_quiescence(app.world_mut());
         assert!(app.world().get::<InFlight>(effect).is_some());
     }
-    counters.hold.store(false, Ordering::SeqCst);
+    counters.hold.release();
     tick_until(&mut app, "answered", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });

@@ -10,7 +10,7 @@
 //! `Rerank` has a golden through a mock reranker on a host's bus; a
 //! `Prompted` answer is returned unvalidated; the handler table, the
 //! signature and the required row are three sets with stated inclusions;
-//! and the Bevy host replays a golden (`tests/core/bevy_bus_host.rs`).
+//! and a Bevy world replays every golden by id (`tests/world_replay.rs`).
 //!
 //! # Dimensions
 //!

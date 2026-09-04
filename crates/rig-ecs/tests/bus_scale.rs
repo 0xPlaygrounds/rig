@@ -114,7 +114,7 @@ fn a_thousand_effects_from_four_parallel_spawners_resolve_in_seq_order() {
 #[test]
 fn ten_thousand_effects_in_flight_cost_one_bounded_tick() {
     let counters = Arc::new(Counters::default());
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let mut app = app_with(ServingPolicy {
         command_capacity: 10_000,
         ..ServingPolicy::default()
@@ -143,7 +143,7 @@ fn ten_thousand_effects_in_flight_cost_one_bounded_tick() {
         per_tick < std::time::Duration::from_millis(50),
         "a tick with ten thousand in flight took {per_tick:?}"
     );
-    counters.hold.store(false, Ordering::SeqCst);
+    counters.hold.release();
     tick_until(&mut app, "all answered", |world| {
         effects
             .iter()

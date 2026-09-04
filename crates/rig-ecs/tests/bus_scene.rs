@@ -49,7 +49,7 @@ fn golden(name: &str) -> EffectLog {
 #[test]
 fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
     let counters = Arc::new(Counters::default());
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let mut app = app();
     register(&mut app, "model", MockModel::new(&counters));
     let answered = app
@@ -57,11 +57,11 @@ fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
         .spawn(PendingEffect::new("model", completion()))
         .id();
     // Answer the first, then hold the rest.
-    counters.hold.store(false, Ordering::SeqCst);
+    counters.hold.release();
     tick_until(&mut app, "first answered", |world| {
         world.get::<EffectOutcome>(answered).is_some()
     });
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let taken = app
         .world_mut()
         .spawn(PendingEffect::new("model", completion()))
@@ -188,9 +188,14 @@ fn three_goldens_replay_through_a_world_by_id() {
         }
         // The world's own log of the replay is the golden again, record for
         // record.
-        let replayed = world.resource::<EffectLogResource>().log();
-        assert_eq!(replayed.records.len(), log.records.len(), "{name}");
-        for (mine, theirs) in replayed.records.iter().zip(log.records.iter()) {
+        // Both logs are in begin order; under serial serving neither is id
+        // order, so compare by id.
+        let mut replayed = world.resource::<EffectLogResource>().log().records;
+        replayed.sort_by_key(|record| record.id);
+        let mut theirs_sorted = log.records.clone();
+        theirs_sorted.sort_by_key(|record| record.id);
+        assert_eq!(replayed.len(), theirs_sorted.len(), "{name}");
+        for (mine, theirs) in replayed.iter().zip(theirs_sorted.iter()) {
             assert_eq!(mine.id, theirs.id);
             assert_eq!(mine.key, theirs.key);
             assert_eq!(mine.parent, theirs.parent, "{name}: causality survives");
@@ -353,7 +358,7 @@ impl Serve for Echo {
 #[test]
 fn a_live_key_is_reserved_and_never_changes_family() {
     let counters = Arc::new(Counters::default());
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let mut app = app();
     let first = register(&mut app, "model", MockModel::saying(&counters, "first"));
     let effect = app
@@ -377,7 +382,7 @@ fn a_live_key_is_reserved_and_never_changes_family() {
     .expect("a bus")
     .expect("still bound");
     assert_eq!(described.family.family(), EffectFamily::Completion);
-    counters.hold.store(false, Ordering::SeqCst);
+    counters.hold.release();
     tick_until(&mut app, "answered", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
@@ -402,4 +407,42 @@ fn a_live_key_is_reserved_and_never_changes_family() {
         text_of(&app.world().get::<EffectOutcome>(next).expect("answered").0),
         "second"
     );
+}
+
+#[test]
+fn a_loaded_scene_never_collides_with_minted_ids() {
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    register(&mut app, "model", MockModel::new(&counters));
+    // A scene of answered effects with ids 0..3, loaded into a fresh world:
+    // the next minted id must be past them, not 0 again.
+    let scene = Scene {
+        handlers: Vec::new(),
+        effects: (0..3)
+            .map(|n| rig_ecs::bus::SceneEffect {
+                seq: rig_ecs::bus::Seq(n),
+                key: HandlerKey::from("model"),
+                kind: completion(),
+                id: Some(rig_core::effect::EffectId::from_raw(n)),
+                outcome: Some(Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Cancelled,
+                    "saved answered",
+                ))),
+                parent: None,
+                scope: None,
+                held: false,
+            })
+            .collect(),
+    };
+    let loaded = scene.load(app.world_mut());
+    let fresh = app
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut app, "minted", |world| {
+        world.get::<EffectOutcome>(fresh).is_some()
+    });
+    let minted = app.world().get::<Issued>(fresh).expect("issued").0;
+    assert_eq!(minted.as_u64(), 3, "past every saved id");
+    assert_eq!(loaded.len(), 3);
 }

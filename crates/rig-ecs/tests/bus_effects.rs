@@ -94,7 +94,7 @@ fn an_effect_despawned_before_dispatch_is_never_served() {
 #[test]
 fn despawning_an_effect_in_flight_cancels_its_handler() {
     let counters = Arc::new(Counters::default());
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let mut app = app();
     register(&mut app, "model", MockModel::new(&counters));
     let effect = app
@@ -106,7 +106,7 @@ fn despawning_an_effect_in_flight_cancels_its_handler() {
     });
     assert!(app.world().get::<InFlight>(effect).is_some());
     app.world_mut().despawn(effect);
-    counters.hold.store(false, Ordering::SeqCst);
+    counters.hold.release();
     tick(&mut app, 3);
     // The task was dropped with the entity: the handler never answered.
     assert_eq!(counters.unary_served.load(Ordering::SeqCst), 0);
@@ -115,7 +115,7 @@ fn despawning_an_effect_in_flight_cancels_its_handler() {
 #[test]
 fn the_intake_bound_leaves_the_rest_pending_and_blocks_nobody() {
     let counters = Arc::new(Counters::default());
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let mut app = app_with(ServingPolicy {
         command_capacity: 2,
         ..ServingPolicy::default()
@@ -140,7 +140,7 @@ fn the_intake_bound_leaves_the_rest_pending_and_blocks_nobody() {
         .filter(|e| app.world().get::<InFlight>(**e).is_some())
         .count();
     assert_eq!(in_flight, 4, "two more the next tick");
-    counters.hold.store(false, Ordering::SeqCst);
+    counters.hold.release();
     tick_until(&mut app, "all answered", |world| {
         effects
             .iter()
@@ -300,4 +300,79 @@ fn handlers_are_registered_and_removed_from_systems() {
         outcome.0.as_ref().expect_err("no handler").kind,
         ErrorKind::HandlerUnavailable
     );
+}
+
+fn register_twice_in_one_system(mut handlers: Handlers, mut runtime: ResMut<Runtime>) {
+    if !runtime.registered {
+        runtime.registered = true;
+        handlers
+            .register(
+                runtime.key.clone(),
+                MockModel::saying(&runtime.counters, "first"),
+            )
+            .expect("a fresh key");
+        // The same key again, before the first registration's commands
+        // applied: the same entity, re-served, never a second `Bound`.
+        handlers
+            .register(
+                runtime.key.clone(),
+                MockModel::saying(&runtime.counters, "second"),
+            )
+            .expect("the same family");
+    }
+}
+
+#[test]
+fn two_registrations_of_one_key_in_one_system_bind_one_entity() {
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    let key = HandlerKey::from("runtime/model");
+    app.insert_resource(Runtime {
+        key: key.clone(),
+        counters: Arc::clone(&counters),
+        registered: false,
+        effect: None,
+        answered: Arc::new(AtomicUsize::new(0)),
+    });
+    app.world_mut()
+        .resource_mut::<bevy_ecs::schedule::Schedules>()
+        .add_systems(
+            RigSchedule,
+            register_twice_in_one_system.before(BusSet::Gate),
+        );
+    app.update();
+    let bound = app
+        .world_mut()
+        .query::<&Bound>()
+        .iter(app.world())
+        .filter(|bound| bound.key == key)
+        .count();
+    assert_eq!(bound, 1, "one handler entity for the key");
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new(key.clone(), completion()))
+        .id();
+    tick_until(&mut app, "served by the second", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    assert_eq!(
+        text_of(
+            &app.world()
+                .get::<EffectOutcome>(effect)
+                .expect("answered")
+                .0
+        ),
+        "second"
+    );
+    let removed =
+        Handlers::with(app.world_mut(), |handlers| handlers.deregister(&key)).expect("a bus");
+    assert!(removed);
+    app.update();
+    let left = app
+        .world_mut()
+        .query::<&Bound>()
+        .iter(app.world())
+        .filter(|bound| bound.key == key)
+        .count();
+    assert_eq!(left, 0, "deregistered the one entity");
 }

@@ -434,7 +434,7 @@ fn a_child_effect_records_its_parent_and_a_reentrant_one_is_refused() {
 #[test]
 fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queued() {
     let counters = Arc::new(Counters::default());
-    counters.hold.store(true, Ordering::SeqCst);
+    counters.hold.hold();
     let mut app = app_with(rig_core::serve::ServingPolicy {
         serial_per_handler: true,
         ..Default::default()
@@ -484,7 +484,7 @@ fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queue
     assert_eq!(in_flight.len(), 2, "the ask and its first child");
 
     app.world_mut().despawn(ask);
-    counters.hold.store(false, Ordering::SeqCst);
+    counters.hold.release();
     tick(&mut app, 3);
     assert!(
         app.world().get_entity(queued).is_err(),

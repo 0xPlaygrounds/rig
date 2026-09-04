@@ -39,8 +39,49 @@ pub struct Counters {
     pub stream_cancelled: AtomicUsize,
     /// Stream deltas sent.
     pub stream_sends: AtomicUsize,
-    /// While set, a unary dispatch stays in flight inside the handler.
-    pub hold: AtomicBool,
+    /// While set, a dispatch stays in flight inside the handler, parked (not
+    /// spinning) until released.
+    pub hold: Hold,
+}
+
+/// A gate a handler parks on: `hold()` closes it, `release()` opens it and
+/// wakes every parked future.
+#[derive(Default)]
+pub struct Hold {
+    closed: AtomicBool,
+    wakers: std::sync::Mutex<Vec<std::task::Waker>>,
+}
+
+impl Hold {
+    pub fn hold(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+    }
+
+    pub fn release(&self) {
+        self.closed.store(false, Ordering::SeqCst);
+        for waker in self.wakers.lock().expect("wakers").drain(..) {
+            waker.wake();
+        }
+    }
+
+    pub fn is_held(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    /// Park until released; resolves at once when open.
+    pub async fn wait(&self) {
+        std::future::poll_fn(|cx| {
+            if !self.is_held() {
+                return std::task::Poll::Ready(());
+            }
+            self.wakers.lock().expect("wakers").push(cx.waker().clone());
+            if !self.is_held() {
+                return std::task::Poll::Ready(());
+            }
+            std::task::Poll::Pending
+        })
+        .await;
+    }
 }
 
 /// Deltas one stream emits before its terminal record.
@@ -82,26 +123,6 @@ impl MockModel {
     }
 }
 
-/// Yield to the executor once, so a held handler stays cancellable.
-pub struct YieldNow(pub bool);
-
-impl Future for YieldNow {
-    type Output = ();
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<()> {
-        if self.0 {
-            std::task::Poll::Ready(())
-        } else {
-            self.0 = true;
-            cx.waker().wake_by_ref();
-            std::task::Poll::Pending
-        }
-    }
-}
-
 impl Serve for MockModel {
     type Family = rig_core::effect::family::Completion;
 
@@ -120,9 +141,7 @@ impl Serve for MockModel {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
                 self.counters.unary_started.fetch_add(1, Ordering::SeqCst);
-                while self.counters.hold.load(Ordering::SeqCst) {
-                    YieldNow(false).await;
-                }
+                self.counters.hold.wait().await;
                 self.counters.unary_served.fetch_add(1, Ordering::SeqCst);
                 let response = CompletionResponse::new(
                     vec![AssistantContent::text(&self.text)],
@@ -134,9 +153,7 @@ impl Serve for MockModel {
             EffectKind::Completion { stream: true, .. } => {
                 let mut out = sink.writer();
                 loop {
-                    while self.counters.hold.load(Ordering::SeqCst) {
-                        YieldNow(false).await;
-                    }
+                    self.counters.hold.wait().await;
                     if out.text("tick ").await.is_err() {
                         self.counters
                             .stream_cancelled
@@ -258,7 +275,9 @@ pub fn text_of(outcome: &Result<Outcome, ErrorReport>) -> String {
             .iter()
             .filter_map(|content| match content {
                 AssistantContent::Text(text) => Some(text.text.clone()),
-                _ => None,
+                AssistantContent::Reasoning(_)
+                | AssistantContent::Image(_)
+                | AssistantContent::ToolCall(_) => None,
             })
             .collect(),
         other => panic!("not a completion: {other:?}"),
