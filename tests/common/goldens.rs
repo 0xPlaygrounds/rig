@@ -758,3 +758,41 @@ impl rig::agent::AgentHook for RecordSettled {
         *self.0.lock().expect("settled") = Some(seen);
     }
 }
+
+// ---------------------------------------------------------------------------
+// The invalid-call matrix's hooks (Matrix G).
+
+#[allow(dead_code)]
+pub(crate) const SKIP_REASON: &str = "no such tool; skipped";
+
+/// `on_invalid_tool_call` → `Repair { tool_name: "add" }`: the unknown
+/// call is re-targeted to `add` with its arguments.
+#[allow(dead_code)]
+pub(crate) struct RepairToAdd;
+impl rig::agent::AgentHook for RepairToAdd {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _context: &rig::agent::InvalidToolCallContext,
+    ) -> Option<rig::agent::InvalidToolCallAction> {
+        Some(rig::agent::InvalidToolCallAction::Repair {
+            tool_name: "add".to_owned(),
+        })
+    }
+}
+
+/// `on_invalid_tool_call` → `Skip { reason }`: the model sees the reason
+/// as the call's result and goes on.
+#[allow(dead_code)]
+pub(crate) struct SkipUnknown;
+impl rig::agent::AgentHook for SkipUnknown {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        _context: &rig::agent::InvalidToolCallContext,
+    ) -> Option<rig::agent::InvalidToolCallAction> {
+        Some(rig::agent::InvalidToolCallAction::Skip {
+            reason: SKIP_REASON.to_owned(),
+        })
+    }
+}

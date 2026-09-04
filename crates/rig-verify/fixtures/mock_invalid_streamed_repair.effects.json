@@ -1,0 +1,447 @@
+{
+  "header": {
+    "format": 3,
+    "run_spec": 14178699323467550126,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "adds two integers",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "hooks": [
+      "RepairToAdd"
+    ],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Use the add tool."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is 2 + 3?"
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "adds two integers",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "call-1",
+              "provider": {
+                "call_id": "call-1"
+              },
+              "function": {
+                "name": "multiply",
+                "arguments": {
+                  "x": 2,
+                  "y": 3
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "total_tokens": 0,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "tool_use_prompt_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:call-1",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call-1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call-1",
+            "name": "multiply",
+            "arguments": {
+              "x": 2,
+              "y": 3
+            },
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": "call-1",
+            "provider": {
+              "call_id": "call-1"
+            },
+            "function": {
+              "name": "multiply",
+              "arguments": {
+                "x": 2,
+                "y": 3
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "total_tokens": 0,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "tool_use_prompt_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":2,\"y\":3}",
+        "context": {}
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 5
+              }
+            ]
+          },
+          "context": {}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Use the add tool."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is 2 + 3?"
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "call-1",
+                  "provider": {
+                    "call_id": "call-1"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 2,
+                      "y": 3
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "call-1",
+                  "provider": {
+                    "call_id": "call-1"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 5
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "adds two integers",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "2 + 3 = 5"
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "total_tokens": 0,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "tool_use_prompt_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "2 + 3 = 5"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "total_tokens": 0,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "tool_use_prompt_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null
+          }
+        }
+      ]
+    }
+  ]
+}

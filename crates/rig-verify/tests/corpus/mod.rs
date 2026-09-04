@@ -50,6 +50,7 @@ use rig_agent::agent::{
     ModelSelection, ModelSelectionAction, ObservationAction, ReasoningDelta, TextDelta,
     ToolCallDelta,
 };
+use rig_agent::run::UnhandledInvalidToolCall;
 use rig_agent::{
     AgentBuilder, AgentHook, HookContext,
     agent::{
@@ -60,7 +61,8 @@ use rig_agent::{
     completion::PromptError,
     run::{
         AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
-        ModelTurnOutcome, PendingToolCall, RunSpec, StreamedTurnAssembler, prepare_request,
+        ModelTurnOutcome, PendingToolCall, RunSpec, StreamedResolution, StreamedTurnAssembler,
+        StreamedTurnEvent, prepare_request,
     },
     tool::{RegisteredTool, server::ToolServer},
 };
@@ -125,6 +127,22 @@ pub enum Hook {
     StopOnReasoningDelta,
     /// Observes `on_run_settled`; decides nothing.
     RecordSettled,
+    /// `on_invalid_tool_call` → `Repair { tool_name: "add" }`.
+    RepairToAdd,
+    /// `on_invalid_tool_call` → `Skip { reason }`.
+    SkipUnknown,
+}
+
+pub const SKIP_REASON: &str = "no such tool; skipped";
+
+/// The runner's policy for an invalid call no hook resolves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unhandled {
+    /// `UnhandledInvalidToolCall::Fail`: the run fails at the record.
+    Fail,
+    /// `UnhandledInvalidToolCall::Ignore`: the call is dropped, the run
+    /// goes on.
+    Ignore,
 }
 
 pub const STOP_AT_START: &str = "stopped at run start";
@@ -243,6 +261,8 @@ pub struct Program {
     /// The names of the retrievable tools (advertised only when retrieved;
     /// every other tool in the required row is always advertised).
     pub retrievable: &'static [&'static str],
+    /// The runner's `unhandled_invalid_tool_call` policy.
+    pub unhandled: Unhandled,
 }
 
 impl Program {
@@ -273,6 +293,7 @@ impl Program {
         dynamic_context: None,
         retrieved_tools: None,
         retrievable: &[],
+        unhandled: Unhandled::Fail,
     };
 
     /// The preamble the run spec holds: the builder's, with any appended
@@ -580,6 +601,28 @@ impl AgentHook for StopOnReasoningDelta {
 struct RecordSettled;
 impl AgentHook for RecordSettled {}
 
+struct RepairToAdd;
+impl AgentHook for RepairToAdd {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        _context: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        Some(InvalidToolCallAction::repair("add"))
+    }
+}
+
+struct SkipUnknown;
+impl AgentHook for SkipUnknown {
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        _context: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        Some(InvalidToolCallAction::skip(SKIP_REASON))
+    }
+}
+
 fn answer_text(content: &[AssistantContent]) -> String {
     content
         .iter()
@@ -620,6 +663,8 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::StopOnToolCallDelta => builder.add_hook(StopOnToolCallDelta),
             Hook::StopOnReasoningDelta => builder.add_hook(StopOnReasoningDelta),
             Hook::RecordSettled => builder.add_hook(RecordSettled),
+            Hook::RepairToAdd => builder.add_hook(RepairToAdd),
+            Hook::SkipUnknown => builder.add_hook(SkipUnknown),
         };
     }
     builder
@@ -888,7 +933,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
         if let Some(concurrency) = program.tool_concurrency {
             runner = runner.tool_concurrency(concurrency);
         }
-        runner = runner.max_invalid_tool_call_retries(program.invalid_retries);
+        runner = runner
+            .max_invalid_tool_call_retries(program.invalid_retries)
+            .unhandled_invalid_tool_call(unhandled_policy(program));
         let mut stream = runner.stream().await;
         let mut output = None;
         let mut failed_as_expected = false;
@@ -966,7 +1013,9 @@ pub async fn bus_engine_reproduces(program: &Program) {
         if let Some(concurrency) = program.tool_concurrency {
             runner = runner.tool_concurrency(concurrency);
         }
-        runner = runner.max_invalid_tool_call_retries(program.invalid_retries);
+        runner = runner
+            .max_invalid_tool_call_retries(program.invalid_retries)
+            .unhandled_invalid_tool_call(unhandled_policy(program));
         match (within(runner.run()).await, program.ending) {
             (Ok(response), Ending::Answer) => Some(response.output),
             (Err(PromptError::MaxTurnsError { .. }), Ending::MaxTurns)
@@ -1115,6 +1164,8 @@ fn hook_name(hook: Hook) -> &'static str {
         Hook::StopOnToolCallDelta => "StopOnToolCallDelta",
         Hook::StopOnReasoningDelta => "StopOnReasoningDelta",
         Hook::RecordSettled => "RecordSettled",
+        Hook::RepairToAdd => "RepairToAdd",
+        Hook::SkipUnknown => "SkipUnknown",
     }
 }
 
@@ -1127,6 +1178,7 @@ pub fn assert_header_names_the_program(replay: &Replay, program: &Program) {
     let builder_spec = RunSpec {
         max_turns: Some(program.default_max_turns.unwrap_or(1)),
         max_invalid_tool_call_retries: 0,
+        unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
         ..run_spec(program)
     };
     assert_eq!(
@@ -1172,6 +1224,13 @@ pub fn assert_header_names_the_program(replay: &Replay, program: &Program) {
     }
 }
 
+fn unhandled_policy(program: &Program) -> UnhandledInvalidToolCall {
+    match program.unhandled {
+        Unhandled::Fail => UnhandledInvalidToolCall::Fail,
+        Unhandled::Ignore => UnhandledInvalidToolCall::Ignore,
+    }
+}
+
 pub fn run_spec(program: &Program) -> RunSpec {
     RunSpec {
         preamble: program.spec_preamble(),
@@ -1185,6 +1244,7 @@ pub fn run_spec(program: &Program) -> RunSpec {
         max_turns: program.max_turns.or(program.default_max_turns),
         max_invalid_tool_call_retries: program.invalid_retries,
         output_schema: program.output_schema.map(|schema| schema()),
+        unhandled_invalid_tool_call: unhandled_policy(program),
         ..RunSpec::new()
     }
 }
@@ -1364,6 +1424,8 @@ pub async fn hand_driver_reproduces(program: &Program) {
                     let mut assembler = StreamedTurnAssembler::new(executable, allowed);
                     let mut provider_failed = false;
                     let mut delta_stop: Option<&'static str> = None;
+                    let mut turn_abandoned = false;
+                    let mut unknown_tool_call = false;
                     while let Some(event) = within(stream.next()).await {
                         let event = match event {
                             Ok(event) => event,
@@ -1412,7 +1474,76 @@ pub async fn hand_driver_reproduces(program: &Program) {
                                 break;
                             }
                         }
-                        assembler.ingest(&event).expect("a well-formed stream");
+                        let events = assembler.ingest(&event).expect("a well-formed stream");
+                        // An invalid call surfaced mid-stream: resolved as the
+                        // engine resolves it — the hook's decision, else the
+                        // runner's policy — through the run's streamed seam.
+                        for streamed in events {
+                            let StreamedTurnEvent::InvalidToolCall(invalid) = streamed else {
+                                continue;
+                            };
+                            let partial = assembler.partial_turn(stream.message_id.clone());
+                            let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
+                                Some(retry_feedback(&invalid.tool_call.function.name))
+                            } else if program.hooks.contains(&Hook::RepairToAdd) {
+                                Some(InvalidToolCallAction::repair("add"))
+                            } else if program.hooks.contains(&Hook::SkipUnknown) {
+                                Some(InvalidToolCallAction::skip(SKIP_REASON))
+                            } else {
+                                None
+                            };
+                            let resolved = match (action, program.unhandled) {
+                                (Some(action), _) => run
+                                    .resolve_streamed_invalid_tool_call(&partial, &invalid, action),
+                                (None, Unhandled::Fail) => run.resolve_streamed_invalid_tool_call(
+                                    &partial,
+                                    &invalid,
+                                    InvalidToolCallAction::fail(),
+                                ),
+                                (None, Unhandled::Ignore) => {
+                                    run.ignore_streamed_invalid_tool_call()
+                                }
+                            };
+                            match resolved {
+                                Ok(resolution @ StreamedResolution::Repaired { .. })
+                                | Ok(resolution @ StreamedResolution::Ignored) => {
+                                    let replayed = assembler.resolve_pending_invalid(&resolution);
+                                    assert!(
+                                        replayed.iter().all(|e| !matches!(
+                                            e,
+                                            StreamedTurnEvent::InvalidToolCall(_)
+                                        )),
+                                        "a repair names an allowed tool"
+                                    );
+                                }
+                                Ok(resolution @ StreamedResolution::TurnAbandoned { .. }) => {
+                                    assembler.resolve_pending_invalid(&resolution);
+                                    turn_abandoned = true;
+                                }
+                                Err(error) => {
+                                    assert!(
+                                        program.ending == Ending::UnknownToolCall
+                                            && matches!(error, PromptError::UnknownToolCall { .. }),
+                                        "{error:?}"
+                                    );
+                                    unknown_tool_call = true;
+                                }
+                            }
+                        }
+                        if turn_abandoned || unknown_tool_call {
+                            break;
+                        }
+                    }
+                    if unknown_tool_call {
+                        drop(stream);
+                        break None;
+                    }
+                    if turn_abandoned {
+                        // As the engine: the abandoned turn's stream is drained
+                        // for its usage, then the next model call is asked for.
+                        while within(stream.next()).await.is_some() {}
+                        drop(stream);
+                        continue;
                     }
                     if let Some(reason) = delta_stop {
                         // As the engine: the model's stream is dropped at
@@ -1467,22 +1598,33 @@ pub async fn hand_driver_reproduces(program: &Program) {
                 let mut outcome = run.model_response(turn).expect("a model turn");
                 let mut unknown_tool_call = false;
                 while let ModelTurnOutcome::NeedsResolution(invalid) = outcome {
-                    if !program.hooks.contains(&Hook::RetryUnknownTool) {
-                        // No hook: the run's own policy, `Fail` by default.
-                        let error = run
-                            .resolve_unhandled_invalid_tool_call()
-                            .expect_err("an unhandled invalid call fails the run");
-                        assert!(
-                            program.ending == Ending::UnknownToolCall
-                                && matches!(error, PromptError::UnknownToolCall { .. }),
-                            "{error:?}"
-                        );
-                        unknown_tool_call = true;
-                        break;
+                    // The hook's decision, else the runner's policy — as
+                    // the engine resolves an invalid call.
+                    let action = if program.hooks.contains(&Hook::RetryUnknownTool) {
+                        Some(retry_feedback(&invalid.tool_name))
+                    } else if program.hooks.contains(&Hook::RepairToAdd) {
+                        Some(InvalidToolCallAction::repair("add"))
+                    } else if program.hooks.contains(&Hook::SkipUnknown) {
+                        Some(InvalidToolCallAction::skip(SKIP_REASON))
+                    } else {
+                        None
+                    };
+                    let resolved = match action {
+                        Some(action) => run.resolve_invalid_tool_call(action),
+                        None => run.resolve_unhandled_invalid_tool_call(),
+                    };
+                    match resolved {
+                        Ok(next) => outcome = next,
+                        Err(error) => {
+                            assert!(
+                                program.ending == Ending::UnknownToolCall
+                                    && matches!(error, PromptError::UnknownToolCall { .. }),
+                                "{error:?}"
+                            );
+                            unknown_tool_call = true;
+                            break;
+                        }
                     }
-                    outcome = run
-                        .resolve_invalid_tool_call(retry_feedback(&invalid.tool_name))
-                        .expect("the retry is resolved");
                 }
                 if unknown_tool_call {
                     break None;
