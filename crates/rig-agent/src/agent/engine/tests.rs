@@ -10073,3 +10073,71 @@ mod run_lifecycle {
         );
     }
 }
+
+#[tokio::test]
+async fn outcome_replacement_preserves_tool_execution_commit_disposition() {
+    struct ReplaceOutcome {
+        skip_dispatch: bool,
+    }
+    impl AgentHook for ReplaceOutcome {
+        async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+            if self.skip_dispatch && event.tool_name().is_some() {
+                DispatchAction::skip("policy denied")
+            } else {
+                DispatchAction::Proceed
+            }
+        }
+        async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            if event.tool_name().is_none() {
+                return OutcomeAction::Proceed;
+            }
+            let result = if self.skip_dispatch {
+                crate::tool::ToolResult::success(crate::tool::ToolOutput::text("replacement"))
+            } else {
+                crate::tool::ToolResult::skipped("replacement")
+            };
+            OutcomeAction::Replace(Ok(rig_core::effect::Outcome::ToolResult { result }))
+        }
+    }
+    for skip_dispatch in [true, false] {
+        let calls = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(CountingAddTool {
+                calls: calls.clone(),
+            })
+            .add_hook(ReplaceOutcome { skip_dispatch })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .stream()
+            .await;
+        let mut committed = 0;
+        let mut results = 0;
+        while let Some(item) = stream.next().await {
+            match item.expect("replacement stream succeeds") {
+                MultiTurnStreamItem::ToolExecutionCommitted { .. } => committed += 1,
+                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
+                    results += 1
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(calls.load(SeqCst), u32::from(!skip_dispatch));
+        assert_eq!(
+            committed,
+            calls.load(SeqCst),
+            "presentation replacement must not change execution history"
+        );
+        assert_eq!(results, 1);
+    }
+}

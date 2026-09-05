@@ -1798,6 +1798,7 @@ pub(crate) async fn run_single_tool(
 
     let ToolCallDispatch {
         result: exec,
+        executed,
         context: _dispatch_context,
         args: effective_args,
     } = match dispatch_tool_call(
@@ -1836,7 +1837,7 @@ pub(crate) async fn run_single_tool(
     // A skip runs nothing and surfaces no execution commit; a real execution
     // carries the effective tool call (the model's call with any patch
     // applied) so a redaction rewrite does not leak.
-    let execution = if exec.is_skipped() {
+    let execution = if !executed {
         ToolExecution::Skipped
     } else {
         let mut effective_tool_call = tool_call.clone();
@@ -2232,6 +2233,8 @@ pub(crate) async fn dispatch_completion(
 /// any hook's patch).
 pub(crate) struct ToolCallDispatch {
     pub(crate) result: ToolResult,
+    /// Disposition at the dispatch boundary, before outcome presentation hooks.
+    pub(crate) executed: bool,
     pub(crate) context: crate::tool::ToolContext,
     pub(crate) args: String,
 }
@@ -2308,6 +2311,7 @@ pub(crate) async fn dispatch_tool_call(
         _ => String::new(),
     };
     let mut published: Option<crate::tool::ToolContext> = None;
+    let mut executed = false;
     let outcome: Result<Outcome, ErrorReport> = match denied {
         Some(report) => Ok(Outcome::ToolResult {
             result: ToolResult::skipped(report.message),
@@ -2318,6 +2322,8 @@ pub(crate) async fn dispatch_tool_call(
                     dispatcher.dispatch_tool_with_id(id, key.raw(), kind.clone(), inbound.clone());
                 let published_at = pending.published_context();
                 let outcome = pending.await;
+                executed =
+                    matches!(&outcome, Ok(Outcome::ToolResult { result }) if !result.is_skipped());
                 published = published_at.and_then(|published| published.take());
                 outcome
             }
@@ -2351,11 +2357,13 @@ pub(crate) async fn dispatch_tool_call(
     };
     Ok(match outcome {
         Ok(Outcome::ToolResult { result }) => ToolCallDispatch {
+            executed,
             result,
             context,
             args: effective_args,
         },
         Ok(other) => ToolCallDispatch {
+            executed,
             result: ToolResult::failed(crate::tool::ToolExecutionError::other(format!(
                 "the tool handler answered with a {} outcome",
                 other.family()
@@ -2372,6 +2380,7 @@ pub(crate) async fn dispatch_tool_call(
         Err(report) if report.kind == ErrorKind::Denied => {
             tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call denied");
             ToolCallDispatch {
+                executed,
                 result: ToolResult::skipped(report.message),
                 context: tool_context.for_dispatch(),
                 args: effective_args,
@@ -2390,6 +2399,7 @@ pub(crate) async fn dispatch_tool_call(
             return Err(ToolDispatchAbort::Failed(report));
         }
         Err(report) => ToolCallDispatch {
+            executed,
             result: ToolResult::failed(
                 crate::tool::ToolExecutionError::other(report.message.clone())
                     .with_model_feedback(report.message),
